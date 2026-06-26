@@ -31,6 +31,7 @@
 			}
 		],
 		"xref": [
+			"https://eiriktsarpalis.github.io/PolyType/xrefmap.yml",
 			"https://learn.microsoft.com/en-us/dotnet/.xrefmap.json"
 		],
 		"output": "_site",
