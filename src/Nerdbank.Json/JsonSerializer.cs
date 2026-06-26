@@ -62,6 +62,18 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
+	/// Gets a value indicating whether enum values should be serialized by name rather than by numeric value when possible.
+	/// </summary>
+	/// <remarks>
+	/// The default value is <see langword="false"/>.
+	/// </remarks>
+	public bool SerializeEnumValuesByName
+	{
+		get => this.configuration.SerializeEnumValuesByName;
+		init => this.configuration = this.configuration with { SerializeEnumValuesByName = value };
+	}
+
+	/// <summary>
 	/// Gets the policy that determines how deserialization handles missing or <see langword="null"/> values.
 	/// </summary>
 	/// <remarks>

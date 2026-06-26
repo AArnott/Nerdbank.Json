@@ -14,6 +14,7 @@ internal record JsonSerializerConfiguration
 	private JsonNamingPolicy? dictionaryKeyNamingPolicy;
 	private JsonNamingPolicy? propertyNamingPolicy = JsonNamingPolicy.CamelCase;
 	private ReferencePreservationMode preserveReferences;
+	private bool serializeEnumValuesByName;
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
 
 	internal JsonConverterCache ConverterCache => this.converterCache ??= new(this);
@@ -44,6 +45,16 @@ internal record JsonSerializerConfiguration
 		init
 		{
 			this.serializeDefaultValues = value;
+			this.converterCache = null;
+		}
+	}
+
+	internal bool SerializeEnumValuesByName
+	{
+		get => this.serializeEnumValuesByName;
+		init
+		{
+			this.serializeEnumValuesByName = value;
 			this.converterCache = null;
 		}
 	}

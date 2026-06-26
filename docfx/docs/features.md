@@ -45,6 +45,7 @@ Current behavior:
 * Dictionary keys are not transformed by the property naming policy by default.
 * `JsonSerializer.DictionaryKeyNamingPolicy` can opt string-key dictionaries into key transformation.
 * `JsonSerializer.SerializeDefaultValues` can omit default-valued properties during serialization.
+* `JsonSerializer.SerializeEnumValuesByName` can serialize enums as strings when simple names exist.
 * `JsonSerializer.DeserializeDefaultValues` can relax required-member and non-nullable reference enforcement during deserialization.
 * `JsonSerializer.PreserveReferences` can preserve repeated references in acyclic object graphs.
 * Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
@@ -60,6 +61,12 @@ Constructor deserialization notes:
 * Duplicate JSON assignments to the same constructor parameter are rejected.
 * Optional constructor parameters can continue to rely on their declared default values.
 * `JsonSerializer.DeserializeDefaultValues` can allow missing required values or `null` assignments to non-nullable reference members when compatibility is more important than strict contract validation.
+
+Enum notes:
+
+* `JsonSerializer.SerializeEnumValuesByName` writes enum names as JSON strings when a simple declared name exists for the value.
+* Unnamed enum values continue to serialize numerically.
+* String enum names are deserialized case-insensitively unless the enum defines distinct names that differ only by case.
 
 Reference preservation notes:
 

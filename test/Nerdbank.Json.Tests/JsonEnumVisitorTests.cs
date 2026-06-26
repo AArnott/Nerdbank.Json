@@ -6,6 +6,7 @@ using PolyType;
 using Xunit;
 
 [GenerateShapeFor<JsonObjectSerializerTests.SomeEnum>]
+[GenerateShapeFor<JsonObjectSerializerTests.FlagEnum>]
 public partial class JsonObjectSerializerTests
 {
 	public enum SomeEnum
@@ -14,6 +15,14 @@ public partial class JsonObjectSerializerTests
 		One,
 		Two,
 		Three,
+	}
+
+	[Flags]
+	public enum FlagEnum
+	{
+		None = 0,
+		Read = 1,
+		Write = 2,
 	}
 
 	[Test]
@@ -38,6 +47,52 @@ public partial class JsonObjectSerializerTests
 		string json = serializer.Serialize(value);
 
 		Assert.Equal("{\"value\":3}", json);
+		AssertRoundtrip(json, serializer, value);
+	}
+
+	[Test]
+	public void SerializeDeserialize_EnumRoot_ByName()
+	{
+		JsonSerializer serializer = new() { SerializeEnumValuesByName = true };
+		SomeEnum value = SomeEnum.Two;
+
+		string json = serializer.Serialize<SomeEnum, JsonObjectSerializerTests>(value);
+		SomeEnum roundTripped = serializer.Deserialize<SomeEnum, JsonObjectSerializerTests>(json);
+
+		Assert.Equal("\"Two\"", json);
+		Assert.Equal(value, roundTripped);
+	}
+
+	[Test]
+	public void Deserialize_EnumRoot_ByName_IsCaseInsensitive()
+	{
+		JsonSerializer serializer = new() { SerializeEnumValuesByName = true };
+
+		SomeEnum value = serializer.Deserialize<SomeEnum, JsonObjectSerializerTests>("\"tWo\"");
+
+		Assert.Equal(SomeEnum.Two, value);
+	}
+
+	[Test]
+	public void Serialize_EnumRoot_ByName_FallsBackToNumberWhenUnnamed()
+	{
+		JsonSerializer serializer = new() { SerializeEnumValuesByName = true };
+		FlagEnum value = FlagEnum.Read | FlagEnum.Write;
+
+		string json = serializer.Serialize<FlagEnum, JsonObjectSerializerTests>(value);
+
+		Assert.Equal("3", json);
+	}
+
+	[Test]
+	public void SerializeDeserialize_ObjectGraph_WithEnumProperty_ByName()
+	{
+		JsonSerializer serializer = new() { SerializeEnumValuesByName = true };
+		EnumContainer value = new() { Value = SomeEnum.Three };
+
+		string json = serializer.Serialize(value);
+
+		Assert.Equal("{\"value\":\"Three\"}", json);
 		AssertRoundtrip(json, serializer, value);
 	}
 

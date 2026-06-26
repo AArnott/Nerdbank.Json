@@ -92,19 +92,91 @@ internal sealed class JsonOptionalConverter<TOptional, TElement> : JsonConverter
 
 internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnum>
 	where TEnum : struct
+	where TUnderlying : struct
 {
+	private readonly Dictionary<string, TUnderlying>? valuesByName;
+	private readonly Dictionary<TUnderlying, string>? namesByValue;
 	private readonly JsonConverter<TUnderlying> underlyingConverter;
 
-	internal JsonEnumConverter(JsonConverter<TUnderlying> underlyingConverter)
+	internal JsonEnumConverter(JsonConverter<TUnderlying> underlyingConverter, IReadOnlyDictionary<string, TUnderlying> members, bool serializeByName)
 	{
 		this.underlyingConverter = underlyingConverter;
+		if (serializeByName)
+		{
+			(this.valuesByName, this.namesByValue) = CreateNameMaps(members);
+		}
 	}
 
 	internal override void Write(ref JsonWriter writer, TEnum value, JsonSerializer serializer)
-		=> this.underlyingConverter.Write(ref writer, (TUnderlying)(object)value, serializer);
+	{
+		TUnderlying underlyingValue = (TUnderlying)(object)value;
+		if (this.namesByValue?.TryGetValue(underlyingValue, out string? name) == true)
+		{
+			writer.WriteStringValue(name);
+			return;
+		}
+
+		this.underlyingConverter.Write(ref writer, underlyingValue, serializer);
+	}
 
 	internal override TEnum Read(ref JsonReader reader, JsonSerializer serializer)
-		=> (TEnum)(object)this.underlyingConverter.Read(ref reader, serializer)!;
+	{
+		if (reader.PeekValueToken() == '"')
+		{
+			string name = reader.ReadRequiredString();
+			if (this.valuesByName?.TryGetValue(name, out TUnderlying value) == true)
+			{
+				return (TEnum)(object)value;
+			}
+
+			throw new FormatException($"Unrecognized enum value name '{name}'.");
+		}
+
+		return (TEnum)(object)this.underlyingConverter.Read(ref reader, serializer)!;
+	}
+
+	private static (Dictionary<string, TUnderlying> ValuesByName, Dictionary<TUnderlying, string> NamesByValue) CreateNameMaps(IReadOnlyDictionary<string, TUnderlying> members)
+	{
+		Dictionary<string, TUnderlying> valuesByName = new(StringComparer.OrdinalIgnoreCase);
+		Dictionary<TUnderlying, string> namesByValue = new();
+
+		if (!TryPopulate(valuesByName, namesByValue))
+		{
+			valuesByName = new(StringComparer.Ordinal);
+			namesByValue = new();
+			if (!TryPopulate(valuesByName, namesByValue))
+			{
+				throw new InvalidOperationException($"Failed to build enum name map for {typeof(TEnum).FullName}.");
+			}
+		}
+
+		return (valuesByName, namesByValue);
+
+		bool TryPopulate(Dictionary<string, TUnderlying> nameMap, Dictionary<TUnderlying, string> reverseMap)
+		{
+			foreach (KeyValuePair<string, TUnderlying> pair in members)
+			{
+				if (nameMap.ContainsKey(pair.Key))
+				{
+					if (!EqualityComparer<TUnderlying>.Default.Equals(nameMap[pair.Key], pair.Value))
+					{
+						return false;
+					}
+				}
+				else
+				{
+					nameMap.Add(pair.Key, pair.Value);
+				}
+
+				if (!reverseMap.ContainsKey(pair.Value))
+				{
+					reverseMap.Add(pair.Value, pair.Key);
+				}
+			}
+
+			return true;
+		}
+	}
 }
 
 internal sealed class JsonSurrogateConverter<T, TSurrogate> : JsonConverter<T>

@@ -27,6 +27,8 @@ internal sealed class JsonConverterCache
 		this.configuration = configuration;
 	}
 
+	internal bool SerializeEnumValuesByName => this.configuration.SerializeEnumValuesByName;
+
 	internal JsonConverter<T> GetOrAddConverter<T>()
 		=> (JsonConverter<T>)this.cachedConverters.GetOrAdd(typeof(T), _ => this.CreateConverter<T>());
 
