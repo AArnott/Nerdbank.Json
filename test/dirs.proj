@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.Build.Traversal">
+  <ItemGroup>
+    <ProjectReference Include="Nerdbank.Json.Tests\Nerdbank.Json.Tests.csproj" Publish="false" />
+    <ProjectReference Include="Nerdbank.Json.Analyzers.Tests\Nerdbank.Json.Analyzers.Tests.csproj" Publish="false" />
+
+    <MultiRIDProjectReference Include="AotCompatibilityTest\AotCompatibilityTest.csproj" />
+    <MultiRIDProjectReference Include="AotNativeConsole\AotNativeConsole.csproj" />
+  </ItemGroup>
+</Project>
