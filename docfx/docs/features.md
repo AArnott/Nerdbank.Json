@@ -49,6 +49,7 @@ Current behavior:
 * `JsonSerializer.DictionaryKeyNamingPolicy` can opt string-key dictionaries into key transformation.
 * `JsonSerializer.Converters` can register concrete runtime converters for exact target types.
 * `JsonSerializer.ConverterTypes` can register converter classes, including open generic converter types.
+* `JsonSerializer.ConverterFactories` can register runtime converter factories for type-driven interception.
 * `JsonSerializer.SerializeDefaultValues` can omit default-valued properties during serialization.
 * `JsonSerializer.SerializeEnumValuesByName` can serialize enums as strings when simple names exist.
 * `JsonSerializer.DeserializeDefaultValues` can relax required-member and non-nullable reference enforcement during deserialization.
@@ -58,7 +59,8 @@ Current behavior:
 Converter registration notes:
 
 * Runtime converter instances take precedence over runtime converter types.
-* Runtime converter types take precedence over built-in and PolyType-generated converters.
+* Runtime converter types take precedence over runtime converter factories.
+* Runtime converter factories take precedence over built-in and PolyType-generated converters.
 * Open generic converter types are matched against the open generic target type definition and activated for the closed target type being serialized.
 
 Property validation notes:

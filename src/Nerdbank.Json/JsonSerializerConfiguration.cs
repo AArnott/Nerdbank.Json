@@ -3,6 +3,9 @@
 
 #pragma warning disable SA1600 // Elements should be documented
 
+using System;
+using System.Collections.Generic;
+
 namespace Nerdbank.Json;
 
 internal record JsonSerializerConfiguration
@@ -11,6 +14,7 @@ internal record JsonSerializerConfiguration
 
 	private JsonConverterCache? converterCache;
 	private JsonConverterCollection converters = new();
+	private IReadOnlyList<IJsonConverterFactory> converterFactories = Array.Empty<IJsonConverterFactory>();
 	private JsonConverterTypeCollection converterTypes = new();
 	private DeserializeDefaultValuesPolicy deserializeDefaultValues;
 	private JsonNamingPolicy? dictionaryKeyNamingPolicy;
@@ -39,6 +43,16 @@ internal record JsonSerializerConfiguration
 		init
 		{
 			this.converterTypes = value ?? throw new ArgumentNullException(nameof(value));
+			this.converterCache = null;
+		}
+	}
+
+	internal IReadOnlyList<IJsonConverterFactory> ConverterFactories
+	{
+		get => this.converterFactories;
+		init
+		{
+			this.converterFactories = value;
 			this.converterCache = null;
 		}
 	}

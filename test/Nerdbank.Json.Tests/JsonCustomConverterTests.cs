@@ -1,7 +1,9 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Collections.Generic;
 using Nerdbank.Json;
+using PolyType;
 
 public partial class JsonObjectSerializerTests
 {
@@ -35,6 +37,23 @@ public partial class JsonObjectSerializerTests
 
 		Assert.Equal("{\"value\":\"Ada!\"}", json);
 		Assert.Equal("Ada", roundTripped.Value);
+	}
+
+	[Test]
+	public void SerializeDeserialize_CanUseRuntimeRegisteredConverterFactory()
+	{
+		JsonSerializer serializer = new()
+		{
+			ConverterFactories = new IJsonConverterFactory[] { new CharListWrapperFactory() },
+		};
+
+		List<char> value = ['a', 'b', 'c'];
+
+		string json = serializer.Serialize(value);
+		List<char> roundTripped = serializer.Deserialize<List<char>>(json);
+
+		Assert.Equal("[[\"a\",\"b\",\"c\"]]", json);
+		Assert.Equal(value, roundTripped);
 	}
 
 	private sealed class UpperCaseStringConverter : JsonConverter<string>
@@ -90,6 +109,65 @@ public partial class JsonObjectSerializerTests
 			{
 				Value = value?.TrimEnd('!'),
 			};
+		}
+	}
+
+	private sealed class CharListWrapperFactory : IJsonConverterFactory
+	{
+		public JsonConverter? CreateConverter(Type type, ITypeShape? shape, in JsonConverterFactoryContext context)
+			=> type == typeof(List<char>) ? new CharListWrapperConverter(context.GetConverter<char>()) : null;
+	}
+
+	private sealed class CharListWrapperConverter(JsonConverter<char> elementConverter) : JsonConverter<List<char>>
+	{
+		public override void Write(ref JsonWriter writer, List<char>? value, JsonSerializer serializer)
+		{
+			if (value is null)
+			{
+				writer.WriteNullValue();
+				return;
+			}
+
+			writer.WriteStartArray();
+			writer.WriteStartArray();
+			for (int i = 0; i < value.Count; i++)
+			{
+				if (i > 0)
+				{
+					writer.WriteValueSeparator();
+				}
+
+				elementConverter.Write(ref writer, value[i], serializer);
+			}
+
+			writer.WriteEndArray();
+			writer.WriteEndArray();
+		}
+
+		public override List<char>? Read(ref JsonReader reader, JsonSerializer serializer)
+		{
+			if (reader.TryReadNull())
+			{
+				return null;
+			}
+
+			reader.ReadStartArray();
+			reader.ReadStartArray();
+			List<char> result = [];
+			bool first = true;
+			while (!reader.TryReadEndArray())
+			{
+				if (!first)
+				{
+					reader.ReadValueSeparator();
+				}
+
+				result.Add(elementConverter.Read(ref reader, serializer));
+				first = false;
+			}
+
+			reader.ReadEndArray();
+			return result;
 		}
 	}
 }

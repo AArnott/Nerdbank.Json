@@ -18,7 +18,7 @@ The current implementation includes a low-level writer/reader pair, a built-in c
 * Optional indented output for human-readable JSON.
 * Optional case-insensitive property-name matching during deserialization.
 * Optional enum-name serialization with numeric fallback for unnamed values.
-* Runtime custom converter registration with converter instances or converter types.
+* Runtime custom converter registration with converter instances, converter types, or converter factories.
 * Built-in byte buffer handling using Base64 JSON strings.
 * Configurable deserialization policy for missing required values and non-nullable reference validation.
 * Synchronous stream and async stream overloads.
@@ -101,6 +101,7 @@ JsonSerializer serializer = new()
 {
 	Converters = new JsonConverterCollection(new JsonConverter[] { new MyCustomConverter() }),
 	ConverterTypes = new JsonConverterTypeCollection(new[] { typeof(MyOpenGenericConverter<>) }),
+	ConverterFactories = new IJsonConverterFactory[] { new MyFactory() },
 };
 ```
 

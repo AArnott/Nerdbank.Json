@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -65,6 +66,15 @@ public partial record JsonSerializer
 	{
 		get => this.configuration.ConverterTypes;
 		init => this.configuration = this.configuration with { ConverterTypes = value };
+	}
+
+	/// <summary>
+	/// Gets the runtime-registered converter factories that are consulted after <see cref="Converters"/> and <see cref="ConverterTypes"/>.
+	/// </summary>
+	public IReadOnlyList<IJsonConverterFactory> ConverterFactories
+	{
+		get => this.configuration.ConverterFactories;
+		init => this.configuration = this.configuration with { ConverterFactories = value };
 	}
 
 	/// <summary>

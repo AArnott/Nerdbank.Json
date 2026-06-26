@@ -31,7 +31,7 @@ internal sealed class JsonConverterCache
 
 	internal bool SerializeEnumValuesByName => this.configuration.SerializeEnumValuesByName;
 
-	internal bool HasRuntimeConverters => this.configuration.Converters.Count > 0 || this.configuration.ConverterTypes.Count > 0;
+	internal bool HasRuntimeConverters => this.configuration.Converters.Count > 0 || this.configuration.ConverterTypes.Count > 0 || this.configuration.ConverterFactories.Count > 0;
 
 	internal StringComparer PropertyNameComparer => this.configuration.PropertyNameCaseInsensitive ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
@@ -117,7 +117,8 @@ internal sealed class JsonConverterCache
 
 	private JsonConverter CreateConverter<T>()
 	{
-		if (this.TryGetRuntimeProfferedConverter(typeof(T), out JsonConverter? runtimeConverter) && runtimeConverter is not null)
+		ITypeShape<T>? shape = this.TryResolveDynamicTypeShape<T>();
+		if (this.TryGetRuntimeProfferedConverter(typeof(T), shape, out JsonConverter? runtimeConverter) && runtimeConverter is not null)
 		{
 			return this.WrapWithReferencePreservation(this.RequireTypedConverter<T>(runtimeConverter));
 		}
@@ -132,12 +133,12 @@ internal sealed class JsonConverterCache
 			return this.WrapWithReferencePreservation((JsonConverter<T>)collectionConverter!);
 		}
 
-		return this.CreateConverter(this.ResolveDynamicTypeShapeOrThrow<T>());
+		return this.CreateConverter(shape ?? this.ResolveDynamicTypeShapeOrThrow<T>());
 	}
 
 	private JsonConverter CreateConverter<T>(ITypeShape<T> shape)
 	{
-		if (this.TryGetRuntimeProfferedConverter(shape.Type, out JsonConverter? runtimeConverter) && runtimeConverter is not null)
+		if (this.TryGetRuntimeProfferedConverter(shape.Type, shape, out JsonConverter? runtimeConverter) && runtimeConverter is not null)
 		{
 			return this.WrapWithReferencePreservation(this.RequireTypedConverter<T>(runtimeConverter));
 		}
@@ -178,7 +179,19 @@ internal sealed class JsonConverterCache
 		throw new InvalidOperationException($"Converter '{converter.GetType().FullName}' was registered for '{typeof(T).FullName}' but does not derive from JsonConverter<{typeof(T).Name}>.");
 	}
 
-	private bool TryGetRuntimeProfferedConverter(Type type, out JsonConverter? converter)
+	private ITypeShape<T>? TryResolveDynamicTypeShape<T>()
+	{
+		try
+		{
+			return this.ResolveDynamicTypeShapeOrThrow<T>();
+		}
+		catch (NotSupportedException)
+		{
+			return null;
+		}
+	}
+
+	private bool TryGetRuntimeProfferedConverter(Type type, ITypeShape? shape, out JsonConverter? converter)
 	{
 		if (this.configuration.Converters.TryGetConverter(type, out converter))
 		{
@@ -190,6 +203,15 @@ internal sealed class JsonConverterCache
 		{
 			converter = ActivateConverterType(type, converterType);
 			return true;
+		}
+
+		JsonConverterFactoryContext context = new(this);
+		foreach (IJsonConverterFactory factory in this.configuration.ConverterFactories)
+		{
+			if ((converter = factory.CreateConverter(type, shape, context)) is not null)
+			{
+				return true;
+			}
 		}
 
 		converter = null;
