@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 namespace Nerdbank.Json;
 
@@ -131,10 +132,37 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 	}
 
 	public override object? VisitUnion<TUnion>(IUnionTypeShape<TUnion> unionShape, object? state = null)
-		=> throw new NotSupportedException($"JSON serialization does not yet support union types such as {unionShape.Type.FullName}.");
+	{
+		JsonConverter<TUnion> baseConverter = (JsonConverter<TUnion>)unionShape.BaseType.Accept(this)!;
+		Getter<TUnion, int> getUnionCaseIndex = unionShape.GetGetUnionCaseIndex();
+		Dictionary<int, JsonConverter> deserializersByIntAlias = new(unionShape.UnionCases.Count);
+		Dictionary<string, JsonConverter> deserializersByStringAlias = new(unionShape.UnionCases.Count, StringComparer.Ordinal);
+		JsonUnionCaseMetadata<TUnion>[] serializers = new JsonUnionCaseMetadata<TUnion>[unionShape.UnionCases.Count];
+
+		for (int i = 0; i < unionShape.UnionCases.Count; i++)
+		{
+			IUnionCaseShape unionCase = unionShape.UnionCases[i];
+			JsonConverter<TUnion> caseConverter = (JsonConverter<TUnion>)unionCase.Accept(this)!;
+			if (unionCase.IsTagSpecified)
+			{
+				deserializersByIntAlias.Add(unionCase.Tag, caseConverter);
+				serializers[i] = JsonUnionCaseMetadata<TUnion>.Create(unionCase.Tag, caseConverter);
+			}
+			else
+			{
+				deserializersByStringAlias.Add(unionCase.Name, caseConverter);
+				serializers[i] = JsonUnionCaseMetadata<TUnion>.Create(unionCase.Name, caseConverter);
+			}
+		}
+
+		return new JsonUnionConverter<TUnion>(baseConverter, getUnionCaseIndex, serializers, new ReadOnlyDictionary<int, JsonConverter>(deserializersByIntAlias), new ReadOnlyDictionary<string, JsonConverter>(deserializersByStringAlias));
+	}
 
 	public override object? VisitUnionCase<TUnionCase, TUnion>(IUnionCaseShape<TUnionCase, TUnion> unionCaseShape, object? state = null)
-		=> throw new NotSupportedException($"JSON serialization does not yet support union case shapes such as {typeof(TUnionCase).FullName}.");
+	{
+		JsonConverter<TUnionCase> caseConverter = (JsonConverter<TUnionCase>)unionCaseShape.UnionCaseType.Accept(this)!;
+		return new JsonUnionCaseConverter<TUnionCase, TUnion>(caseConverter, unionCaseShape.Marshaler);
+	}
 
 	public override object? VisitFunction<TFunction, TArgumentState, TResult>(IFunctionTypeShape<TFunction, TArgumentState, TResult> functionShape, object? state = null)
 		=> throw new NotSupportedException($"JSON serialization does not support delegate types such as {functionShape.Type.FullName}.");

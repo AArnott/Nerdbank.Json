@@ -242,6 +242,17 @@ internal ref struct JsonReader
 		}
 	}
 
+	internal char PeekValueToken()
+	{
+		this.SkipWhiteSpace();
+		if (this.position >= this.json.Length)
+		{
+			throw new FormatException("Expected a JSON value.");
+		}
+
+		return this.json[this.position];
+	}
+
 	private void SkipWhiteSpace()
 	{
 		while (this.position < this.json.Length && char.IsWhiteSpace(this.json[this.position]))

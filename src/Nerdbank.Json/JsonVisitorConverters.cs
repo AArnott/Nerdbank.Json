@@ -7,8 +7,51 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Globalization;
 
 namespace Nerdbank.Json;
+
+internal readonly struct JsonUnionCaseMetadata<TUnion>
+{
+	private readonly string? stringAlias;
+	private readonly int intAlias;
+	private readonly bool usesIntegerAlias;
+
+	private JsonUnionCaseMetadata(string alias, JsonConverter converter)
+	{
+		this.stringAlias = alias;
+		this.intAlias = default;
+		this.usesIntegerAlias = false;
+		this.Converter = converter;
+	}
+
+	private JsonUnionCaseMetadata(int alias, JsonConverter converter)
+	{
+		this.stringAlias = null;
+		this.intAlias = alias;
+		this.usesIntegerAlias = true;
+		this.Converter = converter;
+	}
+
+	internal JsonConverter Converter { get; }
+
+	internal static JsonUnionCaseMetadata<TUnion> Create(string alias, JsonConverter converter) => new(alias, converter);
+
+	internal static JsonUnionCaseMetadata<TUnion> Create(int alias, JsonConverter converter) => new(alias, converter);
+
+	internal void WriteAlias(ref JsonWriter writer)
+	{
+		if (this.usesIntegerAlias)
+		{
+			writer.WriteNumberValue(this.intAlias);
+		}
+		else
+		{
+			writer.WriteStringValue(this.stringAlias);
+		}
+	}
+}
 
 internal sealed class JsonOptionalConverter<TOptional, TElement> : JsonConverter<TOptional>
 {
@@ -80,6 +123,126 @@ internal sealed class JsonSurrogateConverter<T, TSurrogate> : JsonConverter<T>
 
 	internal override T? Read(ref JsonReader reader, JsonSerializer serializer)
 		=> this.shape.Marshaler.Unmarshal(this.surrogateConverter.Read(ref reader, serializer));
+}
+
+internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
+{
+	private readonly JsonConverter<TUnion> baseConverter;
+	private readonly Getter<TUnion, int> getUnionCaseIndex;
+	private readonly JsonUnionCaseMetadata<TUnion>[] serializers;
+	private readonly IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias;
+	private readonly IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias;
+
+	internal JsonUnionConverter(JsonConverter<TUnion> baseConverter, Getter<TUnion, int> getUnionCaseIndex, JsonUnionCaseMetadata<TUnion>[] serializers, IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias, IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias)
+	{
+		this.baseConverter = baseConverter;
+		this.getUnionCaseIndex = getUnionCaseIndex;
+		this.serializers = serializers;
+		this.deserializersByIntAlias = deserializersByIntAlias;
+		this.deserializersByStringAlias = deserializersByStringAlias;
+	}
+
+	internal override void Write(ref JsonWriter writer, TUnion? value, JsonSerializer serializer)
+	{
+		if (!typeof(TUnion).IsValueType && value is null)
+		{
+			writer.WriteNullValue();
+			return;
+		}
+
+		writer.WriteStartArray();
+		JsonConverter converter = this.baseConverter;
+		if (value is not null && this.TryGetSerializer(value, out JsonUnionCaseMetadata<TUnion> unionCase))
+		{
+			unionCase.WriteAlias(ref writer);
+			converter = unionCase.Converter;
+		}
+		else
+		{
+			writer.WriteNullValue();
+		}
+
+		writer.WriteValueSeparator();
+		converter.WriteObject(ref writer, value, serializer);
+		writer.WriteEndArray();
+	}
+
+	internal override TUnion? Read(ref JsonReader reader, JsonSerializer serializer)
+	{
+		if (!typeof(TUnion).IsValueType && reader.TryReadNull())
+		{
+			return default;
+		}
+
+		reader.ReadStartArray();
+		JsonConverter converter;
+		if (reader.TryReadNull())
+		{
+			converter = this.baseConverter;
+		}
+		else
+		{
+			converter = reader.PeekValueToken() == '"'
+				? this.ResolveStringAlias(reader.ReadRequiredString())
+				: this.ResolveIntegerAlias(int.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture));
+		}
+
+		reader.ReadValueSeparator();
+		TUnion? value = (TUnion?)converter.ReadObject(ref reader, serializer);
+		reader.ReadEndArray();
+		return value;
+	}
+
+	private bool TryGetSerializer(TUnion value, out JsonUnionCaseMetadata<TUnion> unionCase)
+	{
+		int index = this.getUnionCaseIndex(ref value);
+		if (index >= 0 && index < this.serializers.Length)
+		{
+			unionCase = this.serializers[index];
+			return true;
+		}
+
+		unionCase = default;
+		return false;
+	}
+
+	private JsonConverter ResolveIntegerAlias(int alias)
+	{
+		if (!this.deserializersByIntAlias.TryGetValue(alias, out JsonConverter? converter))
+		{
+			throw new FormatException($"Unrecognized union discriminator '{alias}'.");
+		}
+
+		return converter;
+	}
+
+	private JsonConverter ResolveStringAlias(string alias)
+	{
+		if (!this.deserializersByStringAlias.TryGetValue(alias, out JsonConverter? converter))
+		{
+			throw new FormatException($"Unrecognized union discriminator '{alias}'.");
+		}
+
+		return converter;
+	}
+}
+
+internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter<TUnion>
+{
+	private readonly JsonConverter<TUnionCase> inner;
+	private readonly IMarshaler<TUnionCase, TUnion> marshaler;
+
+	internal JsonUnionCaseConverter(JsonConverter<TUnionCase> inner, IMarshaler<TUnionCase, TUnion> marshaler)
+	{
+		this.inner = inner;
+		this.marshaler = marshaler;
+	}
+
+	internal override void Write(ref JsonWriter writer, TUnion? value, JsonSerializer serializer)
+		=> this.inner.Write(ref writer, this.marshaler.Unmarshal(value), serializer);
+
+	internal override TUnion? Read(ref JsonReader reader, JsonSerializer serializer)
+		=> this.marshaler.Marshal(this.inner.Read(ref reader, serializer));
 }
 
 internal sealed class JsonConstructorVisitorState<TDeclaring>
