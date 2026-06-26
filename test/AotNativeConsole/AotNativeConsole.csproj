@@ -1,13 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <Import Project="..\AOT.props" />
-  <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <IsTestProject>false</IsTestProject>
-    <IlcGenerateMstatFile>true</IlcGenerateMstatFile>
-    <IlcGenerateDgmlFile>true</IlcGenerateDgmlFile>
-  </PropertyGroup>
+    <Import Project="..\AOT.props" />
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <IsTestProject>false</IsTestProject>
+        <IlcGenerateMstatFile>true</IlcGenerateMstatFile>
+        <IlcGenerateDgmlFile>true</IlcGenerateDgmlFile>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\Nerdbank.Json\Nerdbank.Json.csproj" />
-  </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\Nerdbank.Json\Nerdbank.Json.csproj" />
+    </ItemGroup>
 </Project>

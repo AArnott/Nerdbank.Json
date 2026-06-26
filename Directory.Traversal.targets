@@ -1,8 +1,8 @@
 <Project InitialTargets="DoMultiRIDMagic">
-  <Target Name="DoMultiRIDMagic">
-    <ItemGroup>
-      <ProjectReference Include="@(MultiRIDProjectReference)" AdditionalProperties="RuntimeIdentifier=$(DefaultRuntimeIdentifier)" Test="true" Condition="'%(MultiRIDProjectReference.TargetFramework)' == ''" />
-      <ProjectReference Include="@(MultiRIDProjectReference)" AdditionalProperties="RuntimeIdentifier=$(DefaultRuntimeIdentifier);TargetFramework=%(MultiRIDProjectReference.TargetFramework)" Test="true" Condition="'%(MultiRIDProjectReference.TargetFramework)' != ''" />
-    </ItemGroup>
-  </Target>
+    <Target Name="DoMultiRIDMagic">
+        <ItemGroup>
+            <ProjectReference Include="@(MultiRIDProjectReference)" AdditionalProperties="RuntimeIdentifier=$(DefaultRuntimeIdentifier)" Test="true" Condition="'%(MultiRIDProjectReference.TargetFramework)' == ''" />
+            <ProjectReference Include="@(MultiRIDProjectReference)" AdditionalProperties="RuntimeIdentifier=$(DefaultRuntimeIdentifier);TargetFramework=%(MultiRIDProjectReference.TargetFramework)" Test="true" Condition="'%(MultiRIDProjectReference.TargetFramework)' != ''" />
+        </ItemGroup>
+    </Target>
 </Project>
