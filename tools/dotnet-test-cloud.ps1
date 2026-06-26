@@ -5,6 +5,8 @@
     Runs tests as they are run in cloud test runs.
 .PARAMETER Configuration
     The configuration within which to run tests
+.PARAMETER IncludeNativeAOT
+  Whether to run the NativeAOT-compiled TUnit tests too.
 .PARAMETER Agent
     The name of the agent. This is used in preparing test run titles.
 .PARAMETER PublishResults
@@ -17,6 +19,7 @@
 [CmdletBinding()]
 Param(
     [string]$Configuration='Debug',
+  [switch]$IncludeNativeAOT,
     [string]$Agent='Local',
     [switch]$PublishResults,
     [switch]$x86,
@@ -45,7 +48,8 @@ if ($x86) {
   }
 }
 
-$testBinLog = Join-Path $ArtifactStagingFolder (Join-Path build_logs test.binlog)
+$testBinLogXunit = Join-Path $ArtifactStagingFolder (Join-Path build_logs test-xunit.binlog)
+$testBinLogTUnit = Join-Path $ArtifactStagingFolder (Join-Path build_logs test-tunit.binlog)
 $testLogs = Join-Path $ArtifactStagingFolder test_logs
 
 $globalJson = Get-Content $PSScriptRoot/../global.json | ConvertFrom-Json
@@ -71,16 +75,40 @@ if ($isMTP) {
         ,'--report-trx'
     )
 
-    & $dotnet test --solution $RepoRoot `
+    & $dotnet test --project $RepoRoot/test/Nerdbank.Json.Analyzers.Tests/Nerdbank.Json.Analyzers.Tests.csproj `
         --no-build `
         -c $Configuration `
-        -bl:"$testBinLog" `
+      -bl:"$testBinLogXunit" `
         --filter-not-trait 'TestCategory=FailsInCloudTest' `
         --coverage-settings "$PSScriptRoot/test.runsettings" `
         @mtpArgs `
         @dumpSwitches `
         @extraArgs
     if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
+
+    & $dotnet test --project $RepoRoot/test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj `
+      --no-build `
+      -c $Configuration `
+      -bl:"$testBinLogTUnit" `
+      --treenode-filter '/*/*/*/*[TestCategory!=FailsInCloudTest]' `
+      @mtpArgs `
+      @dumpSwitches `
+      @extraArgs
+    if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
+
+    if ($IncludeNativeAOT) {
+      $TestExecutableName = 'Nerdbank.Json.TUnit'
+      $NativeAOTArgs = $mtpArgs
+      if (!($IsMacOS -or $IsLinux)) {
+        $TestExecutableName += '.exe'
+        $NativeAOTArgs += $dumpSwitches
+      }
+
+      Get-ChildItem "$RepoRoot/bin/Nerdbank.Json.TUnit/$Configuration/*/*/publish/$TestExecutableName" |% {
+        & $_ @NativeAOTArgs @extraArgs
+        if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
+      }
+    }
 
     $trxFiles = Get-ChildItem -Recurse -Path $testLogs\*.trx
 } else {
@@ -93,7 +121,7 @@ if ($isMTP) {
         --settings "$PSScriptRoot/test.runsettings" `
         --blame-hang-timeout 60s `
         --blame-crash `
-        -bl:"$testBinLog" `
+        -bl:"$testBinLogXunit" `
         --diag "$testDiagLog;TraceLevel=info" `
         --logger trx `
         @extraArgs

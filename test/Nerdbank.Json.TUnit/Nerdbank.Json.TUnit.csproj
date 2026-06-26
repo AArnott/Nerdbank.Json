@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <Import Project="..\AOT.props" />
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Nerdbank.Json\Nerdbank.Json.csproj" />
+    <PackageReference Include="PolyType" />
+    <PackageReference Include="TUnit.Engine" />
+    <PackageReference Include="xunit.v3.assert.aot" />
+  </ItemGroup>
+</Project>

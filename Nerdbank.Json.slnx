@@ -32,5 +32,6 @@
     <Project Path="test/AotNativeConsole/AotNativeConsole.csproj" />
     <Project Path="test/Nerdbank.Json.Analyzers.Tests/Nerdbank.Json.Analyzers.Tests.csproj" />
     <Project Path="test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj" />
+    <Project Path="test/Nerdbank.Json.TUnit/Nerdbank.Json.TUnit.csproj" />
   </Folder>
 </Solution>

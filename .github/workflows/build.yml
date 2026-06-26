@@ -22,10 +22,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-        - ubuntu-24.04
-        - macOS-15
-        - windows-2025
+        include:
+        - os: ubuntu-24.04
+          rid: linux-x64
+        - os: macOS-15
+          rid: osx-arm64
+        - os: windows-2025
+          rid: win-x64
 
     steps:
     - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -46,9 +49,49 @@ jobs:
       shell: pwsh
     - name: 🛠 build
       run: dotnet build -t:build,pack --no-restore -c ${{ env.BUILDCONFIGURATION }} -warnAsError -warnNotAsError:NU1901,NU1902,NU1903,NU1904 /bl:"${{ runner.temp }}/_artifacts/build_logs/build.binlog"
-    - name: 🧪 test
-      run: tools/dotnet-test-cloud.ps1 -Configuration ${{ env.BUILDCONFIGURATION }} -Agent ${{ runner.os }}
+    - name: 🛠 publish NativeAOT projects
+      run: |
+        dotnet publish test/AotCompatibilityTest/AotCompatibilityTest.csproj -c ${{ env.BUILDCONFIGURATION }}
+        dotnet publish test/AotNativeConsole/AotNativeConsole.csproj -c ${{ env.BUILDCONFIGURATION }}
+        dotnet publish test/Nerdbank.Json.TUnit/Nerdbank.Json.TUnit.csproj -c ${{ env.BUILDCONFIGURATION }}
       shell: pwsh
+    - name: 🧪 test
+      run: tools/dotnet-test-cloud.ps1 -Configuration ${{ env.BUILDCONFIGURATION }} -Agent ${{ runner.os }} -IncludeNativeAOT
+      shell: pwsh
+    - name: 🏭 Verify NativeAOT image size
+      run: |
+        Function GetSizeInMB($Path) {
+          if (!($IsMacOS -or $IsLinux)) { $Path += '.exe' }
+          (Get-Item $Path).Length / 1MB
+        }
+
+        $Path = './bin/AotNativeConsole/${{ env.BUILDCONFIGURATION }}/net10.0/${{ matrix.rid }}/publish/AotNativeConsole'
+        $ActualSize = GetSizeInMB $Path
+
+        if ($IsLinux) {
+          $ExpectedSize = 3.15
+        } elseif ($IsMacOS) {
+          $ExpectedSize = 3.10
+        } else {
+          $ExpectedSize = 3.02
+        }
+
+        # Tighten these thresholds after the first full CI baseline on each OS.
+        $AllowedVariance = 1.0
+        $Result = if ([math]::Abs($ActualSize - $ExpectedSize) -le $AllowedVariance) { 'PASS' } else { 'FAIL' }
+
+        @{
+          ActualSize = $ActualSize
+          ExpectedSize = $ExpectedSize
+          AllowedVariance = $AllowedVariance
+          Result = $Result
+        } | ConvertTo-Json | Out-File -FilePath 'aot-size-result.json'
+      shell: pwsh
+    - name: 📤 Upload AOT size result
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: aot-size-${{ matrix.os }}-${{ matrix.rid }}
+        path: aot-size-result.json
     - name: 💅🏻 Verify formatted code
       run: dotnet format --verify-no-changes --no-restore
       shell: pwsh
@@ -70,6 +113,50 @@ jobs:
       shell: pwsh
       timeout-minutes: 3
       continue-on-error: true
+
+  verify-aot-size:
+    name: 👮🏼 NativeAOT image size guard
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+    - name: 📥 Download AOT size results
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        pattern: aot-size-*
+        path: aot-results
+    - name: 🧪 Check AOT sizes
+      run: |
+        $FailedChecks = @()
+        $Combinations = @(
+          @{ OS = 'ubuntu-24.04'; RID = 'linux-x64' },
+          @{ OS = 'macOS-15'; RID = 'osx-arm64' },
+          @{ OS = 'windows-2025'; RID = 'win-x64' }
+        )
+
+        "Target | Actual size | Expected size | Verdict
+        --|--|--|--" >> $env:GITHUB_STEP_SUMMARY
+
+        foreach ($Combo in $Combinations) {
+          $ArtifactName = "aot-size-$($Combo.OS)-$($Combo.RID)"
+          $ResultFile = "aot-results/$ArtifactName/aot-size-result.json"
+
+          if (Test-Path $ResultFile) {
+            $Details = Get-Content $ResultFile | ConvertFrom-Json
+            $Emoji = if ($Details.Result -eq 'PASS') { '✅' } else { '❌' }
+            " $($Combo.OS) | {0:0.00} MB | {1:0.00}±{2:0.0} MB | $Emoji" -f $Details.ActualSize, $Details.ExpectedSize, $Details.AllowedVariance >> $env:GITHUB_STEP_SUMMARY
+            if ($Details.Result -eq 'FAIL') {
+              $FailedChecks += "$($Combo.OS) ($($Combo.RID))"
+            }
+          } else {
+            $FailedChecks += "$($Combo.OS) ($($Combo.RID)) missing result"
+          }
+        }
+
+        if ($FailedChecks.Count -gt 0) {
+          Write-Error "NativeAOT image size check failed for: $($FailedChecks -join ', ')"
+          exit 1
+        }
+      shell: pwsh
 
   docs:
     name: 📃 Docs
