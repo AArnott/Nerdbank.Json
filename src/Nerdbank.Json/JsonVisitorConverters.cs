@@ -68,7 +68,7 @@ internal sealed class JsonOptionalConverter<TOptional, TElement> : JsonConverter
 		this.createSome = createSome;
 	}
 
-	internal override void Write(ref JsonWriter writer, TOptional? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TOptional? value, JsonSerializer serializer)
 	{
 		if (!this.deconstructor(value, out TElement? element))
 		{
@@ -79,7 +79,7 @@ internal sealed class JsonOptionalConverter<TOptional, TElement> : JsonConverter
 		this.elementConverter.Write(ref writer, element, serializer);
 	}
 
-	internal override TOptional? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TOptional? Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (reader.TryReadNull())
 		{
@@ -107,7 +107,7 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 		}
 	}
 
-	internal override void Write(ref JsonWriter writer, TEnum value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TEnum value, JsonSerializer serializer)
 	{
 		TUnderlying underlyingValue = (TUnderlying)(object)value;
 		if (this.namesByValue?.TryGetValue(underlyingValue, out string? name) == true)
@@ -119,7 +119,7 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 		this.underlyingConverter.Write(ref writer, underlyingValue, serializer);
 	}
 
-	internal override TEnum Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TEnum Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (reader.PeekValueToken() == '"')
 		{
@@ -190,10 +190,10 @@ internal sealed class JsonSurrogateConverter<T, TSurrogate> : JsonConverter<T>
 		this.surrogateConverter = surrogateConverter;
 	}
 
-	internal override void Write(ref JsonWriter writer, T? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, T? value, JsonSerializer serializer)
 		=> this.surrogateConverter.Write(ref writer, this.shape.Marshaler.Marshal(value), serializer);
 
-	internal override T? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override T? Read(ref JsonReader reader, JsonSerializer serializer)
 		=> this.shape.Marshaler.Unmarshal(this.surrogateConverter.Read(ref reader, serializer));
 }
 
@@ -214,7 +214,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		this.deserializersByStringAlias = deserializersByStringAlias;
 	}
 
-	internal override void Write(ref JsonWriter writer, TUnion? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TUnion? value, JsonSerializer serializer)
 	{
 		if (!typeof(TUnion).IsValueType && value is null)
 		{
@@ -239,7 +239,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		writer.WriteEndArray();
 	}
 
-	internal override TUnion? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TUnion? Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (!typeof(TUnion).IsValueType && reader.TryReadNull())
 		{
@@ -310,10 +310,10 @@ internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter
 		this.marshaler = marshaler;
 	}
 
-	internal override void Write(ref JsonWriter writer, TUnion? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TUnion? value, JsonSerializer serializer)
 		=> this.inner.Write(ref writer, this.marshaler.Unmarshal(value), serializer);
 
-	internal override TUnion? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TUnion? Read(ref JsonReader reader, JsonSerializer serializer)
 		=> this.marshaler.Marshal(this.inner.Read(ref reader, serializer));
 }
 
@@ -406,7 +406,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		this.parametersByName = parametersByName;
 	}
 
-	internal override void Write(ref JsonWriter writer, TDeclaring? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TDeclaring? value, JsonSerializer serializer)
 	{
 		if (value is null)
 		{
@@ -433,7 +433,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		writer.WriteEndObject();
 	}
 
-	internal override TDeclaring? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TDeclaring? Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (!typeof(TDeclaring).IsValueType && reader.TryReadNull())
 		{

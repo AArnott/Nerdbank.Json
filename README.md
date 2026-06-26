@@ -15,8 +15,10 @@ The current implementation includes a low-level writer/reader pair, a built-in c
 * Mutable `ICollection<T>` implementations with public parameterless constructors, including `List<T>`.
 * Mutable `IDictionary<string, TValue>` implementations with public parameterless constructors, including `Dictionary<string, TValue>`.
 * camelCase property naming by default, configurable with `JsonNamingPolicy`.
+* Optional indented output for human-readable JSON.
 * Optional case-insensitive property-name matching during deserialization.
 * Optional enum-name serialization with numeric fallback for unnamed values.
+* Runtime custom converter registration with converter instances or converter types.
 * Built-in byte buffer handling using Base64 JSON strings.
 * Configurable deserialization policy for missing required values and non-nullable reference validation.
 * Synchronous stream and async stream overloads.
@@ -83,6 +85,25 @@ JsonSerializer serializer = new()
 };
 ```
 
+To emit human-readable JSON with line breaks and indentation:
+
+```csharp
+JsonSerializer serializer = new()
+{
+	WriteIndented = true,
+};
+```
+
+To override built-in or shape-based handling for specific types at runtime:
+
+```csharp
+JsonSerializer serializer = new()
+{
+	Converters = new JsonConverterCollection(new JsonConverter[] { new MyCustomConverter() }),
+	ConverterTypes = new JsonConverterTypeCollection(new[] { typeof(MyOpenGenericConverter<>) }),
+};
+```
+
 ## Design Notes
 
 * The low-level JSON writer does not delegate to another serializer.
@@ -90,6 +111,7 @@ JsonSerializer serializer = new()
 * This repository is intended to grow toward the richer converter and visitor architecture used by Nerdbank.MessagePack.
 * The current object-graph layer supports mutable types with settable properties, uses camelCase property names by default, and ignores unknown JSON properties during deserialization.
 * Mutable `ICollection<T>` and `IDictionary<string, TValue>` implementations with public parameterless constructors are supported through the same converter cache.
+* Runtime-registered converters are consulted before built-in and PolyType-generated converters.
 * Current stream overloads buffer the full payload before reading or writing; incremental streaming APIs will come later.
 
 ## Status

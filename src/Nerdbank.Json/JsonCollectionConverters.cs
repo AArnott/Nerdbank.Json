@@ -29,7 +29,7 @@ internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonCon
 
 	protected JsonConverter<TElement> ElementConverter => this.elementConverter;
 
-	internal override void Write(ref JsonWriter writer, TEnumerable? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TEnumerable? value, JsonSerializer serializer)
 	{
 		if (value is null)
 		{
@@ -61,7 +61,7 @@ internal sealed class JsonReadOnlyEnumerableConverter<TEnumerable, TElement> : J
 	{
 	}
 
-	internal override TEnumerable? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TEnumerable? Read(ref JsonReader reader, JsonSerializer serializer)
 		=> throw new NotSupportedException($"JSON deserialization does not support read-only enumerable type {typeof(TEnumerable).FullName}.");
 }
 
@@ -97,7 +97,7 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 		}
 	}
 
-	internal override TEnumerable? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TEnumerable? Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (reader.TryReadNull())
 		{
@@ -120,7 +120,7 @@ internal sealed class JsonParameterizedEnumerableConverter<TEnumerable, TElement
 		this.constructor = constructor;
 	}
 
-	internal override TEnumerable? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TEnumerable? Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (reader.TryReadNull())
 		{
@@ -163,7 +163,7 @@ internal abstract class JsonDictionaryConverter<TDictionary, TKey, TValue> : Jso
 
 	protected JsonConverter<TValue> ValueConverter => this.valueConverter;
 
-	internal override void Write(ref JsonWriter writer, TDictionary? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TDictionary? value, JsonSerializer serializer)
 	{
 		if (value is null)
 		{
@@ -197,7 +197,7 @@ internal sealed class JsonReadOnlyDictionaryConverter<TDictionary, TKey, TValue>
 	{
 	}
 
-	internal override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
 		=> throw new NotSupportedException($"JSON deserialization does not support read-only dictionary type {typeof(TDictionary).FullName}.");
 }
 
@@ -236,7 +236,7 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 		}
 	}
 
-	internal override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (reader.TryReadNull())
 		{
@@ -260,7 +260,7 @@ internal sealed class JsonParameterizedDictionaryConverter<TDictionary, TKey, TV
 		this.constructor = constructor;
 	}
 
-	internal override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (reader.TryReadNull())
 		{
@@ -299,7 +299,7 @@ internal sealed class JsonListConverter<TCollection, TElement> : JsonConverter<T
 		this.owner = owner;
 	}
 
-	internal override void Write(ref JsonWriter writer, TCollection? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TCollection? value, JsonSerializer serializer)
 	{
 		if (value is null)
 		{
@@ -324,7 +324,7 @@ internal sealed class JsonListConverter<TCollection, TElement> : JsonConverter<T
 		writer.WriteEndArray();
 	}
 
-	internal override TCollection? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TCollection? Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (reader.TryReadNull())
 		{
@@ -369,7 +369,7 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 		this.owner = owner;
 	}
 
-	internal override void Write(ref JsonWriter writer, TDictionary? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TDictionary? value, JsonSerializer serializer)
 	{
 		if (value is null)
 		{
@@ -395,7 +395,7 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 		writer.WriteEndObject();
 	}
 
-	internal override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (reader.TryReadNull())
 		{

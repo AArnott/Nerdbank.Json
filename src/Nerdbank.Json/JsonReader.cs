@@ -9,18 +9,29 @@ using System.Text;
 
 namespace Nerdbank.Json;
 
-internal ref struct JsonReader
+/// <summary>
+/// Reads JSON values from a character buffer.
+/// </summary>
+public ref struct JsonReader
 {
 	private ReadOnlySpan<char> json;
 	private int position;
 
-	internal JsonReader(ReadOnlySpan<char> json)
+	/// <summary>
+	/// Initializes a new instance of the <see cref="JsonReader"/> struct.
+	/// </summary>
+	/// <param name="json">The JSON text to read from.</param>
+	public JsonReader(ReadOnlySpan<char> json)
 	{
 		this.json = json;
 		this.position = 0;
 	}
 
-	internal bool TryReadNull()
+	/// <summary>
+	/// Attempts to read the JSON <see langword="null"/> literal.
+	/// </summary>
+	/// <returns><see langword="true"/> if <see langword="null"/> was consumed; otherwise, <see langword="false"/>.</returns>
+	public bool TryReadNull()
 	{
 		this.SkipWhiteSpace();
 		if (this.json.Length - this.position >= 4 && this.json.Slice(this.position, 4).SequenceEqual("null"))
@@ -32,7 +43,11 @@ internal ref struct JsonReader
 		return false;
 	}
 
-	internal bool ReadBoolean()
+	/// <summary>
+	/// Reads a JSON boolean literal.
+	/// </summary>
+	/// <returns>The boolean value.</returns>
+	public bool ReadBoolean()
 	{
 		this.SkipWhiteSpace();
 		if (this.json.Length - this.position >= 4 && this.json.Slice(this.position, 4).SequenceEqual("true"))
@@ -50,7 +65,11 @@ internal ref struct JsonReader
 		throw new FormatException("Expected a JSON boolean literal.");
 	}
 
-	internal string? ReadString()
+	/// <summary>
+	/// Reads a JSON string value or <see langword="null"/>.
+	/// </summary>
+	/// <returns>The string value, or <see langword="null"/>.</returns>
+	public string? ReadString()
 	{
 		if (this.TryReadNull())
 		{
@@ -60,7 +79,11 @@ internal ref struct JsonReader
 		return this.ReadRequiredString();
 	}
 
-	internal string ReadRequiredString()
+	/// <summary>
+	/// Reads a required JSON string value.
+	/// </summary>
+	/// <returns>The string value.</returns>
+	public string ReadRequiredString()
 	{
 		this.SkipWhiteSpace();
 		this.RequireCurrent('"');
@@ -94,7 +117,11 @@ internal ref struct JsonReader
 		throw new FormatException("Unterminated JSON string.");
 	}
 
-	internal char ReadChar()
+	/// <summary>
+	/// Reads a JSON string that must contain exactly one character.
+	/// </summary>
+	/// <returns>The character value.</returns>
+	public char ReadChar()
 	{
 		string value = this.ReadRequiredString();
 		if (value.Length != 1)
@@ -105,7 +132,11 @@ internal ref struct JsonReader
 		return value[0];
 	}
 
-	internal string ReadNumberToken()
+	/// <summary>
+	/// Reads the next JSON number token as text.
+	/// </summary>
+	/// <returns>The numeric token text.</returns>
+	public string ReadNumberToken()
 	{
 		this.SkipWhiteSpace();
 		int start = this.position;
@@ -130,22 +161,37 @@ internal ref struct JsonReader
 		return this.json.Slice(start, this.position - start).ToString();
 	}
 
-	internal byte[]? ReadBase64Bytes()
+	/// <summary>
+	/// Reads a Base64-encoded JSON string value or <see langword="null"/>.
+	/// </summary>
+	/// <returns>The decoded bytes, or <see langword="null"/>.</returns>
+	public byte[]? ReadBase64Bytes()
 	{
 		string? value = this.ReadString();
 		return value is null ? null : Convert.FromBase64String(value);
 	}
 
-	internal byte[] ReadRequiredBase64Bytes() => Convert.FromBase64String(this.ReadRequiredString());
+	/// <summary>
+	/// Reads a required Base64-encoded JSON string value.
+	/// </summary>
+	/// <returns>The decoded bytes.</returns>
+	public byte[] ReadRequiredBase64Bytes() => Convert.FromBase64String(this.ReadRequiredString());
 
-	internal void ReadStartObject()
+	/// <summary>
+	/// Reads the start of a JSON object.
+	/// </summary>
+	public void ReadStartObject()
 	{
 		this.SkipWhiteSpace();
 		this.RequireCurrent('{');
 		this.position++;
 	}
 
-	internal bool TryReadEndObject()
+	/// <summary>
+	/// Attempts to read the end of a JSON object.
+	/// </summary>
+	/// <returns><see langword="true"/> if the end of the object was consumed; otherwise, <see langword="false"/>.</returns>
+	public bool TryReadEndObject()
 	{
 		this.SkipWhiteSpace();
 		if (this.position < this.json.Length && this.json[this.position] == '}')
@@ -157,21 +203,31 @@ internal ref struct JsonReader
 		return false;
 	}
 
-	internal void ReadNameSeparator()
+	/// <summary>
+	/// Reads the name separator within a JSON object.
+	/// </summary>
+	public void ReadNameSeparator()
 	{
 		this.SkipWhiteSpace();
 		this.RequireCurrent(':');
 		this.position++;
 	}
 
-	internal void ReadStartArray()
+	/// <summary>
+	/// Reads the start of a JSON array.
+	/// </summary>
+	public void ReadStartArray()
 	{
 		this.SkipWhiteSpace();
 		this.RequireCurrent('[');
 		this.position++;
 	}
 
-	internal bool TryReadEndArray()
+	/// <summary>
+	/// Attempts to read the end of a JSON array.
+	/// </summary>
+	/// <returns><see langword="true"/> if the end of the array was consumed; otherwise, <see langword="false"/>.</returns>
+	public bool TryReadEndArray()
 	{
 		this.SkipWhiteSpace();
 		if (this.position < this.json.Length && this.json[this.position] == ']')
@@ -183,21 +239,30 @@ internal ref struct JsonReader
 		return false;
 	}
 
-	internal void ReadEndArray()
+	/// <summary>
+	/// Reads the end of a JSON array.
+	/// </summary>
+	public void ReadEndArray()
 	{
 		this.SkipWhiteSpace();
 		this.RequireCurrent(']');
 		this.position++;
 	}
 
-	internal void ReadValueSeparator()
+	/// <summary>
+	/// Reads the value separator between JSON elements.
+	/// </summary>
+	public void ReadValueSeparator()
 	{
 		this.SkipWhiteSpace();
 		this.RequireCurrent(',');
 		this.position++;
 	}
 
-	internal void EnsureFullyConsumed()
+	/// <summary>
+	/// Verifies that no non-whitespace JSON remains unread.
+	/// </summary>
+	public void EnsureFullyConsumed()
 	{
 		this.SkipWhiteSpace();
 		if (this.position != this.json.Length)
@@ -206,7 +271,10 @@ internal ref struct JsonReader
 		}
 	}
 
-	internal void SkipValue()
+	/// <summary>
+	/// Skips the next JSON value.
+	/// </summary>
+	public void SkipValue()
 	{
 		this.SkipWhiteSpace();
 		if (this.position >= this.json.Length)

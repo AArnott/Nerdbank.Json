@@ -3,6 +3,8 @@
 
 #pragma warning disable IL3050 // Dynamic shape resolution is the intentional fallback API for now.
 #pragma warning disable IL2070 // Reflection-based collection fallback is intentional for unsupported root collection shapes.
+#pragma warning disable IL2055 // Open generic runtime converter registration intentionally relies on reflection.
+#pragma warning disable IL2067 // Runtime converter activation intentionally uses reflection over user-provided types.
 #pragma warning disable SA1600 // Elements should be documented
 #pragma warning disable SA1204 // Keep instance/locality-oriented helper ordering in this file.
 
@@ -28,6 +30,8 @@ internal sealed class JsonConverterCache
 	}
 
 	internal bool SerializeEnumValuesByName => this.configuration.SerializeEnumValuesByName;
+
+	internal bool HasRuntimeConverters => this.configuration.Converters.Count > 0 || this.configuration.ConverterTypes.Count > 0;
 
 	internal StringComparer PropertyNameComparer => this.configuration.PropertyNameCaseInsensitive ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
@@ -113,6 +117,11 @@ internal sealed class JsonConverterCache
 
 	private JsonConverter CreateConverter<T>()
 	{
+		if (this.TryGetRuntimeProfferedConverter(typeof(T), out JsonConverter? runtimeConverter) && runtimeConverter is not null)
+		{
+			return this.WrapWithReferencePreservation(this.RequireTypedConverter<T>(runtimeConverter));
+		}
+
 		if (BuiltInJsonConverters.IsSupported(typeof(T)))
 		{
 			return this.WrapWithReferencePreservation(new BuiltInJsonConverter<T>());
@@ -128,6 +137,11 @@ internal sealed class JsonConverterCache
 
 	private JsonConverter CreateConverter<T>(ITypeShape<T> shape)
 	{
+		if (this.TryGetRuntimeProfferedConverter(shape.Type, out JsonConverter? runtimeConverter) && runtimeConverter is not null)
+		{
+			return this.WrapWithReferencePreservation(this.RequireTypedConverter<T>(runtimeConverter));
+		}
+
 		if (BuiltInJsonConverters.IsSupported(shape.Type))
 		{
 			return this.WrapWithReferencePreservation(new BuiltInJsonConverter<T>());
@@ -153,6 +167,49 @@ internal sealed class JsonConverterCache
 	}
 
 	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
+
+	private JsonConverter<T> RequireTypedConverter<T>(JsonConverter converter)
+	{
+		if (converter is JsonConverter<T> typedConverter)
+		{
+			return typedConverter;
+		}
+
+		throw new InvalidOperationException($"Converter '{converter.GetType().FullName}' was registered for '{typeof(T).FullName}' but does not derive from JsonConverter<{typeof(T).Name}>.");
+	}
+
+	private bool TryGetRuntimeProfferedConverter(Type type, out JsonConverter? converter)
+	{
+		if (this.configuration.Converters.TryGetConverter(type, out converter))
+		{
+			return true;
+		}
+
+		if (this.configuration.ConverterTypes.TryGetConverterType(type, out Type? converterType) ||
+			(type.IsGenericType && this.configuration.ConverterTypes.TryGetConverterType(type.GetGenericTypeDefinition(), out converterType)))
+		{
+			converter = ActivateConverterType(type, converterType);
+			return true;
+		}
+
+		converter = null;
+		return false;
+	}
+
+	private static JsonConverter ActivateConverterType(Type targetType, Type converterType)
+	{
+		if (converterType.IsGenericTypeDefinition)
+		{
+			if (!targetType.IsGenericType)
+			{
+				throw new InvalidOperationException($"Open generic converter type '{converterType}' cannot be used for non-generic target type '{targetType}'.");
+			}
+
+			converterType = converterType.MakeGenericType(targetType.GetGenericArguments());
+		}
+
+		return (JsonConverter)Activator.CreateInstance(converterType)!;
+	}
 
 	private bool TryCreateCollectionConverter(Type type, out JsonConverter? converter)
 	{

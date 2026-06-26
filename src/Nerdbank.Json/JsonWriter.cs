@@ -1,6 +1,9 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+#pragma warning disable SA1201 // Local writer helper ordering keeps container state adjacent to writer implementation details.
+#pragma warning disable SA1204 // Static helper placement is kept close to their call sites in this low-level writer.
+
 using System;
 using System.Buffers;
 using System.Globalization;
@@ -16,57 +19,111 @@ namespace Nerdbank.Json;
 /// </remarks>
 public ref struct JsonWriter
 {
+	private const byte LineFeed = (byte)'\n';
+	private const byte Space = (byte)' ';
+	private readonly bool writeIndented;
+	private ContainerState[] stack;
 	private IBufferWriter<byte> writer;
+	private int depth;
+	private bool pendingPropertyValue;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="JsonWriter"/> struct.
 	/// </summary>
 	/// <param name="writer">The destination for UTF-8 JSON bytes.</param>
-	public JsonWriter(IBufferWriter<byte> writer)
+	/// <param name="writeIndented">A value indicating whether line breaks and indentation should be written.</param>
+	public JsonWriter(IBufferWriter<byte> writer, bool writeIndented = false)
 	{
 		if (writer is null)
 		{
 			throw new ArgumentNullException(nameof(writer));
 		}
 
+		this.stack = new ContainerState[8];
+		this.writeIndented = writeIndented;
 		this.writer = writer;
+		this.depth = 0;
+		this.pendingPropertyValue = false;
 	}
 
 	/// <summary>
 	/// Writes the JSON <see langword="null"/> literal.
 	/// </summary>
-	public void WriteNullValue() => this.WriteAscii("null"u8);
+	public void WriteNullValue()
+	{
+		this.BeforeValueToken();
+		this.WriteAscii("null"u8);
+	}
 
 	/// <summary>
 	/// Writes a JSON boolean literal.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteBooleanValue(bool value) => this.WriteAscii(value ? "true"u8 : "false"u8);
+	public void WriteBooleanValue(bool value)
+	{
+		this.BeforeValueToken();
+		this.WriteAscii(value ? "true"u8 : "false"u8);
+	}
 
 	/// <summary>
 	/// Writes the start of a JSON object.
 	/// </summary>
-	public void WriteStartObject() => this.WriteByte((byte)'{');
+	public void WriteStartObject()
+	{
+		this.BeforeValueToken();
+		this.WriteByte((byte)'{');
+		this.PushContainer(ContainerKind.Object);
+	}
 
 	/// <summary>
 	/// Writes the end of a JSON object.
 	/// </summary>
-	public void WriteEndObject() => this.WriteByte((byte)'}');
+	public void WriteEndObject()
+	{
+		ContainerState state = this.PopContainer(ContainerKind.Object);
+		if (this.writeIndented && state.Count > 0)
+		{
+			this.WriteNewLineAndIndent(this.depth);
+		}
+
+		this.WriteByte((byte)'}');
+	}
 
 	/// <summary>
 	/// Writes the start of a JSON array.
 	/// </summary>
-	public void WriteStartArray() => this.WriteByte((byte)'[');
+	public void WriteStartArray()
+	{
+		this.BeforeValueToken();
+		this.WriteByte((byte)'[');
+		this.PushContainer(ContainerKind.Array);
+	}
 
 	/// <summary>
 	/// Writes the end of a JSON array.
 	/// </summary>
-	public void WriteEndArray() => this.WriteByte((byte)']');
+	public void WriteEndArray()
+	{
+		ContainerState state = this.PopContainer(ContainerKind.Array);
+		if (this.writeIndented && state.Count > 0)
+		{
+			this.WriteNewLineAndIndent(this.depth);
+		}
+
+		this.WriteByte((byte)']');
+	}
 
 	/// <summary>
 	/// Writes a JSON value separator.
 	/// </summary>
-	public void WriteValueSeparator() => this.WriteByte((byte)',');
+	public void WriteValueSeparator()
+	{
+		this.WriteByte((byte)',');
+		if (this.writeIndented)
+		{
+			this.WriteByte(LineFeed);
+		}
+	}
 
 	/// <summary>
 	/// Writes a JSON property name and name separator.
@@ -74,8 +131,27 @@ public ref struct JsonWriter
 	/// <param name="name">The property name to write.</param>
 	public void WritePropertyName(string name)
 	{
-		this.WriteStringValue(name);
+		ContainerState state = this.GetCurrentContainer(ContainerKind.Object);
+		if (this.writeIndented)
+		{
+			if (state.Count == 0)
+			{
+				this.WriteByte(LineFeed);
+			}
+
+			this.WriteIndent(this.depth);
+		}
+
+		this.WriteQuotedString(name.AsSpan());
 		this.WriteByte((byte)':');
+		if (this.writeIndented)
+		{
+			this.WriteByte(Space);
+		}
+
+		state.Count++;
+		this.SetCurrentContainer(state);
+		this.pendingPropertyValue = true;
 	}
 
 	/// <summary>
@@ -84,13 +160,14 @@ public ref struct JsonWriter
 	/// <param name="value">The value to write.</param>
 	public void WriteStringValue(string? value)
 	{
+		this.BeforeValueToken();
 		if (value is null)
 		{
-			this.WriteNullValue();
+			this.WriteAscii("null"u8);
 			return;
 		}
 
-		this.WriteStringValue(value.AsSpan());
+		this.WriteQuotedString(value.AsSpan());
 	}
 
 	/// <summary>
@@ -99,89 +176,119 @@ public ref struct JsonWriter
 	/// <param name="value">The value to write.</param>
 	public void WriteStringValue(ReadOnlySpan<char> value)
 	{
-		this.WriteByte((byte)'\"');
-
-		int copyStart = 0;
-		for (int i = 0; i < value.Length; i++)
-		{
-			char ch = value[i];
-			if (NeedsEscaping(ch))
-			{
-				this.WriteUtf8(value.Slice(copyStart, i - copyStart));
-				this.WriteEscapedChar(ch);
-				copyStart = i + 1;
-			}
-		}
-
-		this.WriteUtf8(value.Slice(copyStart));
-		this.WriteByte((byte)'\"');
+		this.BeforeValueToken();
+		this.WriteQuotedString(value);
 	}
 
 	/// <summary>
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(byte value) => this.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
+	public void WriteNumberValue(byte value)
+	{
+		this.BeforeValueToken();
+		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+	}
 
 	/// <summary>
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(sbyte value) => this.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
+	public void WriteNumberValue(sbyte value)
+	{
+		this.BeforeValueToken();
+		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+	}
 
 	/// <summary>
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(short value) => this.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
+	public void WriteNumberValue(short value)
+	{
+		this.BeforeValueToken();
+		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+	}
 
 	/// <summary>
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(ushort value) => this.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
+	public void WriteNumberValue(ushort value)
+	{
+		this.BeforeValueToken();
+		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+	}
 
 	/// <summary>
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(int value) => this.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
+	public void WriteNumberValue(int value)
+	{
+		this.BeforeValueToken();
+		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+	}
 
 	/// <summary>
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(uint value) => this.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
+	public void WriteNumberValue(uint value)
+	{
+		this.BeforeValueToken();
+		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+	}
 
 	/// <summary>
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(long value) => this.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
+	public void WriteNumberValue(long value)
+	{
+		this.BeforeValueToken();
+		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+	}
 
 	/// <summary>
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(ulong value) => this.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
+	public void WriteNumberValue(ulong value)
+	{
+		this.BeforeValueToken();
+		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+	}
 
 	/// <summary>
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(float value) => this.WriteRawValue(value.ToString("R", CultureInfo.InvariantCulture));
+	public void WriteNumberValue(float value)
+	{
+		this.BeforeValueToken();
+		this.WriteUtf8(value.ToString("R", CultureInfo.InvariantCulture).AsSpan());
+	}
 
 	/// <summary>
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(double value) => this.WriteRawValue(value.ToString("R", CultureInfo.InvariantCulture));
+	public void WriteNumberValue(double value)
+	{
+		this.BeforeValueToken();
+		this.WriteUtf8(value.ToString("R", CultureInfo.InvariantCulture).AsSpan());
+	}
 
 	/// <summary>
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(decimal value) => this.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
+	public void WriteNumberValue(decimal value)
+	{
+		this.BeforeValueToken();
+		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+	}
 
 	/// <summary>
 	/// Writes a JSON Base64 string value.
@@ -215,7 +322,115 @@ public ref struct JsonWriter
 			throw new ArgumentNullException(nameof(value));
 		}
 
+		this.BeforeValueToken();
 		this.WriteUtf8(value.AsSpan());
+	}
+
+	private void BeforeValueToken()
+	{
+		if (this.pendingPropertyValue)
+		{
+			this.pendingPropertyValue = false;
+			return;
+		}
+
+		if (this.depth == 0)
+		{
+			return;
+		}
+
+		ContainerState state = this.stack[this.depth - 1];
+		if (state.Kind != ContainerKind.Array)
+		{
+			return;
+		}
+
+		if (this.writeIndented)
+		{
+			if (state.Count == 0)
+			{
+				this.WriteByte(LineFeed);
+			}
+
+			this.WriteIndent(this.depth);
+		}
+
+		state.Count++;
+		this.stack[this.depth - 1] = state;
+	}
+
+	private void PushContainer(ContainerKind kind)
+	{
+		if (this.depth == this.stack.Length)
+		{
+			Array.Resize(ref this.stack, this.stack.Length * 2);
+		}
+
+		this.stack[this.depth++] = new ContainerState(kind);
+	}
+
+	private ContainerState PopContainer(ContainerKind expectedKind)
+	{
+		ContainerState state = this.stack[--this.depth];
+		if (state.Kind != expectedKind)
+		{
+			throw new InvalidOperationException("JSON container nesting is inconsistent.");
+		}
+
+		return state;
+	}
+
+	private ContainerState GetCurrentContainer(ContainerKind expectedKind)
+	{
+		if (this.depth == 0)
+		{
+			throw new InvalidOperationException("JSON property names may only appear within objects.");
+		}
+
+		ContainerState state = this.stack[this.depth - 1];
+		if (state.Kind != expectedKind)
+		{
+			throw new InvalidOperationException("JSON property names may only appear within objects.");
+		}
+
+		return state;
+	}
+
+	private void SetCurrentContainer(ContainerState state) => this.stack[this.depth - 1] = state;
+
+	private void WriteNewLineAndIndent(int indentDepth)
+	{
+		this.WriteByte(LineFeed);
+		this.WriteIndent(indentDepth);
+	}
+
+	private void WriteIndent(int indentDepth)
+	{
+		for (int i = 0; i < indentDepth; i++)
+		{
+			this.WriteByte(Space);
+			this.WriteByte(Space);
+		}
+	}
+
+	private void WriteQuotedString(ReadOnlySpan<char> value)
+	{
+		this.WriteByte((byte)'"');
+
+		int copyStart = 0;
+		for (int i = 0; i < value.Length; i++)
+		{
+			char ch = value[i];
+			if (NeedsEscaping(ch))
+			{
+				this.WriteUtf8(value.Slice(copyStart, i - copyStart));
+				this.WriteEscapedChar(ch);
+				copyStart = i + 1;
+			}
+		}
+
+		this.WriteUtf8(value.Slice(copyStart));
+		this.WriteByte((byte)'"');
 	}
 
 	private static bool NeedsEscaping(char ch) => ch < 0x20 || ch is '"' or '\\';
@@ -338,5 +553,23 @@ public ref struct JsonWriter
 		Span<byte> buffer = this.writer.GetSpan(value.Length);
 		value.CopyTo(buffer);
 		this.writer.Advance(value.Length);
+	}
+
+	private enum ContainerKind : byte
+	{
+		Object,
+		Array,
+	}
+
+	private struct ContainerState
+	{
+		internal ContainerKind Kind;
+		internal int Count;
+
+		internal ContainerState(ContainerKind kind)
+		{
+			this.Kind = kind;
+			this.Count = 0;
+		}
 	}
 }

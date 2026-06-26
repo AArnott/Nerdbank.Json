@@ -57,6 +57,17 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
+	public void Serialize_Array_WithWitnessType_CanIndentOutput()
+	{
+		JsonSerializer serializer = new() { WriteIndented = true };
+		int[] value = [1, 2, 3];
+
+		string json = serializer.Serialize<int[], JsonObjectSerializerTests>(value);
+
+		Assert.Equal("[\n  1,\n  2,\n  3\n]", json);
+	}
+
+	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithEnumerableProperties()
 	{
 		JsonSerializer serializer = new();

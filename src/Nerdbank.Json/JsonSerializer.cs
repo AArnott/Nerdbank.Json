@@ -50,6 +50,24 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
+	/// Gets the runtime-registered converters that take precedence over built-in and shape-based converters.
+	/// </summary>
+	public JsonConverterCollection Converters
+	{
+		get => this.configuration.Converters;
+		init => this.configuration = this.configuration with { Converters = value };
+	}
+
+	/// <summary>
+	/// Gets the runtime-registered converter types that take precedence after <see cref="Converters"/>.
+	/// </summary>
+	public JsonConverterTypeCollection ConverterTypes
+	{
+		get => this.configuration.ConverterTypes;
+		init => this.configuration = this.configuration with { ConverterTypes = value };
+	}
+
+	/// <summary>
 	/// Gets a value indicating whether JSON object property names are matched case-insensitively during deserialization.
 	/// </summary>
 	/// <remarks>
@@ -59,6 +77,18 @@ public partial record JsonSerializer
 	{
 		get => this.configuration.PropertyNameCaseInsensitive;
 		init => this.configuration = this.configuration with { PropertyNameCaseInsensitive = value };
+	}
+
+	/// <summary>
+	/// Gets a value indicating whether serialized JSON should be formatted with indentation and line breaks.
+	/// </summary>
+	/// <remarks>
+	/// The default value is <see langword="false"/>.
+	/// </remarks>
+	public bool WriteIndented
+	{
+		get => this.configuration.WriteIndented;
+		init => this.configuration = this.configuration with { WriteIndented = value };
 	}
 
 	/// <summary>
@@ -132,7 +162,7 @@ public partial record JsonSerializer
 			throw new ArgumentNullException(nameof(shape));
 		}
 
-		JsonWriter jsonWriter = new(writer);
+		JsonWriter jsonWriter = new(writer, this.WriteIndented);
 		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
 		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
 		try
@@ -292,7 +322,7 @@ public partial record JsonSerializer
 			throw new ArgumentNullException(nameof(writer));
 		}
 
-		JsonWriter jsonWriter = new(writer);
+		JsonWriter jsonWriter = new(writer, this.WriteIndented);
 		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
 		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
 		try
@@ -401,7 +431,7 @@ public partial record JsonSerializer
 		return (shape is null ? this.ConverterCache.GetOrAddConverter<T>() : this.ConverterCache.GetOrAddConverter(shape)).Read(ref reader, this)!;
 	}
 
-	private bool CanUseBuiltInFastPath(Type type) => this.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(type);
+	private bool CanUseBuiltInFastPath(Type type) => !this.ConverterCache.HasRuntimeConverters && (this.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(type));
 
 	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
 

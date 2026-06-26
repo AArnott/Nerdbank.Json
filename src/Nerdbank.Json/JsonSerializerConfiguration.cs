@@ -10,6 +10,8 @@ internal record JsonSerializerConfiguration
 	internal static readonly JsonSerializerConfiguration Default = new();
 
 	private JsonConverterCache? converterCache;
+	private JsonConverterCollection converters = new();
+	private JsonConverterTypeCollection converterTypes = new();
 	private DeserializeDefaultValuesPolicy deserializeDefaultValues;
 	private JsonNamingPolicy? dictionaryKeyNamingPolicy;
 	private bool propertyNameCaseInsensitive;
@@ -17,8 +19,29 @@ internal record JsonSerializerConfiguration
 	private ReferencePreservationMode preserveReferences;
 	private bool serializeEnumValuesByName;
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
+	private bool writeIndented;
 
 	internal JsonConverterCache ConverterCache => this.converterCache ??= new(this);
+
+	internal JsonConverterCollection Converters
+	{
+		get => this.converters;
+		init
+		{
+			this.converters = value ?? throw new ArgumentNullException(nameof(value));
+			this.converterCache = null;
+		}
+	}
+
+	internal JsonConverterTypeCollection ConverterTypes
+	{
+		get => this.converterTypes;
+		init
+		{
+			this.converterTypes = value ?? throw new ArgumentNullException(nameof(value));
+			this.converterCache = null;
+		}
+	}
 
 	internal JsonNamingPolicy? PropertyNamingPolicy
 	{
@@ -88,5 +111,11 @@ internal record JsonSerializerConfiguration
 			this.preserveReferences = value;
 			this.converterCache = null;
 		}
+	}
+
+	internal bool WriteIndented
+	{
+		get => this.writeIndented;
+		init => this.writeIndented = value;
 	}
 }

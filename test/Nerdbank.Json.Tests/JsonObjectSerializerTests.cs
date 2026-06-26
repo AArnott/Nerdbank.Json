@@ -76,6 +76,27 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
+	public void Serialize_ObjectGraph_CanIndentOutput()
+	{
+		JsonSerializer serializer = new() { WriteIndented = true };
+		Person value = new()
+		{
+			Name = "Ada",
+			Age = 37,
+			Address = new Address
+			{
+				City = "Seattle",
+				PostalCode = 98101,
+			},
+		};
+
+		string json = serializer.Serialize(value);
+
+		Assert.Equal("{\n  \"name\": \"Ada\",\n  \"age\": 37,\n  \"address\": {\n    \"city\": \"Seattle\",\n    \"postalCode\": 98101\n  }\n}", json);
+		AssertRoundtrip(json, serializer, value);
+	}
+
+	[Test]
 	public void SerializeDeserialize_Stream()
 	{
 		JsonSerializer serializer = new();

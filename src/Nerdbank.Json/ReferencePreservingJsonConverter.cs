@@ -8,7 +8,7 @@ namespace Nerdbank.Json;
 
 internal sealed class ReferencePreservingJsonConverter<T>(JsonConverter<T> inner) : JsonConverter<T>
 {
-	internal override void Write(ref JsonWriter writer, T? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, T? value, JsonSerializer serializer)
 	{
 		if (value is null)
 		{
@@ -19,7 +19,7 @@ internal sealed class ReferencePreservingJsonConverter<T>(JsonConverter<T> inner
 		serializer.ReferenceTracker.WriteObject(ref writer, value, inner, serializer);
 	}
 
-	internal override T? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override T? Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (reader.TryReadNull())
 		{

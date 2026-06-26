@@ -9,6 +9,7 @@ The low-level writer writes UTF-8 directly to `IBufferWriter<byte>`, which keeps
 Key traits:
 
 * Direct UTF-8 emission.
+* Optional pretty-printed output with `JsonSerializer.WriteIndented`.
 * RFC 8259 escaping for required characters only.
 * Numeric formatting using invariant culture.
 * Base64 encoding for byte buffers.
@@ -41,15 +42,24 @@ Current behavior:
 * Unknown JSON properties are ignored during deserialization.
 * Property names default to camelCase.
 * `JsonSerializer.PropertyNamingPolicy` can be set to `null` or another `JsonNamingPolicy` built-in.
+* `JsonSerializer.WriteIndented` can emit human-readable JSON with line breaks and indentation.
 * `JsonSerializer.PropertyNameCaseInsensitive` can relax object-property matching during deserialization.
 * `PropertyShapeAttribute.Name` overrides the naming policy when explicitly set.
 * Dictionary keys are not transformed by the property naming policy by default.
 * `JsonSerializer.DictionaryKeyNamingPolicy` can opt string-key dictionaries into key transformation.
+* `JsonSerializer.Converters` can register concrete runtime converters for exact target types.
+* `JsonSerializer.ConverterTypes` can register converter classes, including open generic converter types.
 * `JsonSerializer.SerializeDefaultValues` can omit default-valued properties during serialization.
 * `JsonSerializer.SerializeEnumValuesByName` can serialize enums as strings when simple names exist.
 * `JsonSerializer.DeserializeDefaultValues` can relax required-member and non-nullable reference enforcement during deserialization.
 * `JsonSerializer.PreserveReferences` can preserve repeated references in acyclic object graphs.
 * Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
+
+Converter registration notes:
+
+* Runtime converter instances take precedence over runtime converter types.
+* Runtime converter types take precedence over built-in and PolyType-generated converters.
+* Open generic converter types are matched against the open generic target type definition and activated for the closed target type being serialized.
 
 Property validation notes:
 
