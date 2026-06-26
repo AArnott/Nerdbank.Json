@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
     <TargetFrameworks Condition="'$(OS)' == 'Windows_NT'">$(TargetFrameworks);net472</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <RootNamespace />
@@ -12,6 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Nerdbank.MessagePack" />
+    <PackageReference Include="PolyType" />
+    <PackageReference Include="System.Buffers" />
+    <PackageReference Include="System.Memory" />
     <PackageReference Include="xunit.v3.mtp-v2" />
   </ItemGroup>
 

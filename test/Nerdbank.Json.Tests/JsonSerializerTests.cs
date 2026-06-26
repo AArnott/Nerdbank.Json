@@ -1,0 +1,118 @@
+// Copyright (c) Andrew Arnott. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+using System;
+using System.Drawing;
+using System.Globalization;
+using System.Numerics;
+using System.Text;
+using Nerdbank.Json;
+using Xunit;
+
+public class JsonSerializerTests
+{
+	[Fact]
+	public void Serialize_StringUsesRfc8259EscapingRules()
+		=> AssertRoundtrip("ü <tag> \"quoted\" \\ slash\nnext", "\"ü <tag> \\\"quoted\\\" \\\\ slash\\nnext\"");
+
+	[Fact]
+	public void SerializeDeserialize_PrimitiveScalars()
+	{
+		AssertRoundtrip('A', "\"A\"");
+		AssertRoundtrip((byte)42, "42");
+		AssertRoundtrip((sbyte)-42, "-42");
+		AssertRoundtrip((short)-1234, "-1234");
+		AssertRoundtrip((ushort)65530, "65530");
+		AssertRoundtrip(123456, "123456");
+		AssertRoundtrip(4000000000u, "4000000000");
+		AssertRoundtrip(-9876543210L, "-9876543210");
+		AssertRoundtrip(18446744073709551610UL, "18446744073709551610");
+		AssertRoundtrip(true, "true");
+		AssertRoundtrip(false, "false");
+		AssertRoundtrip(1.5f, "1.5");
+		AssertRoundtrip(1.5d, "1.5");
+		AssertRoundtrip(79228162514264337593543950335m, "79228162514264337593543950335");
+	}
+
+	[Fact]
+	public void SerializeDeserialize_CommonBclTypes()
+	{
+		AssertRoundtrip(new BigInteger(1234567890123456789L), "1234567890123456789");
+		AssertRoundtrip(new DateTime(2026, 6, 25, 18, 17, 16, 123, DateTimeKind.Utc).AddTicks(4567), "\"2026-06-25T18:17:16.1234567Z\"");
+		AssertRoundtrip(new DateTimeOffset(2026, 6, 25, 18, 17, 16, 123, TimeSpan.FromHours(-7)).AddTicks(4567), "\"2026-06-25T18:17:16.1234567-07:00\"");
+		AssertRoundtrip(new TimeSpan(1, 2, 3, 4, 5).Add(TimeSpan.FromTicks(6)), "\"1.02:03:04.0050006\"");
+		AssertRoundtrip(Guid.Parse("01234567-89ab-cdef-0123-456789abcdef"), "\"01234567-89ab-cdef-0123-456789abcdef\"");
+		AssertRoundtrip(new Version(1, 2, 3, 4), "\"1.2.3.4\"");
+		AssertRoundtrip(new Uri("https://example.com/a?b=c", UriKind.Absolute), "\"https://example.com/a?b=c\"");
+		AssertRoundtrip(CultureInfo.GetCultureInfo("fr-FR"), "\"fr-FR\"");
+		AssertRoundtrip(Encoding.UTF8, "\"utf-8\"");
+		AssertRoundtrip(Color.FromArgb(unchecked((int)0xFF336699)), "-13408615");
+		AssertRoundtrip(new Point(12, -34), "[12,-34]");
+	}
+
+	[Fact]
+	public void SerializeDeserialize_ByteBuffers()
+	{
+		AssertRoundtrip(new byte[] { 1, 2, 3, 4 }, "\"AQIDBA==\"");
+		AssertRoundtrip(new Memory<byte>(new byte[] { 5, 6, 7 }), "\"BQYH\"");
+		AssertRoundtrip(new ReadOnlyMemory<byte>(new byte[] { 8, 9, 10 }), "\"CAkK\"");
+	}
+
+#if NET8_0_OR_GREATER
+	[Fact]
+	public void SerializeDeserialize_ModernBuiltInTypes()
+	{
+		AssertRoundtrip((Half)1.5f, "1.5");
+		AssertRoundtrip(Int128.Parse("170141183460469231731687303715884105727", CultureInfo.InvariantCulture), "170141183460469231731687303715884105727");
+		AssertRoundtrip(UInt128.Parse("340282366920938463463374607431768211455", CultureInfo.InvariantCulture), "340282366920938463463374607431768211455");
+		AssertRoundtrip(DateOnly.ParseExact("2026-06-25", "yyyy-MM-dd", CultureInfo.InvariantCulture), "\"2026-06-25\"");
+		AssertRoundtrip(TimeOnly.ParseExact("18:17:16.1234567", "HH:mm:ss.fffffff", CultureInfo.InvariantCulture), "\"18:17:16.1234567\"");
+		AssertRoundtrip(new Rune(0x1F98A), "\"🦊\"");
+	}
+#endif
+
+	[Fact]
+	public void Deserialize_NullReferenceTypes()
+	{
+		JsonSerializer serializer = new();
+
+		Assert.Null(serializer.Deserialize<string?>("null"));
+		Assert.Null(serializer.Deserialize<byte[]?>("null"));
+		Assert.Null(serializer.Deserialize<Version?>("null"));
+		Assert.Null(serializer.Deserialize<Uri?>("null"));
+	}
+
+	private static void AssertRoundtrip<T>(T value, string expectedJson)
+	{
+		JsonSerializer serializer = new();
+
+		string json = serializer.Serialize(value);
+		Assert.Equal(expectedJson, json);
+
+		T roundTripped = serializer.Deserialize<T>(json);
+		AssertEqual(value, roundTripped);
+	}
+
+	private static void AssertEqual<T>(T expected, T actual)
+	{
+		if (expected is byte[] expectedBytes && actual is byte[] actualBytes)
+		{
+			Assert.Equal(expectedBytes, actualBytes);
+			return;
+		}
+
+		if (expected is Memory<byte> expectedMemory && actual is Memory<byte> actualMemory)
+		{
+			Assert.True(expectedMemory.Span.SequenceEqual(actualMemory.Span));
+			return;
+		}
+
+		if (expected is ReadOnlyMemory<byte> expectedReadOnlyMemory && actual is ReadOnlyMemory<byte> actualReadOnlyMemory)
+		{
+			Assert.True(expectedReadOnlyMemory.Span.SequenceEqual(actualReadOnlyMemory.Span));
+			return;
+		}
+
+		Assert.Equal(expected, actual);
+	}
+}

@@ -1,89 +1,94 @@
-# Your Library
-
-***An awesome template for your awesome library***
+# Nerdbank.Json
 
 [![NuGet package](https://img.shields.io/nuget/v/Nerdbank.Json.svg)](https://nuget.org/packages/Nerdbank.Json)
 
+Nerdbank.Json is a UTF-8 JSON serializer being built in the same general shape as Nerdbank.MessagePack, but without layering on top of System.Text.Json, Newtonsoft.Json, or any other serializer.
+
+The current implementation includes a low-level writer/reader pair, a built-in converter table for common .NET types, and an initial PolyType-backed object serializer for mutable object graphs. It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`, `net472`, and `netstandard2.0`.
 
 ## Features
 
-* Follow the best and simplest patterns of build, pack and test with dotnet CLI.
-* Init script that installs prerequisites and auth helpers, supporting both non-elevation and elevation modes.
-* Static analyzers: default [Code Analysis](https://learn.microsoft.com/dotnet/fundamentals/code-analysis/overview) and [StyleCop](https://github.com/DotNetAnalyzers/StyleCopAnalyzers)
-* Read-only source tree (builds to top-level bin/obj folders)
-* Auto-versioning (via [Nerdbank.GitVersioning](https://github.com/dotnet/nerdbank.gitversioning))
-* Builds with a "pinned" .NET SDK to ensure reproducible builds across machines and across time.
-* Automatically pack the library and publish it as an artifact, and even push it to some NuGet feed for consumption.
-* Testing
-  * Testing on .NET Framework, multiple .NET versions
-  * Testing on Windows, Linux and OSX
-  * Tests that crash or hang in Azure Pipelines automatically collect dumps and publish as a pipeline artifact for later investigation.
-* Cloud build support
-  * YAML based build for long-term serviceability, and PR review opportunities for any changes.
-  * Azure Pipelines and GitHub Action support
-  * Emphasis on PowerShell scripts over reliance on tasks for a more locally reproducible build.
-  * Code coverage published to Azure Pipelines
-  * Code coverage published to codecov.io so GitHub PRs get code coverage results added as a PR comment
+* Direct UTF-8 JSON writing to `IBufferWriter<byte>`.
+* RFC 8259 string escaping, limited to the characters that must be escaped.
+* Built-in serialization and deserialization for common .NET primitive and BCL types.
+* PolyType-driven serialization for object graphs with settable properties.
+* Mutable `ICollection<T>` implementations with public parameterless constructors, including `List<T>`.
+* Mutable `IDictionary<string, TValue>` implementations with public parameterless constructors, including `Dictionary<string, TValue>`.
+* camelCase property naming by default, configurable with `JsonNamingPolicy`.
+* Built-in byte buffer handling using Base64 JSON strings.
+* Synchronous stream and async stream overloads.
+* Multi-targeting across modern .NET and .NET Framework.
+* Test-driven development with focused round-trip coverage for the current built-in type surface.
 
-## Consumption
+## Supported Built-In Types
 
-Once you've expanded this template for your own use, you should **run the `Expand-Template.ps1` script** to customize the template for your own project.
+The current built-in serializer supports:
 
-Further customize your repo by:
+* `string`, `char`, `bool`
+* Numeric primitives: `byte`, `sbyte`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `float`, `double`, `decimal`
+* `System.Numerics.BigInteger`
+* `DateTime`, `DateTimeOffset`, `TimeSpan`
+* `Guid`, `Version`, `Uri`, `CultureInfo`, `Encoding`
+* `byte[]`, `Memory<byte>`, `ReadOnlyMemory<byte>`
+* `System.Drawing.Color`, `System.Drawing.Point`
+* On .NET 8 and later: `Half`, `Int128`, `UInt128`, `DateOnly`, `TimeOnly`, `Rune`
 
-1. Verify the license is suitable for your goal as it appears in the LICENSE and stylecop.json files and the Directory.Build.props file's `PackageLicenseExpression` property.
-1. Reset or replace the badges at the top of this file.
+## Example
 
-[Activate Renovate automated dependency updates](https://docs.renovatebot.com/getting-started/installing-onboarding/) for your repo.
+```csharp
+using Nerdbank.Json;
 
-### Maintaining your repo based on this template
+JsonSerializer serializer = new();
 
-The best way to keep your repo in sync with this template's evolving features and best practices is to periodically merge the template into your repo:
-
-```ps1
-git fetch
-git checkout origin/main
-.\tools\MergeFrom-Template.ps1
-# resolve any conflicts, then commit the merge commit.
-git push origin -u HEAD
+string json = serializer.Serialize(new DateTimeOffset(2024, 7, 1, 12, 34, 56, TimeSpan.Zero));
+DateTimeOffset value = serializer.Deserialize<DateTimeOffset>(json);
 ```
 
-There will frequently be merge conflicts to work out, but they will be easier to resolve than running the `Apply-Template.ps1` script every time, which simply blows away all your local changes with the latest from the template.
+For mutable object graphs, annotate your root type with `GenerateShape` and use the same serializer APIs:
 
-If you do not already have Library.Template history in your repo or have never completed a merge before, the above steps may produce errors.
-To get it working the first time, follow these steps:
+```csharp
+using Nerdbank.Json;
+using PolyType;
 
-```ps1
-git remote add libtemplate https://github.com/AArnott/Library.Template.git
-git fetch libtemplate
+[GenerateShape]
+public partial class Person
+{
+	public string? Name { get; set; }
+	public int Age { get; set; }
+}
+
+JsonSerializer serializer = new();
+string json = serializer.Serialize(new Person { Name = "Ada", Age = 37 });
+Person person = serializer.Deserialize<Person>(json);
 ```
 
-If the `git merge` step described earlier still fails for you, you may need to artificially create your first merge.
-First, you must have a local clone of Library.Template on your box:
+By default, object property names serialize as camelCase. To preserve declared member names or apply a different built-in transform:
 
-```ps1
-git clone https://github.com/AArnott/Library.Template.git
+```csharp
+JsonSerializer serializer = new()
+{
+	PropertyNamingPolicy = JsonNamingPolicy.SnakeLowerCase,
+};
 ```
 
-Make sure you have either `main` checked out in that clone, as appropriate to match.
-Use `git rev-parse HEAD` within the Library.Template repo and record the resulting commit as we'll use it later.
+This naming policy applies to object property names. Dictionary keys remain unchanged by default. To opt into dictionary key transformation separately:
 
-Run the `Apply-Template.ps1` script, passing in the path to your own Library.Template-based repo. This will blow away most customizations you may have made to your repo's build authoring. You should *carefully* review all changes to your repo, staging those changes that you want to keep and reverting those that remove customizations you made.
+```csharp
+JsonSerializer serializer = new()
+{
+	DictionaryKeyNamingPolicy = JsonNamingPolicy.CamelCase,
+};
+```
 
-Now it's time to commit your changes. We do this in a very low-level way in order to have git record this as a *merge* commit even though it didn't start as a merge.
-By doing this, git will allow future merges from `libtemplate/main` and only new changes will be brought down, which will be much easier than the `Apply-Template.ps1` script you just ran.
-We create the merge commit with these commands:
+## Design Notes
 
-1. Be sure to have staged or reverted all the changes in your repo.
-1. Run `git write-tree` within your repo. This will print out a git tree hash.
-1. Run `git commit-tree -p HEAD -p A B -m "Merged latest Library.Template"`, where `A` is the output from `git rev-parse HEAD` that you recorded earlier, and `B` is the output from your prior `git write-tree` command.
-1. Run `git merge X` where `X` is the output of the `git commit-tree` command.
+* The low-level JSON writer does not delegate to another serializer.
+* String escaping follows RFC 8259 requirements instead of aggressively escaping extra characters.
+* This repository is intended to grow toward the richer converter and visitor architecture used by Nerdbank.MessagePack.
+* The current object-graph layer supports mutable types with settable properties, uses camelCase property names by default, and ignores unknown JSON properties during deserialization.
+* Mutable `ICollection<T>` and `IDictionary<string, TValue>` implementations with public parameterless constructors are supported through the same converter cache.
+* Current stream overloads buffer the full payload before reading or writing; incremental streaming APIs will come later.
 
-**IMPORTANT**: If using a pull request to get your changes into your repo, you must *merge* your PR. If you *squash* your PR, history will be lost and you will have to repeatedly resolve the same merge conflicts at the next Library.Template update.
+## Status
 
-**CAUTION**: when merging this for the first time, a github-hosted repo may close issues in your repo with the same number as issues that this repo closed in git commit messages.
-Verify after completing your PR by visiting your github closed issues, sorted by recently updated, and reactivate any that were inadvertently closed by this merge.
-This shouldn't be a recurring issue because going forward, we will avoid referencing github issues with simple `#123` syntax in this repo's history.
-
-Congratulations. You're all done.
-Next time you want to sync to latest from Library.Template, you can the simple `git merge` steps given at the start of this section.
+The built-in type surface listed above is working and covered by focused serializer tests. PolyType-backed mutable object graphs and stream/async overloads are now available in an initial form. Broader contract features, constructor-based materialization, and incremental streaming remain under active development.

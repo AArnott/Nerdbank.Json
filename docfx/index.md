@@ -4,6 +4,8 @@ _layout: landing
 
 # Overview
 
-This is your docfx landing page.
+Nerdbank.Json is a JSON serializer designed along the same architectural direction as Nerdbank.MessagePack while remaining fully independent from System.Text.Json and Newtonsoft.Json.
 
-Click "Docs" across the top to get started.
+The current implementation provides a low-level UTF-8 writer and reader, built-in converters for a broad set of primitive and BCL types, and an initial PolyType-backed object serializer for mutable object graphs.
+
+Use the Docs section for supported types, usage guidance, and current scope.

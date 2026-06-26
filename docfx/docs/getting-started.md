@@ -2,11 +2,59 @@
 
 ## Installation
 
-Consume this Nerdbank.Json via its NuGet Package.
-Click on the badge to find its latest version and the instructions for consuming it that best apply to your project.
+Consume Nerdbank.Json from its NuGet package.
 
 [![NuGet package](https://img.shields.io/nuget/v/Nerdbank.Json.svg)](https://nuget.org/packages/Nerdbank.Json)
 
 ## Usage
 
-TODO
+Given a mutable type annotated with <xref:PolyType.GenerateShapeAttribute> like this:
+
+[!code-csharp[](../../samples/cs/GettingStarted.cs#SimpleObject)]
+
+> [!IMPORTANT]
+> All types attributed with <xref:PolyType.GenerateShapeAttribute> must be declared with the `partial` modifier.
+> If these are nested types, all containing types must also have the `partial` modifier.
+
+You can serialize and deserialize it like this:
+
+[!code-csharp[](../../samples/cs/GettingStarted.cs#SimpleObjectRoundtrip)]
+
+Only the top-level type that you directly serialize needs <xref:PolyType.GenerateShapeAttribute>.
+Referenced property types in the object graph can be discovered through the generated shape provider.
+
+For built-in scalar values, the same serializer APIs work directly:
+
+```csharp
+using Nerdbank.Json;
+
+JsonSerializer serializer = new();
+
+string text = serializer.Serialize(Guid.Parse("01234567-89ab-cdef-0123-456789abcdef"));
+Guid value = serializer.Deserialize<Guid>(text);
+```
+
+## Supported Values
+
+The current serializer surface includes built-in scalar and selected BCL types, mutable object graphs with settable properties, mutable `ICollection<T>` implementations such as `List<T>`, and mutable `IDictionary<string, TValue>` implementations such as `Dictionary<string, TValue>`.
+
+Examples include:
+
+* Primitive numbers and booleans
+* Strings and chars
+* Date and time types
+* Guids, URIs, versions, cultures, encodings
+* Byte buffers
+* Selected drawing primitives such as `Color` and `Point`
+* Mutable object graphs annotated with <xref:PolyType.GenerateShapeAttribute>
+* Mutable lists and string-key dictionaries
+
+By default, object property names serialize as camelCase. Dictionary keys remain unchanged unless <xref:Nerdbank.Json.JsonSerializer.DictionaryKeyNamingPolicy> is explicitly set.
+
+## String Escaping
+
+Strings are escaped according to RFC 8259 requirements. Characters that do not require escaping are preserved as-is instead of being over-escaped.
+
+## Current Limitations
+
+The current implementation does not yet provide constructor-based materialization for immutable types, immutable collection support, non-string dictionary key support beyond simple future cases, or the broader contract system planned for the library.
