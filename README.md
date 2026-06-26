@@ -15,6 +15,7 @@ The current implementation includes a low-level writer/reader pair, a built-in c
 * Mutable `ICollection<T>` implementations with public parameterless constructors, including `List<T>`.
 * Mutable `IDictionary<string, TValue>` implementations with public parameterless constructors, including `Dictionary<string, TValue>`.
 * camelCase property naming by default, configurable with `JsonNamingPolicy`.
+* Optional case-insensitive property-name matching during deserialization.
 * Optional enum-name serialization with numeric fallback for unnamed values.
 * Built-in byte buffer handling using Base64 JSON strings.
 * Configurable deserialization policy for missing required values and non-nullable reference validation.

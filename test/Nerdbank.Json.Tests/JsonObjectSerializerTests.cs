@@ -48,6 +48,22 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
+	public void Deserialize_ObjectGraph_CaseInsensitivePropertyNames_WhenEnabled()
+	{
+		JsonSerializer serializer = new() { PropertyNameCaseInsensitive = true };
+
+		Person value = serializer.Deserialize<Person>("{\"NAME\":\"Ada\",\"AGE\":37,\"ADDRESS\":{\"CITY\":\"Seattle\",\"POSTALCODE\":98101}}");
+		Person expected = new()
+		{
+			Name = "Ada",
+			Age = 37,
+			Address = new Address { City = "Seattle", PostalCode = 98101 },
+		};
+
+		AssertStructuralEqual(expected, value, "{\"NAME\":\"Ada\",\"AGE\":37,\"ADDRESS\":{\"CITY\":\"Seattle\",\"POSTALCODE\":98101}}");
+	}
+
+	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithNullNestedObject()
 	{
 		JsonSerializer serializer = new();

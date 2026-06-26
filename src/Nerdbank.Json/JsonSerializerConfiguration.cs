@@ -12,6 +12,7 @@ internal record JsonSerializerConfiguration
 	private JsonConverterCache? converterCache;
 	private DeserializeDefaultValuesPolicy deserializeDefaultValues;
 	private JsonNamingPolicy? dictionaryKeyNamingPolicy;
+	private bool propertyNameCaseInsensitive;
 	private JsonNamingPolicy? propertyNamingPolicy = JsonNamingPolicy.CamelCase;
 	private ReferencePreservationMode preserveReferences;
 	private bool serializeEnumValuesByName;
@@ -25,6 +26,16 @@ internal record JsonSerializerConfiguration
 		init
 		{
 			this.propertyNamingPolicy = value;
+			this.converterCache = null;
+		}
+	}
+
+	internal bool PropertyNameCaseInsensitive
+	{
+		get => this.propertyNameCaseInsensitive;
+		init
+		{
+			this.propertyNameCaseInsensitive = value;
 			this.converterCache = null;
 		}
 	}

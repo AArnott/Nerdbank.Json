@@ -32,6 +32,17 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
+	public void Deserialize_TypeWithParameterizedConstructor_CaseInsensitivePropertyNames_WhenEnabled()
+	{
+		JsonSerializer serializer = new() { PropertyNameCaseInsensitive = true };
+
+		MixedConstructorType value = serializer.Deserialize<MixedConstructorType>("{\"NAME\":\"Ada\",\"AGE\":37}");
+
+		Assert.Equal("Ada", value.Name);
+		Assert.Equal(37, value.Age);
+	}
+
+	[Test]
 	public void Deserialize_RecordWithParameterizedConstructor_MissingRequiredParameter_ThrowsFormatException()
 	{
 		JsonSerializer serializer = new();

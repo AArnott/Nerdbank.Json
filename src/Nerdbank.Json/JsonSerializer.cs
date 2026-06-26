@@ -50,6 +50,18 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
+	/// Gets a value indicating whether JSON object property names are matched case-insensitively during deserialization.
+	/// </summary>
+	/// <remarks>
+	/// The default value is <see langword="false"/>.
+	/// </remarks>
+	public bool PropertyNameCaseInsensitive
+	{
+		get => this.configuration.PropertyNameCaseInsensitive;
+		init => this.configuration = this.configuration with { PropertyNameCaseInsensitive = value };
+	}
+
+	/// <summary>
 	/// Gets the policy that determines whether properties with default values are serialized.
 	/// </summary>
 	/// <remarks>

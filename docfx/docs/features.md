@@ -41,6 +41,7 @@ Current behavior:
 * Unknown JSON properties are ignored during deserialization.
 * Property names default to camelCase.
 * `JsonSerializer.PropertyNamingPolicy` can be set to `null` or another `JsonNamingPolicy` built-in.
+* `JsonSerializer.PropertyNameCaseInsensitive` can relax object-property matching during deserialization.
 * `PropertyShapeAttribute.Name` overrides the naming policy when explicitly set.
 * Dictionary keys are not transformed by the property naming policy by default.
 * `JsonSerializer.DictionaryKeyNamingPolicy` can opt string-key dictionaries into key transformation.
@@ -54,6 +55,7 @@ Property validation notes:
 
 * Non-nullable reference-type properties reject explicit JSON `null` values during deserialization.
 * Getter-only mutable collection properties ignore JSON `null` instead of replacing their existing collection instances.
+* Property-name case insensitivity only affects object-property and constructor-parameter matching during deserialization; serialization still uses the configured emitted names.
 
 Constructor deserialization notes:
 

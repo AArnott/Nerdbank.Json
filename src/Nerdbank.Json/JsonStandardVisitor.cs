@@ -96,13 +96,13 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 			}
 		}
 
-		return new JsonObjectConverter<T>(CreateFactory<T>(), jsonProperties);
+		return new JsonObjectConverter<T>(CreateFactory<T>(), jsonProperties, owner.PropertyNameComparer);
 	}
 
 	public override object? VisitConstructor<TDeclaringType, TArgumentState>(IConstructorShape<TDeclaringType, TArgumentState> constructorShape, object? state = null)
 	{
 		JsonConstructorVisitorState<TDeclaringType> visitorState = (JsonConstructorVisitorState<TDeclaringType>)(state ?? throw new ArgumentNullException(nameof(state)));
-		Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName = new(StringComparer.Ordinal);
+		Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName = new(owner.PropertyNameComparer);
 		List<JsonConstructorParameter<TArgumentState>> parameters = new(constructorShape.Parameters.Count);
 
 		foreach (IParameterShape parameter in constructorShape.Parameters)

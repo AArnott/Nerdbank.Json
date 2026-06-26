@@ -16,11 +16,11 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 	private readonly JsonProperty<T>[] properties;
 	private readonly Dictionary<string, JsonProperty<T>> propertiesByName;
 
-	internal JsonObjectConverter(Func<T> factory, JsonProperty<T>[] properties)
+	internal JsonObjectConverter(Func<T> factory, JsonProperty<T>[] properties, StringComparer propertyNameComparer)
 	{
 		this.factory = factory;
 		this.properties = properties;
-		this.propertiesByName = new Dictionary<string, JsonProperty<T>>(properties.Length, StringComparer.Ordinal);
+		this.propertiesByName = new Dictionary<string, JsonProperty<T>>(properties.Length, propertyNameComparer);
 		for (int i = 0; i < properties.Length; i++)
 		{
 			this.propertiesByName[properties[i].Name] = properties[i];

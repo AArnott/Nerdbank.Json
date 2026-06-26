@@ -29,6 +29,8 @@ internal sealed class JsonConverterCache
 
 	internal bool SerializeEnumValuesByName => this.configuration.SerializeEnumValuesByName;
 
+	internal StringComparer PropertyNameComparer => this.configuration.PropertyNameCaseInsensitive ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
 	internal JsonConverter<T> GetOrAddConverter<T>()
 		=> (JsonConverter<T>)this.cachedConverters.GetOrAdd(typeof(T), _ => this.CreateConverter<T>());
 
