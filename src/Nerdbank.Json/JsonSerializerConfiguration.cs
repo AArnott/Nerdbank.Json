@@ -12,6 +12,7 @@ internal record JsonSerializerConfiguration
 	private JsonConverterCache? converterCache;
 	private JsonNamingPolicy? dictionaryKeyNamingPolicy;
 	private JsonNamingPolicy? propertyNamingPolicy = JsonNamingPolicy.CamelCase;
+	private ReferencePreservationMode preserveReferences;
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
 
 	internal JsonConverterCache ConverterCache => this.converterCache ??= new(this);
@@ -42,6 +43,16 @@ internal record JsonSerializerConfiguration
 		init
 		{
 			this.serializeDefaultValues = value;
+			this.converterCache = null;
+		}
+	}
+
+	internal ReferencePreservationMode PreserveReferences
+	{
+		get => this.preserveReferences;
+		init
+		{
+			this.preserveReferences = value;
 			this.converterCache = null;
 		}
 	}

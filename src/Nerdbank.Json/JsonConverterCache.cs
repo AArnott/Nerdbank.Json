@@ -20,6 +20,7 @@ internal sealed class JsonConverterCache
 	private readonly ConcurrentDictionary<Type, ITypeShape> cachedTypeShapes = new();
 	private readonly ConcurrentDictionary<(Type TargetType, Type ProviderType), ITypeShape> cachedWitnessTypeShapes = new();
 	private readonly JsonSerializerConfiguration configuration;
+	private readonly object shapeCreationLock = new();
 
 	internal JsonConverterCache(JsonSerializerConfiguration configuration)
 	{
@@ -30,7 +31,35 @@ internal sealed class JsonConverterCache
 		=> (JsonConverter<T>)this.cachedConverters.GetOrAdd(typeof(T), _ => this.CreateConverter<T>());
 
 	internal JsonConverter<T> GetOrAddConverter<T>(ITypeShape<T> shape)
-		=> (JsonConverter<T>)this.cachedShapeConverters.GetOrAdd(shape, _ => this.CreateConverter(shape));
+	{
+		if (this.cachedShapeConverters.TryGetValue(shape, out JsonConverter? existingConverter))
+		{
+			return (JsonConverter<T>)existingConverter;
+		}
+
+		lock (this.shapeCreationLock)
+		{
+			if (this.cachedShapeConverters.TryGetValue(shape, out existingConverter))
+			{
+				return (JsonConverter<T>)existingConverter;
+			}
+
+			DeferredJsonConverter<T> deferredConverter = new();
+			this.cachedShapeConverters[shape] = deferredConverter;
+			try
+			{
+				JsonConverter<T> converter = (JsonConverter<T>)this.CreateConverter(shape);
+				deferredConverter.SetInner(converter);
+				this.cachedShapeConverters[shape] = converter;
+				return converter;
+			}
+			catch
+			{
+				this.cachedShapeConverters.TryRemove(shape, out _);
+				throw;
+			}
+		}
+	}
 
 	internal ITypeShape<T> ResolveDynamicTypeShapeOrThrow<T>()
 	{
@@ -82,12 +111,12 @@ internal sealed class JsonConverterCache
 	{
 		if (BuiltInJsonConverters.IsSupported(typeof(T)))
 		{
-			return new BuiltInJsonConverter<T>();
+			return this.WrapWithReferencePreservation(new BuiltInJsonConverter<T>());
 		}
 
 		if (this.TryCreateCollectionConverter(typeof(T), out JsonConverter? collectionConverter))
 		{
-			return collectionConverter!;
+			return this.WrapWithReferencePreservation((JsonConverter<T>)collectionConverter!);
 		}
 
 		return this.CreateConverter(this.ResolveDynamicTypeShapeOrThrow<T>());
@@ -97,17 +126,29 @@ internal sealed class JsonConverterCache
 	{
 		if (BuiltInJsonConverters.IsSupported(shape.Type))
 		{
-			return new BuiltInJsonConverter<T>();
+			return this.WrapWithReferencePreservation(new BuiltInJsonConverter<T>());
 		}
 
 		object? converter = shape.Accept(new JsonStandardVisitor(this), null);
 		if (converter is JsonConverter jsonConverter)
 		{
-			return jsonConverter;
+			return this.WrapWithReferencePreservation((JsonConverter<T>)jsonConverter);
 		}
 
 		throw new NotSupportedException($"JSON serialization does not yet support values of type {shape.Type.FullName}.");
 	}
+
+	private JsonConverter<T> WrapWithReferencePreservation<T>(JsonConverter<T> converter)
+	{
+		if (this.configuration.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(typeof(T)))
+		{
+			return converter;
+		}
+
+		return new ReferencePreservingJsonConverter<T>(converter);
+	}
+
+	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
 
 	private bool TryCreateCollectionConverter(Type type, out JsonConverter? converter)
 	{

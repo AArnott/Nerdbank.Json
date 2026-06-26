@@ -21,6 +21,8 @@ namespace Nerdbank.Json;
 public partial record JsonSerializer
 {
 	private JsonSerializerConfiguration configuration = JsonSerializerConfiguration.Default;
+	[ThreadStatic]
+	private static JsonReferenceEqualityTracker? currentReferenceTracker;
 
 	/// <summary>
 	/// Gets the transformation applied to object property names during serialization and deserialization.
@@ -60,9 +62,20 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
+	/// Gets the mode that preserves reference equality during serialization and deserialization.
+	/// </summary>
+	public ReferencePreservationMode PreserveReferences
+	{
+		get => this.configuration.PreserveReferences;
+		init => this.configuration = this.configuration with { PreserveReferences = value };
+	}
+
+	/// <summary>
 	/// Gets the converter cache derived from this serializer's immutable configuration.
 	/// </summary>
 	internal JsonConverterCache ConverterCache => this.configuration.ConverterCache;
+
+	internal JsonReferenceEqualityTracker ReferenceTracker => currentReferenceTracker ?? throw new InvalidOperationException("Reference tracking is only available within an active serialization or deserialization operation.");
 
 	/// <summary>
 	/// Serializes a value as UTF-8 JSON to a byte buffer.
@@ -84,7 +97,16 @@ public partial record JsonSerializer
 		}
 
 		JsonWriter jsonWriter = new(writer);
-		this.Serialize(ref jsonWriter, value, shape);
+		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
+		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
+		try
+		{
+			this.Serialize(ref jsonWriter, value, shape);
+		}
+		finally
+		{
+			currentReferenceTracker = priorTracker;
+		}
 	}
 
 	/// <summary>
@@ -175,9 +197,18 @@ public partial record JsonSerializer
 		}
 
 		JsonReader reader = new(json.AsSpan());
-		T value = this.Deserialize(ref reader, shape);
-		reader.EnsureFullyConsumed();
-		return value;
+		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
+		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
+		try
+		{
+			T value = this.Deserialize(ref reader, shape);
+			reader.EnsureFullyConsumed();
+			return value;
+		}
+		finally
+		{
+			currentReferenceTracker = priorTracker;
+		}
 	}
 
 	/// <summary>
@@ -226,7 +257,16 @@ public partial record JsonSerializer
 		}
 
 		JsonWriter jsonWriter = new(writer);
-		this.Serialize(ref jsonWriter, value, null);
+		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
+		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
+		try
+		{
+			this.Serialize(ref jsonWriter, value, null);
+		}
+		finally
+		{
+			currentReferenceTracker = priorTracker;
+		}
 	}
 
 	internal string SerializeDynamic<T>(in T? value)
@@ -268,9 +308,18 @@ public partial record JsonSerializer
 		}
 
 		JsonReader reader = new(json.AsSpan());
-		T value = this.Deserialize<T>(ref reader, null);
-		reader.EnsureFullyConsumed();
-		return value;
+		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
+		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
+		try
+		{
+			T value = this.Deserialize<T>(ref reader, null);
+			reader.EnsureFullyConsumed();
+			return value;
+		}
+		finally
+		{
+			currentReferenceTracker = priorTracker;
+		}
 	}
 
 	internal T DeserializeDynamic<T>(Stream stream)
@@ -298,7 +347,7 @@ public partial record JsonSerializer
 
 	internal void Serialize<T>(ref JsonWriter writer, in T? value, ITypeShape<T>? shape)
 	{
-		if (BuiltInJsonConverters.TrySerialize(ref writer, value))
+		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TrySerialize(ref writer, value))
 		{
 			return;
 		}
@@ -308,13 +357,17 @@ public partial record JsonSerializer
 
 	internal T Deserialize<T>(ref JsonReader reader, ITypeShape<T>? shape)
 	{
-		if (BuiltInJsonConverters.TryDeserialize(ref reader, out T value))
+		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, out T value))
 		{
 			return value;
 		}
 
 		return (shape is null ? this.ConverterCache.GetOrAddConverter<T>() : this.ConverterCache.GetOrAddConverter(shape)).Read(ref reader, this)!;
 	}
+
+	private bool CanUseBuiltInFastPath(Type type) => this.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(type);
+
+	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
 
 	private sealed class BufferWriter : IBufferWriter<byte>
 	{

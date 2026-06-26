@@ -5,6 +5,7 @@
 #pragma warning disable SA1600 // Elements should be documented
 
 using System;
+using System.Threading;
 
 namespace Nerdbank.Json;
 
@@ -50,5 +51,29 @@ internal sealed class BuiltInJsonConverter<T> : JsonConverter<T>
 		}
 
 		return value;
+	}
+}
+
+internal sealed class DeferredJsonConverter<T> : JsonConverter<T>
+{
+	private readonly ManualResetEventSlim initialized = new(false);
+	private JsonConverter<T>? inner;
+
+	internal void SetInner(JsonConverter<T> inner)
+	{
+		this.inner = inner ?? throw new ArgumentNullException(nameof(inner));
+		this.initialized.Set();
+	}
+
+	internal override void Write(ref JsonWriter writer, T? value, JsonSerializer serializer)
+	{
+		this.initialized.Wait();
+		this.inner!.Write(ref writer, value, serializer);
+	}
+
+	internal override T? Read(ref JsonReader reader, JsonSerializer serializer)
+	{
+		this.initialized.Wait();
+		return this.inner!.Read(ref reader, serializer);
 	}
 }

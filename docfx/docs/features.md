@@ -45,6 +45,7 @@ Current behavior:
 * Dictionary keys are not transformed by the property naming policy by default.
 * `JsonSerializer.DictionaryKeyNamingPolicy` can opt string-key dictionaries into key transformation.
 * `JsonSerializer.SerializeDefaultValues` can omit default-valued properties during serialization.
+* `JsonSerializer.PreserveReferences` can preserve repeated references in acyclic object graphs.
 * Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
 
 Property validation notes:
@@ -57,6 +58,11 @@ Constructor deserialization notes:
 * Required constructor parameters must appear in the JSON payload.
 * Duplicate JSON assignments to the same constructor parameter are rejected.
 * Optional constructor parameters can continue to rely on their declared default values.
+
+Reference preservation notes:
+
+* When `JsonSerializer.PreserveReferences` is enabled, reference-typed values are wrapped in JSON metadata objects using `$id`, `$ref`, and `$value`.
+* Reference cycles are rejected.
 
 Current limitations:
 

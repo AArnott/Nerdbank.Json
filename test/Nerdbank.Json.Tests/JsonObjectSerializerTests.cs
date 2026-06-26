@@ -173,6 +173,33 @@ public partial class JsonObjectSerializerTests
 		Assert.Contains("Name", exception.Message);
 	}
 
+	[Test]
+	public void SerializeDeserialize_ObjectGraph_PreserveReferences()
+	{
+		JsonSerializer serializer = new() { PreserveReferences = Nerdbank.Json.ReferencePreservationMode.RejectCycles };
+		SharedLeaf sharedLeaf = new() { Name = "Ada" };
+		SharedRoot value = new() { Left = sharedLeaf, Right = sharedLeaf };
+
+		string json = serializer.Serialize(value);
+		Assert.Equal("{\"$id\":1,\"$value\":{\"left\":{\"$id\":2,\"$value\":{\"name\":\"Ada\"}},\"right\":{\"$ref\":2}}}", json);
+
+		SharedRoot roundTripped = serializer.Deserialize<SharedRoot>(json);
+		Assert.NotNull(roundTripped.Left);
+		Assert.Same(roundTripped.Left, roundTripped.Right);
+		Assert.Equal("Ada", roundTripped.Left.Name);
+	}
+
+	[Test]
+	public void Serialize_ObjectGraph_RejectsReferenceCycles()
+	{
+		JsonSerializer serializer = new() { PreserveReferences = Nerdbank.Json.ReferencePreservationMode.RejectCycles };
+		CyclicNode node = new();
+		node.Next = node;
+
+		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => serializer.Serialize(node));
+		Assert.Contains("Reference cycles", exception.Message);
+	}
+
 	private static void AssertRoundtrip<T>(string json, JsonSerializer serializer, T expected)
 	{
 		T actual = serializer.Deserialize<T>(json);
@@ -233,5 +260,25 @@ public partial class JsonObjectSerializerTests
 		public required int Count { get; set; }
 
 		public string? Name { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class SharedRoot
+	{
+		public SharedLeaf? Left { get; set; }
+
+		public SharedLeaf? Right { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class SharedLeaf
+	{
+		public string? Name { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class CyclicNode
+	{
+		public CyclicNode? Next { get; set; }
 	}
 }
