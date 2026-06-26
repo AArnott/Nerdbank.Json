@@ -112,6 +112,24 @@ public partial class JsonObjectSerializerTests
 		AssertRoundtrip(json, serializer, value);
 	}
 
+	[Fact]
+	public void Deserialize_ObjectGraph_MissingRequiredProperty_ThrowsFormatException()
+	{
+		JsonSerializer serializer = new();
+
+		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<RequiredPropertyContainer>("{}"));
+		Assert.Contains("Name", exception.Message);
+	}
+
+	[Fact]
+	public void Deserialize_ObjectGraph_NullForNonNullableProperty_ThrowsFormatException()
+	{
+		JsonSerializer serializer = new();
+
+		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<NonNullablePropertyContainer>("{\"name\":null}"));
+		Assert.Contains("Name", exception.Message);
+	}
+
 	private static void AssertRoundtrip<T>(string json, JsonSerializer serializer, T expected)
 	{
 		T actual = serializer.Deserialize<T>(json);
@@ -152,5 +170,17 @@ public partial class JsonObjectSerializerTests
 	{
 		[PropertyShape(Name = "uri")]
 		public string? URLValue { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class RequiredPropertyContainer
+	{
+		public required string Name { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class NonNullablePropertyContainer
+	{
+		public string Name { get; set; } = string.Empty;
 	}
 }

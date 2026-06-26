@@ -11,6 +11,11 @@ using System.Collections.Generic;
 
 namespace Nerdbank.Json;
 
+internal interface IJsonDeserializeInto<TCollection>
+{
+	void DeserializeInto(ref JsonReader reader, ref TCollection collection, JsonSerializer serializer);
+}
+
 internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonConverter<TEnumerable>
 {
 	private readonly Func<TEnumerable, IEnumerable<TElement>> getEnumerable;
@@ -60,7 +65,7 @@ internal sealed class JsonReadOnlyEnumerableConverter<TEnumerable, TElement> : J
 		=> throw new NotSupportedException($"JSON deserialization does not support read-only enumerable type {typeof(TEnumerable).FullName}.");
 }
 
-internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : JsonEnumerableConverter<TEnumerable, TElement>
+internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : JsonEnumerableConverter<TEnumerable, TElement>, IJsonDeserializeInto<TEnumerable>
 {
 	private readonly EnumerableAppender<TEnumerable, TElement> addElement;
 	private readonly MutableCollectionConstructor<TElement, TEnumerable> constructor;
@@ -72,6 +77,26 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 		this.constructor = constructor;
 	}
 
+	public void DeserializeInto(ref JsonReader reader, ref TEnumerable collection, JsonSerializer serializer)
+	{
+		reader.ReadStartArray();
+		if (reader.TryReadEndArray())
+		{
+			return;
+		}
+
+		while (true)
+		{
+			this.addElement(ref collection, this.ElementConverter.Read(ref reader, serializer)!);
+			if (reader.TryReadEndArray())
+			{
+				break;
+			}
+
+			reader.ReadValueSeparator();
+		}
+	}
+
 	internal override TEnumerable? Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (reader.TryReadNull())
@@ -80,23 +105,7 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 		}
 
 		TEnumerable result = this.constructor(default);
-		reader.ReadStartArray();
-		if (reader.TryReadEndArray())
-		{
-			return result;
-		}
-
-		while (true)
-		{
-			this.addElement(ref result, this.ElementConverter.Read(ref reader, serializer)!);
-			if (reader.TryReadEndArray())
-			{
-				break;
-			}
-
-			reader.ReadValueSeparator();
-		}
-
+		this.DeserializeInto(ref reader, ref result, serializer);
 		return result;
 	}
 }
@@ -192,7 +201,7 @@ internal sealed class JsonReadOnlyDictionaryConverter<TDictionary, TKey, TValue>
 		=> throw new NotSupportedException($"JSON deserialization does not support read-only dictionary type {typeof(TDictionary).FullName}.");
 }
 
-internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> : JsonDictionaryConverter<TDictionary, TKey, TValue>
+internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> : JsonDictionaryConverter<TDictionary, TKey, TValue>, IJsonDeserializeInto<TDictionary>
 	where TKey : notnull
 {
 	private readonly DictionaryInserter<TDictionary, TKey, TValue> addEntry;
@@ -205,6 +214,28 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 		this.constructor = constructor;
 	}
 
+	public void DeserializeInto(ref JsonReader reader, ref TDictionary collection, JsonSerializer serializer)
+	{
+		reader.ReadStartObject();
+		if (reader.TryReadEndObject())
+		{
+			return;
+		}
+
+		while (true)
+		{
+			string key = reader.ReadRequiredString();
+			reader.ReadNameSeparator();
+			this.addEntry(ref collection, JsonDictionaryKeyConverter.ParseKey<TKey>(key), this.ValueConverter.Read(ref reader, serializer)!);
+			if (reader.TryReadEndObject())
+			{
+				break;
+			}
+
+			reader.ReadValueSeparator();
+		}
+	}
+
 	internal override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
 	{
 		if (reader.TryReadNull())
@@ -213,25 +244,7 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 		}
 
 		TDictionary result = this.constructor(default);
-		reader.ReadStartObject();
-		if (reader.TryReadEndObject())
-		{
-			return result;
-		}
-
-		while (true)
-		{
-			string key = reader.ReadRequiredString();
-			reader.ReadNameSeparator();
-			this.addEntry(ref result, JsonDictionaryKeyConverter.ParseKey<TKey>(key), this.ValueConverter.Read(ref reader, serializer)!);
-			if (reader.TryReadEndObject())
-			{
-				break;
-			}
-
-			reader.ReadValueSeparator();
-		}
-
+		this.DeserializeInto(ref reader, ref result, serializer);
 		return result;
 	}
 }

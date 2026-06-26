@@ -3,10 +3,13 @@
 
 #pragma warning disable SA1600 // Elements should be documented
 #pragma warning disable IL2091 // DynamicallyAccessedMembers mismatch from Activator.CreateInstance<T>
+#pragma warning disable IL2070 // Reflection-based member lookup is intentional for nullability checks.
+#pragma warning disable IL2087 // Reflection-based member lookup is intentional for nullability checks.
 
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Reflection;
 
 namespace Nerdbank.Json;
 
@@ -117,14 +120,15 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 	{
 		Getter<TDeclaringType, TPropertyType>? getter = propertyShape.HasGetter ? propertyShape.GetGetter() : null;
 		Setter<TDeclaringType, TPropertyType>? setter = propertyShape.HasSetter ? propertyShape.GetSetter() : null;
-		if (getter is null && setter is null)
+		JsonConverter<TPropertyType> converter = owner.GetOrAddConverter(propertyShape.PropertyType);
+		bool deserializeIntoExistingInstance = getter is not null && setter is null && converter is IJsonDeserializeInto<TPropertyType>;
+		if (getter is null && setter is null && !deserializeIntoExistingInstance)
 		{
 			return null;
 		}
 
 		string propertyName = owner.GetSerializedPropertyName(propertyShape.Name, propertyShape.AttributeProvider);
-		JsonConverter<TPropertyType> converter = owner.GetOrAddConverter(propertyShape.PropertyType);
-		return new JsonProperty<TDeclaringType, TPropertyType>(propertyName, getter, setter, converter);
+		return new JsonProperty<TDeclaringType, TPropertyType>(propertyName, propertyShape.Name, getter, setter, converter, deserializeIntoExistingInstance, IsNonNullableReferenceType(typeof(TDeclaringType), propertyShape.Name, typeof(TPropertyType)));
 	}
 
 	public override object? VisitSurrogate<T, TSurrogate>(ISurrogateTypeShape<T, TSurrogate> surrogateShape, object? state = null)
@@ -178,4 +182,102 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 
 		return static () => Activator.CreateInstance<T>();
 	}
+
+	private static bool IsNonNullableReferenceType(Type declaringType, string memberName, Type propertyType)
+	{
+		if (propertyType.IsValueType)
+		{
+			return false;
+		}
+
+		const BindingFlags PropertyLookup = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+		MemberInfo? memberInfo = declaringType.GetProperty(memberName, PropertyLookup) ?? (MemberInfo?)declaringType.GetField(memberName, PropertyLookup);
+		if (memberInfo is null)
+		{
+			return false;
+		}
+
+#if NET
+		NullabilityInfoContext context = new();
+		NullabilityInfo? nullability = memberInfo switch
+		{
+			PropertyInfo propertyInfo => context.Create(propertyInfo),
+			FieldInfo fieldInfo => context.Create(fieldInfo),
+			EventInfo eventInfo => context.Create(eventInfo),
+			_ => null,
+		};
+
+		if (nullability is not null)
+		{
+			return nullability.ReadState == NullabilityState.NotNull;
+		}
+
+		return false;
+#else
+		if (TryGetNullableFlag(memberInfo.CustomAttributes, out byte propertyFlag))
+		{
+			return propertyFlag == 1;
+		}
+
+		for (Type? currentType = memberInfo.DeclaringType; currentType is not null; currentType = currentType.DeclaringType)
+		{
+			if (TryGetNullableContextFlag(currentType.CustomAttributes, out byte contextFlag))
+			{
+				return contextFlag == 1;
+			}
+		}
+
+		return false;
+#endif
+	}
+
+#if !NET
+	private static bool TryGetNullableFlag(IEnumerable<CustomAttributeData> attributes, out byte flag)
+	{
+		foreach (CustomAttributeData attribute in attributes)
+		{
+			if (attribute.AttributeType.FullName != "System.Runtime.CompilerServices.NullableAttribute" || attribute.ConstructorArguments.Count == 0)
+			{
+				continue;
+			}
+
+			CustomAttributeTypedArgument argument = attribute.ConstructorArguments[0];
+			if (argument.ArgumentType == typeof(byte) && argument.Value is byte byteValue)
+			{
+				flag = byteValue;
+				return true;
+			}
+
+			if (argument.Value is IReadOnlyCollection<CustomAttributeTypedArgument> values)
+			{
+				foreach (CustomAttributeTypedArgument value in values)
+				{
+					if (value.Value is byte item)
+					{
+						flag = item;
+						return true;
+					}
+				}
+			}
+		}
+
+		flag = default;
+		return false;
+	}
+
+	private static bool TryGetNullableContextFlag(IEnumerable<CustomAttributeData> attributes, out byte flag)
+	{
+		foreach (CustomAttributeData attribute in attributes)
+		{
+			if (attribute.AttributeType.FullName == "System.Runtime.CompilerServices.NullableContextAttribute" && attribute.ConstructorArguments.Count > 0 && attribute.ConstructorArguments[0].Value is byte byteValue)
+			{
+				flag = byteValue;
+				return true;
+			}
+		}
+
+		flag = default;
+		return false;
+	}
+#endif
 }

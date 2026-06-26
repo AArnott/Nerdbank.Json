@@ -36,7 +36,7 @@ Guid value = serializer.Deserialize<Guid>(text);
 
 ## Supported Values
 
-The current serializer surface includes built-in scalar and selected BCL types, mutable object graphs with settable properties, parameterized-constructor object materialization, mutable `ICollection<T>` implementations such as `List<T>`, and mutable dictionaries whose key type is a supported simple scalar or enum-like type.
+The current serializer surface includes built-in scalar and selected BCL types, mutable object graphs with settable properties, parameterized-constructor object materialization, mutable `ICollection<T>` implementations such as `List<T>`, getter-only mutable collection properties that can be populated in place, and mutable dictionaries whose key type is a supported simple scalar or enum-like type.
 
 Examples include:
 
@@ -54,10 +54,12 @@ By default, object property names serialize as camelCase. Dictionary keys remain
 
 When deserializing through a parameterized constructor, required constructor parameters must be present in JSON and duplicate assignments to the same constructor parameter are rejected.
 
+When deserializing properties, explicit JSON `null` is rejected for non-nullable reference-type properties. Getter-only mutable collection properties are populated into their existing instances rather than replaced.
+
 ## String Escaping
 
 Strings are escaped according to RFC 8259 requirements. Characters that do not require escaping are preserved as-is instead of being over-escaped.
 
 ## Current Limitations
 
-The current implementation still does not provide immutable collection breadth, delegate serialization, arbitrary complex-object dictionary keys, or the broader contract customization system planned for the library.
+The current implementation still does not provide immutable collection breadth, delegate serialization, arbitrary complex-object dictionary keys, read-only scalar property population, or the broader contract customization system planned for the library.

@@ -2,12 +2,14 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using Nerdbank.Json;
 using PolyType;
 using Xunit;
 
 [GenerateShapeFor<List<JsonObjectSerializerTests.Person>>]
 [GenerateShapeFor<int[]>]
+[GenerateShapeFor<ReadOnlyCollection<int>>]
 public partial class JsonObjectSerializerTests
 {
 	[Fact]
@@ -74,11 +76,42 @@ public partial class JsonObjectSerializerTests
 		AssertRoundtrip(json, serializer, value);
 	}
 
+	[Fact]
+	public void SerializeDeserialize_ReadOnlyCollection_WithWitnessType()
+	{
+		JsonSerializer serializer = new();
+		ReadOnlyCollection<int> value = new(new List<int> { 3, 5, 8 });
+
+		string json = serializer.Serialize<ReadOnlyCollection<int>, JsonObjectSerializerTests>(value);
+		ReadOnlyCollection<int> roundTripped = serializer.Deserialize<ReadOnlyCollection<int>, JsonObjectSerializerTests>(json);
+
+		Assert.Equal("[3,5,8]", json);
+		AssertStructuralEqual(value, roundTripped, json);
+	}
+
+	[Fact]
+	public void Deserialize_ObjectGraph_Populates_GetterOnlyEnumerableProperty()
+	{
+		JsonSerializer serializer = new();
+
+		GetterOnlyEnumerableContainer value = serializer.Deserialize<GetterOnlyEnumerableContainer>("{\"people\":[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":null}]}");
+
+		Assert.Equal(2, value.People.Count);
+		Assert.Equal("Ada", value.People[0].Name);
+		Assert.Equal("Grace", value.People[1].Name);
+	}
+
 	[GenerateShape]
 	internal partial class EnumerableContainer
 	{
 		public List<Person>? People { get; set; }
 
 		public int[]? LuckyNumbers { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class GetterOnlyEnumerableContainer
+	{
+		public List<Person> People { get; } = [];
 	}
 }

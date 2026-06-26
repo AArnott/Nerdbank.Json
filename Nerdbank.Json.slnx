@@ -22,9 +22,11 @@
     <File Path="test/Directory.Build.targets" />
   </Folder>
   <Folder Name="/src/">
+    <Project Path="src/Nerdbank.Json.Analyzers/Nerdbank.Json.Analyzers.csproj" />
     <Project Path="src/Nerdbank.Json/Nerdbank.Json.csproj" />
   </Folder>
   <Folder Name="/test/">
+    <Project Path="test/Nerdbank.Json.Analyzers.Tests/Nerdbank.Json.Analyzers.Tests.csproj" />
     <Project Path="test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj" />
   </Folder>
 </Solution>

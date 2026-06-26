@@ -37,6 +37,7 @@ Current behavior:
 * Nested objects compose through the same converter cache.
 * Mutable `ICollection<T>` implementations with public parameterless constructors can be serialized and deserialized.
 * Mutable `IDictionary<TKey, TValue>` implementations with public parameterless constructors can be serialized and deserialized when `TKey` is a supported simple key type.
+* Getter-only mutable collection and dictionary properties are populated into their existing instances during deserialization.
 * Unknown JSON properties are ignored during deserialization.
 * Property names default to camelCase.
 * `JsonSerializer.PropertyNamingPolicy` can be set to `null` or another `JsonNamingPolicy` built-in.
@@ -44,6 +45,11 @@ Current behavior:
 * Dictionary keys are not transformed by the property naming policy by default.
 * `JsonSerializer.DictionaryKeyNamingPolicy` can opt string-key dictionaries into key transformation.
 * Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
+
+Property validation notes:
+
+* Non-nullable reference-type properties reject explicit JSON `null` values during deserialization.
+* Getter-only mutable collection properties ignore JSON `null` instead of replacing their existing collection instances.
 
 Constructor deserialization notes:
 
@@ -53,7 +59,7 @@ Constructor deserialization notes:
 
 Current limitations:
 
-* Read-only properties are not populated unless a future converter adds explicit support.
+* Read-only scalar and immutable properties are not populated unless a future converter adds explicit support.
 * Immutable or constructor-only collections are not implemented yet.
 * Dictionary keys are intentionally limited to simple scalar and enum-like types rather than arbitrary object graphs.
 * Delegate types are not supported.

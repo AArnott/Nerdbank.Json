@@ -3,6 +3,7 @@
     <TargetFrameworks>net8.0;net9.0;net472;netstandard2.0</TargetFrameworks>
     <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
     <IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)','net8.0'))">true</IsAotCompatible>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackAnalyzers</TargetsForTfmSpecificContentInPackage>
     <!-- <PackageValidationBaselineVersion>1.0.0</PackageValidationBaselineVersion> -->
   </PropertyGroup>
   <ItemGroup>
@@ -26,4 +27,24 @@
   <ItemGroup>
     <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />
   </ItemGroup>
+  <ItemGroup>
+    <AnalyzerProjectReference Include="..\Nerdbank.Json.Analyzers\Nerdbank.Json.Analyzers.csproj" />
+    <ProjectReference Include="@(AnalyzerProjectReference)">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <OutputItemType>AnalyzerAssembly</OutputItemType>
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <Target Name="ConsumeAnalyzersDirectly" AfterTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <Analyzer Include="%(AnalyzerAssembly.Identity)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="PackAnalyzers" DependsOnTargets="ResolveProjectReferences;DebugSymbolsProjectOutputGroup" Condition="'$(TargetFramework)'=='netstandard2.0'">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="%(AnalyzerAssembly.Identity)" PackagePath="analyzers\cs\" />
+    </ItemGroup>
+  </Target>
 </Project>

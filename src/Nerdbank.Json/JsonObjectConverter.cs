@@ -114,21 +114,27 @@ internal abstract class JsonProperty<TDeclaring>
 
 internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclaring>
 {
+	private readonly string memberName;
 	private readonly Getter<TDeclaring, TProperty>? getter;
 	private readonly Setter<TDeclaring, TProperty>? setter;
 	private readonly JsonConverter<TProperty> converter;
+	private readonly bool deserializeIntoExistingInstance;
+	private readonly bool isNonNullableReferenceType;
 
-	internal JsonProperty(string name, Getter<TDeclaring, TProperty>? getter, Setter<TDeclaring, TProperty>? setter, JsonConverter<TProperty> converter)
+	internal JsonProperty(string name, string memberName, Getter<TDeclaring, TProperty>? getter, Setter<TDeclaring, TProperty>? setter, JsonConverter<TProperty> converter, bool deserializeIntoExistingInstance = false, bool isNonNullableReferenceType = false)
 		: base(name)
 	{
+		this.memberName = memberName;
 		this.getter = getter;
 		this.setter = setter;
 		this.converter = converter;
+		this.deserializeIntoExistingInstance = deserializeIntoExistingInstance;
+		this.isNonNullableReferenceType = isNonNullableReferenceType;
 	}
 
 	internal override bool CanSerialize => this.getter is not null;
 
-	internal override bool CanDeserialize => this.setter is not null;
+	internal override bool CanDeserialize => this.setter is not null || this.deserializeIntoExistingInstance;
 
 	internal override void Write(ref JsonWriter writer, TDeclaring container, JsonSerializer serializer)
 	{
@@ -143,12 +149,34 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 
 	internal override void Read(ref JsonReader reader, ref TDeclaring container, JsonSerializer serializer)
 	{
+		if (this.setter is not null)
+		{
+			TProperty? value = this.converter.Read(ref reader, serializer);
+			if (this.isNonNullableReferenceType && value is null && !typeof(TProperty).IsValueType)
+			{
+				throw new FormatException($"Property '{this.memberName}' does not allow null values.");
+			}
+
+			this.setter(ref container, value!);
+			return;
+		}
+
+		if (this.deserializeIntoExistingInstance && this.getter is not null && this.converter is IJsonDeserializeInto<TProperty> deserializeInto)
+		{
+			if (!typeof(TProperty).IsValueType && reader.TryReadNull())
+			{
+				return;
+			}
+
+			TProperty collection = this.getter(ref container);
+			deserializeInto.DeserializeInto(ref reader, ref collection, serializer);
+			return;
+		}
+
 		if (this.setter is null)
 		{
 			reader.SkipValue();
 			return;
 		}
-
-		this.setter(ref container, this.converter.Read(ref reader, serializer)!);
 	}
 }

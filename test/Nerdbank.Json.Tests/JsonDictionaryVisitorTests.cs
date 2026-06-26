@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using Nerdbank.Json;
 using PolyType;
 using Xunit;
@@ -11,6 +12,7 @@ using Xunit;
 [GenerateShapeFor<Dictionary<int, string>>]
 [GenerateShapeFor<Dictionary<Guid, int>>]
 [GenerateShapeFor<Dictionary<ComplexKey, int>>]
+[GenerateShapeFor<ReadOnlyDictionary<string, int>>]
 public partial class JsonObjectSerializerTests
 {
 	[Fact]
@@ -150,6 +152,35 @@ public partial class JsonObjectSerializerTests
 		Assert.Contains(typeof(ComplexKey).FullName ?? nameof(ComplexKey), exception.Message, StringComparison.Ordinal);
 	}
 
+	[Fact]
+	public void SerializeDeserialize_ReadOnlyDictionary_WithWitnessType()
+	{
+		JsonSerializer serializer = new();
+		ReadOnlyDictionary<string, int> value = new(new Dictionary<string, int>(StringComparer.Ordinal)
+		{
+			["FirstScore"] = 10,
+			["second_score"] = 20,
+		});
+
+		string json = serializer.Serialize<ReadOnlyDictionary<string, int>, JsonObjectSerializerTests>(value);
+		ReadOnlyDictionary<string, int> roundTripped = serializer.Deserialize<ReadOnlyDictionary<string, int>, JsonObjectSerializerTests>(json);
+
+		Assert.Equal("{\"FirstScore\":10,\"second_score\":20}", json);
+		AssertStructuralEqual(value, roundTripped, json);
+	}
+
+	[Fact]
+	public void Deserialize_ObjectGraph_Populates_GetterOnlyDictionaryProperty()
+	{
+		JsonSerializer serializer = new();
+
+		GetterOnlyDictionaryContainer value = serializer.Deserialize<GetterOnlyDictionaryContainer>("{\"scores\":{\"FirstScore\":10,\"second_score\":20}}");
+
+		Assert.Equal(2, value.Scores.Count);
+		Assert.Equal(10, value.Scores["FirstScore"]);
+		Assert.Equal(20, value.Scores["second_score"]);
+	}
+
 	[GenerateShape]
 	internal partial class DictionaryContainer
 	{
@@ -160,6 +191,12 @@ public partial class JsonObjectSerializerTests
 	internal partial class IntKeyDictionaryContainer
 	{
 		public Dictionary<int, string>? Counts { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class GetterOnlyDictionaryContainer
+	{
+		public Dictionary<string, int> Scores { get; } = new(StringComparer.Ordinal);
 	}
 
 	[GenerateShape]
