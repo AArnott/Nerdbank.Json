@@ -10,4 +10,20 @@
     <PackageReference Include="System.Buffers" />
     <PackageReference Include="System.Memory" />
   </ItemGroup>
+  <ItemGroup>
+    <None Update="JsonSerializer.AutomatedFriendlyOverloads.tt">
+      <Generator>TextTemplatingFileGenerator</Generator>
+      <LastGenOutput>JsonSerializer.AutomatedFriendlyOverloads.cs</LastGenOutput>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Update="JsonSerializer.AutomatedFriendlyOverloads.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>JsonSerializer.AutomatedFriendlyOverloads.tt</DependentUpon>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />
+  </ItemGroup>
 </Project>

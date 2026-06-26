@@ -8,6 +8,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+#pragma warning disable SA1600 // Internal helper members added for overload forwarding are intentionally undocumented.
+
 namespace Nerdbank.Json;
 
 /// <summary>
@@ -56,15 +58,21 @@ public partial record JsonSerializer
 	/// <typeparam name="T">The type of value to serialize.</typeparam>
 	/// <param name="writer">The destination buffer.</param>
 	/// <param name="value">The value to serialize.</param>
-	public void Serialize<T>(IBufferWriter<byte> writer, T value)
+	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
+	public void Serialize<T>(IBufferWriter<byte> writer, in T? value, ITypeShape<T> shape)
 	{
 		if (writer is null)
 		{
 			throw new ArgumentNullException(nameof(writer));
 		}
 
+		if (shape is null)
+		{
+			throw new ArgumentNullException(nameof(shape));
+		}
+
 		JsonWriter jsonWriter = new(writer);
-		this.Serialize(ref jsonWriter, value);
+		this.Serialize(ref jsonWriter, value, shape);
 	}
 
 	/// <summary>
@@ -72,11 +80,12 @@ public partial record JsonSerializer
 	/// </summary>
 	/// <typeparam name="T">The type of value to serialize.</typeparam>
 	/// <param name="value">The value to serialize.</param>
+	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
 	/// <returns>The serialized JSON text.</returns>
-	public string Serialize<T>(T value)
+	public string Serialize<T>(in T? value, ITypeShape<T> shape)
 	{
 		BufferWriter buffer = new();
-		this.Serialize(buffer, value);
+		this.Serialize(buffer, value, shape);
 		return Encoding.UTF8.GetString(buffer.WrittenArray, 0, buffer.WrittenCount);
 	}
 
@@ -86,7 +95,8 @@ public partial record JsonSerializer
 	/// <typeparam name="T">The type of value to serialize.</typeparam>
 	/// <param name="stream">The destination stream.</param>
 	/// <param name="value">The value to serialize.</param>
-	public void Serialize<T>(Stream stream, T value)
+	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
+	public void Serialize<T>(Stream stream, in T? value, ITypeShape<T> shape)
 	{
 		if (stream is null)
 		{
@@ -94,7 +104,7 @@ public partial record JsonSerializer
 		}
 
 		BufferWriter buffer = new();
-		this.Serialize(buffer, value);
+		this.Serialize(buffer, value, shape);
 		stream.Write(buffer.WrittenArray, 0, buffer.WrittenCount);
 	}
 
@@ -104,9 +114,10 @@ public partial record JsonSerializer
 	/// <typeparam name="T">The type of value to serialize.</typeparam>
 	/// <param name="stream">The destination stream.</param>
 	/// <param name="value">The value to serialize.</param>
+	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>A task that completes when serialization finishes.</returns>
-	public async ValueTask SerializeAsync<T>(Stream stream, T value, CancellationToken cancellationToken = default)
+	public async ValueTask SerializeAsync<T>(Stream stream, T? value, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		if (stream is null)
 		{
@@ -114,7 +125,7 @@ public partial record JsonSerializer
 		}
 
 		BufferWriter buffer = new();
-		this.Serialize(buffer, value);
+		this.Serialize(buffer, value, shape);
 		await stream.WriteAsync(buffer.WrittenArray, 0, buffer.WrittenCount, cancellationToken).ConfigureAwait(false);
 	}
 
@@ -123,30 +134,36 @@ public partial record JsonSerializer
 	/// </summary>
 	/// <param name="value">The value to serialize.</param>
 	/// <returns>The serialized JSON text.</returns>
-	public string Serialize(string? value) => this.Serialize<string?>(value);
+	public string Serialize(string? value) => this.SerializeDynamic<string?>(value);
 
 	/// <summary>
 	/// Serializes a boolean value to JSON text.
 	/// </summary>
 	/// <param name="value">The value to serialize.</param>
 	/// <returns>The serialized JSON text.</returns>
-	public string Serialize(bool value) => this.Serialize<bool>(value);
+	public string Serialize(bool value) => this.SerializeDynamic<bool>(value);
 
 	/// <summary>
 	/// Deserializes JSON text.
 	/// </summary>
 	/// <typeparam name="T">The type to deserialize.</typeparam>
 	/// <param name="json">The JSON text.</param>
+	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
 	/// <returns>The deserialized value.</returns>
-	public T Deserialize<T>(string json)
+	public T Deserialize<T>(string json, ITypeShape<T> shape)
 	{
 		if (json is null)
 		{
 			throw new ArgumentNullException(nameof(json));
 		}
 
+		if (shape is null)
+		{
+			throw new ArgumentNullException(nameof(shape));
+		}
+
 		JsonReader reader = new(json.AsSpan());
-		T value = this.Deserialize<T>(ref reader);
+		T value = this.Deserialize(ref reader, shape);
 		reader.EnsureFullyConsumed();
 		return value;
 	}
@@ -156,8 +173,9 @@ public partial record JsonSerializer
 	/// </summary>
 	/// <typeparam name="T">The type to deserialize.</typeparam>
 	/// <param name="stream">The JSON stream.</param>
+	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
 	/// <returns>The deserialized value.</returns>
-	public T Deserialize<T>(Stream stream)
+	public T Deserialize<T>(Stream stream, ITypeShape<T> shape)
 	{
 		if (stream is null)
 		{
@@ -165,7 +183,7 @@ public partial record JsonSerializer
 		}
 
 		using StreamReader reader = new(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, 1024, leaveOpen: true);
-		return this.Deserialize<T>(reader.ReadToEnd());
+		return this.Deserialize(reader.ReadToEnd(), shape);
 	}
 
 	/// <summary>
@@ -173,9 +191,10 @@ public partial record JsonSerializer
 	/// </summary>
 	/// <typeparam name="T">The type to deserialize.</typeparam>
 	/// <param name="stream">The JSON stream.</param>
+	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>A task that produces the deserialized value.</returns>
-	public async ValueTask<T> DeserializeAsync<T>(Stream stream, CancellationToken cancellationToken = default)
+	public async ValueTask<T> DeserializeAsync<T>(Stream stream, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		if (stream is null)
 		{
@@ -184,27 +203,105 @@ public partial record JsonSerializer
 
 		using MemoryStream buffer = new();
 		await stream.CopyToAsync(buffer, 81920, cancellationToken).ConfigureAwait(false);
-		return this.Deserialize<T>(Encoding.UTF8.GetString(buffer.ToArray()));
+		return this.Deserialize(Encoding.UTF8.GetString(buffer.ToArray()), shape);
 	}
 
-	private void Serialize<T>(ref JsonWriter writer, T value)
+	internal void SerializeDynamic<T>(IBufferWriter<byte> writer, in T? value)
+	{
+		if (writer is null)
+		{
+			throw new ArgumentNullException(nameof(writer));
+		}
+
+		JsonWriter jsonWriter = new(writer);
+		this.Serialize(ref jsonWriter, value, null);
+	}
+
+	internal string SerializeDynamic<T>(in T? value)
+	{
+		BufferWriter buffer = new();
+		this.SerializeDynamic(buffer, value);
+		return Encoding.UTF8.GetString(buffer.WrittenArray, 0, buffer.WrittenCount);
+	}
+
+	internal void SerializeDynamic<T>(Stream stream, in T? value)
+	{
+		if (stream is null)
+		{
+			throw new ArgumentNullException(nameof(stream));
+		}
+
+		BufferWriter buffer = new();
+		this.SerializeDynamic(buffer, value);
+		stream.Write(buffer.WrittenArray, 0, buffer.WrittenCount);
+	}
+
+	internal async ValueTask SerializeAsyncDynamic<T>(Stream stream, T? value, CancellationToken cancellationToken = default)
+	{
+		if (stream is null)
+		{
+			throw new ArgumentNullException(nameof(stream));
+		}
+
+		BufferWriter buffer = new();
+		this.SerializeDynamic(buffer, value);
+		await stream.WriteAsync(buffer.WrittenArray, 0, buffer.WrittenCount, cancellationToken).ConfigureAwait(false);
+	}
+
+	internal T DeserializeDynamic<T>(string json)
+	{
+		if (json is null)
+		{
+			throw new ArgumentNullException(nameof(json));
+		}
+
+		JsonReader reader = new(json.AsSpan());
+		T value = this.Deserialize<T>(ref reader, null);
+		reader.EnsureFullyConsumed();
+		return value;
+	}
+
+	internal T DeserializeDynamic<T>(Stream stream)
+	{
+		if (stream is null)
+		{
+			throw new ArgumentNullException(nameof(stream));
+		}
+
+		using StreamReader reader = new(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, 1024, leaveOpen: true);
+		return this.DeserializeDynamic<T>(reader.ReadToEnd());
+	}
+
+	internal async ValueTask<T> DeserializeAsyncDynamic<T>(Stream stream, CancellationToken cancellationToken = default)
+	{
+		if (stream is null)
+		{
+			throw new ArgumentNullException(nameof(stream));
+		}
+
+		using MemoryStream buffer = new();
+		await stream.CopyToAsync(buffer, 81920, cancellationToken).ConfigureAwait(false);
+		return this.DeserializeDynamic<T>(Encoding.UTF8.GetString(buffer.ToArray()));
+	}
+
+	internal void Serialize<T>(ref JsonWriter writer, in T? value, ITypeShape<T>? shape)
 	{
 		if (BuiltInJsonConverters.TrySerialize(ref writer, value))
 		{
 			return;
 		}
 
-		this.ConverterCache.GetOrAddConverter<T>().Write(ref writer, value, this);
+		(shape is null ? this.ConverterCache.GetOrAddConverter<T>() : this.ConverterCache.GetOrAddConverter(shape)).Write(ref writer, value, this);
 	}
 
-	private T Deserialize<T>(ref JsonReader reader)
+	internal T Deserialize<T>(ref JsonReader reader, ITypeShape<T>? shape)
 	{
 		if (BuiltInJsonConverters.TryDeserialize(ref reader, out T value))
 		{
 			return value;
 		}
 
-		return this.ConverterCache.GetOrAddConverter<T>().Read(ref reader, this)!;
+		return (shape is null ? this.ConverterCache.GetOrAddConverter<T>() : this.ConverterCache.GetOrAddConverter(shape)).Read(ref reader, this)!;
 	}
 
 	private sealed class BufferWriter : IBufferWriter<byte>

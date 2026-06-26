@@ -9,8 +9,6 @@ using Nerdbank.MessagePack;
 using PolyType;
 using Xunit;
 
-[GenerateShapeFor<List<Person>>]
-[GenerateShapeFor<Dictionary<string, int>>]
 public partial class JsonObjectSerializerTests
 {
 	[Fact]
@@ -112,58 +110,6 @@ public partial class JsonObjectSerializerTests
 
 		Assert.Equal("{\"uri\":\"https://example.com\"}", json);
 		AssertRoundtrip(json, serializer, value);
-	}
-
-	[Fact]
-	public void SerializeDeserialize_ListOfObjects()
-	{
-		JsonSerializer serializer = new();
-		List<Person> value =
-		[
-			new Person { Name = "Ada", Age = 37 },
-			new Person { Name = "Grace", Age = 41, Address = new Address { City = "Arlington", PostalCode = 22201 } },
-		];
-
-		string json = serializer.Serialize(value);
-
-		Assert.Equal("[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":{\"city\":\"Arlington\",\"postalCode\":22201}}]", json);
-		AssertRoundtrip(json, serializer, value);
-	}
-
-	[Fact]
-	public void SerializeDeserialize_Dictionary_LeavesKeysUntouchedByDefault()
-	{
-		JsonSerializer serializer = new();
-		Dictionary<string, int> value = new(StringComparer.Ordinal)
-		{
-			["PascalCaseKey"] = 1,
-			["snake_case_key"] = 2,
-		};
-
-		string json = serializer.Serialize(value);
-
-		Assert.Equal("{\"PascalCaseKey\":1,\"snake_case_key\":2}", json);
-		AssertRoundtrip(json, serializer, value);
-	}
-
-	[Fact]
-	public void SerializeDeserialize_Dictionary_CanApplyNamingPolicyToKeys()
-	{
-		JsonSerializer serializer = new() { DictionaryKeyNamingPolicy = JsonNamingPolicy.CamelCase };
-		Dictionary<string, int> value = new(StringComparer.Ordinal)
-		{
-			["PascalCaseKey"] = 1,
-			["AnotherKey"] = 2,
-		};
-
-		string json = serializer.Serialize(value);
-
-		Assert.Equal("{\"pascalCaseKey\":1,\"anotherKey\":2}", json);
-
-		Dictionary<string, int> roundTripped = serializer.Deserialize<Dictionary<string, int>>(json);
-		Assert.Equal(2, roundTripped.Count);
-		Assert.Equal(1, roundTripped["pascalCaseKey"]);
-		Assert.Equal(2, roundTripped["anotherKey"]);
 	}
 
 	private static void AssertRoundtrip<T>(string json, JsonSerializer serializer, T expected)

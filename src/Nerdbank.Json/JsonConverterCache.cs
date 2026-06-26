@@ -17,6 +17,7 @@ internal sealed class JsonConverterCache
 {
 	private readonly ConcurrentDictionary<Type, JsonConverter> cachedConverters = new();
 	private readonly ConcurrentDictionary<Type, ITypeShape> cachedTypeShapes = new();
+	private readonly ConcurrentDictionary<(Type TargetType, Type ProviderType), ITypeShape> cachedWitnessTypeShapes = new();
 	private readonly JsonSerializerConfiguration configuration;
 
 	internal JsonConverterCache(JsonSerializerConfiguration configuration)
@@ -36,6 +37,17 @@ internal sealed class JsonConverterCache
 		if (!this.cachedTypeShapes.TryGetValue(type, out ITypeShape? shape))
 		{
 			shape = this.cachedTypeShapes.GetOrAdd(type, TypeShapeResolver.ResolveDynamicOrThrow<T>());
+		}
+
+		return (ITypeShape<T>)shape;
+	}
+
+	internal ITypeShape<T> ResolveDynamicTypeShapeOrThrow<T, TProvider>()
+	{
+		(Type TargetType, Type ProviderType) key = (typeof(T), typeof(TProvider));
+		if (!this.cachedWitnessTypeShapes.TryGetValue(key, out ITypeShape? shape))
+		{
+			shape = this.cachedWitnessTypeShapes.GetOrAdd(key, TypeShapeResolver.ResolveDynamicOrThrow<T, TProvider>());
 		}
 
 		return (ITypeShape<T>)shape;
@@ -98,9 +110,15 @@ internal sealed class JsonConverterCache
 
 	private bool TryCreateCollectionConverter(Type type, out JsonConverter? converter)
 	{
-		if (TryGetGenericInterface(type, typeof(IDictionary<,>), out Type[]? dictionaryArguments) && dictionaryArguments![0] == typeof(string) && HasDefaultConstructor(type))
+		if (TryGetGenericInterface(type, typeof(IDictionary<,>), out Type[]? dictionaryArguments) && HasDefaultConstructor(type))
 		{
-			Type converterType = typeof(JsonStringKeyDictionaryConverter<,>).MakeGenericType(type, dictionaryArguments[1]);
+			if (!JsonDictionaryKeyConverter.IsSupported(dictionaryArguments![0]))
+			{
+				converter = null;
+				return false;
+			}
+
+			Type converterType = typeof(JsonDictionaryCollectionConverter<,,>).MakeGenericType(type, dictionaryArguments[0], dictionaryArguments[1]);
 			converter = (JsonConverter)Activator.CreateInstance(converterType, this)!;
 			return true;
 		}
