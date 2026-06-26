@@ -50,10 +50,13 @@ Current behavior:
 * `JsonSerializer.Converters` can register concrete runtime converters for exact target types.
 * `JsonSerializer.ConverterTypes` can register converter classes, including open generic converter types.
 * `JsonSerializer.ConverterFactories` can register runtime converter factories for type-driven interception.
+* `JsonConverterAttribute` can attach custom converters directly to types, properties, and constructor parameters.
 * `JsonSerializer.SerializeDefaultValues` can omit default-valued properties during serialization.
 * `JsonSerializer.SerializeEnumValuesByName` can serialize enums as strings when simple names exist.
 * `JsonSerializer.DeserializeDefaultValues` can relax required-member and non-nullable reference enforcement during deserialization.
 * `JsonSerializer.PreserveReferences` can preserve repeated references in acyclic object graphs.
+* `JsonSerializer.AllowTrailingCommas` can accept trailing commas while reading arrays and objects.
+* `JsonSerializer.ReadCommentHandling` can skip `//` and `/* */` comments while deserializing.
 * Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
 
 Converter registration notes:
@@ -61,6 +64,8 @@ Converter registration notes:
 * Runtime converter instances take precedence over runtime converter types.
 * Runtime converter types take precedence over runtime converter factories.
 * Runtime converter factories take precedence over built-in and PolyType-generated converters.
+* Attribute-driven converters on a member or constructor parameter override the default converter selection for that specific serialized slot.
+* Attribute-driven converters on a type override built-in and PolyType-generated conversion for that type.
 * Open generic converter types are matched against the open generic target type definition and activated for the closed target type being serialized.
 
 Property validation notes:

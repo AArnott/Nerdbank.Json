@@ -13,7 +13,15 @@ The current implementation includes a low-level writer/reader pair, a built-in c
 * Mutable `ICollection<T>` implementations with public parameterless constructors, including `List<T>`.
 * Mutable `IDictionary<string, TValue>` implementations with public parameterless constructors, including `Dictionary<string, TValue>`.
 * camelCase property naming by default, configurable with `JsonNamingPolicy`.
+* Optional indented output for human-readable JSON.
+* Optional case-insensitive property-name matching during deserialization.
+* Optional enum-name serialization with numeric fallback for unnamed values.
+* Runtime custom converter registration with converter instances, converter types, or converter factories.
+* Attribute-driven custom converter registration on types, properties, and constructor parameters.
 * Built-in byte buffer handling using Base64 JSON strings.
+* Optional trailing-comma and comment skipping support during deserialization.
+* Configurable deserialization policy for missing required values and non-nullable reference validation.
+* Optional acyclic reference preservation.
 * Synchronous stream and async stream overloads.
 * Multi-targeting across modern .NET and .NET Framework.
 * Test-driven development with focused round-trip coverage for the current built-in type surface.
@@ -75,5 +83,25 @@ This naming policy applies to object property names. Dictionary keys remain unch
 JsonSerializer serializer = new()
 {
 	DictionaryKeyNamingPolicy = JsonNamingPolicy.CamelCase,
+};
+```
+
+To attach a converter directly to a type or member instead of registering it globally:
+
+```csharp
+[JsonConverter(typeof(MyValueConverter))]
+public partial class MyValue
+{
+	public string? Name { get; set; }
+}
+```
+
+To accept more human-authored JSON during deserialization:
+
+```csharp
+JsonSerializer serializer = new()
+{
+	AllowTrailingCommas = true,
+	ReadCommentHandling = JsonCommentHandling.Skip,
 };
 ```

@@ -14,6 +14,8 @@ namespace Nerdbank.Json;
 /// </summary>
 public ref struct JsonReader
 {
+	private readonly bool allowTrailingCommas;
+	private readonly JsonCommentHandling commentHandling;
 	private ReadOnlySpan<char> json;
 	private int position;
 
@@ -21,8 +23,12 @@ public ref struct JsonReader
 	/// Initializes a new instance of the <see cref="JsonReader"/> struct.
 	/// </summary>
 	/// <param name="json">The JSON text to read from.</param>
-	public JsonReader(ReadOnlySpan<char> json)
+	/// <param name="allowTrailingCommas">A value indicating whether trailing commas should be accepted while reading arrays and objects.</param>
+	/// <param name="commentHandling">The policy for handling comments during deserialization.</param>
+	public JsonReader(ReadOnlySpan<char> json, bool allowTrailingCommas = false, JsonCommentHandling commentHandling = JsonCommentHandling.Disallow)
 	{
+		this.allowTrailingCommas = allowTrailingCommas;
+		this.commentHandling = commentHandling;
 		this.json = json;
 		this.position = 0;
 	}
@@ -193,14 +199,7 @@ public ref struct JsonReader
 	/// <returns><see langword="true"/> if the end of the object was consumed; otherwise, <see langword="false"/>.</returns>
 	public bool TryReadEndObject()
 	{
-		this.SkipWhiteSpace();
-		if (this.position < this.json.Length && this.json[this.position] == '}')
-		{
-			this.position++;
-			return true;
-		}
-
-		return false;
+		return this.TryReadEndToken('}');
 	}
 
 	/// <summary>
@@ -229,14 +228,7 @@ public ref struct JsonReader
 	/// <returns><see langword="true"/> if the end of the array was consumed; otherwise, <see langword="false"/>.</returns>
 	public bool TryReadEndArray()
 	{
-		this.SkipWhiteSpace();
-		if (this.position < this.json.Length && this.json[this.position] == ']')
-		{
-			this.position++;
-			return true;
-		}
-
-		return false;
+		return this.TryReadEndToken(']');
 	}
 
 	/// <summary>
@@ -244,9 +236,10 @@ public ref struct JsonReader
 	/// </summary>
 	public void ReadEndArray()
 	{
-		this.SkipWhiteSpace();
-		this.RequireCurrent(']');
-		this.position++;
+		if (!this.TryReadEndArray())
+		{
+			throw new FormatException("Expected ']' in JSON input.");
+		}
 	}
 
 	/// <summary>
@@ -323,10 +316,78 @@ public ref struct JsonReader
 
 	private void SkipWhiteSpace()
 	{
-		while (this.position < this.json.Length && char.IsWhiteSpace(this.json[this.position]))
+		this.position = this.SkipInsignificantCharacters(this.position);
+	}
+
+	private int SkipInsignificantCharacters(int index)
+	{
+		while (index < this.json.Length)
 		{
-			this.position++;
+			char ch = this.json[index];
+			if (char.IsWhiteSpace(ch))
+			{
+				index++;
+				continue;
+			}
+
+			if (this.commentHandling == JsonCommentHandling.Skip && ch == '/' && index + 1 < this.json.Length)
+			{
+				char next = this.json[index + 1];
+				if (next == '/')
+				{
+					index += 2;
+					while (index < this.json.Length && this.json[index] is not '\r' and not '\n')
+					{
+						index++;
+					}
+
+					continue;
+				}
+
+				if (next == '*')
+				{
+					index += 2;
+					while (index + 1 < this.json.Length && !(this.json[index] == '*' && this.json[index + 1] == '/'))
+					{
+						index++;
+					}
+
+					if (index + 1 >= this.json.Length)
+					{
+						throw new FormatException("Unterminated JSON block comment.");
+					}
+
+					index += 2;
+					continue;
+				}
+			}
+
+			break;
 		}
+
+		return index;
+	}
+
+	private bool TryReadEndToken(char endToken)
+	{
+		int index = this.SkipInsignificantCharacters(this.position);
+		if (index < this.json.Length && this.json[index] == endToken)
+		{
+			this.position = index + 1;
+			return true;
+		}
+
+		if (this.allowTrailingCommas && index < this.json.Length && this.json[index] == ',')
+		{
+			int afterComma = this.SkipInsignificantCharacters(index + 1);
+			if (afterComma < this.json.Length && this.json[afterComma] == endToken)
+			{
+				this.position = afterComma + 1;
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private bool TryConsume(char expected)

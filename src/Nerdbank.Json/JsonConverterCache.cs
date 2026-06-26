@@ -115,12 +115,27 @@ internal sealed class JsonConverterCache
 	internal string GetSerializedDictionaryKey(string key)
 		=> this.configuration.DictionaryKeyNamingPolicy?.ConvertName(key) ?? key;
 
+	internal JsonConverter<T> GetConverter<T>(ITypeShape<T> shape, IGenericCustomAttributeProvider? attributeProvider)
+	{
+		if (this.TryGetConverterFromAttribute(shape.Type, shape, attributeProvider, out JsonConverter? converter) && converter is not null)
+		{
+			return this.RequireTypedConverter<T>(converter);
+		}
+
+		return this.GetOrAddConverter(shape);
+	}
+
 	private JsonConverter CreateConverter<T>()
 	{
 		ITypeShape<T>? shape = this.TryResolveDynamicTypeShape<T>();
 		if (this.TryGetRuntimeProfferedConverter(typeof(T), shape, out JsonConverter? runtimeConverter) && runtimeConverter is not null)
 		{
 			return this.WrapWithReferencePreservation(this.RequireTypedConverter<T>(runtimeConverter));
+		}
+
+		if (this.TryGetConverterFromAttribute(typeof(T), shape, attributeProvider: null, out JsonConverter? attributedConverter) && attributedConverter is not null)
+		{
+			return this.WrapWithReferencePreservation(this.RequireTypedConverter<T>(attributedConverter));
 		}
 
 		if (BuiltInJsonConverters.IsSupported(typeof(T)))
@@ -141,6 +156,11 @@ internal sealed class JsonConverterCache
 		if (this.TryGetRuntimeProfferedConverter(shape.Type, shape, out JsonConverter? runtimeConverter) && runtimeConverter is not null)
 		{
 			return this.WrapWithReferencePreservation(this.RequireTypedConverter<T>(runtimeConverter));
+		}
+
+		if (this.TryGetConverterFromAttribute(shape.Type, shape, attributeProvider: null, out JsonConverter? attributedConverter) && attributedConverter is not null)
+		{
+			return this.WrapWithReferencePreservation(this.RequireTypedConverter<T>(attributedConverter));
 		}
 
 		if (BuiltInJsonConverters.IsSupported(shape.Type))
@@ -177,6 +197,33 @@ internal sealed class JsonConverterCache
 		}
 
 		throw new InvalidOperationException($"Converter '{converter.GetType().FullName}' was registered for '{typeof(T).FullName}' but does not derive from JsonConverter<{typeof(T).Name}>.");
+	}
+
+	private bool TryGetConverterFromAttribute(Type type, ITypeShape? typeShape, IGenericCustomAttributeProvider? attributeProvider, out JsonConverter? converter)
+	{
+		JsonConverterAttribute? attribute = null;
+		if (attributeProvider is not null)
+		{
+			foreach (JsonConverterAttribute candidate in attributeProvider.GetCustomAttributes<JsonConverterAttribute>(inherit: false))
+			{
+				attribute = candidate;
+				break;
+			}
+		}
+
+		if (attribute is null && type.GetCustomAttributes(typeof(JsonConverterAttribute), inherit: false) is object[] typeAttributes && typeAttributes.Length > 0)
+		{
+			attribute = (JsonConverterAttribute)typeAttributes[0];
+		}
+
+		if (attribute is null)
+		{
+			converter = null;
+			return false;
+		}
+
+		converter = ActivateConverterType(type, attribute.ConverterType);
+		return true;
 	}
 
 	private ITypeShape<T>? TryResolveDynamicTypeShape<T>()

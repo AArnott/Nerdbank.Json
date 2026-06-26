@@ -16,10 +16,12 @@ internal record JsonSerializerConfiguration
 	private JsonConverterCollection converters = new();
 	private IReadOnlyList<IJsonConverterFactory> converterFactories = Array.Empty<IJsonConverterFactory>();
 	private JsonConverterTypeCollection converterTypes = new();
+	private bool allowTrailingCommas;
 	private DeserializeDefaultValuesPolicy deserializeDefaultValues;
 	private JsonNamingPolicy? dictionaryKeyNamingPolicy;
 	private bool propertyNameCaseInsensitive;
 	private JsonNamingPolicy? propertyNamingPolicy = JsonNamingPolicy.CamelCase;
+	private JsonCommentHandling readCommentHandling;
 	private ReferencePreservationMode preserveReferences;
 	private bool serializeEnumValuesByName;
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
@@ -55,6 +57,12 @@ internal record JsonSerializerConfiguration
 			this.converterFactories = value;
 			this.converterCache = null;
 		}
+	}
+
+	internal bool AllowTrailingCommas
+	{
+		get => this.allowTrailingCommas;
+		init => this.allowTrailingCommas = value;
 	}
 
 	internal JsonNamingPolicy? PropertyNamingPolicy
@@ -131,5 +139,11 @@ internal record JsonSerializerConfiguration
 	{
 		get => this.writeIndented;
 		init => this.writeIndented = value;
+	}
+
+	internal JsonCommentHandling ReadCommentHandling
+	{
+		get => this.readCommentHandling;
+		init => this.readCommentHandling = value;
 	}
 }

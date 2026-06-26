@@ -82,6 +82,42 @@ public class JsonSerializerTests
 		Assert.Null(serializer.Deserialize<Uri?>("null"));
 	}
 
+	[Test]
+	public void Deserialize_Point_AllowsTrailingComma_WhenEnabled()
+	{
+		JsonSerializer serializer = new() { AllowTrailingCommas = true };
+
+		Point value = serializer.Deserialize<Point>("[12,-34,]");
+
+		Assert.Equal(new Point(12, -34), value);
+	}
+
+	[Test]
+	public void Deserialize_Point_TrailingComma_ThrowsByDefault()
+	{
+		JsonSerializer serializer = new();
+
+		Assert.Throws<FormatException>(() => serializer.Deserialize<Point>("[12,-34,]"));
+	}
+
+	[Test]
+	public void Deserialize_Point_SkipsComments_WhenEnabled()
+	{
+		JsonSerializer serializer = new() { ReadCommentHandling = JsonCommentHandling.Skip };
+
+		Point value = serializer.Deserialize<Point>("[/* x */12, // y\r\n -34]");
+
+		Assert.Equal(new Point(12, -34), value);
+	}
+
+	[Test]
+	public void Deserialize_Point_Comments_ThrowByDefault()
+	{
+		JsonSerializer serializer = new();
+
+		Assert.Throws<FormatException>(() => serializer.Deserialize<Point>("[/* x */12,-34]"));
+	}
+
 	private static void AssertRoundtrip<T>(T value, string expectedJson)
 	{
 		JsonSerializer serializer = new();

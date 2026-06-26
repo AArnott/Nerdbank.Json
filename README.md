@@ -19,8 +19,11 @@ The current implementation includes a low-level writer/reader pair, a built-in c
 * Optional case-insensitive property-name matching during deserialization.
 * Optional enum-name serialization with numeric fallback for unnamed values.
 * Runtime custom converter registration with converter instances, converter types, or converter factories.
+* Attribute-driven custom converter registration on types, properties, and constructor parameters.
 * Built-in byte buffer handling using Base64 JSON strings.
+* Optional trailing-comma and comment skipping support during deserialization.
 * Configurable deserialization policy for missing required values and non-nullable reference validation.
+* Optional acyclic reference preservation.
 * Synchronous stream and async stream overloads.
 * Multi-targeting across modern .NET and .NET Framework.
 * Test-driven development with focused round-trip coverage for the current built-in type surface.
@@ -105,6 +108,26 @@ JsonSerializer serializer = new()
 };
 ```
 
+To attach a converter directly to a type or member instead of registering it globally:
+
+```csharp
+[JsonConverter(typeof(MyValueConverter))]
+public partial class MyValue
+{
+	public string? Name { get; set; }
+}
+```
+
+To accept more human-authored JSON during deserialization:
+
+```csharp
+JsonSerializer serializer = new()
+{
+	AllowTrailingCommas = true,
+	ReadCommentHandling = JsonCommentHandling.Skip,
+};
+```
+
 ## Design Notes
 
 * The low-level JSON writer does not delegate to another serializer.
@@ -113,6 +136,8 @@ JsonSerializer serializer = new()
 * The current object-graph layer supports mutable types with settable properties, uses camelCase property names by default, and ignores unknown JSON properties during deserialization.
 * Mutable `ICollection<T>` and `IDictionary<string, TValue>` implementations with public parameterless constructors are supported through the same converter cache.
 * Runtime-registered converters are consulted before built-in and PolyType-generated converters.
+* `JsonConverterAttribute` can override converter selection for a type, property, or constructor parameter.
+* Deserialization can optionally skip comments and accept trailing commas.
 * Current stream overloads buffer the full payload before reading or writing; incremental streaming APIs will come later.
 
 ## Status

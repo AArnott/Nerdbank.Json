@@ -60,6 +60,18 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
+	/// Gets a value indicating whether a trailing comma is permitted before the end of a JSON array or object during deserialization.
+	/// </summary>
+	/// <remarks>
+	/// The default value is <see langword="false"/>.
+	/// </remarks>
+	public bool AllowTrailingCommas
+	{
+		get => this.configuration.AllowTrailingCommas;
+		init => this.configuration = this.configuration with { AllowTrailingCommas = value };
+	}
+
+	/// <summary>
 	/// Gets the runtime-registered converter types that take precedence after <see cref="Converters"/>.
 	/// </summary>
 	public JsonConverterTypeCollection ConverterTypes
@@ -75,6 +87,18 @@ public partial record JsonSerializer
 	{
 		get => this.configuration.ConverterFactories;
 		init => this.configuration = this.configuration with { ConverterFactories = value };
+	}
+
+	/// <summary>
+	/// Gets the policy for handling JSON comments during deserialization.
+	/// </summary>
+	/// <remarks>
+	/// The default value is <see cref="JsonCommentHandling.Disallow"/>.
+	/// </remarks>
+	public JsonCommentHandling ReadCommentHandling
+	{
+		get => this.configuration.ReadCommentHandling;
+		init => this.configuration = this.configuration with { ReadCommentHandling = value };
 	}
 
 	/// <summary>
@@ -272,7 +296,7 @@ public partial record JsonSerializer
 			throw new ArgumentNullException(nameof(shape));
 		}
 
-		JsonReader reader = new(json.AsSpan());
+		JsonReader reader = new(json.AsSpan(), this.AllowTrailingCommas, this.ReadCommentHandling);
 		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
 		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
 		try
@@ -383,7 +407,7 @@ public partial record JsonSerializer
 			throw new ArgumentNullException(nameof(json));
 		}
 
-		JsonReader reader = new(json.AsSpan());
+		JsonReader reader = new(json.AsSpan(), this.AllowTrailingCommas, this.ReadCommentHandling);
 		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
 		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
 		try

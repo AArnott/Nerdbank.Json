@@ -56,6 +56,58 @@ public partial class JsonObjectSerializerTests
 		Assert.Equal(value, roundTripped);
 	}
 
+	[Test]
+	public void SerializeDeserialize_CanUseTypeAttributedConverter_WithoutShape()
+	{
+		JsonSerializer serializer = new();
+		AttributedStringWrapper value = new() { Value = "Ada" };
+
+		string json = serializer.Serialize(value);
+		AttributedStringWrapper roundTripped = serializer.Deserialize<AttributedStringWrapper>(json);
+
+		Assert.Equal("{\"value\":\"ADA\"}", json);
+		Assert.Equal("ada", roundTripped.Value);
+	}
+
+	[Test]
+	public void SerializeDeserialize_CanUsePropertyAttributedConverter()
+	{
+		JsonSerializer serializer = new();
+		PropertyAttributedContainer value = new() { Name = "Ada", Unconverted = "Grace" };
+
+		string json = serializer.Serialize(value);
+		PropertyAttributedContainer roundTripped = serializer.Deserialize<PropertyAttributedContainer>(json);
+
+		Assert.Equal("{\"name\":\"ADA\",\"unconverted\":\"Grace\"}", json);
+		Assert.Equal("ada", roundTripped.Name);
+		Assert.Equal("Grace", roundTripped.Unconverted);
+	}
+
+	[Test]
+	public void Deserialize_CanUseConstructorParameterAttributedConverter()
+	{
+		JsonSerializer serializer = new();
+
+		ParameterAttributedContainer roundTripped = serializer.Deserialize<ParameterAttributedContainer>("{\"name\":\"ADA\"}");
+
+		Assert.Equal("ada", roundTripped.Name);
+	}
+
+	[GenerateShape]
+	internal sealed partial class PropertyAttributedContainer
+	{
+		[JsonConverter(typeof(UpperCaseStringConverter))]
+		public string? Name { get; set; }
+
+		public string? Unconverted { get; set; }
+	}
+
+	[GenerateShape]
+	internal sealed partial class ParameterAttributedContainer([JsonConverter(typeof(UpperCaseStringConverter))] string name)
+	{
+		public string Name { get; } = name;
+	}
+
 	private sealed class UpperCaseStringConverter : JsonConverter<string>
 	{
 		public override void Write(ref JsonWriter writer, string? value, JsonSerializer serializer)
@@ -67,6 +119,46 @@ public partial class JsonObjectSerializerTests
 		{
 			string? value = reader.ReadString();
 			return value?.ToLowerInvariant();
+		}
+	}
+
+	[JsonConverter(typeof(AttributedStringWrapperConverter))]
+	private sealed class AttributedStringWrapper
+	{
+		public string? Value { get; set; }
+	}
+
+	private sealed class AttributedStringWrapperConverter : JsonConverter<AttributedStringWrapper>
+	{
+		public override void Write(ref JsonWriter writer, AttributedStringWrapper? value, JsonSerializer serializer)
+		{
+			if (value is null)
+			{
+				writer.WriteNullValue();
+				return;
+			}
+
+			writer.WriteStartObject();
+			writer.WritePropertyName("value");
+			writer.WriteStringValue(value.Value?.ToUpperInvariant());
+			writer.WriteEndObject();
+		}
+
+		public override AttributedStringWrapper? Read(ref JsonReader reader, JsonSerializer serializer)
+		{
+			if (reader.TryReadNull())
+			{
+				return null;
+			}
+
+			reader.ReadStartObject();
+			string propertyName = reader.ReadRequiredString();
+			reader.ReadNameSeparator();
+			string? value = reader.ReadString();
+			Assert.Equal("value", propertyName);
+			Assert.True(reader.TryReadEndObject());
+
+			return new AttributedStringWrapper { Value = value?.ToLowerInvariant() };
 		}
 	}
 
