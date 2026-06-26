@@ -174,6 +174,26 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
+	public void Deserialize_ObjectGraph_MissingRequiredProperty_CanBeAllowed()
+	{
+		JsonSerializer serializer = new() { DeserializeDefaultValues = Nerdbank.Json.DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties };
+
+		RequiredPropertyContainer value = serializer.Deserialize<RequiredPropertyContainer>("{}");
+
+		Assert.Null(value.Name);
+	}
+
+	[Test]
+	public void Deserialize_ObjectGraph_NullForNonNullableProperty_CanBeAllowed()
+	{
+		JsonSerializer serializer = new() { DeserializeDefaultValues = Nerdbank.Json.DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties };
+
+		NonNullablePropertyContainer value = serializer.Deserialize<NonNullablePropertyContainer>("{\"name\":null}");
+
+		Assert.Null(value.Name);
+	}
+
+	[Test]
 	public void SerializeDeserialize_ObjectGraph_PreserveReferences()
 	{
 		JsonSerializer serializer = new() { PreserveReferences = Nerdbank.Json.ReferencePreservationMode.RejectCycles };

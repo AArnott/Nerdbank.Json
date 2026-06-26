@@ -163,7 +163,10 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		if (this.setter is not null)
 		{
 			TProperty? value = this.converter.Read(ref reader, serializer);
-			if (this.isNonNullableReferenceType && value is null && !typeof(TProperty).IsValueType)
+			if (this.isNonNullableReferenceType
+				&& value is null
+				&& !typeof(TProperty).IsValueType
+				&& (serializer.DeserializeDefaultValues & DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties) != DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties)
 			{
 				throw new FormatException($"Property '{this.memberName}' does not allow null values.");
 			}

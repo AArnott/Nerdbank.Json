@@ -16,6 +16,7 @@ The current implementation includes a low-level writer/reader pair, a built-in c
 * Mutable `IDictionary<string, TValue>` implementations with public parameterless constructors, including `Dictionary<string, TValue>`.
 * camelCase property naming by default, configurable with `JsonNamingPolicy`.
 * Built-in byte buffer handling using Base64 JSON strings.
+* Configurable deserialization policy for missing required values and non-nullable reference validation.
 * Synchronous stream and async stream overloads.
 * Multi-targeting across modern .NET and .NET Framework.
 * Test-driven development with focused round-trip coverage for the current built-in type surface.

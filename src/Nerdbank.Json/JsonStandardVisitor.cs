@@ -126,7 +126,8 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 	{
 		JsonParameterVisitorState visitorState = (JsonParameterVisitorState)(state ?? throw new ArgumentNullException(nameof(state)));
 		JsonConverter<TParameterType> converter = owner.GetOrAddConverter(parameterShape.ParameterType);
-		return new JsonConstructorParameter<TArgumentState, TParameterType>(parameterShape.Name, visitorState.SerializedPropertyName, parameterShape.IsRequired, parameterShape.GetSetter(), converter);
+		bool isNonNullableReferenceType = parameterShape.IsNonNullable && !typeof(TParameterType).IsValueType;
+		return new JsonConstructorParameter<TArgumentState, TParameterType>(parameterShape.Name, visitorState.SerializedPropertyName, parameterShape.IsRequired, parameterShape.GetSetter(), converter, isNonNullableReferenceType);
 	}
 
 	public override object? VisitProperty<TDeclaringType, TPropertyType>(IPropertyShape<TDeclaringType, TPropertyType> propertyShape, object? state = null)

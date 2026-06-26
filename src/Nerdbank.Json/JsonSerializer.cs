@@ -62,6 +62,18 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
+	/// Gets the policy that determines how deserialization handles missing or <see langword="null"/> values.
+	/// </summary>
+	/// <remarks>
+	/// The default value is <see cref="DeserializeDefaultValuesPolicy.Default"/>.
+	/// </remarks>
+	public DeserializeDefaultValuesPolicy DeserializeDefaultValues
+	{
+		get => this.configuration.DeserializeDefaultValues;
+		init => this.configuration = this.configuration with { DeserializeDefaultValues = value };
+	}
+
+	/// <summary>
 	/// Gets the mode that preserves reference equality during serialization and deserialization.
 	/// </summary>
 	public ReferencePreservationMode PreserveReferences

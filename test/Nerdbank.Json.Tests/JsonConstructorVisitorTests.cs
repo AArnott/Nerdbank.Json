@@ -41,6 +41,17 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
+	public void Deserialize_RecordWithParameterizedConstructor_MissingRequiredParameter_CanBeAllowed()
+	{
+		JsonSerializer serializer = new() { DeserializeDefaultValues = Nerdbank.Json.DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties };
+
+		ParameterizedRecord value = serializer.Deserialize<ParameterizedRecord>("{\"age\":37}");
+
+		Assert.Null(value.Name);
+		Assert.Equal(37, value.Age);
+	}
+
+	[Test]
 	public void Deserialize_RecordWithParameterizedConstructor_DuplicateParameter_ThrowsFormatException()
 	{
 		JsonSerializer serializer = new();
@@ -57,6 +68,26 @@ public partial class JsonObjectSerializerTests
 		OptionalParameterizedRecord value = serializer.Deserialize<OptionalParameterizedRecord>("{\"name\":\"Ada\"}");
 
 		Assert.Equal(new OptionalParameterizedRecord("Ada", 21), value);
+	}
+
+	[Test]
+	public void Deserialize_RecordWithParameterizedConstructor_NullForNonNullableParameter_ThrowsFormatException()
+	{
+		JsonSerializer serializer = new();
+
+		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<ParameterizedRecord>("{\"name\":null,\"age\":37}"));
+		Assert.Contains("Name", exception.Message);
+	}
+
+	[Test]
+	public void Deserialize_RecordWithParameterizedConstructor_NullForNonNullableParameter_CanBeAllowed()
+	{
+		JsonSerializer serializer = new() { DeserializeDefaultValues = Nerdbank.Json.DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties };
+
+		ParameterizedRecord value = serializer.Deserialize<ParameterizedRecord>("{\"name\":null,\"age\":37}");
+
+		Assert.Null(value.Name);
+		Assert.Equal(37, value.Age);
 	}
 
 	[GenerateShape]

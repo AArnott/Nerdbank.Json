@@ -10,6 +10,7 @@ internal record JsonSerializerConfiguration
 	internal static readonly JsonSerializerConfiguration Default = new();
 
 	private JsonConverterCache? converterCache;
+	private DeserializeDefaultValuesPolicy deserializeDefaultValues;
 	private JsonNamingPolicy? dictionaryKeyNamingPolicy;
 	private JsonNamingPolicy? propertyNamingPolicy = JsonNamingPolicy.CamelCase;
 	private ReferencePreservationMode preserveReferences;
@@ -43,6 +44,16 @@ internal record JsonSerializerConfiguration
 		init
 		{
 			this.serializeDefaultValues = value;
+			this.converterCache = null;
+		}
+	}
+
+	internal DeserializeDefaultValuesPolicy DeserializeDefaultValues
+	{
+		get => this.deserializeDefaultValues;
+		init
+		{
+			this.deserializeDefaultValues = value;
 			this.converterCache = null;
 		}
 	}

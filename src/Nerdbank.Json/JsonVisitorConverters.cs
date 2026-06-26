@@ -293,16 +293,28 @@ internal sealed class JsonConstructorParameter<TArgumentState, TParameter> : Jso
 {
 	private readonly Setter<TArgumentState, TParameter> setter;
 	private readonly JsonConverter<TParameter> converter;
+	private readonly bool isNonNullableReferenceType;
 
-	internal JsonConstructorParameter(string parameterName, string serializedPropertyName, bool isRequired, Setter<TArgumentState, TParameter> setter, JsonConverter<TParameter> converter)
+	internal JsonConstructorParameter(string parameterName, string serializedPropertyName, bool isRequired, Setter<TArgumentState, TParameter> setter, JsonConverter<TParameter> converter, bool isNonNullableReferenceType)
 		: base(parameterName, serializedPropertyName, isRequired)
 	{
 		this.setter = setter;
 		this.converter = converter;
+		this.isNonNullableReferenceType = isNonNullableReferenceType;
 	}
 
 	internal override void Read(ref JsonReader reader, ref TArgumentState argumentState, JsonSerializer serializer)
-		=> this.setter(ref argumentState, this.converter.Read(ref reader, serializer)!);
+	{
+		TParameter? value = this.converter.Read(ref reader, serializer);
+		if (this.isNonNullableReferenceType
+			&& value is null
+			&& (serializer.DeserializeDefaultValues & DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties) != DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties)
+		{
+			throw new FormatException($"Constructor parameter '{this.ParameterName}' does not allow null values.");
+		}
+
+		this.setter(ref argumentState, value!);
+	}
 }
 
 internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentState> : JsonConverter<TDeclaring>
@@ -389,7 +401,8 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 			}
 		}
 
-		if (assignedParameters.Count < this.parameters.Length)
+		if (assignedParameters.Count < this.parameters.Length
+			&& (serializer.DeserializeDefaultValues & DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties) != DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties)
 		{
 			List<string>? missingRequiredParameters = null;
 			for (int i = 0; i < this.parameters.Length; i++)
