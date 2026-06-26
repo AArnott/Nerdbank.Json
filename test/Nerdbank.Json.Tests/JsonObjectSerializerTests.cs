@@ -7,11 +7,10 @@ using System.Threading.Tasks;
 using Nerdbank.Json;
 using Nerdbank.MessagePack;
 using PolyType;
-using Xunit;
 
 public partial class JsonObjectSerializerTests
 {
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ObjectGraph()
 	{
 		JsonSerializer serializer = new();
@@ -32,7 +31,7 @@ public partial class JsonObjectSerializerTests
 		AssertRoundtrip(json, serializer, value);
 	}
 
-	[Fact]
+	[Test]
 	public void Deserialize_ObjectGraph_IgnoresUnknownProperty()
 	{
 		JsonSerializer serializer = new();
@@ -48,7 +47,7 @@ public partial class JsonObjectSerializerTests
 		AssertStructuralEqual(expected, value, "{\"name\":\"Ada\",\"unknown\":true,\"age\":37,\"address\":{\"city\":\"Seattle\",\"postalCode\":98101,\"ignored\":\"x\"}}");
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithNullNestedObject()
 	{
 		JsonSerializer serializer = new();
@@ -60,7 +59,7 @@ public partial class JsonObjectSerializerTests
 		AssertRoundtrip(json, serializer, value);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_Stream()
 	{
 		JsonSerializer serializer = new();
@@ -74,12 +73,12 @@ public partial class JsonObjectSerializerTests
 		AssertStructuralEqual(value, roundTripped, serializer.Serialize(value));
 	}
 
-	[Fact]
+	[Test]
 	public async Task SerializeDeserialize_StreamAsync()
 	{
 		JsonSerializer serializer = new();
 		Person value = new() { Name = "Katherine", Age = 35 };
-		CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+		CancellationToken cancellationToken = TUnit.Core.TestContext.Current?.Execution.CancellationToken ?? default;
 
 		using MemoryStream stream = new();
 		await serializer.SerializeAsync(stream, value, cancellationToken);
@@ -89,7 +88,7 @@ public partial class JsonObjectSerializerTests
 		AssertStructuralEqual(value, roundTripped, serializer.Serialize(value));
 	}
 
-	[Fact]
+	[Test]
 	public void Serialize_ObjectGraph_CanDisableNamingPolicy()
 	{
 		JsonSerializer serializer = new() { PropertyNamingPolicy = null };
@@ -100,7 +99,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Equal("{\"Name\":\"Ada\",\"Age\":37,\"Address\":null}", json);
 	}
 
-	[Fact]
+	[Test]
 	public void Serialize_ObjectGraph_ExplicitPropertyNameOverridesNamingPolicy()
 	{
 		JsonSerializer serializer = new();
@@ -112,7 +111,7 @@ public partial class JsonObjectSerializerTests
 		AssertRoundtrip(json, serializer, value);
 	}
 
-	[Fact]
+	[Test]
 	public void Deserialize_ObjectGraph_MissingRequiredProperty_ThrowsFormatException()
 	{
 		JsonSerializer serializer = new();
@@ -121,7 +120,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Contains("Name", exception.Message);
 	}
 
-	[Fact]
+	[Test]
 	public void Deserialize_ObjectGraph_NullForNonNullableProperty_ThrowsFormatException()
 	{
 		JsonSerializer serializer = new();

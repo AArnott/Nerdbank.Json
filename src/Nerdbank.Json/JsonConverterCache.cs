@@ -16,6 +16,7 @@ namespace Nerdbank.Json;
 internal sealed class JsonConverterCache
 {
 	private readonly ConcurrentDictionary<Type, JsonConverter> cachedConverters = new();
+	private readonly ConcurrentDictionary<ITypeShape, JsonConverter> cachedShapeConverters = new();
 	private readonly ConcurrentDictionary<Type, ITypeShape> cachedTypeShapes = new();
 	private readonly ConcurrentDictionary<(Type TargetType, Type ProviderType), ITypeShape> cachedWitnessTypeShapes = new();
 	private readonly JsonSerializerConfiguration configuration;
@@ -29,7 +30,7 @@ internal sealed class JsonConverterCache
 		=> (JsonConverter<T>)this.cachedConverters.GetOrAdd(typeof(T), _ => this.CreateConverter<T>());
 
 	internal JsonConverter<T> GetOrAddConverter<T>(ITypeShape<T> shape)
-		=> (JsonConverter<T>)this.cachedConverters.GetOrAdd(typeof(T), _ => this.CreateConverter(shape));
+		=> (JsonConverter<T>)this.cachedShapeConverters.GetOrAdd(shape, _ => this.CreateConverter(shape));
 
 	internal ITypeShape<T> ResolveDynamicTypeShapeOrThrow<T>()
 	{

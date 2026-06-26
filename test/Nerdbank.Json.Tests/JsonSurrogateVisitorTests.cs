@@ -7,7 +7,7 @@ using Xunit;
 
 public partial class JsonObjectSerializerTests
 {
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_SurrogateBackedType()
 	{
 		JsonSerializer serializer = new();

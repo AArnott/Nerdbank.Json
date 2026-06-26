@@ -7,7 +7,7 @@ using Xunit;
 
 public partial class JsonObjectSerializerTests
 {
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_RecordWithParameterizedConstructor()
 	{
 		JsonSerializer serializer = new();
@@ -20,7 +20,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Equal(value, roundTripped);
 	}
 
-	[Fact]
+	[Test]
 	public void Deserialize_TypeWithParameterizedConstructor_AndSettableProperty()
 	{
 		JsonSerializer serializer = new();
@@ -31,7 +31,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Equal(37, value.Age);
 	}
 
-	[Fact]
+	[Test]
 	public void Deserialize_RecordWithParameterizedConstructor_MissingRequiredParameter_ThrowsFormatException()
 	{
 		JsonSerializer serializer = new();
@@ -40,7 +40,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Contains("Name", exception.Message);
 	}
 
-	[Fact]
+	[Test]
 	public void Deserialize_RecordWithParameterizedConstructor_DuplicateParameter_ThrowsFormatException()
 	{
 		JsonSerializer serializer = new();
@@ -49,7 +49,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Contains("name", exception.Message, System.StringComparison.OrdinalIgnoreCase);
 	}
 
-	[Fact]
+	[Test]
 	public void Deserialize_RecordWithOptionalConstructorParameter_UsesDefaultWhenMissing()
 	{
 		JsonSerializer serializer = new();

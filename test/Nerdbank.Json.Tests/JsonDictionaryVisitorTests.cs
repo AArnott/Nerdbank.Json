@@ -15,7 +15,7 @@ using Xunit;
 [GenerateShapeFor<ReadOnlyDictionary<string, int>>]
 public partial class JsonObjectSerializerTests
 {
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_Dictionary_LeavesKeysUntouchedByDefault()
 	{
 		JsonSerializer serializer = new();
@@ -31,7 +31,7 @@ public partial class JsonObjectSerializerTests
 		AssertRoundtrip(json, serializer, value);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_Dictionary_CanApplyNamingPolicyToKeys()
 	{
 		JsonSerializer serializer = new() { DictionaryKeyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -51,7 +51,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Equal(2, roundTripped["anotherKey"]);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_Dictionary_WithWitnessType()
 	{
 		JsonSerializer serializer = new();
@@ -67,7 +67,7 @@ public partial class JsonObjectSerializerTests
 		AssertStructuralEqual(value, roundTripped, json);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithDictionaryProperty()
 	{
 		JsonSerializer serializer = new();
@@ -86,7 +86,7 @@ public partial class JsonObjectSerializerTests
 		AssertRoundtrip(json, serializer, value);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_Dictionary_WithIntKeys()
 	{
 		JsonSerializer serializer = new();
@@ -102,7 +102,7 @@ public partial class JsonObjectSerializerTests
 		AssertRoundtrip(json, serializer, value);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_Dictionary_WithGuidKeys()
 	{
 		JsonSerializer serializer = new();
@@ -120,7 +120,7 @@ public partial class JsonObjectSerializerTests
 		AssertRoundtrip(json, serializer, value);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithIntKeyDictionaryProperty()
 	{
 		JsonSerializer serializer = new();
@@ -139,7 +139,7 @@ public partial class JsonObjectSerializerTests
 		AssertRoundtrip(json, serializer, value);
 	}
 
-	[Fact]
+	[Test]
 	public void Serialize_Dictionary_WithComplexKeys_ThrowsNotSupportedException()
 	{
 		JsonSerializer serializer = new();
@@ -152,7 +152,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Contains(typeof(ComplexKey).FullName ?? nameof(ComplexKey), exception.Message, StringComparison.Ordinal);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ReadOnlyDictionary_WithWitnessType()
 	{
 		JsonSerializer serializer = new();
@@ -169,7 +169,7 @@ public partial class JsonObjectSerializerTests
 		AssertStructuralEqual(value, roundTripped, json);
 	}
 
-	[Fact]
+	[Test]
 	public void Deserialize_ObjectGraph_Populates_GetterOnlyDictionaryProperty()
 	{
 		JsonSerializer serializer = new();

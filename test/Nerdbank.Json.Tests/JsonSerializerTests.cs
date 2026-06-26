@@ -11,11 +11,11 @@ using Xunit;
 
 public class JsonSerializerTests
 {
-	[Fact]
+	[Test]
 	public void Serialize_StringUsesRfc8259EscapingRules()
 		=> AssertRoundtrip("ü <tag> \"quoted\" \\ slash\nnext", "\"ü <tag> \\\"quoted\\\" \\\\ slash\\nnext\"");
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_PrimitiveScalars()
 	{
 		AssertRoundtrip('A', "\"A\"");
@@ -34,7 +34,7 @@ public class JsonSerializerTests
 		AssertRoundtrip(79228162514264337593543950335m, "79228162514264337593543950335");
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_CommonBclTypes()
 	{
 		AssertRoundtrip(new BigInteger(1234567890123456789L), "1234567890123456789");
@@ -50,7 +50,7 @@ public class JsonSerializerTests
 		AssertRoundtrip(new Point(12, -34), "[12,-34]");
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ByteBuffers()
 	{
 		AssertRoundtrip(new byte[] { 1, 2, 3, 4 }, "\"AQIDBA==\"");
@@ -59,7 +59,7 @@ public class JsonSerializerTests
 	}
 
 #if NET8_0_OR_GREATER
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ModernBuiltInTypes()
 	{
 		AssertRoundtrip((Half)1.5f, "1.5");
@@ -71,7 +71,7 @@ public class JsonSerializerTests
 	}
 #endif
 
-	[Fact]
+	[Test]
 	public void Deserialize_NullReferenceTypes()
 	{
 		JsonSerializer serializer = new();

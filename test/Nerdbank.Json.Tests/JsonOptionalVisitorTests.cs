@@ -8,7 +8,7 @@ using Xunit;
 [GenerateShapeFor<int?>]
 public partial class JsonObjectSerializerTests
 {
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_NullableStruct_Null_WithWitnessType()
 	{
 		JsonSerializer serializer = new();
@@ -21,7 +21,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Equal(value, roundTripped);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_NullableStruct_Value_WithWitnessType()
 	{
 		JsonSerializer serializer = new();
@@ -34,7 +34,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Equal(value, roundTripped);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithNullableStructProperty()
 	{
 		JsonSerializer serializer = new();

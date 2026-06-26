@@ -12,7 +12,7 @@ using Xunit;
 [GenerateShapeFor<ReadOnlyCollection<int>>]
 public partial class JsonObjectSerializerTests
 {
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ListOfObjects()
 	{
 		JsonSerializer serializer = new();
@@ -28,7 +28,7 @@ public partial class JsonObjectSerializerTests
 		AssertRoundtrip(json, serializer, value);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ListOfObjects_WithWitnessType()
 	{
 		JsonSerializer serializer = new();
@@ -44,7 +44,7 @@ public partial class JsonObjectSerializerTests
 		AssertStructuralEqual(value, roundTripped, json);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_Array_WithWitnessType()
 	{
 		JsonSerializer serializer = new();
@@ -56,7 +56,7 @@ public partial class JsonObjectSerializerTests
 		AssertStructuralEqual(value, roundTripped, json);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithEnumerableProperties()
 	{
 		JsonSerializer serializer = new();
@@ -76,7 +76,7 @@ public partial class JsonObjectSerializerTests
 		AssertRoundtrip(json, serializer, value);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ReadOnlyCollection_WithWitnessType()
 	{
 		JsonSerializer serializer = new();
@@ -89,7 +89,7 @@ public partial class JsonObjectSerializerTests
 		AssertStructuralEqual(value, roundTripped, json);
 	}
 
-	[Fact]
+	[Test]
 	public void Deserialize_ObjectGraph_Populates_GetterOnlyEnumerableProperty()
 	{
 		JsonSerializer serializer = new();

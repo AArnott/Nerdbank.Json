@@ -28,7 +28,7 @@ public class JsonShapeUsageAnalyzerTests
 	}
 
 	[Fact]
-	public async Task ReportsDelegateMember()
+	public async Task NoIssuesForDelegateMemberOnGenerateShapeType()
 	{
 		string source = /* lang=c#-test */ """
 			#nullable enable
@@ -43,11 +43,11 @@ public class JsonShapeUsageAnalyzerTests
 			}
 			""";
 
-		await VerifyCS.VerifyAnalyzerAsync(source, VerifyCS.Diagnostic("NBJson001").WithSpan(9, 17, 9, 25).WithArguments("Callback", "Action?"));
+		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
 	[Fact]
-	public async Task ReportsUnsupportedDictionaryKeyMember()
+	public async Task NoIssuesForUnsupportedDictionaryKeyMemberOnGenerateShapeType()
 	{
 		string source = /* lang=c#-test */ """
 			#nullable enable
@@ -68,11 +68,11 @@ public class JsonShapeUsageAnalyzerTests
 			}
 			""";
 
-		await VerifyCS.VerifyAnalyzerAsync(source, VerifyCS.Diagnostic("NBJson002").WithSpan(9, 37, 9, 43).WithArguments("Values", "ComplexKey"));
+		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
 	[Fact]
-	public async Task ReportsUnsupportedDictionaryKeyWitnessTarget()
+	public async Task NoIssuesForUnsupportedDictionaryKeyWitnessTarget()
 	{
 		string source = /* lang=c#-test */ """
 			#nullable enable
@@ -92,6 +92,6 @@ public class JsonShapeUsageAnalyzerTests
 			}
 			""";
 
-		await VerifyCS.VerifyAnalyzerAsync(source, VerifyCS.Diagnostic("NBJson002").WithSpan(6, 2, 6, 47).WithArguments("Dictionary<ComplexKey, int>", "ComplexKey"));
+		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 }

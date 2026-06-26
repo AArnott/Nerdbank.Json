@@ -16,7 +16,7 @@ public partial class JsonObjectSerializerTests
 		Three,
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_EnumRoot_WithWitnessType()
 	{
 		JsonSerializer serializer = new();
@@ -29,7 +29,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Equal(value, roundTripped);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithEnumProperty()
 	{
 		JsonSerializer serializer = new();

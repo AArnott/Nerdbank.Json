@@ -8,7 +8,7 @@ using Xunit;
 
 public partial class JsonObjectSerializerTests
 {
-	[Fact]
+	[Test]
 	public void Serialize_Delegate_ThrowsNotSupportedException()
 	{
 		JsonSerializer serializer = new();

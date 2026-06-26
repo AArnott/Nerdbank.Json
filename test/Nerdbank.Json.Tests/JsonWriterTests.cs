@@ -9,7 +9,7 @@ using Xunit;
 
 public class JsonWriterTests
 {
-	[Fact]
+	[Test]
 	public void WriteStringValue_EscapesOnlyRfc8259RequiredCharacters()
 	{
 		TestBufferWriter buffer = new();
@@ -20,7 +20,7 @@ public class JsonWriterTests
 		Assert.Equal("\"plain ü <tag> \\\"quoted\\\" \\\\ slash\\nnext\"", Encoding.UTF8.GetString(buffer.WrittenArray));
 	}
 
-	[Fact]
+	[Test]
 	public void WriteStringValue_EscapesControlCharactersAsUnicodeWhenNoShortEscapeExists()
 	{
 		TestBufferWriter buffer = new();
@@ -31,7 +31,7 @@ public class JsonWriterTests
 		Assert.Equal("\"a\\u0001b\"", Encoding.UTF8.GetString(buffer.WrittenArray));
 	}
 
-	[Fact]
+	[Test]
 	public void WriteStringValue_WritesNullLiteralForNullString()
 	{
 		TestBufferWriter buffer = new();
@@ -42,7 +42,7 @@ public class JsonWriterTests
 		Assert.Equal("null", Encoding.UTF8.GetString(buffer.WrittenArray));
 	}
 
-	[Fact]
+	[Test]
 	public void WriteStringValue_ThrowsOnUnmatchedSurrogate()
 	{
 		TestBufferWriter buffer = new();

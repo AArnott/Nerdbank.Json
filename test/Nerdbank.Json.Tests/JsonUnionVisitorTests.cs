@@ -8,7 +8,7 @@ using Xunit;
 
 public partial class JsonObjectSerializerTests
 {
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_UnionBaseType_UsesNullAlias()
 	{
 		JsonSerializer serializer = new();
@@ -22,7 +22,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Equal(value, roundTripped);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_UnionDerivedType_UsesStringAlias()
 	{
 		JsonSerializer serializer = new();
@@ -36,7 +36,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Equal(value, roundTripped);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_UnionDerivedType_UsesIntegerTagWhenSpecified()
 	{
 		JsonSerializer serializer = new();
@@ -50,7 +50,7 @@ public partial class JsonObjectSerializerTests
 		Assert.Equal(value, roundTripped);
 	}
 
-	[Fact]
+	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithUnionProperty()
 	{
 		JsonSerializer serializer = new();

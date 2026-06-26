@@ -16,7 +16,15 @@
     <PackageReference Include="PolyType" />
     <PackageReference Include="System.Buffers" />
     <PackageReference Include="System.Memory" />
-    <PackageReference Include="xunit.v3.mtp-v2" />
+    <PackageReference Include="TUnit.Engine" />
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)','net9.0'))">
+    <PackageReference Include="xunit.v3.assert.aot" />
+  </ItemGroup>
+
+  <ItemGroup Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)','net9.0'))">
+    <PackageReference Include="xunit.v3.assert" />
   </ItemGroup>
 
 </Project>
