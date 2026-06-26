@@ -2,11 +2,8 @@
 
 ***An awesome template for your awesome library***
 
-![NuGet package](https://img.shields.io/badge/nuget-your--package--here-yellow.svg)
+[![NuGet package](https://img.shields.io/nuget/v/Nerdbank.Json.svg)](https://nuget.org/packages/Nerdbank.Json)
 
-[![Azure Pipelines status](https://dev.azure.com/andrewarnott/OSS/_apis/build/status/AArnott.Library.Template?branchName=main)](https://dev.azure.com/andrewarnott/OSS/_build/latest?definitionId=29&branchName=main)
-[![🏭 Build](https://github.com/AArnott/Library.Template/actions/workflows/build.yml/badge.svg)](https://github.com/AArnott/Library.Template/actions/workflows/build.yml)
-[![codecov](https://codecov.io/gh/aarnott/library.template/branch/main/graph/badge.svg)](https://codecov.io/gh/aarnott/library.template)
 
 ## Features
 
