@@ -112,6 +112,50 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
+	public void Serialize_ObjectGraph_CanOmitDefaultValues()
+	{
+		JsonSerializer serializer = new() { SerializeDefaultValues = Nerdbank.Json.SerializeDefaultValuesPolicy.Never };
+		Person value = new() { Name = "Ada", Age = 0, Address = null };
+
+		string json = serializer.Serialize(value);
+
+		Assert.Equal("{\"name\":\"Ada\"}", json);
+	}
+
+	[Test]
+	public void Serialize_ObjectGraph_CanRetainReferenceTypeDefaultsOnly()
+	{
+		JsonSerializer serializer = new() { SerializeDefaultValues = Nerdbank.Json.SerializeDefaultValuesPolicy.ReferenceTypes };
+		Person value = new() { Name = "Ada", Age = 0, Address = null };
+
+		string json = serializer.Serialize(value);
+
+		Assert.Equal("{\"name\":\"Ada\",\"address\":null}", json);
+	}
+
+	[Test]
+	public void Serialize_ObjectGraph_CanRetainValueTypeDefaultsOnly()
+	{
+		JsonSerializer serializer = new() { SerializeDefaultValues = Nerdbank.Json.SerializeDefaultValuesPolicy.ValueTypes };
+		Person value = new() { Name = null, Age = 0, Address = null };
+
+		string json = serializer.Serialize(value);
+
+		Assert.Equal("{\"age\":0}", json);
+	}
+
+	[Test]
+	public void Serialize_ObjectGraph_RequiredPropertiesAreRetainedWhenRequested()
+	{
+		JsonSerializer serializer = new() { SerializeDefaultValues = Nerdbank.Json.SerializeDefaultValuesPolicy.Required };
+		RequiredDefaultValueContainer value = new() { Count = 0, Name = null };
+
+		string json = serializer.Serialize(value);
+
+		Assert.Equal("{\"count\":0}", json);
+	}
+
+	[Test]
 	public void Deserialize_ObjectGraph_MissingRequiredProperty_ThrowsFormatException()
 	{
 		JsonSerializer serializer = new();
@@ -181,5 +225,13 @@ public partial class JsonObjectSerializerTests
 	internal partial class NonNullablePropertyContainer
 	{
 		public string Name { get; set; } = string.Empty;
+	}
+
+	[GenerateShape]
+	internal partial class RequiredDefaultValueContainer
+	{
+		public required int Count { get; set; }
+
+		public string? Name { get; set; }
 	}
 }

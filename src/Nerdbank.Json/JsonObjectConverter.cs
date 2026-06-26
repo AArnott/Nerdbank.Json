@@ -45,13 +45,10 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 				continue;
 			}
 
-			if (!first)
+			if (property.Write(ref writer, value, serializer, first))
 			{
-				writer.WriteValueSeparator();
+				first = false;
 			}
-
-			first = false;
-			property.Write(ref writer, value, serializer);
 		}
 
 		writer.WriteEndObject();
@@ -107,7 +104,7 @@ internal abstract class JsonProperty<TDeclaring>
 
 	internal abstract bool CanDeserialize { get; }
 
-	internal abstract void Write(ref JsonWriter writer, TDeclaring container, JsonSerializer serializer);
+	internal abstract bool Write(ref JsonWriter writer, TDeclaring container, JsonSerializer serializer, bool first);
 
 	internal abstract void Read(ref JsonReader reader, ref TDeclaring container, JsonSerializer serializer);
 }
@@ -119,9 +116,10 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 	private readonly Setter<TDeclaring, TProperty>? setter;
 	private readonly JsonConverter<TProperty> converter;
 	private readonly bool deserializeIntoExistingInstance;
+	private readonly bool isRequired;
 	private readonly bool isNonNullableReferenceType;
 
-	internal JsonProperty(string name, string memberName, Getter<TDeclaring, TProperty>? getter, Setter<TDeclaring, TProperty>? setter, JsonConverter<TProperty> converter, bool deserializeIntoExistingInstance = false, bool isNonNullableReferenceType = false)
+	internal JsonProperty(string name, string memberName, Getter<TDeclaring, TProperty>? getter, Setter<TDeclaring, TProperty>? setter, JsonConverter<TProperty> converter, bool deserializeIntoExistingInstance = false, bool isRequired = false, bool isNonNullableReferenceType = false)
 		: base(name)
 	{
 		this.memberName = memberName;
@@ -129,6 +127,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		this.setter = setter;
 		this.converter = converter;
 		this.deserializeIntoExistingInstance = deserializeIntoExistingInstance;
+		this.isRequired = isRequired;
 		this.isNonNullableReferenceType = isNonNullableReferenceType;
 	}
 
@@ -136,15 +135,27 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 
 	internal override bool CanDeserialize => this.setter is not null || this.deserializeIntoExistingInstance;
 
-	internal override void Write(ref JsonWriter writer, TDeclaring container, JsonSerializer serializer)
+	internal override bool Write(ref JsonWriter writer, TDeclaring container, JsonSerializer serializer, bool first)
 	{
 		if (this.getter is null)
 		{
 			throw new InvalidOperationException("Property has no getter.");
 		}
 
+		TProperty? value = this.getter(ref container);
+		if (!this.ShouldSerializeValue(value, serializer.SerializeDefaultValues))
+		{
+			return false;
+		}
+
+		if (!first)
+		{
+			writer.WriteValueSeparator();
+		}
+
 		writer.WritePropertyName(this.Name);
-		this.converter.Write(ref writer, this.getter(ref container), serializer);
+		this.converter.Write(ref writer, value, serializer);
+		return true;
 	}
 
 	internal override void Read(ref JsonReader reader, ref TDeclaring container, JsonSerializer serializer)
@@ -178,5 +189,35 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 			reader.SkipValue();
 			return;
 		}
+	}
+
+	private bool ShouldSerializeValue(TProperty? value, SerializeDefaultValuesPolicy policy)
+	{
+		if (policy == SerializeDefaultValuesPolicy.Always)
+		{
+			return true;
+		}
+
+		if (!EqualityComparer<TProperty>.Default.Equals(value!, default!))
+		{
+			return true;
+		}
+
+		if (this.isRequired && (policy & SerializeDefaultValuesPolicy.Required) == SerializeDefaultValuesPolicy.Required)
+		{
+			return true;
+		}
+
+		if (value is null)
+		{
+			return (policy & SerializeDefaultValuesPolicy.ReferenceTypes) == SerializeDefaultValuesPolicy.ReferenceTypes;
+		}
+
+		if (typeof(TProperty).IsValueType)
+		{
+			return (policy & SerializeDefaultValuesPolicy.ValueTypes) == SerializeDefaultValuesPolicy.ValueTypes;
+		}
+
+		return (policy & SerializeDefaultValuesPolicy.ReferenceTypes) == SerializeDefaultValuesPolicy.ReferenceTypes;
 	}
 }

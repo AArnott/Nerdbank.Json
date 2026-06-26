@@ -340,13 +340,10 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 				continue;
 			}
 
-			if (!first)
+			if (property.Write(ref writer, value, serializer, first))
 			{
-				writer.WriteValueSeparator();
+				first = false;
 			}
-
-			first = false;
-			property.Write(ref writer, value, serializer);
 		}
 
 		writer.WriteEndObject();

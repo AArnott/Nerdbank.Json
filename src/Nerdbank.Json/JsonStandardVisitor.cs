@@ -65,10 +65,23 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 	{
 		List<JsonProperty<T>> properties = new();
 		Dictionary<string, string> serializedPropertyNamesByClrName = new(StringComparer.OrdinalIgnoreCase);
+		HashSet<string> requiredProperties = new(StringComparer.OrdinalIgnoreCase);
+		if (objectShape.Constructor is not null)
+		{
+			foreach (IParameterShape parameter in objectShape.Constructor.Parameters)
+			{
+				if (parameter.IsRequired)
+				{
+					requiredProperties.Add(parameter.Name);
+				}
+			}
+		}
+
 		foreach (IPropertyShape property in objectShape.Properties)
 		{
 			serializedPropertyNamesByClrName[property.Name] = owner.GetSerializedPropertyName(property.Name, property.AttributeProvider);
-			if (property.Accept(this) is JsonProperty<T> jsonProperty)
+			bool isRequired = requiredProperties.Contains(property.Name) || IsRequiredMember(typeof(T), property.Name);
+			if (property.Accept(this, isRequired) is JsonProperty<T> jsonProperty)
 			{
 				properties.Add(jsonProperty);
 			}
@@ -118,6 +131,7 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 
 	public override object? VisitProperty<TDeclaringType, TPropertyType>(IPropertyShape<TDeclaringType, TPropertyType> propertyShape, object? state = null)
 	{
+		bool isRequired = state is bool required && required;
 		Getter<TDeclaringType, TPropertyType>? getter = propertyShape.HasGetter ? propertyShape.GetGetter() : null;
 		Setter<TDeclaringType, TPropertyType>? setter = propertyShape.HasSetter ? propertyShape.GetSetter() : null;
 		JsonConverter<TPropertyType> converter = owner.GetOrAddConverter(propertyShape.PropertyType);
@@ -128,7 +142,7 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 		}
 
 		string propertyName = owner.GetSerializedPropertyName(propertyShape.Name, propertyShape.AttributeProvider);
-		return new JsonProperty<TDeclaringType, TPropertyType>(propertyName, propertyShape.Name, getter, setter, converter, deserializeIntoExistingInstance, IsNonNullableReferenceType(typeof(TDeclaringType), propertyShape.Name, typeof(TPropertyType)));
+		return new JsonProperty<TDeclaringType, TPropertyType>(propertyName, propertyShape.Name, getter, setter, converter, deserializeIntoExistingInstance, isRequired, IsNonNullableReferenceType(typeof(TDeclaringType), propertyShape.Name, typeof(TPropertyType)));
 	}
 
 	public override object? VisitSurrogate<T, TSurrogate>(ISurrogateTypeShape<T, TSurrogate> surrogateShape, object? state = null)
@@ -229,6 +243,26 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 
 		return false;
 #endif
+	}
+
+	private static bool IsRequiredMember(Type declaringType, string memberName)
+	{
+		const BindingFlags PropertyLookup = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+		MemberInfo? memberInfo = declaringType.GetProperty(memberName, PropertyLookup) ?? (MemberInfo?)declaringType.GetField(memberName, PropertyLookup);
+		if (memberInfo is null)
+		{
+			return false;
+		}
+
+		foreach (CustomAttributeData attribute in memberInfo.CustomAttributes)
+		{
+			if (attribute.AttributeType.FullName == "System.Runtime.CompilerServices.RequiredMemberAttribute")
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 #if !NET

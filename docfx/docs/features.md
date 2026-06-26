@@ -44,6 +44,7 @@ Current behavior:
 * `PropertyShapeAttribute.Name` overrides the naming policy when explicitly set.
 * Dictionary keys are not transformed by the property naming policy by default.
 * `JsonSerializer.DictionaryKeyNamingPolicy` can opt string-key dictionaries into key transformation.
+* `JsonSerializer.SerializeDefaultValues` can omit default-valued properties during serialization.
 * Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
 
 Property validation notes:

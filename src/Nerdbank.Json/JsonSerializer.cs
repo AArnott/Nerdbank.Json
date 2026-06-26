@@ -48,6 +48,18 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
+	/// Gets the policy that determines whether properties with default values are serialized.
+	/// </summary>
+	/// <remarks>
+	/// The default value is <see cref="SerializeDefaultValuesPolicy.Always"/>.
+	/// </remarks>
+	public SerializeDefaultValuesPolicy SerializeDefaultValues
+	{
+		get => this.configuration.SerializeDefaultValues;
+		init => this.configuration = this.configuration with { SerializeDefaultValues = value };
+	}
+
+	/// <summary>
 	/// Gets the converter cache derived from this serializer's immutable configuration.
 	/// </summary>
 	internal JsonConverterCache ConverterCache => this.configuration.ConverterCache;
