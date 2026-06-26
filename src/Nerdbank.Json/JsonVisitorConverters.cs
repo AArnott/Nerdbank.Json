@@ -273,12 +273,18 @@ internal sealed class JsonParameterVisitorState
 
 internal abstract class JsonConstructorParameter<TArgumentState>
 {
-	internal JsonConstructorParameter(string serializedPropertyName)
+	internal JsonConstructorParameter(string parameterName, string serializedPropertyName, bool isRequired)
 	{
+		this.ParameterName = parameterName;
 		this.SerializedPropertyName = serializedPropertyName;
+		this.IsRequired = isRequired;
 	}
 
+	internal string ParameterName { get; }
+
 	internal string SerializedPropertyName { get; }
+
+	internal bool IsRequired { get; }
 
 	internal abstract void Read(ref JsonReader reader, ref TArgumentState argumentState, JsonSerializer serializer);
 }
@@ -288,8 +294,8 @@ internal sealed class JsonConstructorParameter<TArgumentState, TParameter> : Jso
 	private readonly Setter<TArgumentState, TParameter> setter;
 	private readonly JsonConverter<TParameter> converter;
 
-	internal JsonConstructorParameter(string serializedPropertyName, Setter<TArgumentState, TParameter> setter, JsonConverter<TParameter> converter)
-		: base(serializedPropertyName)
+	internal JsonConstructorParameter(string parameterName, string serializedPropertyName, bool isRequired, Setter<TArgumentState, TParameter> setter, JsonConverter<TParameter> converter)
+		: base(parameterName, serializedPropertyName, isRequired)
 	{
 		this.setter = setter;
 		this.converter = converter;
@@ -304,13 +310,15 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 	private readonly JsonProperty<TDeclaring>[] properties;
 	private readonly Func<TArgumentState> argumentStateFactory;
 	private readonly Constructor<TArgumentState, TDeclaring> constructor;
+	private readonly JsonConstructorParameter<TArgumentState>[] parameters;
 	private readonly Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName;
 
-	internal JsonObjectWithConstructorConverter(JsonProperty<TDeclaring>[] properties, Func<TArgumentState> argumentStateFactory, Constructor<TArgumentState, TDeclaring> constructor, Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName)
+	internal JsonObjectWithConstructorConverter(JsonProperty<TDeclaring>[] properties, Func<TArgumentState> argumentStateFactory, Constructor<TArgumentState, TDeclaring> constructor, JsonConstructorParameter<TArgumentState>[] parameters, Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName)
 	{
 		this.properties = properties;
 		this.argumentStateFactory = argumentStateFactory;
 		this.constructor = constructor;
+		this.parameters = parameters;
 		this.parametersByName = parametersByName;
 	}
 
@@ -352,6 +360,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		}
 
 		TArgumentState argumentState = this.argumentStateFactory();
+		HashSet<string> assignedParameters = new(StringComparer.Ordinal);
 		reader.ReadStartObject();
 		if (!reader.TryReadEndObject())
 		{
@@ -362,6 +371,11 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 				if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
 				{
+					if (!assignedParameters.Add(parameter.SerializedPropertyName))
+					{
+						throw new FormatException($"The constructor parameter '{parameter.ParameterName}' has already been assigned a value.");
+					}
+
 					parameter.Read(ref reader, ref argumentState, serializer);
 				}
 				else
@@ -375,6 +389,25 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 				}
 
 				reader.ReadValueSeparator();
+			}
+		}
+
+		if (assignedParameters.Count < this.parameters.Length)
+		{
+			List<string>? missingRequiredParameters = null;
+			for (int i = 0; i < this.parameters.Length; i++)
+			{
+				JsonConstructorParameter<TArgumentState> parameter = this.parameters[i];
+				if (parameter.IsRequired && !assignedParameters.Contains(parameter.SerializedPropertyName))
+				{
+					missingRequiredParameters ??= new List<string>();
+					missingRequiredParameters.Add(parameter.ParameterName);
+				}
+			}
+
+			if (missingRequiredParameters is not null)
+			{
+				throw new FormatException($"Missing required constructor parameters: {string.Join(", ", missingRequiredParameters)}.");
 			}
 		}
 

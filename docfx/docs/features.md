@@ -33,23 +33,30 @@ The serializer now includes an initial PolyType-based contract layer for object 
 Current behavior:
 
 * Mutable object types with settable properties can be serialized and deserialized.
+* Types with parameterized constructors can be materialized when constructor parameters map to serializable properties.
 * Nested objects compose through the same converter cache.
 * Mutable `ICollection<T>` implementations with public parameterless constructors can be serialized and deserialized.
-* Mutable `IDictionary<string, TValue>` implementations with public parameterless constructors can be serialized and deserialized.
+* Mutable `IDictionary<TKey, TValue>` implementations with public parameterless constructors can be serialized and deserialized when `TKey` is a supported simple key type.
 * Unknown JSON properties are ignored during deserialization.
 * Property names default to camelCase.
 * `JsonSerializer.PropertyNamingPolicy` can be set to `null` or another `JsonNamingPolicy` built-in.
 * `PropertyShapeAttribute.Name` overrides the naming policy when explicitly set.
 * Dictionary keys are not transformed by the property naming policy by default.
 * `JsonSerializer.DictionaryKeyNamingPolicy` can opt string-key dictionaries into key transformation.
+* Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
+
+Constructor deserialization notes:
+
+* Required constructor parameters must appear in the JSON payload.
+* Duplicate JSON assignments to the same constructor parameter are rejected.
+* Optional constructor parameters can continue to rely on their declared default values.
 
 Current limitations:
 
-* Constructor-parameter materialization is not implemented yet.
 * Read-only properties are not populated unless a future converter adds explicit support.
 * Immutable or constructor-only collections are not implemented yet.
-* Non-string dictionary keys are not implemented yet.
-* Polymorphic object shapes are still pending.
+* Dictionary keys are intentionally limited to simple scalar and enum-like types rather than arbitrary object graphs.
+* Delegate types are not supported.
 
 ## Stream APIs
 
@@ -67,4 +74,4 @@ The current implementation buffers the full JSON payload in memory before writin
 
 ## Current Scope
 
-This phase does not yet include the richer constructor-aware contract system, immutable collection breadth, or incremental streaming pipeline planned for later work.
+This phase does not yet include immutable collection breadth, a richer contract-customization system, or an incremental streaming pipeline.

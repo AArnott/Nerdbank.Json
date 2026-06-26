@@ -36,7 +36,7 @@ Guid value = serializer.Deserialize<Guid>(text);
 
 ## Supported Values
 
-The current serializer surface includes built-in scalar and selected BCL types, mutable object graphs with settable properties, mutable `ICollection<T>` implementations such as `List<T>`, and mutable `IDictionary<string, TValue>` implementations such as `Dictionary<string, TValue>`.
+The current serializer surface includes built-in scalar and selected BCL types, mutable object graphs with settable properties, parameterized-constructor object materialization, mutable `ICollection<T>` implementations such as `List<T>`, and mutable dictionaries whose key type is a supported simple scalar or enum-like type.
 
 Examples include:
 
@@ -47,9 +47,12 @@ Examples include:
 * Byte buffers
 * Selected drawing primitives such as `Color` and `Point`
 * Mutable object graphs annotated with <xref:PolyType.GenerateShapeAttribute>
-* Mutable lists and string-key dictionaries
+* Mutable lists and supported-key dictionaries
+* Closed unions annotated with <xref:PolyType.DerivedTypeShapeAttribute>
 
 By default, object property names serialize as camelCase. Dictionary keys remain unchanged unless <xref:Nerdbank.Json.JsonSerializer.DictionaryKeyNamingPolicy> is explicitly set.
+
+When deserializing through a parameterized constructor, required constructor parameters must be present in JSON and duplicate assignments to the same constructor parameter are rejected.
 
 ## String Escaping
 
@@ -57,4 +60,4 @@ Strings are escaped according to RFC 8259 requirements. Characters that do not r
 
 ## Current Limitations
 
-The current implementation does not yet provide constructor-based materialization for immutable types, immutable collection support, non-string dictionary key support beyond simple future cases, or the broader contract system planned for the library.
+The current implementation still does not provide immutable collection breadth, delegate serialization, arbitrary complex-object dictionary keys, or the broader contract customization system planned for the library.

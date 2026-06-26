@@ -87,6 +87,7 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 	{
 		JsonConstructorVisitorState<TDeclaringType> visitorState = (JsonConstructorVisitorState<TDeclaringType>)(state ?? throw new ArgumentNullException(nameof(state)));
 		Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName = new(StringComparer.Ordinal);
+		List<JsonConstructorParameter<TArgumentState>> parameters = new(constructorShape.Parameters.Count);
 
 		foreach (IParameterShape parameter in constructorShape.Parameters)
 		{
@@ -98,17 +99,18 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 			if (parameter.Accept(this, new JsonParameterVisitorState(serializedPropertyName)) is JsonConstructorParameter<TArgumentState> jsonParameter)
 			{
 				parametersByName[jsonParameter.SerializedPropertyName] = jsonParameter;
+				parameters.Add(jsonParameter);
 			}
 		}
 
-		return new JsonObjectWithConstructorConverter<TDeclaringType, TArgumentState>(visitorState.Properties, constructorShape.GetArgumentStateConstructor(), constructorShape.GetParameterizedConstructor(), parametersByName);
+		return new JsonObjectWithConstructorConverter<TDeclaringType, TArgumentState>(visitorState.Properties, constructorShape.GetArgumentStateConstructor(), constructorShape.GetParameterizedConstructor(), parameters.ToArray(), parametersByName);
 	}
 
 	public override object? VisitParameter<TArgumentState, TParameterType>(IParameterShape<TArgumentState, TParameterType> parameterShape, object? state = null)
 	{
 		JsonParameterVisitorState visitorState = (JsonParameterVisitorState)(state ?? throw new ArgumentNullException(nameof(state)));
 		JsonConverter<TParameterType> converter = owner.GetOrAddConverter(parameterShape.ParameterType);
-		return new JsonConstructorParameter<TArgumentState, TParameterType>(visitorState.SerializedPropertyName, parameterShape.GetSetter(), converter);
+		return new JsonConstructorParameter<TArgumentState, TParameterType>(parameterShape.Name, visitorState.SerializedPropertyName, parameterShape.IsRequired, parameterShape.GetSetter(), converter);
 	}
 
 	public override object? VisitProperty<TDeclaringType, TPropertyType>(IPropertyShape<TDeclaringType, TPropertyType> propertyShape, object? state = null)
