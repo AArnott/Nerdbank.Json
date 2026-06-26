@@ -13,12 +13,14 @@ namespace Nerdbank.Json;
 internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 {
 	private readonly Func<T> factory;
+	private readonly JsonExtensionData<T>? extensionData;
 	private readonly JsonProperty<T>[] properties;
 	private readonly Dictionary<string, JsonProperty<T>> propertiesByName;
 
-	internal JsonObjectConverter(Func<T> factory, JsonProperty<T>[] properties, StringComparer propertyNameComparer)
+	internal JsonObjectConverter(Func<T> factory, JsonProperty<T>[] properties, StringComparer propertyNameComparer, JsonExtensionData<T>? extensionData = null)
 	{
 		this.factory = factory;
+		this.extensionData = extensionData;
 		this.properties = properties;
 		this.propertiesByName = new Dictionary<string, JsonProperty<T>>(properties.Length, propertyNameComparer);
 		for (int i = 0; i < properties.Length; i++)
@@ -51,6 +53,11 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 			}
 		}
 
+		if (this.extensionData is not null)
+		{
+			this.extensionData.Write(ref writer, value, ref first);
+		}
+
 		writer.WriteEndObject();
 	}
 
@@ -77,6 +84,10 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 			{
 				property.Read(ref reader, ref result, serializer);
 			}
+			else if (this.extensionData is not null)
+			{
+				this.extensionData.Read(ref reader, ref result, propertyName);
+			}
 			else
 			{
 				reader.SkipValue();
@@ -91,6 +102,123 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 		}
 
 		return result;
+	}
+}
+
+internal abstract class JsonExtensionData<TDeclaring>
+{
+	internal abstract void Write(ref JsonWriter writer, TDeclaring value, ref bool first);
+
+	internal abstract void Read(ref JsonReader reader, ref TDeclaring value, string propertyName);
+
+	internal abstract Dictionary<string, string>? Read(ref JsonReader reader, string propertyName);
+
+	internal abstract void Apply(TDeclaring value, Dictionary<string, string> extensionData);
+}
+
+internal sealed class JsonExtensionData<TDeclaring, TProperty> : JsonExtensionData<TDeclaring>
+{
+	private readonly Getter<TDeclaring, TProperty>? getter;
+	private readonly Setter<TDeclaring, TProperty>? setter;
+
+	internal JsonExtensionData(Getter<TDeclaring, TProperty>? getter, Setter<TDeclaring, TProperty>? setter)
+	{
+		this.getter = getter;
+		this.setter = setter;
+	}
+
+	internal override void Write(ref JsonWriter writer, TDeclaring value, ref bool first)
+	{
+		if (this.getter is null)
+		{
+			return;
+		}
+
+		if (this.getter(ref value) is not IEnumerable<KeyValuePair<string, string>> entries)
+		{
+			return;
+		}
+
+		foreach (KeyValuePair<string, string> entry in entries)
+		{
+			if (!first)
+			{
+				writer.WriteValueSeparator();
+			}
+
+			writer.WritePropertyName(entry.Key);
+			writer.WriteRawValue(entry.Value);
+			first = false;
+		}
+	}
+
+	internal override void Read(ref JsonReader reader, ref TDeclaring value, string propertyName)
+	{
+		IDictionary<string, string> dictionary = this.GetOrCreateWritableDictionary(ref value);
+		dictionary[propertyName] = reader.ReadRawValue();
+	}
+
+	internal override Dictionary<string, string>? Read(ref JsonReader reader, string propertyName)
+		=> new(StringComparer.Ordinal) { [propertyName] = reader.ReadRawValue() };
+
+	internal override void Apply(TDeclaring value, Dictionary<string, string> extensionData)
+	{
+		if (extensionData.Count == 0)
+		{
+			return;
+		}
+
+		if (this.TryGetWritableDictionary(value, out IDictionary<string, string>? writable))
+		{
+			foreach (KeyValuePair<string, string> entry in extensionData)
+			{
+				writable![entry.Key] = entry.Value;
+			}
+
+			return;
+		}
+
+		if (this.setter is null)
+		{
+			throw new NotSupportedException($"Extension data property on '{typeof(TDeclaring).FullName}' cannot be assigned.");
+		}
+
+		TProperty assigned = (TProperty)(object)extensionData;
+		this.setter!(ref value, assigned);
+	}
+
+	private IDictionary<string, string> GetOrCreateWritableDictionary(ref TDeclaring value)
+	{
+		if (this.TryGetWritableDictionary(value, out IDictionary<string, string>? existing))
+		{
+			return existing!;
+		}
+
+		if (this.setter is null)
+		{
+			throw new NotSupportedException($"Extension data property on '{typeof(TDeclaring).FullName}' must have a setter or return a writable dictionary instance.");
+		}
+
+		Dictionary<string, string> created = new(StringComparer.Ordinal);
+		this.setter!(ref value, (TProperty)(object)created);
+		return created;
+	}
+
+	private bool TryGetWritableDictionary(TDeclaring value, out IDictionary<string, string>? dictionary)
+	{
+		dictionary = null;
+		if (this.getter is null)
+		{
+			return false;
+		}
+
+		if (this.getter!(ref value) is IDictionary<string, string> writable)
+		{
+			dictionary = writable;
+			return true;
+		}
+
+		return false;
 	}
 }
 

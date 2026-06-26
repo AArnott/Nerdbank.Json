@@ -15,6 +15,8 @@ namespace Nerdbank.Json;
 
 internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeVisitor
 {
+	private static readonly object ExtensionDataSentinel = new();
+
 	public override object? VisitEnum<TEnum, TUnderlying>(IEnumTypeShape<TEnum, TUnderlying> enumShape, object? state = null)
 		where TEnum : struct
 	{
@@ -64,6 +66,7 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 	public override object? VisitObject<T>(IObjectTypeShape<T> objectShape, object? state = null)
 	{
 		List<JsonProperty<T>> properties = new();
+		JsonExtensionData<T>? extensionData = null;
 		Dictionary<string, string> serializedPropertyNamesByClrName = new(StringComparer.OrdinalIgnoreCase);
 		HashSet<string> requiredProperties = new(StringComparer.OrdinalIgnoreCase);
 		if (objectShape.Constructor is not null)
@@ -79,6 +82,18 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 
 		foreach (IPropertyShape property in objectShape.Properties)
 		{
+			if (HasExtensionDataAttribute(property.AttributeProvider))
+			{
+				if (extensionData is not null)
+				{
+					throw new NotSupportedException($"Type '{typeof(T).FullName}' declares more than one extension data property.");
+				}
+
+				extensionData = (JsonExtensionData<T>?)property.Accept(this, ExtensionDataSentinel)
+					?? throw new NotSupportedException($"Extension data member '{typeof(T).FullName}.{property.Name}' could not be analyzed.");
+				continue;
+			}
+
 			serializedPropertyNamesByClrName[property.Name] = owner.GetSerializedPropertyName(property.Name, property.AttributeProvider);
 			bool isRequired = requiredProperties.Contains(property.Name) || IsRequiredMember(typeof(T), property.Name);
 			if (property.Accept(this, isRequired) is JsonProperty<T> jsonProperty)
@@ -90,13 +105,13 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 		JsonProperty<T>[] jsonProperties = properties.ToArray();
 		if (objectShape.Constructor is not null && objectShape.Constructor.Parameters.Count > 0)
 		{
-			if (objectShape.Constructor.Accept(this, new JsonConstructorVisitorState<T>(jsonProperties, serializedPropertyNamesByClrName)) is JsonConverter<T> constructorConverter)
+			if (objectShape.Constructor.Accept(this, new JsonConstructorVisitorState<T>(jsonProperties, serializedPropertyNamesByClrName, extensionData)) is JsonConverter<T> constructorConverter)
 			{
 				return constructorConverter;
 			}
 		}
 
-		return new JsonObjectConverter<T>(CreateFactory<T>(), jsonProperties, owner.PropertyNameComparer);
+		return new JsonObjectConverter<T>(CreateFactory<T>(), jsonProperties, owner.PropertyNameComparer, extensionData);
 	}
 
 	public override object? VisitConstructor<TDeclaringType, TArgumentState>(IConstructorShape<TDeclaringType, TArgumentState> constructorShape, object? state = null)
@@ -119,7 +134,7 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 			}
 		}
 
-		return new JsonObjectWithConstructorConverter<TDeclaringType, TArgumentState>(visitorState.Properties, constructorShape.GetArgumentStateConstructor(), constructorShape.GetParameterizedConstructor(), parameters.ToArray(), parametersByName);
+		return new JsonObjectWithConstructorConverter<TDeclaringType, TArgumentState>(visitorState.Properties, constructorShape.GetArgumentStateConstructor(), constructorShape.GetParameterizedConstructor(), parameters.ToArray(), parametersByName, visitorState.ExtensionData);
 	}
 
 	public override object? VisitParameter<TArgumentState, TParameterType>(IParameterShape<TArgumentState, TParameterType> parameterShape, object? state = null)
@@ -132,6 +147,38 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 
 	public override object? VisitProperty<TDeclaringType, TPropertyType>(IPropertyShape<TDeclaringType, TPropertyType> propertyShape, object? state = null)
 	{
+		if (ReferenceEquals(state, ExtensionDataSentinel))
+		{
+			if (!typeof(TPropertyType).IsClass)
+			{
+				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must be a reference-typed dictionary property.");
+			}
+
+			Getter<TDeclaringType, TPropertyType>? extensionGetter = propertyShape.HasGetter ? propertyShape.GetGetter() : null;
+			Setter<TDeclaringType, TPropertyType>? extensionSetter = propertyShape.HasSetter ? propertyShape.GetSetter() : null;
+			if (extensionGetter is null && extensionSetter is null)
+			{
+				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must be readable or writable.");
+			}
+
+			if (!typeof(IEnumerable<KeyValuePair<string, string>>).IsAssignableFrom(typeof(TPropertyType)))
+			{
+				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must implement IEnumerable<KeyValuePair<string, string>>.");
+			}
+
+			if (extensionSetter is null && !typeof(IDictionary<string, string>).IsAssignableFrom(typeof(TPropertyType)))
+			{
+				throw new NotSupportedException($"Getter-only extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must implement IDictionary<string, string>.");
+			}
+
+			if (extensionSetter is not null && !typeof(TPropertyType).IsAssignableFrom(typeof(Dictionary<string, string>)))
+			{
+				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must be assignable from Dictionary<string, string>.");
+			}
+
+			return new JsonExtensionData<TDeclaringType, TPropertyType>(extensionGetter, extensionSetter);
+		}
+
 		bool isRequired = state is bool required && required;
 		Getter<TDeclaringType, TPropertyType>? getter = propertyShape.HasGetter ? propertyShape.GetGetter() : null;
 		Setter<TDeclaringType, TPropertyType>? setter = propertyShape.HasSetter ? propertyShape.GetSetter() : null;
@@ -196,6 +243,17 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 		}
 
 		return static () => Activator.CreateInstance<T>();
+	}
+
+	private static bool HasExtensionDataAttribute(IGenericCustomAttributeProvider attributeProvider)
+	{
+		using IEnumerator<JsonExtensionDataAttribute> attributes = attributeProvider.GetCustomAttributes<JsonExtensionDataAttribute>(inherit: false).GetEnumerator();
+		if (!attributes.MoveNext())
+		{
+			return false;
+		}
+
+		return true;
 	}
 
 	private static bool IsNonNullableReferenceType(Type declaringType, string memberName, Type propertyType)

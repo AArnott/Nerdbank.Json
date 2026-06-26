@@ -43,6 +43,19 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
+	public void Deserialize_TypeWithParameterizedConstructor_CanCaptureUnknownPropertiesIntoExtensionData()
+	{
+		JsonSerializer serializer = new();
+
+		MixedConstructorTypeWithExtensionData value = serializer.Deserialize<MixedConstructorTypeWithExtensionData>("{\"name\":\"Ada\",\"unknown\":true,\"extra\":{\"nested\":5}}\n");
+
+		Assert.Equal("Ada", value.Name);
+		Assert.NotNull(value.ExtensionData);
+		Assert.Equal("true", value.ExtensionData!["unknown"]);
+		Assert.Equal("{\"nested\":5}", value.ExtensionData["extra"]);
+	}
+
+	[Test]
 	public void Deserialize_RecordWithParameterizedConstructor_MissingRequiredParameter_ThrowsFormatException()
 	{
 		JsonSerializer serializer = new();
@@ -118,5 +131,19 @@ public partial class JsonObjectSerializerTests
 		public string Name { get; }
 
 		public int Age { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class MixedConstructorTypeWithExtensionData
+	{
+		public MixedConstructorTypeWithExtensionData(string name)
+		{
+			this.Name = name;
+		}
+
+		public string Name { get; }
+
+		[JsonExtensionData]
+		public Dictionary<string, string>? ExtensionData { get; set; }
 	}
 }

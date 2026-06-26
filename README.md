@@ -20,6 +20,7 @@ The current implementation includes a low-level writer/reader pair, a built-in c
 * Optional enum-name serialization with numeric fallback for unnamed values.
 * Runtime custom converter registration with converter instances, converter types, or converter factories.
 * Attribute-driven custom converter registration on types, properties, and constructor parameters.
+* Optional unknown-member retention through `JsonExtensionDataAttribute`.
 * Built-in byte buffer handling using Base64 JSON strings.
 * Optional trailing-comma and comment skipping support during deserialization.
 * Configurable deserialization policy for missing required values and non-nullable reference validation.
@@ -128,15 +129,29 @@ JsonSerializer serializer = new()
 };
 ```
 
+To retain and re-emit JSON properties that your type does not model yet:
+
+```csharp
+[GenerateShape]
+public partial class Person
+{
+	public string? Name { get; set; }
+
+	[JsonExtensionData]
+	public Dictionary<string, string>? ExtensionData { get; set; }
+}
+```
+
 ## Design Notes
 
 * The low-level JSON writer does not delegate to another serializer.
 * String escaping follows RFC 8259 requirements instead of aggressively escaping extra characters.
 * This repository is intended to grow toward the richer converter and visitor architecture used by Nerdbank.MessagePack.
-* The current object-graph layer supports mutable types with settable properties, uses camelCase property names by default, and ignores unknown JSON properties during deserialization.
+* The current object-graph layer supports mutable types with settable properties, uses camelCase property names by default, and can either ignore unknown JSON properties or retain them in an extension-data dictionary.
 * Mutable `ICollection<T>` and `IDictionary<string, TValue>` implementations with public parameterless constructors are supported through the same converter cache.
 * Runtime-registered converters are consulted before built-in and PolyType-generated converters.
 * `JsonConverterAttribute` can override converter selection for a type, property, or constructor parameter.
+* `JsonExtensionDataAttribute` can capture unknown JSON members as raw JSON text for forward-compatible round-tripping.
 * Deserialization can optionally skip comments and accept trailing commas.
 * Current stream overloads buffer the full payload before reading or writing; incremental streaming APIs will come later.
 

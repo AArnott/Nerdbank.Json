@@ -48,6 +48,38 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
+	public void Deserialize_ObjectGraph_CanCaptureUnknownPropertiesIntoExtensionData()
+	{
+		JsonSerializer serializer = new();
+
+		ExtensionDataPerson value = serializer.Deserialize<ExtensionDataPerson>("{\"name\":\"Ada\",\"unknown\":true,\"extra\":{\"nested\":5}}\n");
+
+		Assert.Equal("Ada", value.Name);
+		Assert.NotNull(value.ExtensionData);
+		Assert.Equal("true", value.ExtensionData!["unknown"]);
+		Assert.Equal("{\"nested\":5}", value.ExtensionData["extra"]);
+	}
+
+	[Test]
+	public void Serialize_ObjectGraph_WritesExtensionDataMembers()
+	{
+		JsonSerializer serializer = new();
+		ExtensionDataPerson value = new()
+		{
+			Name = "Ada",
+			ExtensionData = new Dictionary<string, string>
+			{
+				["unknown"] = "true",
+				["extra"] = "{\"nested\":5}",
+			},
+		};
+
+		string json = serializer.Serialize(value);
+
+		Assert.Equal("{\"name\":\"Ada\",\"unknown\":true,\"extra\":{\"nested\":5}}", json);
+	}
+
+	[Test]
 	public void Deserialize_ObjectGraph_CaseInsensitivePropertyNames_WhenEnabled()
 	{
 		JsonSerializer serializer = new() { PropertyNameCaseInsensitive = true };
@@ -290,6 +322,15 @@ public partial class JsonObjectSerializerTests
 		public string? City { get; set; }
 
 		public int PostalCode { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class ExtensionDataPerson
+	{
+		public string? Name { get; set; }
+
+		[JsonExtensionData]
+		public Dictionary<string, string>? ExtensionData { get; set; }
 	}
 
 	[GenerateShape]

@@ -303,6 +303,18 @@ public ref struct JsonReader
 		}
 	}
 
+	/// <summary>
+	/// Reads the next JSON value as raw JSON text.
+	/// </summary>
+	/// <returns>The raw JSON text for the next value.</returns>
+	public string ReadRawValue()
+	{
+		this.SkipWhiteSpace();
+		int start = this.position;
+		this.SkipValue();
+		return this.json[start..this.position].ToString();
+	}
+
 	internal char PeekValueToken()
 	{
 		this.SkipWhiteSpace();

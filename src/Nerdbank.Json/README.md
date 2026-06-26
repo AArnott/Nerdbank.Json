@@ -18,6 +18,7 @@ The current implementation includes a low-level writer/reader pair, a built-in c
 * Optional enum-name serialization with numeric fallback for unnamed values.
 * Runtime custom converter registration with converter instances, converter types, or converter factories.
 * Attribute-driven custom converter registration on types, properties, and constructor parameters.
+* Optional unknown-member retention through `JsonExtensionDataAttribute`.
 * Built-in byte buffer handling using Base64 JSON strings.
 * Optional trailing-comma and comment skipping support during deserialization.
 * Configurable deserialization policy for missing required values and non-nullable reference validation.
@@ -104,4 +105,17 @@ JsonSerializer serializer = new()
 	AllowTrailingCommas = true,
 	ReadCommentHandling = JsonCommentHandling.Skip,
 };
+```
+
+To retain and re-emit JSON properties that your type does not model yet:
+
+```csharp
+[GenerateShape]
+public partial class Person
+{
+	public string? Name { get; set; }
+
+	[JsonExtensionData]
+	public Dictionary<string, string>? ExtensionData { get; set; }
+}
 ```

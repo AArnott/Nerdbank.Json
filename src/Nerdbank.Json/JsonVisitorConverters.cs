@@ -321,13 +321,16 @@ internal sealed class JsonConstructorVisitorState<TDeclaring>
 {
 	private readonly Dictionary<string, string> serializedPropertyNamesByClrName;
 
-	internal JsonConstructorVisitorState(JsonProperty<TDeclaring>[] properties, Dictionary<string, string> serializedPropertyNamesByClrName)
+	internal JsonConstructorVisitorState(JsonProperty<TDeclaring>[] properties, Dictionary<string, string> serializedPropertyNamesByClrName, JsonExtensionData<TDeclaring>? extensionData = null)
 	{
 		this.Properties = properties;
 		this.serializedPropertyNamesByClrName = serializedPropertyNamesByClrName;
+		this.ExtensionData = extensionData;
 	}
 
 	internal JsonProperty<TDeclaring>[] Properties { get; }
+
+	internal JsonExtensionData<TDeclaring>? ExtensionData { get; }
 
 	internal bool TryGetSerializedPropertyName(string clrName, out string serializedPropertyName)
 		=> this.serializedPropertyNamesByClrName.TryGetValue(clrName, out serializedPropertyName!);
@@ -391,14 +394,16 @@ internal sealed class JsonConstructorParameter<TArgumentState, TParameter> : Jso
 
 internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentState> : JsonConverter<TDeclaring>
 {
+	private readonly JsonExtensionData<TDeclaring>? extensionData;
 	private readonly JsonProperty<TDeclaring>[] properties;
 	private readonly Func<TArgumentState> argumentStateFactory;
 	private readonly Constructor<TArgumentState, TDeclaring> constructor;
 	private readonly JsonConstructorParameter<TArgumentState>[] parameters;
 	private readonly Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName;
 
-	internal JsonObjectWithConstructorConverter(JsonProperty<TDeclaring>[] properties, Func<TArgumentState> argumentStateFactory, Constructor<TArgumentState, TDeclaring> constructor, JsonConstructorParameter<TArgumentState>[] parameters, Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName)
+	internal JsonObjectWithConstructorConverter(JsonProperty<TDeclaring>[] properties, Func<TArgumentState> argumentStateFactory, Constructor<TArgumentState, TDeclaring> constructor, JsonConstructorParameter<TArgumentState>[] parameters, Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName, JsonExtensionData<TDeclaring>? extensionData = null)
 	{
+		this.extensionData = extensionData;
 		this.properties = properties;
 		this.argumentStateFactory = argumentStateFactory;
 		this.constructor = constructor;
@@ -430,6 +435,11 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 			}
 		}
 
+		if (this.extensionData is not null)
+		{
+			this.extensionData.Write(ref writer, value, ref first);
+		}
+
 		writer.WriteEndObject();
 	}
 
@@ -442,6 +452,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 		TArgumentState argumentState = this.argumentStateFactory();
 		HashSet<string> assignedParameters = new(StringComparer.Ordinal);
+		Dictionary<string, string>? extensionData = null;
 		reader.ReadStartObject();
 		if (!reader.TryReadEndObject())
 		{
@@ -458,6 +469,10 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 					}
 
 					parameter.Read(ref reader, ref argumentState, serializer);
+				}
+				else if (this.extensionData is not null)
+				{
+					(extensionData ??= new Dictionary<string, string>(StringComparer.Ordinal))[propertyName] = reader.ReadRawValue();
 				}
 				else
 				{
@@ -493,6 +508,12 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 			}
 		}
 
-		return this.constructor(ref argumentState);
+		TDeclaring result = this.constructor(ref argumentState);
+		if (this.extensionData is not null && extensionData is not null)
+		{
+			this.extensionData.Apply(result, extensionData);
+		}
+
+		return result;
 	}
 }

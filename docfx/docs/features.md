@@ -39,7 +39,7 @@ Current behavior:
 * Mutable `ICollection<T>` implementations with public parameterless constructors can be serialized and deserialized.
 * Mutable `IDictionary<TKey, TValue>` implementations with public parameterless constructors can be serialized and deserialized when `TKey` is a supported simple key type.
 * Getter-only mutable collection and dictionary properties are populated into their existing instances during deserialization.
-* Unknown JSON properties are ignored during deserialization.
+* Unknown JSON properties are ignored during deserialization unless an extension-data property captures them.
 * Property names default to camelCase.
 * `JsonSerializer.PropertyNamingPolicy` can be set to `null` or another `JsonNamingPolicy` built-in.
 * `JsonSerializer.WriteIndented` can emit human-readable JSON with line breaks and indentation.
@@ -51,6 +51,7 @@ Current behavior:
 * `JsonSerializer.ConverterTypes` can register converter classes, including open generic converter types.
 * `JsonSerializer.ConverterFactories` can register runtime converter factories for type-driven interception.
 * `JsonConverterAttribute` can attach custom converters directly to types, properties, and constructor parameters.
+* `JsonExtensionDataAttribute` can capture unknown object members into a dictionary of raw JSON fragments for forward-compatible round-tripping.
 * `JsonSerializer.SerializeDefaultValues` can omit default-valued properties during serialization.
 * `JsonSerializer.SerializeEnumValuesByName` can serialize enums as strings when simple names exist.
 * `JsonSerializer.DeserializeDefaultValues` can relax required-member and non-nullable reference enforcement during deserialization.
@@ -73,6 +74,7 @@ Property validation notes:
 * Non-nullable reference-type properties reject explicit JSON `null` values during deserialization.
 * Getter-only mutable collection properties ignore JSON `null` instead of replacing their existing collection instances.
 * Property-name case insensitivity only affects object-property and constructor-parameter matching during deserialization; serialization still uses the configured emitted names.
+* Extension data captures raw JSON text, so retained unknown members round-trip without being reinterpreted through another converter.
 
 Constructor deserialization notes:
 
