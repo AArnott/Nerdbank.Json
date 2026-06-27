@@ -7,6 +7,8 @@
 #pragma warning disable CS1591 // Generated forwarding overloads are intentionally undocumented
 
 using System.Buffers;
+using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,45 +19,59 @@ namespace Nerdbank.Json;
 
 public partial record JsonSerializer
 {
+	[ExcludeFromCodeCoverage]
 	public void Serialize<T>(IBufferWriter<byte> writer, in T? value)
 		where T : IShapeable<T> => this.Serialize(writer, value, T.GetTypeShape());
 
+	[ExcludeFromCodeCoverage]
 	public string Serialize<T>(in T? value)
 		where T : IShapeable<T> => this.Serialize(value, T.GetTypeShape());
 
+	[ExcludeFromCodeCoverage]
 	public void Serialize<T>(Stream stream, in T? value)
 		where T : IShapeable<T> => this.Serialize(stream, value, T.GetTypeShape());
 
+	[ExcludeFromCodeCoverage]
 	public ValueTask SerializeAsync<T>(Stream stream, T? value, CancellationToken cancellationToken = default)
 		where T : IShapeable<T> => this.SerializeAsync(stream, value, T.GetTypeShape(), cancellationToken);
 
+	[ExcludeFromCodeCoverage]
 	public T Deserialize<T>(string json)
 		where T : IShapeable<T> => this.Deserialize(json, T.GetTypeShape());
 
+	[ExcludeFromCodeCoverage]
 	public T Deserialize<T>(Stream stream)
 		where T : IShapeable<T> => this.Deserialize(stream, T.GetTypeShape());
 
+	[ExcludeFromCodeCoverage]
 	public ValueTask<T> DeserializeAsync<T>(Stream stream, CancellationToken cancellationToken = default)
 		where T : IShapeable<T> => this.DeserializeAsync(stream, T.GetTypeShape(), cancellationToken);
 
+	[ExcludeFromCodeCoverage]
 	public void Serialize<T, TProvider>(IBufferWriter<byte> writer, in T? value)
 		where TProvider : IShapeable<T> => this.Serialize(writer, value, TProvider.GetTypeShape());
 
+	[ExcludeFromCodeCoverage]
 	public string Serialize<T, TProvider>(in T? value)
 		where TProvider : IShapeable<T> => this.Serialize(value, TProvider.GetTypeShape());
 
+	[ExcludeFromCodeCoverage]
 	public void Serialize<T, TProvider>(Stream stream, in T? value)
 		where TProvider : IShapeable<T> => this.Serialize(stream, value, TProvider.GetTypeShape());
 
+	[ExcludeFromCodeCoverage]
 	public ValueTask SerializeAsync<T, TProvider>(Stream stream, T? value, CancellationToken cancellationToken = default)
 		where TProvider : IShapeable<T> => this.SerializeAsync(stream, value, TProvider.GetTypeShape(), cancellationToken);
 
+	[ExcludeFromCodeCoverage]
 	public T Deserialize<T, TProvider>(string json)
 		where TProvider : IShapeable<T> => this.Deserialize(json, TProvider.GetTypeShape());
 
+	[ExcludeFromCodeCoverage]
 	public T Deserialize<T, TProvider>(Stream stream)
 		where TProvider : IShapeable<T> => this.Deserialize(stream, TProvider.GetTypeShape());
 
+	[ExcludeFromCodeCoverage]
 	public ValueTask<T> DeserializeAsync<T, TProvider>(Stream stream, CancellationToken cancellationToken = default)
 		where TProvider : IShapeable<T> => this.DeserializeAsync(stream, TProvider.GetTypeShape(), cancellationToken);
 }
@@ -64,45 +80,186 @@ public partial record JsonSerializer
 
 public static partial class JsonSerializerExtensions
 {
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static void Serialize<T>(this JsonSerializer self, IBufferWriter<byte> writer, in T? value)
-		=> RequireSerializer(self).SerializeDynamic(writer, value);
+	{
+		JsonSerializer serializer = RequireSerializer(self);
+		if (TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape)
+		{
+			serializer.Serialize(writer, value, shape);
+			return;
+		}
 
+		serializer.SerializeDynamic(writer, value);
+	}
+
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static string Serialize<T>(this JsonSerializer self, in T? value)
-		=> RequireSerializer(self).SerializeDynamic(value);
+	{
+		JsonSerializer serializer = RequireSerializer(self);
+		return TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape
+			? serializer.Serialize(value, shape)
+			: serializer.SerializeDynamic(value);
+	}
 
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static void Serialize<T>(this JsonSerializer self, Stream stream, in T? value)
-		=> RequireSerializer(self).SerializeDynamic(stream, value);
+	{
+		JsonSerializer serializer = RequireSerializer(self);
+		if (TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape)
+		{
+			serializer.Serialize(stream, value, shape);
+			return;
+		}
 
+		serializer.SerializeDynamic(stream, value);
+	}
+
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static ValueTask SerializeAsync<T>(this JsonSerializer self, Stream stream, T? value, CancellationToken cancellationToken = default)
-		=> RequireSerializer(self).SerializeAsyncDynamic(stream, value, cancellationToken);
+	{
+		JsonSerializer serializer = RequireSerializer(self);
+		return TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape
+			? serializer.SerializeAsync(stream, value, shape, cancellationToken)
+			: serializer.SerializeAsyncDynamic(stream, value, cancellationToken);
+	}
 
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static T Deserialize<T>(this JsonSerializer self, string json)
-		=> RequireSerializer(self).DeserializeDynamic<T>(json);
+	{
+		JsonSerializer serializer = RequireSerializer(self);
+		return TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape
+			? serializer.Deserialize(json, shape)
+			: serializer.DeserializeDynamic<T>(json);
+	}
 
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static T Deserialize<T>(this JsonSerializer self, Stream stream)
-		=> RequireSerializer(self).DeserializeDynamic<T>(stream);
+	{
+		JsonSerializer serializer = RequireSerializer(self);
+		return TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape
+			? serializer.Deserialize(stream, shape)
+			: serializer.DeserializeDynamic<T>(stream);
+	}
 
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static ValueTask<T> DeserializeAsync<T>(this JsonSerializer self, Stream stream, CancellationToken cancellationToken = default)
-		=> RequireSerializer(self).DeserializeAsyncDynamic<T>(stream, cancellationToken);
+	{
+		JsonSerializer serializer = RequireSerializer(self);
+		return TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape
+			? serializer.DeserializeAsync(stream, shape, cancellationToken)
+			: serializer.DeserializeAsyncDynamic<T>(stream, cancellationToken);
+	}
 
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static void Serialize<T, TProvider>(this JsonSerializer self, IBufferWriter<byte> writer, in T? value)
 		=> RequireSerializer(self).Serialize(writer, value, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
 
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static string Serialize<T, TProvider>(this JsonSerializer self, in T? value)
 		=> RequireSerializer(self).Serialize(value, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
 
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static void Serialize<T, TProvider>(this JsonSerializer self, Stream stream, in T? value)
 		=> RequireSerializer(self).Serialize(stream, value, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
 
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static ValueTask SerializeAsync<T, TProvider>(this JsonSerializer self, Stream stream, T? value, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).SerializeAsync(stream, value, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache), cancellationToken);
 
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static T Deserialize<T, TProvider>(this JsonSerializer self, string json)
 		=> RequireSerializer(self).Deserialize(json, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
 
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static T Deserialize<T, TProvider>(this JsonSerializer self, Stream stream)
 		=> RequireSerializer(self).Deserialize(stream, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
 
+	[ExcludeFromCodeCoverage]
+	#if NET8_0
+	[RequiresDynamicCode(ResolveDynamicMessage)]
+	#endif
+	#if NET
+	[EditorBrowsable(EditorBrowsableState.Never)]
+	#endif
 	public static ValueTask<T> DeserializeAsync<T, TProvider>(this JsonSerializer self, Stream stream, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializeAsync(stream, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache), cancellationToken);
 }

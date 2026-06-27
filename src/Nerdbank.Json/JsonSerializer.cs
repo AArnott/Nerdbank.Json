@@ -17,7 +17,13 @@ namespace Nerdbank.Json;
 /// Serializes .NET values to JSON.
 /// </summary>
 /// <remarks>
+/// <para>
 /// This type is immutable and thread-safe.
+/// </para>
+/// <para>
+/// When targeting .NET Standard 2.0 or .NET Framework, some important methods are available only as extension methods,
+/// so make sure to have a <c><![CDATA[using Nerdbank.Json;]]></c> directive in your code file to see these.
+/// </para>
 /// </remarks>
 public partial record JsonSerializer
 {

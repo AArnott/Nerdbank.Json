@@ -1,11 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using Nerdbank.Json;
-using Nerdbank.MessagePack;
 using PolyType;
 
 public partial class JsonObjectSerializerTests
@@ -183,7 +179,7 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void Serialize_ObjectGraph_CanOmitDefaultValues()
 	{
-		JsonSerializer serializer = new() { SerializeDefaultValues = Nerdbank.Json.SerializeDefaultValuesPolicy.Never };
+		JsonSerializer serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.Never };
 		Person value = new() { Name = "Ada", Age = 0, Address = null };
 
 		string json = serializer.Serialize(value);
@@ -194,7 +190,7 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void Serialize_ObjectGraph_CanRetainReferenceTypeDefaultsOnly()
 	{
-		JsonSerializer serializer = new() { SerializeDefaultValues = Nerdbank.Json.SerializeDefaultValuesPolicy.ReferenceTypes };
+		JsonSerializer serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.ReferenceTypes };
 		Person value = new() { Name = "Ada", Age = 0, Address = null };
 
 		string json = serializer.Serialize(value);
@@ -205,7 +201,7 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void Serialize_ObjectGraph_CanRetainValueTypeDefaultsOnly()
 	{
-		JsonSerializer serializer = new() { SerializeDefaultValues = Nerdbank.Json.SerializeDefaultValuesPolicy.ValueTypes };
+		JsonSerializer serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.ValueTypes };
 		Person value = new() { Name = null, Age = 0, Address = null };
 
 		string json = serializer.Serialize(value);
@@ -216,7 +212,7 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void Serialize_ObjectGraph_RequiredPropertiesAreRetainedWhenRequested()
 	{
-		JsonSerializer serializer = new() { SerializeDefaultValues = Nerdbank.Json.SerializeDefaultValuesPolicy.Required };
+		JsonSerializer serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.Required };
 		RequiredDefaultValueContainer value = new() { Count = 0, Name = null };
 
 		string json = serializer.Serialize(value);
@@ -245,7 +241,7 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void Deserialize_ObjectGraph_MissingRequiredProperty_CanBeAllowed()
 	{
-		JsonSerializer serializer = new() { DeserializeDefaultValues = Nerdbank.Json.DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties };
+		JsonSerializer serializer = new() { DeserializeDefaultValues = DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties };
 
 		RequiredPropertyContainer value = serializer.Deserialize<RequiredPropertyContainer>("{}");
 
@@ -255,7 +251,7 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void Deserialize_ObjectGraph_NullForNonNullableProperty_CanBeAllowed()
 	{
-		JsonSerializer serializer = new() { DeserializeDefaultValues = Nerdbank.Json.DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties };
+		JsonSerializer serializer = new() { DeserializeDefaultValues = DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties };
 
 		NonNullablePropertyContainer value = serializer.Deserialize<NonNullablePropertyContainer>("{\"name\":null}");
 
@@ -265,7 +261,7 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void SerializeDeserialize_ObjectGraph_PreserveReferences()
 	{
-		JsonSerializer serializer = new() { PreserveReferences = Nerdbank.Json.ReferencePreservationMode.RejectCycles };
+		JsonSerializer serializer = new() { PreserveReferences = ReferencePreservationMode.RejectCycles };
 		SharedLeaf sharedLeaf = new() { Name = "Ada" };
 		SharedRoot value = new() { Left = sharedLeaf, Right = sharedLeaf };
 
@@ -281,7 +277,7 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void Serialize_ObjectGraph_RejectsReferenceCycles()
 	{
-		JsonSerializer serializer = new() { PreserveReferences = Nerdbank.Json.ReferencePreservationMode.RejectCycles };
+		JsonSerializer serializer = new() { PreserveReferences = ReferencePreservationMode.RejectCycles };
 		CyclicNode node = new();
 		node.Next = node;
 
@@ -303,7 +299,7 @@ public partial class JsonObjectSerializerTests
 	private static IEqualityComparer<T> GetStructuralEqualityComparer<T>()
 	{
 		ITypeShape<T> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<T>() ?? throw new InvalidOperationException($"No generated type shape found for {typeof(T)}.");
-		return StructuralEqualityComparer.GetDefault(shape);
+		return Nerdbank.MessagePack.StructuralEqualityComparer.GetDefault(shape);
 	}
 
 	[GenerateShape]

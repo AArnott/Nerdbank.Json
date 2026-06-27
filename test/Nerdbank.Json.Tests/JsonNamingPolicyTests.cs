@@ -2,7 +2,6 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using Nerdbank.Json;
-using Xunit;
 
 /// <summary>
 /// Verifies property name transformation behaviors of <see cref="JsonNamingPolicy"/>.
