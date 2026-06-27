@@ -2,10 +2,12 @@
     <ItemGroup>
         <ProjectReference Include="Nerdbank.Json.Tests\Nerdbank.Json.Tests.csproj" Publish="false" />
         <ProjectReference Include="Nerdbank.Json.Analyzers.Tests\Nerdbank.Json.Analyzers.Tests.csproj" Publish="false" />
-        <ProjectReference Include="Nerdbank.Json.TUnit\Nerdbank.Json.TUnit.csproj" Publish="false" />
 
         <MultiRIDProjectReference Include="AotCompatibilityTest\AotCompatibilityTest.csproj" />
         <MultiRIDProjectReference Include="AotNativeConsole\AotNativeConsole.csproj" />
-        <MultiRIDProjectReference Include="Nerdbank.Json.TUnit\Nerdbank.Json.TUnit.csproj" />
+
+        <!-- Build all target frameworks of the main test project, and also publish its NativeAOT-capable target framework. -->
+        <MultiRIDProjectReference Include="Nerdbank.Json.Tests\Nerdbank.Json.Tests.csproj" Publish="false" />
+        <MultiRIDProjectReference Include="Nerdbank.Json.Tests\Nerdbank.Json.Tests.csproj" TargetFramework="net10.0" />
     </ItemGroup>
 </Project>

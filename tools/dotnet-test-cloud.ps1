@@ -97,14 +97,14 @@ if ($isMTP) {
     if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
 
     if ($IncludeNativeAOT) {
-      $TestExecutableName = 'Nerdbank.Json.TUnit'
+      $TestExecutableName = 'Nerdbank.Json.Tests'
       $NativeAOTArgs = $mtpArgs
       if (!($IsMacOS -or $IsLinux)) {
         $TestExecutableName += '.exe'
         $NativeAOTArgs += $dumpSwitches
       }
 
-      Get-ChildItem "$RepoRoot/bin/Nerdbank.Json.TUnit/$Configuration/*/*/publish/$TestExecutableName" |% {
+      Get-ChildItem "$RepoRoot/bin/Nerdbank.Json.Tests/$Configuration/*/*/publish/$TestExecutableName" |% {
         & $_ @NativeAOTArgs @extraArgs
         if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
       }
