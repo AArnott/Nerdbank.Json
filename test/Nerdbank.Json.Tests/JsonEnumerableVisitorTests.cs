@@ -22,7 +22,7 @@ public partial class JsonObjectSerializerTests
 			new Person { Name = "Grace", Age = 41, Address = new Address { City = "Arlington", PostalCode = 22201 } },
 		];
 
-		string json = serializer.Serialize(value);
+		string json = serializer.Serialize<List<Person>, JsonObjectSerializerTests>(value);
 
 		Assert.Equal("[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":{\"city\":\"Arlington\",\"postalCode\":22201}}]", json);
 		AssertRoundtrip(json, serializer, value);

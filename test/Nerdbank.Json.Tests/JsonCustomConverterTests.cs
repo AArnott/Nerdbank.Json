@@ -5,6 +5,13 @@ using System.Collections.Generic;
 using Nerdbank.Json;
 using PolyType;
 
+[assembly: TypeShapeExtension(typeof(string), AssociatedTypes = new[] { typeof(JsonObjectSerializerTests.UpperCaseStringConverter) })]
+
+[GenerateShapeFor<string>]
+[GenerateShapeFor<char>]
+[GenerateShapeFor<List<char>>]
+[GenerateShapeFor<AttributedStringWrapper>]
+[GenerateShapeFor<GenericValue<string>>]
 public partial class JsonObjectSerializerTests
 {
 	[Test]
@@ -15,8 +22,8 @@ public partial class JsonObjectSerializerTests
 			Converters = new JsonConverterCollection(new JsonConverter[] { new UpperCaseStringConverter() }),
 		};
 
-		string json = serializer.Serialize("Ada");
-		string roundTripped = serializer.Deserialize<string>(json);
+		string json = serializer.Serialize<string, JsonObjectSerializerTests>("Ada");
+		string roundTripped = serializer.Deserialize<string, JsonObjectSerializerTests>(json);
 
 		Assert.Equal("\"ADA\"", json);
 		Assert.Equal("ada", roundTripped);
@@ -32,8 +39,8 @@ public partial class JsonObjectSerializerTests
 
 		GenericValue<string> value = new() { Value = "Ada" };
 
-		string json = serializer.Serialize(value);
-		GenericValue<string> roundTripped = serializer.Deserialize<GenericValue<string>>(json);
+		string json = serializer.Serialize<GenericValue<string>, JsonObjectSerializerTests>(value);
+		GenericValue<string> roundTripped = serializer.Deserialize<GenericValue<string>, JsonObjectSerializerTests>(json);
 
 		Assert.Equal("{\"value\":\"Ada!\"}", json);
 		Assert.Equal("Ada", roundTripped.Value);
@@ -49,8 +56,8 @@ public partial class JsonObjectSerializerTests
 
 		List<char> value = ['a', 'b', 'c'];
 
-		string json = serializer.Serialize(value);
-		List<char> roundTripped = serializer.Deserialize<List<char>>(json);
+		string json = serializer.Serialize<List<char>, JsonObjectSerializerTests>(value);
+		List<char> roundTripped = serializer.Deserialize<List<char>, JsonObjectSerializerTests>(json);
 
 		Assert.Equal("[[\"a\",\"b\",\"c\"]]", json);
 		Assert.Equal(value, roundTripped);
@@ -62,8 +69,8 @@ public partial class JsonObjectSerializerTests
 		JsonSerializer serializer = new();
 		AttributedStringWrapper value = new() { Value = "Ada" };
 
-		string json = serializer.Serialize(value);
-		AttributedStringWrapper roundTripped = serializer.Deserialize<AttributedStringWrapper>(json);
+		string json = serializer.Serialize<AttributedStringWrapper, JsonObjectSerializerTests>(value);
+		AttributedStringWrapper roundTripped = serializer.Deserialize<AttributedStringWrapper, JsonObjectSerializerTests>(json);
 
 		Assert.Equal("{\"value\":\"ADA\"}", json);
 		Assert.Equal("ada", roundTripped.Value);
@@ -108,7 +115,7 @@ public partial class JsonObjectSerializerTests
 		public string Name { get; } = name;
 	}
 
-	private sealed class UpperCaseStringConverter : JsonConverter<string>
+	internal sealed partial class UpperCaseStringConverter : JsonConverter<string>
 	{
 		public override void Write(ref JsonWriter writer, string? value, JsonSerializer serializer)
 		{
@@ -122,13 +129,14 @@ public partial class JsonObjectSerializerTests
 		}
 	}
 
+	[AssociatedTypeShape(typeof(AttributedStringWrapperConverter))]
 	[JsonConverter(typeof(AttributedStringWrapperConverter))]
-	private sealed class AttributedStringWrapper
+	internal sealed partial class AttributedStringWrapper
 	{
 		public string? Value { get; set; }
 	}
 
-	private sealed class AttributedStringWrapperConverter : JsonConverter<AttributedStringWrapper>
+	internal sealed partial class AttributedStringWrapperConverter : JsonConverter<AttributedStringWrapper>
 	{
 		public override void Write(ref JsonWriter writer, AttributedStringWrapper? value, JsonSerializer serializer)
 		{
@@ -162,12 +170,13 @@ public partial class JsonObjectSerializerTests
 		}
 	}
 
-	private sealed class GenericValue<T>
+	[AssociatedTypeShape(typeof(GenericValueConverter<>))]
+	internal sealed partial class GenericValue<T>
 	{
 		public string? Value { get; set; }
 	}
 
-	private sealed class GenericValueConverter<T> : JsonConverter<GenericValue<T>>
+	internal sealed partial class GenericValueConverter<T> : JsonConverter<GenericValue<T>>
 	{
 		public override void Write(ref JsonWriter writer, GenericValue<T>? value, JsonSerializer serializer)
 		{
@@ -207,7 +216,7 @@ public partial class JsonObjectSerializerTests
 	private sealed class CharListWrapperFactory : IJsonConverterFactory
 	{
 		public JsonConverter? CreateConverter(Type type, ITypeShape? shape, in JsonConverterFactoryContext context)
-			=> type == typeof(List<char>) ? new CharListWrapperConverter(context.GetConverter<char>()) : null;
+			=> type == typeof(List<char>) ? new CharListWrapperConverter(context.GetConverter(PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<char>() ?? throw new InvalidOperationException("No generated type shape found for System.Char."))) : null;
 	}
 
 	private sealed class CharListWrapperConverter(JsonConverter<char> elementConverter) : JsonConverter<List<char>>

@@ -2,9 +2,6 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 #pragma warning disable SA1600 // Elements should be documented
-#pragma warning disable IL2091 // DynamicallyAccessedMembers mismatch from Activator.CreateInstance<T>
-#pragma warning disable IL2070 // Reflection-based member lookup is intentional for nullability checks.
-#pragma warning disable IL2087 // Reflection-based member lookup is intentional for nullability checks.
 
 using System;
 using System.Collections.Generic;
@@ -95,7 +92,7 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 			}
 
 			serializedPropertyNamesByClrName[property.Name] = owner.GetSerializedPropertyName(property.Name, property.AttributeProvider);
-			bool isRequired = requiredProperties.Contains(property.Name) || IsRequiredMember(typeof(T), property.Name);
+			bool isRequired = requiredProperties.Contains(property.Name) || HasRequiredMemberAttribute(property.MemberInfo);
 			if (property.Accept(this, isRequired) is JsonProperty<T> jsonProperty)
 			{
 				properties.Add(jsonProperty);
@@ -111,7 +108,13 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 			}
 		}
 
-		return new JsonObjectConverter<T>(CreateFactory<T>(), jsonProperties, owner.PropertyNameComparer, extensionData);
+		Func<T>? factory = objectShape.GetDefaultConstructor();
+		if (factory is null)
+		{
+			throw new NotSupportedException($"Type '{typeof(T).FullName}' does not define a default constructor for property-based deserialization.");
+		}
+
+		return new JsonObjectConverter<T>(factory, jsonProperties, owner.PropertyNameComparer, extensionData);
 	}
 
 	public override object? VisitConstructor<TDeclaringType, TArgumentState>(IConstructorShape<TDeclaringType, TArgumentState> constructorShape, object? state = null)
@@ -190,7 +193,8 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 		}
 
 		string propertyName = owner.GetSerializedPropertyName(propertyShape.Name, propertyShape.AttributeProvider);
-		return new JsonProperty<TDeclaringType, TPropertyType>(propertyName, propertyShape.Name, getter, setter, converter, deserializeIntoExistingInstance, isRequired, IsNonNullableReferenceType(typeof(TDeclaringType), propertyShape.Name, typeof(TPropertyType)));
+		bool isNonNullableReferenceType = !typeof(TPropertyType).IsValueType && (propertyShape.IsSetterNonNullable || (!propertyShape.HasSetter && propertyShape.IsGetterNonNullable));
+		return new JsonProperty<TDeclaringType, TPropertyType>(propertyName, propertyShape.Name, getter, setter, converter, deserializeIntoExistingInstance, isRequired, isNonNullableReferenceType);
 	}
 
 	public override object? VisitSurrogate<T, TSurrogate>(ISurrogateTypeShape<T, TSurrogate> surrogateShape, object? state = null)
@@ -235,16 +239,6 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 	public override object? VisitFunction<TFunction, TArgumentState, TResult>(IFunctionTypeShape<TFunction, TArgumentState, TResult> functionShape, object? state = null)
 		=> throw new NotSupportedException($"JSON serialization does not support delegate types such as {functionShape.Type.FullName}.");
 
-	private static Func<T> CreateFactory<T>()
-	{
-		if (typeof(T).IsValueType)
-		{
-			return static () => default!;
-		}
-
-		return static () => Activator.CreateInstance<T>();
-	}
-
 	private static bool HasExtensionDataAttribute(IGenericCustomAttributeProvider attributeProvider)
 	{
 		using IEnumerator<JsonExtensionDataAttribute> attributes = attributeProvider.GetCustomAttributes<JsonExtensionDataAttribute>(inherit: false).GetEnumerator();
@@ -256,58 +250,8 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 		return true;
 	}
 
-	private static bool IsNonNullableReferenceType(Type declaringType, string memberName, Type propertyType)
+	private static bool HasRequiredMemberAttribute(MemberInfo? memberInfo)
 	{
-		if (propertyType.IsValueType)
-		{
-			return false;
-		}
-
-		const BindingFlags PropertyLookup = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-		MemberInfo? memberInfo = declaringType.GetProperty(memberName, PropertyLookup) ?? (MemberInfo?)declaringType.GetField(memberName, PropertyLookup);
-		if (memberInfo is null)
-		{
-			return false;
-		}
-
-#if NET
-		NullabilityInfoContext context = new();
-		NullabilityInfo? nullability = memberInfo switch
-		{
-			PropertyInfo propertyInfo => context.Create(propertyInfo),
-			FieldInfo fieldInfo => context.Create(fieldInfo),
-			EventInfo eventInfo => context.Create(eventInfo),
-			_ => null,
-		};
-
-		if (nullability is not null)
-		{
-			return nullability.ReadState == NullabilityState.NotNull;
-		}
-
-		return false;
-#else
-		if (TryGetNullableFlag(memberInfo.CustomAttributes, out byte propertyFlag))
-		{
-			return propertyFlag == 1;
-		}
-
-		for (Type? currentType = memberInfo.DeclaringType; currentType is not null; currentType = currentType.DeclaringType)
-		{
-			if (TryGetNullableContextFlag(currentType.CustomAttributes, out byte contextFlag))
-			{
-				return contextFlag == 1;
-			}
-		}
-
-		return false;
-#endif
-	}
-
-	private static bool IsRequiredMember(Type declaringType, string memberName)
-	{
-		const BindingFlags PropertyLookup = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
-		MemberInfo? memberInfo = declaringType.GetProperty(memberName, PropertyLookup) ?? (MemberInfo?)declaringType.GetField(memberName, PropertyLookup);
 		if (memberInfo is null)
 		{
 			return false;
@@ -323,54 +267,4 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 
 		return false;
 	}
-
-#if !NET
-	private static bool TryGetNullableFlag(IEnumerable<CustomAttributeData> attributes, out byte flag)
-	{
-		foreach (CustomAttributeData attribute in attributes)
-		{
-			if (attribute.AttributeType.FullName != "System.Runtime.CompilerServices.NullableAttribute" || attribute.ConstructorArguments.Count == 0)
-			{
-				continue;
-			}
-
-			CustomAttributeTypedArgument argument = attribute.ConstructorArguments[0];
-			if (argument.ArgumentType == typeof(byte) && argument.Value is byte byteValue)
-			{
-				flag = byteValue;
-				return true;
-			}
-
-			if (argument.Value is IReadOnlyCollection<CustomAttributeTypedArgument> values)
-			{
-				foreach (CustomAttributeTypedArgument value in values)
-				{
-					if (value.Value is byte item)
-					{
-						flag = item;
-						return true;
-					}
-				}
-			}
-		}
-
-		flag = default;
-		return false;
-	}
-
-	private static bool TryGetNullableContextFlag(IEnumerable<CustomAttributeData> attributes, out byte flag)
-	{
-		foreach (CustomAttributeData attribute in attributes)
-		{
-			if (attribute.AttributeType.FullName == "System.Runtime.CompilerServices.NullableContextAttribute" && attribute.ConstructorArguments.Count > 0 && attribute.ConstructorArguments[0].Value is byte byteValue)
-			{
-				flag = byteValue;
-				return true;
-			}
-		}
-
-		flag = default;
-		return false;
-	}
-#endif
 }

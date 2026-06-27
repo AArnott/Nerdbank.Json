@@ -6,6 +6,7 @@
 #pragma warning disable SA1601 // Partial elements should be documented
 #pragma warning disable CS1591 // Generated forwarding overloads are intentionally undocumented
 
+using System;
 using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
@@ -81,185 +82,191 @@ public partial record JsonSerializer
 public static partial class JsonSerializerExtensions
 {
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
 	public static void Serialize<T>(this JsonSerializer self, IBufferWriter<byte> writer, in T? value)
-	{
-		JsonSerializer serializer = RequireSerializer(self);
-		if (TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape)
-		{
-			serializer.Serialize(writer, value, shape);
-			return;
-		}
-
-		serializer.SerializeDynamic(writer, value);
-	}
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
+	public static void Serialize<T>(this JsonSerializer self, IBufferWriter<byte> writer, in T? value)
+		=> RequireSerializer(self).SerializeDynamic(writer, value);
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
 	public static string Serialize<T>(this JsonSerializer self, in T? value)
-	{
-		JsonSerializer serializer = RequireSerializer(self);
-		return TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape
-			? serializer.Serialize(value, shape)
-			: serializer.SerializeDynamic(value);
-	}
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
+	public static string Serialize<T>(this JsonSerializer self, in T? value)
+		=> RequireSerializer(self).SerializeDynamic(value);
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
 	public static void Serialize<T>(this JsonSerializer self, Stream stream, in T? value)
-	{
-		JsonSerializer serializer = RequireSerializer(self);
-		if (TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape)
-		{
-			serializer.Serialize(stream, value, shape);
-			return;
-		}
-
-		serializer.SerializeDynamic(stream, value);
-	}
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
+	public static void Serialize<T>(this JsonSerializer self, Stream stream, in T? value)
+		=> RequireSerializer(self).SerializeDynamic(stream, value);
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
 	public static ValueTask SerializeAsync<T>(this JsonSerializer self, Stream stream, T? value, CancellationToken cancellationToken = default)
-	{
-		JsonSerializer serializer = RequireSerializer(self);
-		return TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape
-			? serializer.SerializeAsync(stream, value, shape, cancellationToken)
-			: serializer.SerializeAsyncDynamic(stream, value, cancellationToken);
-	}
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
+	public static ValueTask SerializeAsync<T>(this JsonSerializer self, Stream stream, T? value, CancellationToken cancellationToken = default)
+		=> RequireSerializer(self).SerializeAsyncDynamic(stream, value, cancellationToken);
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
 	public static T Deserialize<T>(this JsonSerializer self, string json)
-	{
-		JsonSerializer serializer = RequireSerializer(self);
-		return TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape
-			? serializer.Deserialize(json, shape)
-			: serializer.DeserializeDynamic<T>(json);
-	}
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
+	public static T Deserialize<T>(this JsonSerializer self, string json)
+		=> RequireSerializer(self).DeserializeDynamic<T>(json);
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
 	public static T Deserialize<T>(this JsonSerializer self, Stream stream)
-	{
-		JsonSerializer serializer = RequireSerializer(self);
-		return TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape
-			? serializer.Deserialize(stream, shape)
-			: serializer.DeserializeDynamic<T>(stream);
-	}
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
+	public static T Deserialize<T>(this JsonSerializer self, Stream stream)
+		=> RequireSerializer(self).DeserializeDynamic<T>(stream);
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
 	public static ValueTask<T> DeserializeAsync<T>(this JsonSerializer self, Stream stream, CancellationToken cancellationToken = default)
-	{
-		JsonSerializer serializer = RequireSerializer(self);
-		return TryResolveTypeShape<T>(serializer.ConverterCache) is ITypeShape<T> shape
-			? serializer.DeserializeAsync(stream, shape, cancellationToken)
-			: serializer.DeserializeAsyncDynamic<T>(stream, cancellationToken);
-	}
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
+	public static ValueTask<T> DeserializeAsync<T>(this JsonSerializer self, Stream stream, CancellationToken cancellationToken = default)
+		=> RequireSerializer(self).DeserializeAsyncDynamic<T>(stream, cancellationToken);
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
+#if NET8_0
 	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#endif
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
+	public static void Serialize<T, TProvider>(this JsonSerializer self, IBufferWriter<byte> writer, in T? value)
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing values with witness types may require reflection metadata.")]
 	public static void Serialize<T, TProvider>(this JsonSerializer self, IBufferWriter<byte> writer, in T? value)
 		=> RequireSerializer(self).Serialize(writer, value, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
+#if NET8_0
 	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#endif
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
+	public static string Serialize<T, TProvider>(this JsonSerializer self, in T? value)
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing values with witness types may require reflection metadata.")]
 	public static string Serialize<T, TProvider>(this JsonSerializer self, in T? value)
 		=> RequireSerializer(self).Serialize(value, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
+#if NET8_0
 	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#endif
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
+	public static void Serialize<T, TProvider>(this JsonSerializer self, Stream stream, in T? value)
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing values with witness types may require reflection metadata.")]
 	public static void Serialize<T, TProvider>(this JsonSerializer self, Stream stream, in T? value)
 		=> RequireSerializer(self).Serialize(stream, value, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
+#if NET8_0
 	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#endif
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
+	public static ValueTask SerializeAsync<T, TProvider>(this JsonSerializer self, Stream stream, T? value, CancellationToken cancellationToken = default)
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing values with witness types may require reflection metadata.")]
 	public static ValueTask SerializeAsync<T, TProvider>(this JsonSerializer self, Stream stream, T? value, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).SerializeAsync(stream, value, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache), cancellationToken);
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
+#if NET8_0
 	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#endif
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
+	public static T Deserialize<T, TProvider>(this JsonSerializer self, string json)
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing values with witness types may require reflection metadata.")]
 	public static T Deserialize<T, TProvider>(this JsonSerializer self, string json)
 		=> RequireSerializer(self).Deserialize(json, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
+#if NET8_0
 	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#endif
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
+	public static T Deserialize<T, TProvider>(this JsonSerializer self, Stream stream)
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing values with witness types may require reflection metadata.")]
 	public static T Deserialize<T, TProvider>(this JsonSerializer self, Stream stream)
 		=> RequireSerializer(self).Deserialize(stream, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
+#endif
 
 	[ExcludeFromCodeCoverage]
-	#if NET8_0
+#if NET8_0
 	[RequiresDynamicCode(ResolveDynamicMessage)]
-	#endif
-	#if NET
+#endif
+#if NET
+	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
-	#endif
+	public static ValueTask<T> DeserializeAsync<T, TProvider>(this JsonSerializer self, Stream stream, CancellationToken cancellationToken = default)
+		=> throw new NotSupportedException(JsonSerializer.PreferTypeConstrainedInstanceOverloads);
+#else
+	[RequiresUnreferencedCode("Serializing or deserializing values with witness types may require reflection metadata.")]
 	public static ValueTask<T> DeserializeAsync<T, TProvider>(this JsonSerializer self, Stream stream, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializeAsync(stream, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache), cancellationToken);
+#endif
 }

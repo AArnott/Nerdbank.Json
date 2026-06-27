@@ -287,7 +287,8 @@ public partial class JsonObjectSerializerTests
 
 	private static void AssertRoundtrip<T>(string json, JsonSerializer serializer, T expected)
 	{
-		T actual = serializer.Deserialize<T>(json);
+		ITypeShape<T> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<T>() ?? throw new InvalidOperationException($"No generated type shape found for {typeof(T)}.");
+		T actual = serializer.Deserialize(json, shape);
 		Assert.True(GetStructuralEqualityComparer<T>().Equals(expected, actual), $"Round-trip mismatch for serialized JSON: {json}");
 	}
 

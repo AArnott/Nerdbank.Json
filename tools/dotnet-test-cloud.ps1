@@ -18,9 +18,9 @@
 #>
 [CmdletBinding()]
 Param(
-    [string]$Configuration='Debug',
+    [string]$Configuration = 'Debug',
     [switch]$IncludeNativeAOT,
-    [string]$Agent='Local',
+    [string]$Agent = 'Local',
     [switch]$PublishResults,
     [switch]$x86,
     [string]$dotnet32
@@ -32,20 +32,22 @@ $OnCI = ($env:CI -or $env:TF_BUILD)
 
 $dotnet = 'dotnet'
 if ($x86) {
-  $x86RunTitleSuffix = ", x86"
-  if ($dotnet32) {
-    $dotnet = $dotnet32
-  } else {
-    $dotnet32Possibilities = "$PSScriptRoot\../obj/tools/x86/.dotnet/dotnet.exe", "$env:AGENT_TOOLSDIRECTORY/x86/dotnet/dotnet.exe", "${env:ProgramFiles(x86)}\dotnet\dotnet.exe"
-    $dotnet32Matches = $dotnet32Possibilities |? { Test-Path $_ }
-    if ($dotnet32Matches) {
-      $dotnet = Resolve-Path @($dotnet32Matches)[0]
-      Write-Host "Running tests using `"$dotnet`"" -ForegroundColor DarkGray
-    } else {
-      Write-Error "Unable to find 32-bit dotnet.exe"
-      return 1
+    $x86RunTitleSuffix = ", x86"
+    if ($dotnet32) {
+        $dotnet = $dotnet32
     }
-  }
+    else {
+        $dotnet32Possibilities = "$PSScriptRoot\../obj/tools/x86/.dotnet/dotnet.exe", "$env:AGENT_TOOLSDIRECTORY/x86/dotnet/dotnet.exe", "${env:ProgramFiles(x86)}\dotnet\dotnet.exe"
+        $dotnet32Matches = $dotnet32Possibilities | ? { Test-Path $_ }
+        if ($dotnet32Matches) {
+            $dotnet = Resolve-Path @($dotnet32Matches)[0]
+            Write-Host "Running tests using `"$dotnet`"" -ForegroundColor DarkGray
+        }
+        else {
+            Write-Error "Unable to find 32-bit dotnet.exe"
+            return 1
+        }
+    }
 }
 
 $testBinLogXunit = Join-Path $ArtifactStagingFolder (Join-Path build_logs test-xunit.binlog)
@@ -61,24 +63,24 @@ if ($isMTP) {
     if ($OnCI) { $extraArgs += '--no-progress' }
 
     $dumpSwitches = @(
-        ,'--hangdump'
-        ,'--hangdump-timeout','120s'
-        ,'--crashdump'
+        , '--hangdump'
+        , '--hangdump-timeout', '120s'
+        , '--crashdump'
     )
     $mtpArgs = @(
-        ,'--coverage'
-        ,'--coverage-output-format','cobertura'
-        ,'--diagnostic'
-        ,'--diagnostic-output-directory',$testLogs
-        ,'--diagnostic-verbosity','Information'
-        ,'--results-directory',$testLogs
-        ,'--report-trx'
+        , '--coverage'
+        , '--coverage-output-format', 'cobertura'
+        , '--diagnostic'
+        , '--diagnostic-output-directory', $testLogs
+        , '--diagnostic-verbosity', 'Information'
+        , '--results-directory', $testLogs
+        , '--report-trx'
     )
 
     & $dotnet test --project $RepoRoot/test/Nerdbank.Json.Analyzers.Tests/Nerdbank.Json.Analyzers.Tests.csproj `
         --no-build `
         -c $Configuration `
-      -bl:"$testBinLogXunit" `
+        -bl:"$testBinLogXunit" `
         --filter-not-trait 'TestCategory=FailsInCloudTest' `
         --coverage-settings "$PSScriptRoot/test.runsettings" `
         @mtpArgs `
@@ -87,31 +89,32 @@ if ($isMTP) {
     if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
 
     & $dotnet test --project $RepoRoot/test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj `
-      --no-build `
-      -c $Configuration `
-      -bl:"$testBinLogTUnit" `
-      --treenode-filter '/*/*/*/*[TestCategory!=FailsInCloudTest]' `
-      @mtpArgs `
-      @dumpSwitches `
-      @extraArgs
+        --no-build `
+        -c $Configuration `
+        -bl:"$testBinLogTUnit" `
+        --treenode-filter '/*/*/*/*[TestCategory!=FailsInCloudTest]' `
+        @mtpArgs `
+        @dumpSwitches `
+        @extraArgs
     if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
 
     if ($IncludeNativeAOT) {
-      $TestExecutableName = 'Nerdbank.Json.Tests'
-      $NativeAOTArgs = $mtpArgs
-      if (!($IsMacOS -or $IsLinux)) {
-        $TestExecutableName += '.exe'
-        $NativeAOTArgs += $dumpSwitches
-      }
+        $TestExecutableName = 'Nerdbank.Json.Tests'
+        $NativeAOTArgs = $mtpArgs
+        if (!($IsMacOS -or $IsLinux)) {
+            $TestExecutableName += '.exe'
+            $NativeAOTArgs += $dumpSwitches
+        }
 
-      Get-ChildItem "$RepoRoot/bin/Nerdbank.Json.Tests/$Configuration/*/*/publish/$TestExecutableName" |% {
-        & $_ @NativeAOTArgs @extraArgs
-        if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
-      }
+        Get-ChildItem "$RepoRoot/bin/Nerdbank.Json.Tests/$Configuration/*/*/publish/$TestExecutableName" | % {
+            & $_ @NativeAOTArgs @extraArgs
+            if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
+        }
     }
 
     $trxFiles = Get-ChildItem -Recurse -Path $testLogs\*.trx
-} else {
+}
+else {
     $testDiagLog = Join-Path $ArtifactStagingFolder (Join-Path test_logs diag.log)
     & $dotnet test $RepoRoot `
         --no-build `
@@ -131,32 +134,33 @@ if ($isMTP) {
 }
 
 $unknownCounter = 0
-$trxFiles |% {
-  New-Item $testLogs -ItemType Directory -Force | Out-Null
-  if (!($_.FullName.StartsWith($testLogs, [StringComparison]::OrdinalIgnoreCase))) {
-    Copy-Item $_ -Destination $testLogs
-  }
+$trxFiles | % {
+    New-Item $testLogs -ItemType Directory -Force | Out-Null
+    if (!($_.FullName.StartsWith($testLogs, [StringComparison]::OrdinalIgnoreCase))) {
+        Copy-Item $_ -Destination $testLogs
+    }
 
-  if ($PublishResults) {
-    $x = [xml](Get-Content -LiteralPath $_)
-    $runTitle = $null
-    if ($x.TestRun.TestDefinitions -and $x.TestRun.TestDefinitions.GetElementsByTagName('UnitTest')) {
-      $storage = $x.TestRun.TestDefinitions.GetElementsByTagName('UnitTest')[0].storage -replace '\\','/'
-      if ($storage -match '/(?<tfm>net[^/]+)/(?:(?<rid>[^/]+)/)?(?<lib>[^/]+)\.(dll|exe)$') {
-        if ($matches.rid) {
-          $runTitle = "$($matches.lib) ($($matches.tfm), $($matches.rid), $Agent)"
-        } else {
-          $runTitle = "$($matches.lib) ($($matches.tfm)$x86RunTitleSuffix, $Agent)"
+    if ($PublishResults) {
+        $x = [xml](Get-Content -LiteralPath $_)
+        $runTitle = $null
+        if ($x.TestRun.TestDefinitions -and $x.TestRun.TestDefinitions.GetElementsByTagName('UnitTest')) {
+            $storage = $x.TestRun.TestDefinitions.GetElementsByTagName('UnitTest')[0].storage -replace '\\', '/'
+            if ($storage -match '/(?<tfm>net[^/]+)/(?:(?<rid>[^/]+)/)?(?<lib>[^/]+)\.(dll|exe)$') {
+                if ($matches.rid) {
+                    $runTitle = "$($matches.lib) ($($matches.tfm), $($matches.rid), $Agent)"
+                }
+                else {
+                    $runTitle = "$($matches.lib) ($($matches.tfm)$x86RunTitleSuffix, $Agent)"
+                }
+            }
         }
-      }
-    }
-    if (!$runTitle) {
-      $unknownCounter += 1;
-      $runTitle = "unknown$unknownCounter ($Agent$x86RunTitleSuffix)";
-    }
+        if (!$runTitle) {
+            $unknownCounter += 1;
+            $runTitle = "unknown$unknownCounter ($Agent$x86RunTitleSuffix)";
+        }
 
-    Write-Host "##vso[results.publish type=VSTest;runTitle=$runTitle;publishRunAttachments=true;resultFiles=$_;failTaskOnFailedTests=true;testRunSystem=VSTS - PTR;]"
-  }
+        Write-Host "##vso[results.publish type=VSTest;runTitle=$runTitle;publishRunAttachments=true;resultFiles=$_;failTaskOnFailedTests=true;testRunSystem=VSTS - PTR;]"
+    }
 }
 
 if ($failedTests -ne 0) {

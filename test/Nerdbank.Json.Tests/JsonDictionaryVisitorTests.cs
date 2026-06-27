@@ -25,7 +25,7 @@ public partial class JsonObjectSerializerTests
 			["snake_case_key"] = 2,
 		};
 
-		string json = serializer.Serialize(value);
+		string json = serializer.Serialize<Dictionary<string, int>, JsonObjectSerializerTests>(value);
 
 		Assert.Equal("{\"PascalCaseKey\":1,\"snake_case_key\":2}", json);
 		AssertRoundtrip(json, serializer, value);
@@ -41,11 +41,11 @@ public partial class JsonObjectSerializerTests
 			["AnotherKey"] = 2,
 		};
 
-		string json = serializer.Serialize(value);
+		string json = serializer.Serialize<Dictionary<string, int>, JsonObjectSerializerTests>(value);
 
 		Assert.Equal("{\"pascalCaseKey\":1,\"anotherKey\":2}", json);
 
-		Dictionary<string, int> roundTripped = serializer.Deserialize<Dictionary<string, int>>(json);
+		Dictionary<string, int> roundTripped = serializer.Deserialize<Dictionary<string, int>, JsonObjectSerializerTests>(json);
 		Assert.Equal(2, roundTripped.Count);
 		Assert.Equal(1, roundTripped["pascalCaseKey"]);
 		Assert.Equal(2, roundTripped["anotherKey"]);
@@ -96,7 +96,7 @@ public partial class JsonObjectSerializerTests
 			[20] = "twenty",
 		};
 
-		string json = serializer.Serialize(value);
+		string json = serializer.Serialize<Dictionary<int, string>, JsonObjectSerializerTests>(value);
 
 		Assert.Equal("{\"1\":\"one\",\"20\":\"twenty\"}", json);
 		AssertRoundtrip(json, serializer, value);
@@ -114,7 +114,7 @@ public partial class JsonObjectSerializerTests
 			[second] = 2,
 		};
 
-		string json = serializer.Serialize(value);
+		string json = serializer.Serialize<Dictionary<Guid, int>, JsonObjectSerializerTests>(value);
 
 		Assert.Equal("{\"f2cb13e4-7c12-4db6-b978-6a83abf1e9bf\":1,\"cefe95cc-6f79-4c5d-9c7e-8b8d9c61c4b2\":2}", json);
 		AssertRoundtrip(json, serializer, value);
@@ -148,7 +148,7 @@ public partial class JsonObjectSerializerTests
 			[new ComplexKey { Name = "alpha" }] = 1,
 		};
 
-		NotSupportedException exception = Assert.Throws<NotSupportedException>(() => serializer.Serialize(value));
+		NotSupportedException exception = Assert.Throws<NotSupportedException>(() => serializer.Serialize<Dictionary<ComplexKey, int>, JsonObjectSerializerTests>(value));
 		Assert.Contains(typeof(ComplexKey).FullName ?? nameof(ComplexKey), exception.Message, StringComparison.Ordinal);
 	}
 

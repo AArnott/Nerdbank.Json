@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text;
 using System.Threading;
@@ -27,6 +28,10 @@ namespace Nerdbank.Json;
 /// </remarks>
 public partial record JsonSerializer
 {
+#if NET
+	internal const string PreferTypeConstrainedInstanceOverloads = "Use a non-extension overload that constrains the generic T : IShapeable<T>, or use an overload that explicitly supplies a witness type or ITypeShape<T>.";
+#endif
+
 	private JsonSerializerConfiguration configuration = JsonSerializerConfiguration.Default;
 	[ThreadStatic]
 	private static JsonReferenceEqualityTracker? currentReferenceTracker;
@@ -274,14 +279,26 @@ public partial record JsonSerializer
 	/// </summary>
 	/// <param name="value">The value to serialize.</param>
 	/// <returns>The serialized JSON text.</returns>
-	public string Serialize(string? value) => this.SerializeDynamic<string?>(value);
+	public string Serialize(string? value)
+	{
+		BufferWriter buffer = new();
+		JsonWriter writer = new(buffer, this.WriteIndented);
+		BuiltInJsonConverters.TrySerialize(ref writer, value);
+		return Encoding.UTF8.GetString(buffer.WrittenArray, 0, buffer.WrittenCount);
+	}
 
 	/// <summary>
 	/// Serializes a boolean value to JSON text.
 	/// </summary>
 	/// <param name="value">The value to serialize.</param>
 	/// <returns>The serialized JSON text.</returns>
-	public string Serialize(bool value) => this.SerializeDynamic<bool>(value);
+	public string Serialize(bool value)
+	{
+		BufferWriter buffer = new();
+		JsonWriter writer = new(buffer, this.WriteIndented);
+		BuiltInJsonConverters.TrySerialize(ref writer, value);
+		return Encoding.UTF8.GetString(buffer.WrittenArray, 0, buffer.WrittenCount);
+	}
 
 	/// <summary>
 	/// Deserializes JSON text.
@@ -355,6 +372,10 @@ public partial record JsonSerializer
 		return this.Deserialize(Encoding.UTF8.GetString(buffer.ToArray()), shape);
 	}
 
+	#if NET
+	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
+	#endif
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
 	internal void SerializeDynamic<T>(IBufferWriter<byte> writer, in T? value)
 	{
 		if (writer is null)
@@ -367,7 +388,7 @@ public partial record JsonSerializer
 		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
 		try
 		{
-			this.Serialize(ref jsonWriter, value, null);
+			this.SerializeDynamic(ref jsonWriter, value);
 		}
 		finally
 		{
@@ -375,6 +396,10 @@ public partial record JsonSerializer
 		}
 	}
 
+	#if NET
+	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
+	#endif
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
 	internal string SerializeDynamic<T>(in T? value)
 	{
 		BufferWriter buffer = new();
@@ -382,6 +407,10 @@ public partial record JsonSerializer
 		return Encoding.UTF8.GetString(buffer.WrittenArray, 0, buffer.WrittenCount);
 	}
 
+	#if NET
+	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
+	#endif
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
 	internal void SerializeDynamic<T>(Stream stream, in T? value)
 	{
 		if (stream is null)
@@ -394,6 +423,10 @@ public partial record JsonSerializer
 		stream.Write(buffer.WrittenArray, 0, buffer.WrittenCount);
 	}
 
+	#if NET
+	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
+	#endif
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
 	internal async ValueTask SerializeAsyncDynamic<T>(Stream stream, T? value, CancellationToken cancellationToken = default)
 	{
 		if (stream is null)
@@ -406,6 +439,10 @@ public partial record JsonSerializer
 		await stream.WriteAsync(buffer.WrittenArray, 0, buffer.WrittenCount, cancellationToken).ConfigureAwait(false);
 	}
 
+	#if NET
+	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
+	#endif
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
 	internal T DeserializeDynamic<T>(string json)
 	{
 		if (json is null)
@@ -418,7 +455,7 @@ public partial record JsonSerializer
 		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
 		try
 		{
-			T value = this.Deserialize<T>(ref reader, null);
+			T value = this.DeserializeDynamic<T>(ref reader);
 			reader.EnsureFullyConsumed();
 			return value;
 		}
@@ -428,6 +465,10 @@ public partial record JsonSerializer
 		}
 	}
 
+	#if NET
+	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
+	#endif
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
 	internal T DeserializeDynamic<T>(Stream stream)
 	{
 		if (stream is null)
@@ -439,6 +480,10 @@ public partial record JsonSerializer
 		return this.DeserializeDynamic<T>(reader.ReadToEnd());
 	}
 
+	#if NET
+	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
+	#endif
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
 	internal async ValueTask<T> DeserializeAsyncDynamic<T>(Stream stream, CancellationToken cancellationToken = default)
 	{
 		if (stream is null)
@@ -451,24 +496,62 @@ public partial record JsonSerializer
 		return this.DeserializeDynamic<T>(Encoding.UTF8.GetString(buffer.ToArray()));
 	}
 
-	internal void Serialize<T>(ref JsonWriter writer, in T? value, ITypeShape<T>? shape)
+	#if NET
+	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
+	#endif
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
+	internal void SerializeDynamic<T>(ref JsonWriter writer, in T? value)
 	{
 		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TrySerialize(ref writer, value))
 		{
 			return;
 		}
 
-		(shape is null ? this.ConverterCache.GetOrAddConverter<T>() : this.ConverterCache.GetOrAddConverter(shape)).Write(ref writer, value, this);
+		this.ConverterCache.GetOrAddConverter<T>().Write(ref writer, value, this);
 	}
 
-	internal T Deserialize<T>(ref JsonReader reader, ITypeShape<T>? shape)
+	#if NET
+	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
+	#endif
+	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
+	internal T DeserializeDynamic<T>(ref JsonReader reader)
 	{
 		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, out T value))
 		{
 			return value;
 		}
 
-		return (shape is null ? this.ConverterCache.GetOrAddConverter<T>() : this.ConverterCache.GetOrAddConverter(shape)).Read(ref reader, this)!;
+		return this.ConverterCache.GetOrAddConverter<T>().Read(ref reader, this)!;
+	}
+
+	internal void Serialize<T>(ref JsonWriter writer, in T? value, ITypeShape<T> shape)
+	{
+		if (shape is null)
+		{
+			throw new ArgumentNullException(nameof(shape));
+		}
+
+		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TrySerialize(ref writer, value))
+		{
+			return;
+		}
+
+		this.ConverterCache.GetOrAddConverter(shape).Write(ref writer, value, this);
+	}
+
+	internal T Deserialize<T>(ref JsonReader reader, ITypeShape<T> shape)
+	{
+		if (shape is null)
+		{
+			throw new ArgumentNullException(nameof(shape));
+		}
+
+		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, out T value))
+		{
+			return value;
+		}
+
+		return this.ConverterCache.GetOrAddConverter(shape).Read(ref reader, this)!;
 	}
 
 	private bool CanUseBuiltInFastPath(Type type) => !this.ConverterCache.HasRuntimeConverters && (this.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(type));

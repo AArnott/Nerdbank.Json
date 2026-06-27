@@ -7,9 +7,46 @@ using System.Globalization;
 using System.Numerics;
 using System.Text;
 using Nerdbank.Json;
+using PolyType;
 using Xunit;
 
-public class JsonSerializerTests
+[GenerateShapeFor<char>]
+[GenerateShapeFor<byte>]
+[GenerateShapeFor<sbyte>]
+[GenerateShapeFor<short>]
+[GenerateShapeFor<ushort>]
+[GenerateShapeFor<int>]
+[GenerateShapeFor<uint>]
+[GenerateShapeFor<long>]
+[GenerateShapeFor<ulong>]
+[GenerateShapeFor<bool>]
+[GenerateShapeFor<float>]
+[GenerateShapeFor<double>]
+[GenerateShapeFor<decimal>]
+[GenerateShapeFor<BigInteger>]
+[GenerateShapeFor<DateTime>]
+[GenerateShapeFor<DateTimeOffset>]
+[GenerateShapeFor<TimeSpan>]
+[GenerateShapeFor<Guid>]
+[GenerateShapeFor<Version>]
+[GenerateShapeFor<Uri>]
+[GenerateShapeFor<CultureInfo>]
+[GenerateShapeFor<Encoding>]
+[GenerateShapeFor<Color>]
+[GenerateShapeFor<Point>]
+[GenerateShapeFor<byte[]>]
+[GenerateShapeFor<Memory<byte>>]
+[GenerateShapeFor<ReadOnlyMemory<byte>>]
+[GenerateShapeFor<string>]
+#if NET8_0_OR_GREATER
+[GenerateShapeFor<Half>]
+[GenerateShapeFor<Int128>]
+[GenerateShapeFor<UInt128>]
+[GenerateShapeFor<DateOnly>]
+[GenerateShapeFor<TimeOnly>]
+[GenerateShapeFor<Rune>]
+#endif
+public partial class JsonSerializerTests
 {
 	[Test]
 	public void Serialize_StringUsesRfc8259EscapingRules()
@@ -37,6 +74,19 @@ public class JsonSerializerTests
 	[Test]
 	public void SerializeDeserialize_CommonBclTypes()
 	{
+		CultureInfo culture;
+		string cultureJson;
+		try
+		{
+			culture = CultureInfo.GetCultureInfo("fr-FR");
+			cultureJson = "\"fr-FR\"";
+		}
+		catch (CultureNotFoundException)
+		{
+			culture = CultureInfo.InvariantCulture;
+			cultureJson = "\"\"";
+		}
+
 		AssertRoundtrip(new BigInteger(1234567890123456789L), "1234567890123456789");
 		AssertRoundtrip(new DateTime(2026, 6, 25, 18, 17, 16, 123, DateTimeKind.Utc).AddTicks(4567), "\"2026-06-25T18:17:16.1234567Z\"");
 		AssertRoundtrip(new DateTimeOffset(2026, 6, 25, 18, 17, 16, 123, TimeSpan.FromHours(-7)).AddTicks(4567), "\"2026-06-25T18:17:16.1234567-07:00\"");
@@ -44,7 +94,7 @@ public class JsonSerializerTests
 		AssertRoundtrip(Guid.Parse("01234567-89ab-cdef-0123-456789abcdef"), "\"01234567-89ab-cdef-0123-456789abcdef\"");
 		AssertRoundtrip(new Version(1, 2, 3, 4), "\"1.2.3.4\"");
 		AssertRoundtrip(new Uri("https://example.com/a?b=c", UriKind.Absolute), "\"https://example.com/a?b=c\"");
-		AssertRoundtrip(CultureInfo.GetCultureInfo("fr-FR"), "\"fr-FR\"");
+		AssertRoundtrip(culture, cultureJson);
 		AssertRoundtrip(Encoding.UTF8, "\"utf-8\"");
 		AssertRoundtrip(Color.FromArgb(unchecked((int)0xFF336699)), "-13408615");
 		AssertRoundtrip(new Point(12, -34), "[12,-34]");
@@ -76,10 +126,10 @@ public class JsonSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		Assert.Null(serializer.Deserialize<string?>("null"));
-		Assert.Null(serializer.Deserialize<byte[]?>("null"));
-		Assert.Null(serializer.Deserialize<Version?>("null"));
-		Assert.Null(serializer.Deserialize<Uri?>("null"));
+		Assert.Null(serializer.Deserialize<string?, JsonSerializerTests>("null"));
+		Assert.Null(serializer.Deserialize<byte[]?, JsonSerializerTests>("null"));
+		Assert.Null(serializer.Deserialize<Version?, JsonSerializerTests>("null"));
+		Assert.Null(serializer.Deserialize<Uri?, JsonSerializerTests>("null"));
 	}
 
 	[Test]
@@ -87,7 +137,7 @@ public class JsonSerializerTests
 	{
 		JsonSerializer serializer = new() { AllowTrailingCommas = true };
 
-		Point value = serializer.Deserialize<Point>("[12,-34,]");
+		Point value = serializer.Deserialize<Point, JsonSerializerTests>("[12,-34,]");
 
 		Assert.Equal(new Point(12, -34), value);
 	}
@@ -97,7 +147,7 @@ public class JsonSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		Assert.Throws<FormatException>(() => serializer.Deserialize<Point>("[12,-34,]"));
+		Assert.Throws<FormatException>(() => serializer.Deserialize<Point, JsonSerializerTests>("[12,-34,]"));
 	}
 
 	[Test]
@@ -105,7 +155,7 @@ public class JsonSerializerTests
 	{
 		JsonSerializer serializer = new() { ReadCommentHandling = JsonCommentHandling.Skip };
 
-		Point value = serializer.Deserialize<Point>("[/* x */12, // y\r\n -34]");
+		Point value = serializer.Deserialize<Point, JsonSerializerTests>("[/* x */12, // y\r\n -34]");
 
 		Assert.Equal(new Point(12, -34), value);
 	}
@@ -115,17 +165,18 @@ public class JsonSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		Assert.Throws<FormatException>(() => serializer.Deserialize<Point>("[/* x */12,-34]"));
+		Assert.Throws<FormatException>(() => serializer.Deserialize<Point, JsonSerializerTests>("[/* x */12,-34]"));
 	}
 
 	private static void AssertRoundtrip<T>(T value, string expectedJson)
 	{
 		JsonSerializer serializer = new();
+		ITypeShape<T> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<T>() ?? throw new InvalidOperationException($"No generated type shape found for {typeof(T)}.");
 
-		string json = serializer.Serialize(value);
+		string json = serializer.Serialize(value, shape);
 		Assert.Equal(expectedJson, json);
 
-		T roundTripped = serializer.Deserialize<T>(json);
+		T roundTripped = serializer.Deserialize(json, shape);
 		AssertEqual(value, roundTripped);
 	}
 
