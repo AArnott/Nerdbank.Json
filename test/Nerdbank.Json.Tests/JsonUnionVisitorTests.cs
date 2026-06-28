@@ -1,10 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using Nerdbank.Json;
-using PolyType;
 using PolyType.Abstractions;
-using Xunit;
 
 public partial class JsonObjectSerializerTests
 {
@@ -16,7 +13,7 @@ public partial class JsonObjectSerializerTests
 
 		ITypeShape<Animal> shape = TypeShapeResolver.ResolveDynamicOrThrow<Animal>();
 		string json = serializer.Serialize(value, shape);
-		Animal roundTripped = serializer.Deserialize(json, shape);
+		Animal? roundTripped = serializer.Deserialize(json, shape);
 
 		Assert.Equal("[null,{\"name\":\"Milo\"}]", json);
 		Assert.Equal(value, roundTripped);
@@ -30,7 +27,7 @@ public partial class JsonObjectSerializerTests
 
 		ITypeShape<Animal> shape = TypeShapeResolver.ResolveDynamicOrThrow<Animal>();
 		string json = serializer.Serialize(value, shape);
-		Animal roundTripped = serializer.Deserialize(json, shape);
+		Animal? roundTripped = serializer.Deserialize(json, shape);
 
 		Assert.Equal("[\"Cat\",{\"lives\":9,\"name\":\"Milo\"}]", json);
 		Assert.Equal(value, roundTripped);
@@ -44,7 +41,7 @@ public partial class JsonObjectSerializerTests
 
 		ITypeShape<TaggedAnimal> shape = TypeShapeResolver.ResolveDynamicOrThrow<TaggedAnimal>();
 		string json = serializer.Serialize(value, shape);
-		TaggedAnimal roundTripped = serializer.Deserialize(json, shape);
+		TaggedAnimal? roundTripped = serializer.Deserialize(json, shape);
 
 		Assert.Equal("[3,{\"lives\":7,\"name\":\"Otis\"}]", json);
 		Assert.Equal(value, roundTripped);
@@ -57,7 +54,7 @@ public partial class JsonObjectSerializerTests
 		UnionContainer value = new() { Pet = new Cat("Milo", 9) };
 
 		string json = serializer.Serialize(value);
-		UnionContainer roundTripped = serializer.Deserialize<UnionContainer>(json);
+		UnionContainer? roundTripped = serializer.Deserialize<UnionContainer>(json);
 
 		Assert.Equal("{\"pet\":[\"Cat\",{\"lives\":9,\"name\":\"Milo\"}]}", json);
 		AssertRoundtrip(json, serializer, value);

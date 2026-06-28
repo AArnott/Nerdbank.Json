@@ -1,9 +1,6 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using Nerdbank.Json;
-using PolyType;
-
 public partial class JsonObjectSerializerTests
 {
 	[Test]
@@ -32,7 +29,8 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		Person value = serializer.Deserialize<Person>("{\"name\":\"Ada\",\"unknown\":true,\"age\":37,\"address\":{\"city\":\"Seattle\",\"postalCode\":98101,\"ignored\":\"x\"}}");
+		Person? value = serializer.Deserialize<Person>("{\"name\":\"Ada\",\"unknown\":true,\"age\":37,\"address\":{\"city\":\"Seattle\",\"postalCode\":98101,\"ignored\":\"x\"}}");
+		Assert.NotNull(value);
 		Person expected = new()
 		{
 			Name = "Ada",
@@ -48,8 +46,9 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		ExtensionDataPerson value = serializer.Deserialize<ExtensionDataPerson>("{\"name\":\"Ada\",\"unknown\":true,\"extra\":{\"nested\":5}}\n");
+		ExtensionDataPerson? value = serializer.Deserialize<ExtensionDataPerson>("{\"name\":\"Ada\",\"unknown\":true,\"extra\":{\"nested\":5}}\n");
 
+		Assert.NotNull(value);
 		Assert.Equal("Ada", value.Name);
 		Assert.NotNull(value.ExtensionData);
 		Assert.Equal("true", value.ExtensionData!["unknown"]);
@@ -80,7 +79,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new() { PropertyNameCaseInsensitive = true };
 
-		Person value = serializer.Deserialize<Person>("{\"NAME\":\"Ada\",\"AGE\":37,\"ADDRESS\":{\"CITY\":\"Seattle\",\"POSTALCODE\":98101}}");
+		Person? value = serializer.Deserialize<Person>("{\"NAME\":\"Ada\",\"AGE\":37,\"ADDRESS\":{\"CITY\":\"Seattle\",\"POSTALCODE\":98101}}");
 		Person expected = new()
 		{
 			Name = "Ada",
@@ -134,22 +133,7 @@ public partial class JsonObjectSerializerTests
 		serializer.Serialize(stream, value);
 		stream.Position = 0;
 
-		Person roundTripped = serializer.Deserialize<Person>(stream);
-		AssertStructuralEqual(value, roundTripped, serializer.Serialize(value));
-	}
-
-	[Test]
-	public async Task SerializeDeserialize_StreamAsync()
-	{
-		JsonSerializer serializer = new();
-		Person value = new() { Name = "Katherine", Age = 35 };
-		CancellationToken cancellationToken = TUnit.Core.TestContext.Current?.Execution.CancellationToken ?? default;
-
-		using MemoryStream stream = new();
-		await serializer.SerializeAsync(stream, value, cancellationToken);
-		stream.Position = 0;
-
-		Person roundTripped = await serializer.DeserializeAsync<Person>(stream, cancellationToken);
+		Person? roundTripped = serializer.Deserialize<Person>(stream);
 		AssertStructuralEqual(value, roundTripped, serializer.Serialize(value));
 	}
 
@@ -243,8 +227,9 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new() { DeserializeDefaultValues = DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties };
 
-		RequiredPropertyContainer value = serializer.Deserialize<RequiredPropertyContainer>("{}");
+		RequiredPropertyContainer? value = serializer.Deserialize<RequiredPropertyContainer>("{}");
 
+		Assert.NotNull(value);
 		Assert.Null(value.Name);
 	}
 
@@ -253,8 +238,9 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new() { DeserializeDefaultValues = DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties };
 
-		NonNullablePropertyContainer value = serializer.Deserialize<NonNullablePropertyContainer>("{\"name\":null}");
+		NonNullablePropertyContainer? value = serializer.Deserialize<NonNullablePropertyContainer>("{\"name\":null}");
 
+		Assert.NotNull(value);
 		Assert.Null(value.Name);
 	}
 
@@ -268,8 +254,8 @@ public partial class JsonObjectSerializerTests
 		string json = serializer.Serialize(value);
 		Assert.Equal("{\"$id\":1,\"$value\":{\"left\":{\"$id\":2,\"$value\":{\"name\":\"Ada\"}},\"right\":{\"$ref\":2}}}", json);
 
-		SharedRoot roundTripped = serializer.Deserialize<SharedRoot>(json);
-		Assert.NotNull(roundTripped.Left);
+		SharedRoot? roundTripped = serializer.Deserialize<SharedRoot>(json);
+		Assert.NotNull(roundTripped?.Left);
 		Assert.Same(roundTripped.Left, roundTripped.Right);
 		Assert.Equal("Ada", roundTripped.Left.Name);
 	}
@@ -288,8 +274,8 @@ public partial class JsonObjectSerializerTests
 	private static void AssertRoundtrip<T>(string json, JsonSerializer serializer, T expected)
 	{
 		ITypeShape<T> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<T>() ?? throw new InvalidOperationException($"No generated type shape found for {typeof(T)}.");
-		T actual = serializer.Deserialize(json, shape);
-		Assert.True(GetStructuralEqualityComparer<T>().Equals(expected, actual), $"Round-trip mismatch for serialized JSON: {json}");
+		T? actual = serializer.Deserialize(json, shape);
+		Assert.True(GetStructuralEqualityComparer<T?>().Equals(expected, actual), $"Round-trip mismatch for serialized JSON: {json}");
 	}
 
 	private static void AssertStructuralEqual<T>(T expected, T actual, string json)

@@ -1,10 +1,6 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using Nerdbank.Json;
-using PolyType;
-using Xunit;
-
 public partial class JsonObjectSerializerTests
 {
 	[Test]
@@ -14,7 +10,7 @@ public partial class JsonObjectSerializerTests
 		ParameterizedRecord value = new("Ada", 37);
 
 		string json = serializer.Serialize(value);
-		ParameterizedRecord roundTripped = serializer.Deserialize<ParameterizedRecord>(json);
+		ParameterizedRecord? roundTripped = serializer.Deserialize<ParameterizedRecord>(json);
 
 		Assert.Equal("{\"name\":\"Ada\",\"age\":37}", json);
 		Assert.Equal(value, roundTripped);
@@ -25,8 +21,9 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		MixedConstructorType value = serializer.Deserialize<MixedConstructorType>("{\"name\":\"Ada\",\"age\":37}");
+		MixedConstructorType? value = serializer.Deserialize<MixedConstructorType>("{\"name\":\"Ada\",\"age\":37}");
 
+		Assert.NotNull(value);
 		Assert.Equal("Ada", value.Name);
 		Assert.Equal(37, value.Age);
 	}
@@ -36,8 +33,9 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new() { PropertyNameCaseInsensitive = true };
 
-		MixedConstructorType value = serializer.Deserialize<MixedConstructorType>("{\"NAME\":\"Ada\",\"AGE\":37}");
+		MixedConstructorType? value = serializer.Deserialize<MixedConstructorType>("{\"NAME\":\"Ada\",\"AGE\":37}");
 
+		Assert.NotNull(value);
 		Assert.Equal("Ada", value.Name);
 		Assert.Equal(37, value.Age);
 	}
@@ -47,8 +45,9 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		MixedConstructorTypeWithExtensionData value = serializer.Deserialize<MixedConstructorTypeWithExtensionData>("{\"name\":\"Ada\",\"unknown\":true,\"extra\":{\"nested\":5}}\n");
+		MixedConstructorTypeWithExtensionData? value = serializer.Deserialize<MixedConstructorTypeWithExtensionData>("{\"name\":\"Ada\",\"unknown\":true,\"extra\":{\"nested\":5}}\n");
 
+		Assert.NotNull(value);
 		Assert.Equal("Ada", value.Name);
 		Assert.NotNull(value.ExtensionData);
 		Assert.Equal("true", value.ExtensionData!["unknown"]);
@@ -69,8 +68,9 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new() { DeserializeDefaultValues = Nerdbank.Json.DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties };
 
-		ParameterizedRecord value = serializer.Deserialize<ParameterizedRecord>("{\"age\":37}");
+		ParameterizedRecord? value = serializer.Deserialize<ParameterizedRecord>("{\"age\":37}");
 
+		Assert.NotNull(value);
 		Assert.Null(value.Name);
 		Assert.Equal(37, value.Age);
 	}
@@ -89,8 +89,9 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		OptionalParameterizedRecord value = serializer.Deserialize<OptionalParameterizedRecord>("{\"name\":\"Ada\"}");
+		OptionalParameterizedRecord? value = serializer.Deserialize<OptionalParameterizedRecord>("{\"name\":\"Ada\"}");
 
+		Assert.NotNull(value);
 		Assert.Equal(new OptionalParameterizedRecord("Ada", 21), value);
 	}
 
@@ -108,8 +109,9 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new() { DeserializeDefaultValues = Nerdbank.Json.DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties };
 
-		ParameterizedRecord value = serializer.Deserialize<ParameterizedRecord>("{\"name\":null,\"age\":37}");
+		ParameterizedRecord? value = serializer.Deserialize<ParameterizedRecord>("{\"name\":null,\"age\":37}");
 
+		Assert.NotNull(value);
 		Assert.Null(value.Name);
 		Assert.Equal(37, value.Age);
 	}

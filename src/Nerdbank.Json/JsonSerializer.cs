@@ -1,15 +1,6 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.IO;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-
 #pragma warning disable SA1600 // Internal helper members added for overload forwarding are intentionally undocumented.
 
 namespace Nerdbank.Json;
@@ -189,347 +180,16 @@ public partial record JsonSerializer
 	internal JsonReferenceEqualityTracker ReferenceTracker => currentReferenceTracker ?? throw new InvalidOperationException("Reference tracking is only available within an active serialization or deserialization operation.");
 
 	/// <summary>
-	/// Serializes a value as UTF-8 JSON to a byte buffer.
+	/// Serializes a value to JSON using the specified type shape.
 	/// </summary>
 	/// <typeparam name="T">The type of value to serialize.</typeparam>
-	/// <param name="writer">The destination buffer.</param>
+	/// <param name="writer">The writer to serialize the value into.</param>
 	/// <param name="value">The value to serialize.</param>
-	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
-	public void Serialize<T>(IBufferWriter<byte> writer, in T? value, ITypeShape<T> shape)
+	/// <param name="shape">The type shape describing the structure of <typeparamref name="T"/>.</param>
+	/// <param name="cancellationToken">A token to cancel the operation.</param>
+	public void Serialize<T>(ref JsonWriter writer, in T? value, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
-		if (writer is null)
-		{
-			throw new ArgumentNullException(nameof(writer));
-		}
-
-		if (shape is null)
-		{
-			throw new ArgumentNullException(nameof(shape));
-		}
-
-		JsonWriter jsonWriter = new(writer, this.WriteIndented);
-		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
-		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
-		try
-		{
-			this.Serialize(ref jsonWriter, value, shape);
-		}
-		finally
-		{
-			currentReferenceTracker = priorTracker;
-		}
-	}
-
-	/// <summary>
-	/// Serializes a value to JSON text.
-	/// </summary>
-	/// <typeparam name="T">The type of value to serialize.</typeparam>
-	/// <param name="value">The value to serialize.</param>
-	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
-	/// <returns>The serialized JSON text.</returns>
-	public string Serialize<T>(in T? value, ITypeShape<T> shape)
-	{
-		BufferWriter buffer = new();
-		this.Serialize(buffer, value, shape);
-		return Encoding.UTF8.GetString(buffer.WrittenArray, 0, buffer.WrittenCount);
-	}
-
-	/// <summary>
-	/// Serializes a value as UTF-8 JSON to a stream.
-	/// </summary>
-	/// <typeparam name="T">The type of value to serialize.</typeparam>
-	/// <param name="stream">The destination stream.</param>
-	/// <param name="value">The value to serialize.</param>
-	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
-	public void Serialize<T>(Stream stream, in T? value, ITypeShape<T> shape)
-	{
-		if (stream is null)
-		{
-			throw new ArgumentNullException(nameof(stream));
-		}
-
-		BufferWriter buffer = new();
-		this.Serialize(buffer, value, shape);
-		stream.Write(buffer.WrittenArray, 0, buffer.WrittenCount);
-	}
-
-	/// <summary>
-	/// Serializes a value as UTF-8 JSON to a stream.
-	/// </summary>
-	/// <typeparam name="T">The type of value to serialize.</typeparam>
-	/// <param name="stream">The destination stream.</param>
-	/// <param name="value">The value to serialize.</param>
-	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
-	/// <param name="cancellationToken">A cancellation token.</param>
-	/// <returns>A task that completes when serialization finishes.</returns>
-	public async ValueTask SerializeAsync<T>(Stream stream, T? value, ITypeShape<T> shape, CancellationToken cancellationToken = default)
-	{
-		if (stream is null)
-		{
-			throw new ArgumentNullException(nameof(stream));
-		}
-
-		BufferWriter buffer = new();
-		this.Serialize(buffer, value, shape);
-		await stream.WriteAsync(buffer.WrittenArray, 0, buffer.WrittenCount, cancellationToken).ConfigureAwait(false);
-	}
-
-	/// <summary>
-	/// Serializes a string value to JSON text.
-	/// </summary>
-	/// <param name="value">The value to serialize.</param>
-	/// <returns>The serialized JSON text.</returns>
-	public string Serialize(string? value)
-	{
-		BufferWriter buffer = new();
-		JsonWriter writer = new(buffer, this.WriteIndented);
-		BuiltInJsonConverters.TrySerialize(ref writer, value);
-		return Encoding.UTF8.GetString(buffer.WrittenArray, 0, buffer.WrittenCount);
-	}
-
-	/// <summary>
-	/// Serializes a boolean value to JSON text.
-	/// </summary>
-	/// <param name="value">The value to serialize.</param>
-	/// <returns>The serialized JSON text.</returns>
-	public string Serialize(bool value)
-	{
-		BufferWriter buffer = new();
-		JsonWriter writer = new(buffer, this.WriteIndented);
-		BuiltInJsonConverters.TrySerialize(ref writer, value);
-		return Encoding.UTF8.GetString(buffer.WrittenArray, 0, buffer.WrittenCount);
-	}
-
-	/// <summary>
-	/// Deserializes JSON text.
-	/// </summary>
-	/// <typeparam name="T">The type to deserialize.</typeparam>
-	/// <param name="json">The JSON text.</param>
-	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
-	/// <returns>The deserialized value.</returns>
-	public T Deserialize<T>(string json, ITypeShape<T> shape)
-	{
-		if (json is null)
-		{
-			throw new ArgumentNullException(nameof(json));
-		}
-
-		if (shape is null)
-		{
-			throw new ArgumentNullException(nameof(shape));
-		}
-
-		JsonReader reader = new(json.AsSpan(), this.AllowTrailingCommas, this.ReadCommentHandling);
-		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
-		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
-		try
-		{
-			T value = this.Deserialize(ref reader, shape);
-			reader.EnsureFullyConsumed();
-			return value;
-		}
-		finally
-		{
-			currentReferenceTracker = priorTracker;
-		}
-	}
-
-	/// <summary>
-	/// Deserializes UTF-8 JSON from a stream.
-	/// </summary>
-	/// <typeparam name="T">The type to deserialize.</typeparam>
-	/// <param name="stream">The JSON stream.</param>
-	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
-	/// <returns>The deserialized value.</returns>
-	public T Deserialize<T>(Stream stream, ITypeShape<T> shape)
-	{
-		if (stream is null)
-		{
-			throw new ArgumentNullException(nameof(stream));
-		}
-
-		using StreamReader reader = new(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, 1024, leaveOpen: true);
-		return this.Deserialize(reader.ReadToEnd(), shape);
-	}
-
-	/// <summary>
-	/// Deserializes UTF-8 JSON from a stream.
-	/// </summary>
-	/// <typeparam name="T">The type to deserialize.</typeparam>
-	/// <param name="stream">The JSON stream.</param>
-	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
-	/// <param name="cancellationToken">A cancellation token.</param>
-	/// <returns>A task that produces the deserialized value.</returns>
-	public async ValueTask<T> DeserializeAsync<T>(Stream stream, ITypeShape<T> shape, CancellationToken cancellationToken = default)
-	{
-		if (stream is null)
-		{
-			throw new ArgumentNullException(nameof(stream));
-		}
-
-		using MemoryStream buffer = new();
-		await stream.CopyToAsync(buffer, 81920, cancellationToken).ConfigureAwait(false);
-		return this.Deserialize(Encoding.UTF8.GetString(buffer.ToArray()), shape);
-	}
-
-	#if NET
-	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
-	#endif
-	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
-	internal void SerializeDynamic<T>(IBufferWriter<byte> writer, in T? value)
-	{
-		if (writer is null)
-		{
-			throw new ArgumentNullException(nameof(writer));
-		}
-
-		JsonWriter jsonWriter = new(writer, this.WriteIndented);
-		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
-		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
-		try
-		{
-			this.SerializeDynamic(ref jsonWriter, value);
-		}
-		finally
-		{
-			currentReferenceTracker = priorTracker;
-		}
-	}
-
-	#if NET
-	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
-	#endif
-	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
-	internal string SerializeDynamic<T>(in T? value)
-	{
-		BufferWriter buffer = new();
-		this.SerializeDynamic(buffer, value);
-		return Encoding.UTF8.GetString(buffer.WrittenArray, 0, buffer.WrittenCount);
-	}
-
-	#if NET
-	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
-	#endif
-	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
-	internal void SerializeDynamic<T>(Stream stream, in T? value)
-	{
-		if (stream is null)
-		{
-			throw new ArgumentNullException(nameof(stream));
-		}
-
-		BufferWriter buffer = new();
-		this.SerializeDynamic(buffer, value);
-		stream.Write(buffer.WrittenArray, 0, buffer.WrittenCount);
-	}
-
-	#if NET
-	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
-	#endif
-	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
-	internal async ValueTask SerializeAsyncDynamic<T>(Stream stream, T? value, CancellationToken cancellationToken = default)
-	{
-		if (stream is null)
-		{
-			throw new ArgumentNullException(nameof(stream));
-		}
-
-		BufferWriter buffer = new();
-		this.SerializeDynamic(buffer, value);
-		await stream.WriteAsync(buffer.WrittenArray, 0, buffer.WrittenCount, cancellationToken).ConfigureAwait(false);
-	}
-
-	#if NET
-	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
-	#endif
-	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
-	internal T DeserializeDynamic<T>(string json)
-	{
-		if (json is null)
-		{
-			throw new ArgumentNullException(nameof(json));
-		}
-
-		JsonReader reader = new(json.AsSpan(), this.AllowTrailingCommas, this.ReadCommentHandling);
-		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
-		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
-		try
-		{
-			T value = this.DeserializeDynamic<T>(ref reader);
-			reader.EnsureFullyConsumed();
-			return value;
-		}
-		finally
-		{
-			currentReferenceTracker = priorTracker;
-		}
-	}
-
-	#if NET
-	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
-	#endif
-	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
-	internal T DeserializeDynamic<T>(Stream stream)
-	{
-		if (stream is null)
-		{
-			throw new ArgumentNullException(nameof(stream));
-		}
-
-		using StreamReader reader = new(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, 1024, leaveOpen: true);
-		return this.DeserializeDynamic<T>(reader.ReadToEnd());
-	}
-
-	#if NET
-	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
-	#endif
-	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
-	internal async ValueTask<T> DeserializeAsyncDynamic<T>(Stream stream, CancellationToken cancellationToken = default)
-	{
-		if (stream is null)
-		{
-			throw new ArgumentNullException(nameof(stream));
-		}
-
-		using MemoryStream buffer = new();
-		await stream.CopyToAsync(buffer, 81920, cancellationToken).ConfigureAwait(false);
-		return this.DeserializeDynamic<T>(Encoding.UTF8.GetString(buffer.ToArray()));
-	}
-
-	#if NET
-	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
-	#endif
-	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
-	internal void SerializeDynamic<T>(ref JsonWriter writer, in T? value)
-	{
-		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TrySerialize(ref writer, value))
-		{
-			return;
-		}
-
-		this.ConverterCache.GetOrAddConverter<T>().Write(ref writer, value, this);
-	}
-
-	#if NET
-	[RequiresDynamicCode("Dynamic serializer overloads may require runtime-generated shapes when no explicit type shape is supplied.")]
-	#endif
-	[RequiresUnreferencedCode("Serializing or deserializing types without explicit generated shapes may require reflection metadata.")]
-	internal T DeserializeDynamic<T>(ref JsonReader reader)
-	{
-		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, out T value))
-		{
-			return value;
-		}
-
-		return this.ConverterCache.GetOrAddConverter<T>().Read(ref reader, this)!;
-	}
-
-	internal void Serialize<T>(ref JsonWriter writer, in T? value, ITypeShape<T> shape)
-	{
-		if (shape is null)
-		{
-			throw new ArgumentNullException(nameof(shape));
-		}
+		Requires.NotNull(shape);
 
 		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TrySerialize(ref writer, value))
 		{
@@ -539,70 +199,27 @@ public partial record JsonSerializer
 		this.ConverterCache.GetOrAddConverter(shape).Write(ref writer, value, this);
 	}
 
-	internal T Deserialize<T>(ref JsonReader reader, ITypeShape<T> shape)
+	/// <summary>
+	/// Deserializes a value from JSON using the specified type shape.
+	/// </summary>
+	/// <typeparam name="T">The type of value to deserialize.</typeparam>
+	/// <param name="reader">The reader to deserialize the value from.</param>
+	/// <param name="shape">The type shape describing the structure of <typeparamref name="T"/>.</param>
+	/// <param name="cancellationToken">A token to cancel the operation.</param>
+	/// <returns>The deserialized value, or <see langword="null"/> if the JSON represents a null value.</returns>
+	public T? Deserialize<T>(ref JsonReader reader, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
-		if (shape is null)
-		{
-			throw new ArgumentNullException(nameof(shape));
-		}
+		Requires.NotNull(shape);
 
 		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, out T value))
 		{
 			return value;
 		}
 
-		return this.ConverterCache.GetOrAddConverter(shape).Read(ref reader, this)!;
+		return this.ConverterCache.GetOrAddConverter(shape).Read(ref reader, this);
 	}
 
 	private bool CanUseBuiltInFastPath(Type type) => !this.ConverterCache.HasRuntimeConverters && (this.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(type));
 
 	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
-
-	private sealed class BufferWriter : IBufferWriter<byte>
-	{
-		private byte[] buffer = new byte[64];
-
-		internal int WrittenCount { get; private set; }
-
-		internal byte[] WrittenArray => this.buffer;
-
-		public void Advance(int count)
-		{
-			if (count < 0)
-			{
-				throw new ArgumentOutOfRangeException(nameof(count));
-			}
-
-			this.WrittenCount += count;
-		}
-
-		public Memory<byte> GetMemory(int sizeHint = 0)
-		{
-			this.EnsureCapacity(sizeHint);
-			return this.buffer.AsMemory(this.WrittenCount);
-		}
-
-		public Span<byte> GetSpan(int sizeHint = 0)
-		{
-			this.EnsureCapacity(sizeHint);
-			return this.buffer.AsSpan(this.WrittenCount);
-		}
-
-		private void EnsureCapacity(int sizeHint)
-		{
-			if (sizeHint < 1)
-			{
-				sizeHint = 1;
-			}
-
-			int available = this.buffer.Length - this.WrittenCount;
-			if (available >= sizeHint)
-			{
-				return;
-			}
-
-			int newLength = Math.Max(this.buffer.Length * 2, this.WrittenCount + sizeHint);
-			Array.Resize(ref this.buffer, newLength);
-		}
-	}
 }

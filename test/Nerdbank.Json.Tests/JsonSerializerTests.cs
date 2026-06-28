@@ -1,14 +1,10 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System;
 using System.Drawing;
 using System.Globalization;
 using System.Numerics;
 using System.Text;
-using Nerdbank.Json;
-using PolyType;
-using Xunit;
 
 [GenerateShapeFor<char>]
 [GenerateShapeFor<byte>]
@@ -176,7 +172,7 @@ public partial class JsonSerializerTests
 		string json = serializer.Serialize(value, shape);
 		Assert.Equal(expectedJson, json);
 
-		T roundTripped = serializer.Deserialize(json, shape);
+		T? roundTripped = serializer.Deserialize(json, shape);
 		AssertEqual(value, roundTripped);
 	}
 

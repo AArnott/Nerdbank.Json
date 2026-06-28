@@ -1,12 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using Nerdbank.Json;
-using PolyType;
-using Xunit;
 
 [GenerateShapeFor<Dictionary<string, int>>]
 [GenerateShapeFor<Dictionary<int, string>>]
@@ -45,7 +40,8 @@ public partial class JsonObjectSerializerTests
 
 		Assert.Equal("{\"pascalCaseKey\":1,\"anotherKey\":2}", json);
 
-		Dictionary<string, int> roundTripped = serializer.Deserialize<Dictionary<string, int>, JsonObjectSerializerTests>(json);
+		Dictionary<string, int>? roundTripped = serializer.Deserialize<Dictionary<string, int>, JsonObjectSerializerTests>(json);
+		Assert.NotNull(roundTripped);
 		Assert.Equal(2, roundTripped.Count);
 		Assert.Equal(1, roundTripped["pascalCaseKey"]);
 		Assert.Equal(2, roundTripped["anotherKey"]);
@@ -62,8 +58,9 @@ public partial class JsonObjectSerializerTests
 		};
 
 		string json = serializer.Serialize<Dictionary<string, int>, JsonObjectSerializerTests>(value);
-		Dictionary<string, int> roundTripped = serializer.Deserialize<Dictionary<string, int>, JsonObjectSerializerTests>(json);
+		Dictionary<string, int>? roundTripped = serializer.Deserialize<Dictionary<string, int>, JsonObjectSerializerTests>(json);
 
+		Assert.NotNull(roundTripped);
 		AssertStructuralEqual(value, roundTripped, json);
 	}
 
@@ -163,7 +160,7 @@ public partial class JsonObjectSerializerTests
 		});
 
 		string json = serializer.Serialize<ReadOnlyDictionary<string, int>, JsonObjectSerializerTests>(value);
-		ReadOnlyDictionary<string, int> roundTripped = serializer.Deserialize<ReadOnlyDictionary<string, int>, JsonObjectSerializerTests>(json);
+		ReadOnlyDictionary<string, int>? roundTripped = serializer.Deserialize<ReadOnlyDictionary<string, int>, JsonObjectSerializerTests>(json);
 
 		Assert.Equal("{\"FirstScore\":10,\"second_score\":20}", json);
 		AssertStructuralEqual(value, roundTripped, json);
@@ -174,8 +171,9 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		GetterOnlyDictionaryContainer value = serializer.Deserialize<GetterOnlyDictionaryContainer>("{\"scores\":{\"FirstScore\":10,\"second_score\":20}}");
+		GetterOnlyDictionaryContainer? value = serializer.Deserialize<GetterOnlyDictionaryContainer>("{\"scores\":{\"FirstScore\":10,\"second_score\":20}}");
 
+		Assert.NotNull(value);
 		Assert.Equal(2, value.Scores.Count);
 		Assert.Equal(10, value.Scores["FirstScore"]);
 		Assert.Equal(20, value.Scores["second_score"]);

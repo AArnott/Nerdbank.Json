@@ -3,7 +3,6 @@
 
 #pragma warning disable SA1600 // Internal state is intentionally undocumented in this file.
 
-using System;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nerdbank.Json;
@@ -25,10 +24,10 @@ public readonly struct JsonConverterFactoryContext
 	/// </summary>
 	/// <typeparam name="T">The type to convert.</typeparam>
 	/// <returns>The converter.</returns>
-	#if NET
+#if NET
 	[RequiresDynamicCode("Getting a converter without an explicit type shape may require runtime-generated shapes.")]
-	#endif
 	[RequiresUnreferencedCode("Getting a converter without an explicit generated shape may require reflection metadata.")]
+#endif
 	public JsonConverter<T> GetConverter<T>()
 		=> this.cache?.GetOrAddConverter<T>() ?? throw new InvalidOperationException("No converter factory context is active.");
 

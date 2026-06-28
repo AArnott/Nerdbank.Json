@@ -1,10 +1,6 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Collections.Generic;
-using Nerdbank.Json;
-using PolyType;
-
 [assembly: TypeShapeExtension(typeof(string), AssociatedTypes = new[] { typeof(JsonObjectSerializerTests.UpperCaseStringConverter) })]
 
 [GenerateShapeFor<string>]
@@ -23,8 +19,9 @@ public partial class JsonObjectSerializerTests
 		};
 
 		string json = serializer.Serialize<string, JsonObjectSerializerTests>("Ada");
-		string roundTripped = serializer.Deserialize<string, JsonObjectSerializerTests>(json);
+		string? roundTripped = serializer.Deserialize<string, JsonObjectSerializerTests>(json);
 
+		Assert.NotNull(roundTripped);
 		Assert.Equal("\"ADA\"", json);
 		Assert.Equal("ada", roundTripped);
 	}
@@ -40,7 +37,8 @@ public partial class JsonObjectSerializerTests
 		GenericValue<string> value = new() { Value = "Ada" };
 
 		string json = serializer.Serialize<GenericValue<string>, JsonObjectSerializerTests>(value);
-		GenericValue<string> roundTripped = serializer.Deserialize<GenericValue<string>, JsonObjectSerializerTests>(json);
+		GenericValue<string>? roundTripped = serializer.Deserialize<GenericValue<string>, JsonObjectSerializerTests>(json);
+		Assert.NotNull(roundTripped);
 
 		Assert.Equal("{\"value\":\"Ada!\"}", json);
 		Assert.Equal("Ada", roundTripped.Value);
@@ -57,7 +55,7 @@ public partial class JsonObjectSerializerTests
 		List<char> value = ['a', 'b', 'c'];
 
 		string json = serializer.Serialize<List<char>, JsonObjectSerializerTests>(value);
-		List<char> roundTripped = serializer.Deserialize<List<char>, JsonObjectSerializerTests>(json);
+		List<char>? roundTripped = serializer.Deserialize<List<char>, JsonObjectSerializerTests>(json);
 
 		Assert.Equal("[[\"a\",\"b\",\"c\"]]", json);
 		Assert.Equal(value, roundTripped);
@@ -70,10 +68,10 @@ public partial class JsonObjectSerializerTests
 		AttributedStringWrapper value = new() { Value = "Ada" };
 
 		string json = serializer.Serialize<AttributedStringWrapper, JsonObjectSerializerTests>(value);
-		AttributedStringWrapper roundTripped = serializer.Deserialize<AttributedStringWrapper, JsonObjectSerializerTests>(json);
+		AttributedStringWrapper? roundTripped = serializer.Deserialize<AttributedStringWrapper, JsonObjectSerializerTests>(json);
 
 		Assert.Equal("{\"value\":\"ADA\"}", json);
-		Assert.Equal("ada", roundTripped.Value);
+		Assert.Equal("ada", roundTripped?.Value);
 	}
 
 	[Test]
@@ -83,9 +81,10 @@ public partial class JsonObjectSerializerTests
 		PropertyAttributedContainer value = new() { Name = "Ada", Unconverted = "Grace" };
 
 		string json = serializer.Serialize(value);
-		PropertyAttributedContainer roundTripped = serializer.Deserialize<PropertyAttributedContainer>(json);
+		PropertyAttributedContainer? roundTripped = serializer.Deserialize<PropertyAttributedContainer>(json);
 
 		Assert.Equal("{\"name\":\"ADA\",\"unconverted\":\"Grace\"}", json);
+		Assert.NotNull(roundTripped);
 		Assert.Equal("ada", roundTripped.Name);
 		Assert.Equal("Grace", roundTripped.Unconverted);
 	}
@@ -95,8 +94,9 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		ParameterAttributedContainer roundTripped = serializer.Deserialize<ParameterAttributedContainer>("{\"name\":\"ADA\"}");
+		ParameterAttributedContainer? roundTripped = serializer.Deserialize<ParameterAttributedContainer>("{\"name\":\"ADA\"}");
 
+		Assert.NotNull(roundTripped);
 		Assert.Equal("ada", roundTripped.Name);
 	}
 
