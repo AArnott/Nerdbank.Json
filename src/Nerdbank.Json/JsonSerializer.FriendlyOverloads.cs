@@ -38,6 +38,7 @@ public partial record JsonSerializer
 		try
 		{
 			this.Serialize(ref jsonWriter, value, shape, cancellationToken);
+			jsonWriter.Flush();
 		}
 		finally
 		{
@@ -60,8 +61,21 @@ public partial record JsonSerializer
 		(byte[] array, scratchArray) = (scratchArray ?? new byte[65536], null);
 		try
 		{
-			JsonWriter writer = new(SequencePool<byte>.Shared, array);
-			this.Serialize(ref writer, value, shape, cancellationToken);
+			JsonWriter writer = new(SequencePool<byte>.Shared, array)
+			{
+				WriteIndented = this.WriteIndented,
+			};
+			JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
+			currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
+			try
+			{
+				this.Serialize(ref writer, value, shape, cancellationToken);
+			}
+			finally
+			{
+				currentReferenceTracker = priorTracker;
+			}
+
 			return writer.FlushAndGetString();
 		}
 		finally
@@ -133,8 +147,7 @@ public partial record JsonSerializer
 	public T? Deserialize<T>(ReadOnlyMemory<byte> buffer, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		string json = Encoding.UTF8.GetString(buffer.Span);
-		JsonReader reader = new(json);
-		return this.Deserialize(ref reader, shape, cancellationToken);
+		return this.Deserialize(json, shape, cancellationToken);
 	}
 
 	/// <inheritdoc cref="Deserialize{T}(ref JsonReader, ITypeShape{T}, CancellationToken)"/>
@@ -144,7 +157,6 @@ public partial record JsonSerializer
 #pragma warning restore CS1573 // Parameter has no matching param tag in the XML comment (but other parameters do)
 	{
 		string json = Encoding.UTF8.GetString(buffer);
-		JsonReader reader = new(json);
-		return this.Deserialize(ref reader, shape, cancellationToken);
+		return this.Deserialize(json, shape, cancellationToken);
 	}
 }

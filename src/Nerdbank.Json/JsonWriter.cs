@@ -348,7 +348,6 @@ public ref struct JsonWriter
 	/// <returns>The written bytes as a string.</returns>
 	internal string FlushAndGetString()
 	{
-#if NET
 		if (this.writer.TryGetUncommittedSpan(out ReadOnlySpan<byte> span))
 		{
 			return Encoding.GetString(span);
@@ -365,9 +364,6 @@ public ref struct JsonWriter
 			this.writer.SequenceRental.Dispose();
 			return result;
 		}
-#else
-		throw new NotImplementedException();
-#endif
 	}
 
 	private void BeforeValueToken()

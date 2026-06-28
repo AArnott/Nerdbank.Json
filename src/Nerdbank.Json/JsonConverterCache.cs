@@ -31,11 +31,12 @@ internal sealed class JsonConverterCache
 	internal StringComparer PropertyNameComparer => this.configuration.PropertyNameCaseInsensitive ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
 #if NET
-	[RequiresDynamicCode("Dynamic converter lookup may require runtime-generated shapes when no explicit type shape is supplied.")]
-	[RequiresUnreferencedCode("Serializing or deserializing types without generated shapes may require reflection metadata.")]
-#endif
+	internal JsonConverter<T> GetOrAddConverter<T>()
+		=> throw new NotSupportedException("Dynamic converter lookup is not supported on .NET. Supply an explicit type shape or witness type.");
+#else
 	internal JsonConverter<T> GetOrAddConverter<T>()
 		=> (JsonConverter<T>)this.cachedConverters.GetOrAdd(typeof(T), _ => this.CreateConverter<T>());
+#endif
 
 	internal JsonConverter<T> GetOrAddConverter<T>(ITypeShape<T> shape)
 	{
@@ -130,10 +131,7 @@ internal sealed class JsonConverterCache
 		return this.GetOrAddConverter(shape);
 	}
 
-#if NET
-	[RequiresDynamicCode("Dynamic converter creation may require runtime-generated shapes when no explicit type shape is supplied.")]
-	[RequiresUnreferencedCode("Serializing or deserializing types without generated shapes may require reflection metadata.")]
-#endif
+	#if !NET
 	private JsonConverter CreateConverter<T>()
 	{
 		ITypeShape<T>? shape = this.TryResolveDynamicTypeShape<T>();
@@ -159,6 +157,7 @@ internal sealed class JsonConverterCache
 
 		return this.CreateConverter(shape ?? this.ResolveDynamicTypeShapeOrThrow<T>());
 	}
+#endif
 
 	private JsonConverter CreateConverter<T>(ITypeShape<T> shape)
 	{
@@ -235,10 +234,7 @@ internal sealed class JsonConverterCache
 		return true;
 	}
 
-#if NET
-	[RequiresDynamicCode("Dynamic shape resolution may require runtime-generated code.")]
-	[RequiresUnreferencedCode("Resolving shapes dynamically may require reflection metadata.")]
-#endif
+	#if !NET
 	private ITypeShape<T>? TryResolveDynamicTypeShape<T>()
 	{
 		try
@@ -250,6 +246,7 @@ internal sealed class JsonConverterCache
 			return null;
 		}
 	}
+#endif
 
 	private bool TryGetRuntimeProfferedConverter(Type type, ITypeShape shape, out JsonConverter? converter)
 	{
@@ -278,10 +275,7 @@ internal sealed class JsonConverterCache
 		return false;
 	}
 
-#if NET
-	[RequiresDynamicCode("Dynamic converter activation may require native code for reflected generic instantiations.")]
-	[RequiresUnreferencedCode("Activating converters without associated generated shapes may require reflection metadata.")]
-#endif
+#if !NET
 	private bool TryGetConverterFromAttributeDynamically(Type type, ITypeShape? typeShape, IGenericCustomAttributeProvider? attributeProvider, out JsonConverter? converter)
 	{
 		JsonConverterAttribute? attribute = null;
@@ -314,10 +308,6 @@ internal sealed class JsonConverterCache
 		return true;
 	}
 
-#if NET
-	[RequiresDynamicCode("Dynamic converter activation may require native code for reflected generic instantiations.")]
-	[RequiresUnreferencedCode("Activating converters without associated generated shapes may require reflection metadata.")]
-#endif
 	private bool TryGetRuntimeProfferedConverterDynamically(Type type, ITypeShape? shape, out JsonConverter? converter)
 	{
 		if (this.configuration.Converters.TryGetConverter(type, out converter))
@@ -349,6 +339,7 @@ internal sealed class JsonConverterCache
 		converter = null;
 		return false;
 	}
+#endif
 
 	private static JsonConverter ActivateAssociatedConverterType(Type targetType, Type converterType, ITypeShape targetTypeShape)
 	{
@@ -372,10 +363,7 @@ internal sealed class JsonConverterCache
 		return false;
 	}
 
-#if NET
-	[RequiresDynamicCode("Dynamic converter activation may require native code for reflected generic instantiations.")]
-	[RequiresUnreferencedCode("Activating converters without associated generated shapes may require reflection metadata.")]
-#endif
+	#if !NET
 	private static JsonConverter ActivateConverterTypeDynamically(Type targetType, Type converterType)
 	{
 		if (converterType.IsGenericTypeDefinition)
@@ -391,10 +379,6 @@ internal sealed class JsonConverterCache
 		return (JsonConverter)Activator.CreateInstance(converterType)!;
 	}
 
-#if NET
-	[RequiresDynamicCode("Dynamic collection fallback may require native code for reflected generic instantiations.")]
-	[RequiresUnreferencedCode("Collection fallback without generated shapes may require reflection metadata.")]
-#endif
 	private bool TryCreateCollectionConverter(Type type, out JsonConverter? converter)
 	{
 		if (TryGetGenericInterface(type, typeof(IDictionary<,>), out Type[]? dictionaryArguments) && HasDefaultConstructor(type))
@@ -421,15 +405,9 @@ internal sealed class JsonConverterCache
 		return false;
 	}
 
-#if NET
-	[RequiresUnreferencedCode("Determining default constructors without generated shapes may require reflection metadata.")]
-#endif
 	private static bool HasDefaultConstructor(Type type)
 		=> !type.IsAbstract && type.GetConstructor(Type.EmptyTypes) is not null;
 
-#if NET
-	[RequiresUnreferencedCode("Inspecting implemented interfaces without generated shapes may require reflection metadata.")]
-#endif
 	private static bool TryGetGenericInterface(Type type, Type genericInterface, out Type[]? genericArguments)
 	{
 		if (type.IsGenericType && type.GetGenericTypeDefinition() == genericInterface)
@@ -451,20 +429,13 @@ internal sealed class JsonConverterCache
 		return false;
 	}
 
-#if NET
-	[RequiresDynamicCode("Dynamic collection fallback may require native code for reflected generic instantiations.")]
-	[RequiresUnreferencedCode("Dynamic collection fallback without generated shapes may require reflection metadata.")]
-#endif
 	private JsonConverter CreateListCollectionConverter<TCollection, TElement>()
 		where TCollection : IEnumerable<TElement>, ICollection<TElement>, new()
 		=> new JsonListConverter<TCollection, TElement>(this.GetOrAddConverter<TElement>(), static () => new TCollection());
 
-#if NET
-	[RequiresDynamicCode("Dynamic collection fallback may require native code for reflected generic instantiations.")]
-	[RequiresUnreferencedCode("Dynamic dictionary fallback without generated shapes may require reflection metadata.")]
-#endif
 	private JsonConverter CreateDictionaryCollectionConverter<TDictionary, TKey, TValue>()
 		where TDictionary : IEnumerable<KeyValuePair<TKey, TValue>>, IDictionary<TKey, TValue>, new()
 		where TKey : notnull
 		=> new JsonDictionaryCollectionConverter<TDictionary, TKey, TValue>(this, this.GetOrAddConverter<TValue>(), static () => new TDictionary());
+#endif
 }

@@ -3,8 +3,6 @@
 
 #pragma warning disable SA1600 // Internal state is intentionally undocumented in this file.
 
-using System.Diagnostics.CodeAnalysis;
-
 namespace Nerdbank.Json;
 
 /// <summary>
@@ -25,11 +23,23 @@ public readonly struct JsonConverterFactoryContext
 	/// <typeparam name="T">The type to convert.</typeparam>
 	/// <returns>The converter.</returns>
 #if NET
-	[RequiresDynamicCode("Getting a converter without an explicit type shape may require runtime-generated shapes.")]
-	[RequiresUnreferencedCode("Getting a converter without an explicit generated shape may require reflection metadata.")]
-#endif
+	public JsonConverter<T> GetConverter<T>()
+		where T : IShapeable<T>
+		=> this.GetConverter(T.GetTypeShape());
+
+	/// <summary>
+	/// Gets a converter for a specific type.
+	/// </summary>
+	/// <typeparam name="T">The type to convert.</typeparam>
+	/// <typeparam name="TProvider">The witness type that provides the shape for <typeparamref name="T"/>.</typeparam>
+	/// <returns>The converter.</returns>
+	public JsonConverter<T> GetConverter<T, TProvider>()
+		where TProvider : IShapeable<T>
+		=> this.GetConverter(TProvider.GetTypeShape());
+#else
 	public JsonConverter<T> GetConverter<T>()
 		=> this.cache?.GetOrAddConverter<T>() ?? throw new InvalidOperationException("No converter factory context is active.");
+#endif
 
 	/// <summary>
 	/// Gets a converter for a specific type shape.

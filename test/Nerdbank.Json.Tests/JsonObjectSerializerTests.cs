@@ -1,8 +1,30 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Buffers;
+using System.Text;
+
 public partial class JsonObjectSerializerTests
 {
+	[Test]
+	public void Deserialize_ObjectGraph_FromMultiSegmentUtf8Sequence()
+	{
+		JsonSerializer serializer = new();
+		byte[] utf8 = Encoding.UTF8.GetBytes("{\"name\":\"München\",\"age\":37,\"address\":null}");
+		int splitIndex = Array.IndexOf(utf8, (byte)0xC3);
+		Assert.True(splitIndex > 0);
+
+		ReadOnlySequence<byte> json = CreateSequence(
+			utf8.AsMemory(0, splitIndex + 1),
+			utf8.AsMemory(splitIndex + 1, 1),
+			utf8.AsMemory(splitIndex + 2));
+
+		Person? value = serializer.Deserialize<Person>(json);
+		Person expected = new() { Name = "München", Age = 37, Address = null };
+
+		AssertStructuralEqual(expected, value, Encoding.UTF8.GetString(utf8));
+	}
+
 	[Test]
 	public void SerializeDeserialize_ObjectGraph()
 	{
@@ -289,6 +311,30 @@ public partial class JsonObjectSerializerTests
 		return Nerdbank.MessagePack.StructuralEqualityComparer.GetDefault(shape);
 	}
 
+	private static ReadOnlySequence<byte> CreateSequence(params ReadOnlyMemory<byte>[] segments)
+	{
+		Assert.NotEmpty(segments);
+		Segment? first = null;
+		Segment? last = null;
+
+		foreach (ReadOnlyMemory<byte> segment in segments)
+		{
+			Segment current = new(segment);
+			if (first is null)
+			{
+				first = current;
+			}
+			else
+			{
+				last!.SetNext(current);
+			}
+
+			last = current;
+		}
+
+		return new ReadOnlySequence<byte>(first!, 0, last!, last!.Memory.Length);
+	}
+
 	[GenerateShape]
 	internal partial class Person
 	{
@@ -361,5 +407,19 @@ public partial class JsonObjectSerializerTests
 	internal partial class CyclicNode
 	{
 		public CyclicNode? Next { get; set; }
+	}
+
+	private sealed class Segment : ReadOnlySequenceSegment<byte>
+	{
+		internal Segment(ReadOnlyMemory<byte> memory)
+		{
+			this.Memory = memory;
+		}
+
+		internal void SetNext(Segment next)
+		{
+			next.RunningIndex = this.RunningIndex + this.Memory.Length;
+			this.Next = next;
+		}
 	}
 }
