@@ -55,7 +55,7 @@ public partial record JsonSerializer
 	/// <summary>
 	/// Gets the runtime-registered converters that take precedence over built-in and shape-based converters.
 	/// </summary>
-	public JsonConverterCollection Converters
+	public ConverterCollection Converters
 	{
 		get => this.configuration.Converters;
 		init => this.configuration = this.configuration with { Converters = value };

@@ -15,7 +15,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new()
 		{
-			Converters = new JsonConverterCollection(new JsonConverter[] { new UpperCaseStringConverter() }),
+			Converters = new ConverterCollection(new JsonConverter[] { new UpperCaseStringConverter() }),
 		};
 
 		string json = serializer.Serialize<string, JsonObjectSerializerTests>("Ada");

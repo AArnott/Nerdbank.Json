@@ -13,7 +13,7 @@ internal record JsonSerializerConfiguration
 	internal static readonly JsonSerializerConfiguration Default = new();
 
 	private ConverterCache? converterCache;
-	private JsonConverterCollection converters = new();
+	private ConverterCollection converters = new();
 	private IReadOnlyList<IJsonConverterFactory> converterFactories = Array.Empty<IJsonConverterFactory>();
 	private JsonConverterTypeCollection converterTypes = new();
 	private bool allowTrailingCommas;
@@ -29,7 +29,7 @@ internal record JsonSerializerConfiguration
 
 	internal ConverterCache ConverterCache => this.converterCache ??= new(this);
 
-	internal JsonConverterCollection Converters
+	internal ConverterCollection Converters
 	{
 		get => this.converters;
 		init
