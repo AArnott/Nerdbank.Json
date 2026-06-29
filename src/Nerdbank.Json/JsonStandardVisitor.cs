@@ -7,29 +7,33 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Reflection;
+using PolyType.Utilities;
 
 namespace Nerdbank.Json;
 
-internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeVisitor
+internal sealed class JsonStandardVisitor(JsonConverterCache owner, TypeGenerationContext context) : TypeShapeVisitor, ITypeShapeFunc
 {
 	private static readonly object ExtensionDataSentinel = new();
+
+	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state)
+		=> owner.CreateConverter(typeShape, this);
 
 	public override object? VisitEnum<TEnum, TUnderlying>(IEnumTypeShape<TEnum, TUnderlying> enumShape, object? state = null)
 		where TEnum : struct
 	{
-		JsonConverter<TUnderlying> underlyingConverter = owner.GetOrAddConverter(enumShape.UnderlyingType);
+		JsonConverter<TUnderlying> underlyingConverter = this.GetConverter(enumShape.UnderlyingType, attributeProvider: null);
 		return new JsonEnumConverter<TEnum, TUnderlying>(underlyingConverter, enumShape.Members, owner.SerializeEnumValuesByName);
 	}
 
 	public override object? VisitOptional<TOptional, TElement>(IOptionalTypeShape<TOptional, TElement> optionalShape, object? state = null)
 	{
-		JsonConverter<TElement> elementConverter = owner.GetConverter(optionalShape.ElementType, attributeProvider: null);
+		JsonConverter<TElement> elementConverter = this.GetConverter(optionalShape.ElementType, attributeProvider: null);
 		return new JsonOptionalConverter<TOptional, TElement>(elementConverter, optionalShape.GetDeconstructor(), optionalShape.GetNoneConstructor(), optionalShape.GetSomeConstructor());
 	}
 
 	public override object? VisitEnumerable<TEnumerable, TElement>(IEnumerableTypeShape<TEnumerable, TElement> enumerableShape, object? state = null)
 	{
-		JsonConverter<TElement> elementConverter = owner.GetConverter(enumerableShape.ElementType, attributeProvider: null);
+		JsonConverter<TElement> elementConverter = this.GetConverter(enumerableShape.ElementType, attributeProvider: null);
 		Func<TEnumerable, IEnumerable<TElement>> getEnumerable = enumerableShape.GetGetEnumerable();
 
 		return enumerableShape.ConstructionStrategy switch
@@ -48,7 +52,7 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 			throw JsonDictionaryKeyConverter.CreateNotSupportedException(typeof(TKey));
 		}
 
-		JsonConverter<TValue> valueConverter = owner.GetConverter(dictionaryShape.ValueType, attributeProvider: null);
+		JsonConverter<TValue> valueConverter = this.GetConverter(dictionaryShape.ValueType, attributeProvider: null);
 		Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable = dictionaryShape.GetGetDictionary();
 
 		return dictionaryShape.ConstructionStrategy switch
@@ -143,7 +147,7 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 	public override object? VisitParameter<TArgumentState, TParameterType>(IParameterShape<TArgumentState, TParameterType> parameterShape, object? state = null)
 	{
 		JsonParameterVisitorState visitorState = (JsonParameterVisitorState)(state ?? throw new ArgumentNullException(nameof(state)));
-		JsonConverter<TParameterType> converter = owner.GetConverter(parameterShape.ParameterType, parameterShape.AttributeProvider);
+		JsonConverter<TParameterType> converter = this.GetConverter(parameterShape.ParameterType, parameterShape.AttributeProvider);
 		bool isNonNullableReferenceType = parameterShape.IsNonNullable && !typeof(TParameterType).IsValueType;
 		return new JsonConstructorParameter<TArgumentState, TParameterType>(parameterShape.Name, visitorState.SerializedPropertyName, parameterShape.IsRequired, parameterShape.GetSetter(), converter, isNonNullableReferenceType);
 	}
@@ -185,7 +189,7 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 		bool isRequired = state is bool required && required;
 		Getter<TDeclaringType, TPropertyType>? getter = propertyShape.HasGetter ? propertyShape.GetGetter() : null;
 		Setter<TDeclaringType, TPropertyType>? setter = propertyShape.HasSetter ? propertyShape.GetSetter() : null;
-		JsonConverter<TPropertyType> converter = owner.GetConverter(propertyShape.PropertyType, propertyShape.AttributeProvider);
+		JsonConverter<TPropertyType> converter = this.GetConverter(propertyShape.PropertyType, propertyShape.AttributeProvider);
 		bool deserializeIntoExistingInstance = getter is not null && setter is null && converter is IJsonDeserializeInto<TPropertyType>;
 		if (getter is null && setter is null && !deserializeIntoExistingInstance)
 		{
@@ -199,7 +203,7 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 
 	public override object? VisitSurrogate<T, TSurrogate>(ISurrogateTypeShape<T, TSurrogate> surrogateShape, object? state = null)
 	{
-		JsonConverter<TSurrogate> surrogateConverter = owner.GetConverter(surrogateShape.SurrogateType, attributeProvider: null);
+		JsonConverter<TSurrogate> surrogateConverter = this.GetConverter(surrogateShape.SurrogateType, attributeProvider: null);
 		return new JsonSurrogateConverter<T, TSurrogate>(surrogateShape, surrogateConverter);
 	}
 
@@ -266,5 +270,15 @@ internal sealed class JsonStandardVisitor(JsonConverterCache owner) : TypeShapeV
 		}
 
 		return false;
+	}
+
+	private JsonConverter<T> GetConverter<T>(ITypeShape<T> shape, IGenericCustomAttributeProvider? attributeProvider)
+	{
+		if (owner.TryGetConverterFromAttribute(shape.Type, shape, attributeProvider, out JsonConverter? converter) && converter is not null)
+		{
+			return (JsonConverter<T>)converter;
+		}
+
+		return (JsonConverter<T>)context.GetOrAdd(shape)!;
 	}
 }

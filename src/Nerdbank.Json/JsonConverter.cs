@@ -5,7 +5,7 @@
 #pragma warning disable SA1600 // Internal helper elements are intentionally undocumented in this file.
 
 using System;
-using System.Threading;
+using PolyType.Utilities;
 
 namespace Nerdbank.Json;
 
@@ -73,26 +73,17 @@ internal sealed class BuiltInJsonConverter<T> : JsonConverter<T>
 	}
 }
 
-internal sealed class DeferredJsonConverter<T> : JsonConverter<T>
+internal sealed class DelayedJsonConverterFactory : IDelayedValueFactory
 {
-	private readonly ManualResetEventSlim initialized = new(false);
-	private JsonConverter<T>? inner;
+	public DelayedValue Create<T>(ITypeShape<T> typeShape)
+		=> new DelayedValue<JsonConverter>(self => new DelayedJsonConverter<T>(self));
 
-	public override void Write(ref JsonWriter writer, T? value, JsonSerializer serializer)
+	private sealed class DelayedJsonConverter<T>(DelayedValue<JsonConverter> self) : JsonConverter<T>
 	{
-		this.initialized.Wait();
-		this.inner!.Write(ref writer, value, serializer);
-	}
+		public override void Write(ref JsonWriter writer, T? value, JsonSerializer serializer)
+			=> ((JsonConverter<T>)self.Result).Write(ref writer, value, serializer);
 
-	public override T? Read(ref JsonReader reader, JsonSerializer serializer)
-	{
-		this.initialized.Wait();
-		return this.inner!.Read(ref reader, serializer);
-	}
-
-	internal void SetInner(JsonConverter<T> inner)
-	{
-		this.inner = inner ?? throw new ArgumentNullException(nameof(inner));
-		this.initialized.Set();
+		public override T? Read(ref JsonReader reader, JsonSerializer serializer)
+			=> ((JsonConverter<T>)self.Result).Read(ref reader, serializer);
 	}
 }

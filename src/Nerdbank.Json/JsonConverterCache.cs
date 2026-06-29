@@ -7,17 +7,16 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using PolyType.Utilities;
 
 namespace Nerdbank.Json;
 
 internal sealed class JsonConverterCache
 {
-	private readonly ConcurrentDictionary<Type, JsonConverter> cachedConverters = new();
-	private readonly ConcurrentDictionary<ITypeShape, JsonConverter> cachedShapeConverters = new();
-	private readonly ConcurrentDictionary<Type, ITypeShape> cachedTypeShapes = new();
-	private readonly ConcurrentDictionary<(Type TargetType, Type ProviderType), ITypeShape> cachedWitnessTypeShapes = new();
+	private readonly ConcurrentDictionary<(Type Type, Type Provider), ITypeShape> cachedTypeShapes = new();
 	private readonly JsonSerializerConfiguration configuration;
-	private readonly object shapeCreationLock = new();
+	private object? lastConverter;
+	private MultiProviderTypeCache? cachedConverters;
 
 	internal JsonConverterCache(JsonSerializerConfiguration configuration)
 	{
@@ -30,44 +29,36 @@ internal sealed class JsonConverterCache
 
 	internal StringComparer PropertyNameComparer => this.configuration.PropertyNameCaseInsensitive ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
+	private MultiProviderTypeCache CachedConverters
+	{
+		get
+		{
+			if (this.cachedConverters is null)
+			{
+				this.cachedConverters = new()
+				{
+					DelayedValueFactory = new DelayedJsonConverterFactory(),
+					ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx),
+				};
+			}
+
+			return this.cachedConverters;
+		}
+	}
+
 #if NET
 	internal JsonConverter<T> GetOrAddConverter<T>()
 		=> throw new NotSupportedException("Dynamic converter lookup is not supported on .NET. Supply an explicit type shape or witness type.");
 #else
 	internal JsonConverter<T> GetOrAddConverter<T>()
-		=> (JsonConverter<T>)this.cachedConverters.GetOrAdd(typeof(T), _ => this.CreateConverter<T>());
+		=> this.GetOrAddConverter(this.ResolveDynamicTypeShapeOrThrow<T>());
 #endif
 
 	internal JsonConverter<T> GetOrAddConverter<T>(ITypeShape<T> shape)
-	{
-		if (this.cachedShapeConverters.TryGetValue(shape, out JsonConverter? existingConverter))
-		{
-			return (JsonConverter<T>)existingConverter;
-		}
+		=> (JsonConverter<T>)(this.lastConverter is JsonConverter<T> lastConverter ? lastConverter : (this.lastConverter = this.CachedConverters.GetOrAdd(shape)!));
 
-		lock (this.shapeCreationLock)
-		{
-			if (this.cachedShapeConverters.TryGetValue(shape, out existingConverter))
-			{
-				return (JsonConverter<T>)existingConverter;
-			}
-
-			DeferredJsonConverter<T> deferredConverter = new();
-			this.cachedShapeConverters[shape] = deferredConverter;
-			try
-			{
-				JsonConverter<T> converter = (JsonConverter<T>)this.CreateConverter(shape);
-				deferredConverter.SetInner(converter);
-				this.cachedShapeConverters[shape] = converter;
-				return converter;
-			}
-			catch
-			{
-				this.cachedShapeConverters.TryRemove(shape, out _);
-				throw;
-			}
-		}
-	}
+	internal JsonConverter GetOrAddConverter(ITypeShape shape)
+		=> (JsonConverter)this.CachedConverters.GetOrAdd(shape)!;
 
 #if NET8_0
 	[RequiresDynamicCode("Dynamic shape resolution may require runtime-generated code.")]
@@ -75,9 +66,10 @@ internal sealed class JsonConverterCache
 	internal ITypeShape<T> ResolveDynamicTypeShapeOrThrow<T>()
 	{
 		Type type = typeof(T);
-		if (!this.cachedTypeShapes.TryGetValue(type, out ITypeShape? shape))
+		(Type, Type) key = (type, type);
+		if (!this.cachedTypeShapes.TryGetValue(key, out ITypeShape? shape))
 		{
-			shape = this.cachedTypeShapes.GetOrAdd(type, TypeShapeResolver.ResolveDynamicOrThrow<T>());
+			shape = this.cachedTypeShapes.GetOrAdd(key, TypeShapeResolver.ResolveDynamicOrThrow<T>());
 		}
 
 		return (ITypeShape<T>)shape;
@@ -88,10 +80,10 @@ internal sealed class JsonConverterCache
 #endif
 	internal ITypeShape<T> ResolveDynamicTypeShapeOrThrow<T, TProvider>()
 	{
-		(Type TargetType, Type ProviderType) key = (typeof(T), typeof(TProvider));
-		if (!this.cachedWitnessTypeShapes.TryGetValue(key, out ITypeShape? shape))
+		(Type, Type) key = (typeof(T), typeof(TProvider));
+		if (!this.cachedTypeShapes.TryGetValue(key, out ITypeShape? shape))
 		{
-			shape = this.cachedWitnessTypeShapes.GetOrAdd(key, TypeShapeResolver.ResolveDynamicOrThrow<T, TProvider>());
+			shape = this.cachedTypeShapes.GetOrAdd(key, TypeShapeResolver.ResolveDynamicOrThrow<T, TProvider>());
 		}
 
 		return (ITypeShape<T>)shape;
@@ -125,50 +117,22 @@ internal sealed class JsonConverterCache
 	{
 		if (this.TryGetConverterFromAttribute(shape.Type, shape, attributeProvider, out JsonConverter? converter) && converter is not null)
 		{
-			return this.RequireTypedConverter<T>(converter);
+			return (JsonConverter<T>)converter;
 		}
 
 		return this.GetOrAddConverter(shape);
 	}
 
-	#if !NET
-	private JsonConverter CreateConverter<T>()
-	{
-		ITypeShape<T>? shape = this.TryResolveDynamicTypeShape<T>();
-		if (this.TryGetRuntimeProfferedConverterDynamically(typeof(T), shape, out JsonConverter? runtimeConverter) && runtimeConverter is not null)
-		{
-			return this.WrapWithReferencePreservation(this.RequireTypedConverter<T>(runtimeConverter));
-		}
-
-		if (this.TryGetConverterFromAttributeDynamically(typeof(T), shape, attributeProvider: null, out JsonConverter? attributedConverter) && attributedConverter is not null)
-		{
-			return this.WrapWithReferencePreservation(this.RequireTypedConverter<T>(attributedConverter));
-		}
-
-		if (BuiltInJsonConverters.IsSupported(typeof(T)))
-		{
-			return this.WrapWithReferencePreservation(new BuiltInJsonConverter<T>());
-		}
-
-		if (this.TryCreateCollectionConverter(typeof(T), out JsonConverter? collectionConverter))
-		{
-			return this.WrapWithReferencePreservation((JsonConverter<T>)collectionConverter!);
-		}
-
-		return this.CreateConverter(shape ?? this.ResolveDynamicTypeShapeOrThrow<T>());
-	}
-#endif
-
-	private JsonConverter CreateConverter<T>(ITypeShape<T> shape)
+	internal JsonConverter CreateConverter<T>(ITypeShape<T> shape, TypeShapeVisitor visitor)
 	{
 		if (this.TryGetRuntimeProfferedConverter(shape.Type, shape, out JsonConverter? runtimeConverter) && runtimeConverter is not null)
 		{
-			return this.WrapWithReferencePreservation(this.RequireTypedConverter<T>(runtimeConverter));
+			return this.WrapWithReferencePreservation((JsonConverter<T>)runtimeConverter);
 		}
 
 		if (this.TryGetConverterFromAttribute(shape.Type, shape, attributeProvider: null, out JsonConverter? attributedConverter) && attributedConverter is not null)
 		{
-			return this.WrapWithReferencePreservation(this.RequireTypedConverter<T>(attributedConverter));
+			return this.WrapWithReferencePreservation((JsonConverter<T>)attributedConverter);
 		}
 
 		if (BuiltInJsonConverters.IsSupported(shape.Type))
@@ -176,7 +140,7 @@ internal sealed class JsonConverterCache
 			return this.WrapWithReferencePreservation(new BuiltInJsonConverter<T>());
 		}
 
-		object? converter = shape.Accept(new JsonStandardVisitor(this), null);
+		object? converter = shape.Accept(visitor, null);
 		if (converter is JsonConverter jsonConverter)
 		{
 			return this.WrapWithReferencePreservation((JsonConverter<T>)jsonConverter);
@@ -185,29 +149,7 @@ internal sealed class JsonConverterCache
 		throw new NotSupportedException($"JSON serialization does not yet support values of type {shape.Type.FullName}.");
 	}
 
-	private JsonConverter<T> WrapWithReferencePreservation<T>(JsonConverter<T> converter)
-	{
-		if (this.configuration.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(typeof(T)))
-		{
-			return converter;
-		}
-
-		return new ReferencePreservingJsonConverter<T>(converter);
-	}
-
-	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
-
-	private JsonConverter<T> RequireTypedConverter<T>(JsonConverter converter)
-	{
-		if (converter is JsonConverter<T> typedConverter)
-		{
-			return typedConverter;
-		}
-
-		throw new InvalidOperationException($"Converter '{converter.GetType().FullName}' was registered for '{typeof(T).FullName}' but does not derive from JsonConverter<{typeof(T).Name}>.");
-	}
-
-	private bool TryGetConverterFromAttribute(Type type, ITypeShape typeShape, IGenericCustomAttributeProvider? attributeProvider, out JsonConverter? converter)
+	internal bool TryGetConverterFromAttribute(Type type, ITypeShape typeShape, IGenericCustomAttributeProvider? attributeProvider, out JsonConverter? converter)
 	{
 		JsonConverterAttribute? attribute = null;
 		if (attributeProvider is not null)
@@ -234,19 +176,17 @@ internal sealed class JsonConverterCache
 		return true;
 	}
 
-	#if !NET
-	private ITypeShape<T>? TryResolveDynamicTypeShape<T>()
+	private JsonConverter<T> WrapWithReferencePreservation<T>(JsonConverter<T> converter)
 	{
-		try
+		if (this.configuration.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(typeof(T)))
 		{
-			return this.ResolveDynamicTypeShapeOrThrow<T>();
+			return converter;
 		}
-		catch (NotSupportedException)
-		{
-			return null;
-		}
+
+		return new ReferencePreservingJsonConverter<T>(converter);
 	}
-#endif
+
+	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
 
 	private bool TryGetRuntimeProfferedConverter(Type type, ITypeShape shape, out JsonConverter? converter)
 	{
@@ -275,72 +215,6 @@ internal sealed class JsonConverterCache
 		return false;
 	}
 
-#if !NET
-	private bool TryGetConverterFromAttributeDynamically(Type type, ITypeShape? typeShape, IGenericCustomAttributeProvider? attributeProvider, out JsonConverter? converter)
-	{
-		JsonConverterAttribute? attribute = null;
-		if (attributeProvider is not null)
-		{
-			foreach (JsonConverterAttribute candidate in attributeProvider.GetCustomAttributes<JsonConverterAttribute>(inherit: false))
-			{
-				attribute = candidate;
-				break;
-			}
-		}
-
-		if (attribute is null && type.GetCustomAttributes(typeof(JsonConverterAttribute), inherit: false) is object[] typeAttributes && typeAttributes.Length > 0)
-		{
-			attribute = (JsonConverterAttribute)typeAttributes[0];
-		}
-
-		if (attribute is null)
-		{
-			converter = null;
-			return false;
-		}
-
-		if (typeShape is not null && TryActivateAssociatedConverterType(attribute.ConverterType, typeShape, out converter))
-		{
-			return true;
-		}
-
-		converter = ActivateConverterTypeDynamically(type, attribute.ConverterType);
-		return true;
-	}
-
-	private bool TryGetRuntimeProfferedConverterDynamically(Type type, ITypeShape? shape, out JsonConverter? converter)
-	{
-		if (this.configuration.Converters.TryGetConverter(type, out converter))
-		{
-			return true;
-		}
-
-		if (this.configuration.ConverterTypes.TryGetConverterType(type, out Type? converterType) ||
-			(type.IsGenericType && this.configuration.ConverterTypes.TryGetConverterType(type.GetGenericTypeDefinition(), out converterType)))
-		{
-			if (shape is not null && TryActivateAssociatedConverterType(converterType, shape, out converter))
-			{
-				return true;
-			}
-
-			converter = ActivateConverterTypeDynamically(type, converterType);
-			return true;
-		}
-
-		JsonConverterFactoryContext context = new(this);
-		foreach (IJsonConverterFactory factory in this.configuration.ConverterFactories)
-		{
-			if ((converter = factory.CreateConverter(type, shape, context)) is not null)
-			{
-				return true;
-			}
-		}
-
-		converter = null;
-		return false;
-	}
-#endif
-
 	private static JsonConverter ActivateAssociatedConverterType(Type targetType, Type converterType, ITypeShape targetTypeShape)
 	{
 		if (TryActivateAssociatedConverterType(converterType, targetTypeShape, out JsonConverter? converter))
@@ -362,80 +236,4 @@ internal sealed class JsonConverterCache
 		converter = null;
 		return false;
 	}
-
-	#if !NET
-	private static JsonConverter ActivateConverterTypeDynamically(Type targetType, Type converterType)
-	{
-		if (converterType.IsGenericTypeDefinition)
-		{
-			if (!targetType.IsGenericType)
-			{
-				throw new InvalidOperationException($"Open generic converter type '{converterType}' cannot be used for non-generic target type '{targetType}'.");
-			}
-
-			converterType = converterType.MakeGenericType(targetType.GetGenericArguments());
-		}
-
-		return (JsonConverter)Activator.CreateInstance(converterType)!;
-	}
-
-	private bool TryCreateCollectionConverter(Type type, out JsonConverter? converter)
-	{
-		if (TryGetGenericInterface(type, typeof(IDictionary<,>), out Type[]? dictionaryArguments) && HasDefaultConstructor(type))
-		{
-			if (!JsonDictionaryKeyConverter.IsSupported(dictionaryArguments![0]))
-			{
-				converter = null;
-				return false;
-			}
-
-			MethodInfo factory = typeof(JsonConverterCache).GetMethod(nameof(this.CreateDictionaryCollectionConverter), BindingFlags.Instance | BindingFlags.NonPublic)!.MakeGenericMethod(type, dictionaryArguments[0], dictionaryArguments[1]);
-			converter = (JsonConverter)factory.Invoke(this, null)!;
-			return true;
-		}
-
-		if (TryGetGenericInterface(type, typeof(ICollection<>), out Type[]? collectionArguments) && HasDefaultConstructor(type))
-		{
-			MethodInfo factory = typeof(JsonConverterCache).GetMethod(nameof(this.CreateListCollectionConverter), BindingFlags.Instance | BindingFlags.NonPublic)!.MakeGenericMethod(type, collectionArguments![0]);
-			converter = (JsonConverter)factory.Invoke(this, null)!;
-			return true;
-		}
-
-		converter = null;
-		return false;
-	}
-
-	private static bool HasDefaultConstructor(Type type)
-		=> !type.IsAbstract && type.GetConstructor(Type.EmptyTypes) is not null;
-
-	private static bool TryGetGenericInterface(Type type, Type genericInterface, out Type[]? genericArguments)
-	{
-		if (type.IsGenericType && type.GetGenericTypeDefinition() == genericInterface)
-		{
-			genericArguments = type.GetGenericArguments();
-			return true;
-		}
-
-		foreach (Type @interface in type.GetInterfaces())
-		{
-			if (@interface.IsGenericType && @interface.GetGenericTypeDefinition() == genericInterface)
-			{
-				genericArguments = @interface.GetGenericArguments();
-				return true;
-			}
-		}
-
-		genericArguments = null;
-		return false;
-	}
-
-	private JsonConverter CreateListCollectionConverter<TCollection, TElement>()
-		where TCollection : IEnumerable<TElement>, ICollection<TElement>, new()
-		=> new JsonListConverter<TCollection, TElement>(this.GetOrAddConverter<TElement>(), static () => new TCollection());
-
-	private JsonConverter CreateDictionaryCollectionConverter<TDictionary, TKey, TValue>()
-		where TDictionary : IEnumerable<KeyValuePair<TKey, TValue>>, IDictionary<TKey, TValue>, new()
-		where TKey : notnull
-		=> new JsonDictionaryCollectionConverter<TDictionary, TKey, TValue>(this, this.GetOrAddConverter<TValue>(), static () => new TDictionary());
-#endif
 }
