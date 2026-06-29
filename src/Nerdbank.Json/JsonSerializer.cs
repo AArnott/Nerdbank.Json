@@ -175,7 +175,7 @@ public partial record JsonSerializer
 	/// <summary>
 	/// Gets the converter cache derived from this serializer's immutable configuration.
 	/// </summary>
-	internal JsonConverterCache ConverterCache => this.configuration.ConverterCache;
+	internal ConverterCache ConverterCache => this.configuration.ConverterCache;
 
 	internal JsonReferenceEqualityTracker ReferenceTracker => currentReferenceTracker ?? throw new InvalidOperationException("Reference tracking is only available within an active serialization or deserialization operation.");
 

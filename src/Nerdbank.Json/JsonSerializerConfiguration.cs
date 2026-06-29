@@ -12,7 +12,7 @@ internal record JsonSerializerConfiguration
 {
 	internal static readonly JsonSerializerConfiguration Default = new();
 
-	private JsonConverterCache? converterCache;
+	private ConverterCache? converterCache;
 	private JsonConverterCollection converters = new();
 	private IReadOnlyList<IJsonConverterFactory> converterFactories = Array.Empty<IJsonConverterFactory>();
 	private JsonConverterTypeCollection converterTypes = new();
@@ -27,7 +27,7 @@ internal record JsonSerializerConfiguration
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
 	private bool writeIndented;
 
-	internal JsonConverterCache ConverterCache => this.converterCache ??= new(this);
+	internal ConverterCache ConverterCache => this.converterCache ??= new(this);
 
 	internal JsonConverterCollection Converters
 	{

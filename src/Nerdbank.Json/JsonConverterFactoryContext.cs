@@ -10,9 +10,9 @@ namespace Nerdbank.Json;
 /// </summary>
 public readonly struct JsonConverterFactoryContext
 {
-	private readonly JsonConverterCache? cache;
+	private readonly ConverterCache? cache;
 
-	internal JsonConverterFactoryContext(JsonConverterCache cache)
+	internal JsonConverterFactoryContext(ConverterCache cache)
 	{
 		this.cache = cache;
 	}

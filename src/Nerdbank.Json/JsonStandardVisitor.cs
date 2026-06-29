@@ -11,7 +11,7 @@ using PolyType.Utilities;
 
 namespace Nerdbank.Json;
 
-internal sealed class JsonStandardVisitor(JsonConverterCache owner, TypeGenerationContext context) : TypeShapeVisitor, ITypeShapeFunc
+internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationContext context) : TypeShapeVisitor, ITypeShapeFunc
 {
 	private static readonly object ExtensionDataSentinel = new();
 

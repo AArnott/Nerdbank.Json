@@ -151,9 +151,9 @@ internal abstract class JsonDictionaryConverter<TDictionary, TKey, TValue> : Jso
 {
 	private readonly Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable;
 	private readonly JsonConverter<TValue> valueConverter;
-	private readonly JsonConverterCache owner;
+	private readonly ConverterCache owner;
 
-	internal JsonDictionaryConverter(Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable, JsonConverter<TValue> valueConverter, JsonConverterCache owner)
+	internal JsonDictionaryConverter(Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable, JsonConverter<TValue> valueConverter, ConverterCache owner)
 	{
 		this.getReadable = getReadable;
 		this.valueConverter = valueConverter;
@@ -191,7 +191,7 @@ internal abstract class JsonDictionaryConverter<TDictionary, TKey, TValue> : Jso
 internal sealed class JsonReadOnlyDictionaryConverter<TDictionary, TKey, TValue> : JsonDictionaryConverter<TDictionary, TKey, TValue>
 	where TKey : notnull
 {
-	internal JsonReadOnlyDictionaryConverter(Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable, JsonConverter<TValue> valueConverter, JsonConverterCache owner)
+	internal JsonReadOnlyDictionaryConverter(Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable, JsonConverter<TValue> valueConverter, ConverterCache owner)
 		: base(getReadable, valueConverter, owner)
 	{
 	}
@@ -206,7 +206,7 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 	private readonly DictionaryInserter<TDictionary, TKey, TValue> addEntry;
 	private readonly MutableCollectionConstructor<TKey, TDictionary> constructor;
 
-	internal JsonMutableDictionaryConverter(Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable, JsonConverter<TValue> valueConverter, JsonConverterCache owner, DictionaryInserter<TDictionary, TKey, TValue> addEntry, MutableCollectionConstructor<TKey, TDictionary> constructor)
+	internal JsonMutableDictionaryConverter(Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable, JsonConverter<TValue> valueConverter, ConverterCache owner, DictionaryInserter<TDictionary, TKey, TValue> addEntry, MutableCollectionConstructor<TKey, TDictionary> constructor)
 		: base(getReadable, valueConverter, owner)
 	{
 		this.addEntry = addEntry;
@@ -253,7 +253,7 @@ internal sealed class JsonParameterizedDictionaryConverter<TDictionary, TKey, TV
 {
 	private readonly ParameterizedCollectionConstructor<TKey, KeyValuePair<TKey, TValue>, TDictionary> constructor;
 
-	internal JsonParameterizedDictionaryConverter(Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable, JsonConverter<TValue> valueConverter, JsonConverterCache owner, ParameterizedCollectionConstructor<TKey, KeyValuePair<TKey, TValue>, TDictionary> constructor)
+	internal JsonParameterizedDictionaryConverter(Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable, JsonConverter<TValue> valueConverter, ConverterCache owner, ParameterizedCollectionConstructor<TKey, KeyValuePair<TKey, TValue>, TDictionary> constructor)
 		: base(getReadable, valueConverter, owner)
 	{
 		this.constructor = constructor;
@@ -361,11 +361,11 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 	where TDictionary : IEnumerable<KeyValuePair<TKey, TValue>>
 	where TKey : notnull
 {
-	private readonly JsonConverterCache owner;
+	private readonly ConverterCache owner;
 	private readonly JsonConverter<TValue> valueConverter;
 	private readonly Func<TDictionary> createDictionary;
 
-	public JsonDictionaryCollectionConverter(JsonConverterCache owner, JsonConverter<TValue> valueConverter, Func<TDictionary> createDictionary)
+	public JsonDictionaryCollectionConverter(ConverterCache owner, JsonConverter<TValue> valueConverter, Func<TDictionary> createDictionary)
 	{
 		this.owner = owner;
 		this.valueConverter = valueConverter;

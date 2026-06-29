@@ -11,14 +11,14 @@ using PolyType.Utilities;
 
 namespace Nerdbank.Json;
 
-internal sealed class JsonConverterCache
+internal sealed class ConverterCache
 {
 	private readonly ConcurrentDictionary<(Type Type, Type Provider), ITypeShape> cachedTypeShapes = new();
 	private readonly JsonSerializerConfiguration configuration;
 	private object? lastConverter;
 	private MultiProviderTypeCache? cachedConverters;
 
-	internal JsonConverterCache(JsonSerializerConfiguration configuration)
+	internal ConverterCache(JsonSerializerConfiguration configuration)
 	{
 		this.configuration = configuration;
 	}

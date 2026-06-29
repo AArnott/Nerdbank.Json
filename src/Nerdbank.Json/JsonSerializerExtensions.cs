@@ -41,7 +41,7 @@ public static partial class JsonSerializerExtensions
 #if NET8_0
 	[RequiresDynamicCode(ResolveDynamicMessage)]
 #endif
-	private static ITypeShape<T>? TryResolveTypeShape<T>(JsonConverterCache? cache)
+	private static ITypeShape<T>? TryResolveTypeShape<T>(ConverterCache? cache)
 	{
 		try
 		{
@@ -56,7 +56,7 @@ public static partial class JsonSerializerExtensions
 #if NET8_0
 	[RequiresDynamicCode(ResolveDynamicMessage)]
 #endif
-	private static ITypeShape<T> ResolveTypeShapeOrThrow<T>(JsonConverterCache? cache)
+	private static ITypeShape<T> ResolveTypeShapeOrThrow<T>(ConverterCache? cache)
 	{
 		try
 		{
@@ -78,7 +78,7 @@ public static partial class JsonSerializerExtensions
 #if NET8_0
 	[RequiresDynamicCode(ResolveDynamicMessage)]
 #endif
-	private static ITypeShape<T> ResolveTypeShapeOrThrow<T, TProvider>(JsonConverterCache cache)
+	private static ITypeShape<T> ResolveTypeShapeOrThrow<T, TProvider>(ConverterCache cache)
 	{
 		try
 		{
