@@ -47,7 +47,7 @@ internal class AnalyzerVerifier<TAnalyzer>
 				return from resourceName in Assembly.GetExecutingAssembly().GetManifestResourceNames()
 					   where resourceName.StartsWith(additionalFilePrefix, StringComparison.Ordinal)
 					   let content = ReadManifestResource(Assembly.GetExecutingAssembly(), resourceName)
-					   select (filename: resourceName.Substring(additionalFilePrefix.Length), SourceText.From(content));
+					   select (filename: resourceName[additionalFilePrefix.Length..], SourceText.From(content));
 			});
 		}
 
@@ -56,7 +56,7 @@ internal class AnalyzerVerifier<TAnalyzer>
 
 		protected override CompilationOptions CreateCompilationOptions()
 		{
-			CSharpCompilationOptions compilationOptions = (CSharpCompilationOptions)base.CreateCompilationOptions();
+			var compilationOptions = (CSharpCompilationOptions)base.CreateCompilationOptions();
 			return compilationOptions.WithWarningLevel(99).WithSpecificDiagnosticOptions(compilationOptions.SpecificDiagnosticOptions.SetItem("CS1591", ReportDiagnostic.Suppress));
 		}
 

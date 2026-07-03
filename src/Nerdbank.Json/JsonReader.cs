@@ -3,7 +3,6 @@
 
 #pragma warning disable SA1600 // Elements should be documented
 
-using System;
 using System.Globalization;
 using System.Text;
 
@@ -16,7 +15,7 @@ public ref struct JsonReader
 {
 	private readonly bool allowTrailingCommas;
 	private readonly JsonCommentHandling commentHandling;
-	private ReadOnlySpan<char> json;
+	private readonly ReadOnlySpan<char> json;
 	private int position;
 
 	/// <summary>
@@ -104,17 +103,25 @@ public ref struct JsonReader
 			{
 				if (builder is null)
 				{
-					return this.json.Slice(segmentStart, (this.position - 1) - segmentStart).ToString();
+					return this.json[segmentStart..(this.position - 1)].ToString();
 				}
 
-				builder.Append(this.json.Slice(segmentStart, (this.position - 1) - segmentStart).ToString());
+#if NET
+				builder.Append(this.json[segmentStart..(this.position - 1)]);
+#else
+				builder.Append(this.json[segmentStart..(this.position - 1)].ToString());
+#endif
 				return builder.ToString();
 			}
 
 			if (ch == '\\')
 			{
 				builder ??= new StringBuilder();
-				builder.Append(this.json.Slice(segmentStart, (this.position - 1) - segmentStart).ToString());
+#if NET
+				builder.Append(this.json[segmentStart..(this.position - 1)]);
+#else
+				builder.Append(this.json[segmentStart..(this.position - 1)].ToString());
+#endif
 				builder.Append(this.ReadEscapeSequence());
 				segmentStart = this.position;
 			}
@@ -164,7 +171,7 @@ public ref struct JsonReader
 			this.ReadDigits(requireAtLeastOne: true);
 		}
 
-		return this.json.Slice(start, this.position - start).ToString();
+		return this.json[start..this.position].ToString();
 	}
 
 	/// <summary>
@@ -331,7 +338,7 @@ public ref struct JsonReader
 		this.position = this.SkipInsignificantCharacters(this.position);
 	}
 
-	private int SkipInsignificantCharacters(int index)
+	private readonly int SkipInsignificantCharacters(int index)
 	{
 		while (index < this.json.Length)
 		{
@@ -435,19 +442,19 @@ public ref struct JsonReader
 		}
 
 		char ch = this.json[this.position++];
-		switch (ch)
+		return ch switch
 		{
-			case '"': return '"';
-			case '\\': return '\\';
-			case '/': return '/';
-			case 'b': return '\b';
-			case 'f': return '\f';
-			case 'n': return '\n';
-			case 'r': return '\r';
-			case 't': return '\t';
-			case 'u': return (char)this.ReadHexQuad();
-			default: throw new FormatException($"Unsupported JSON escape sequence '\\{ch}'.");
-		}
+			'"' => '"',
+			'\\' => '\\',
+			'/' => '/',
+			'b' => '\b',
+			'f' => '\f',
+			'n' => '\n',
+			'r' => '\r',
+			't' => '\t',
+			'u' => (char)this.ReadHexQuad(),
+			_ => throw new FormatException($"Unsupported JSON escape sequence '\\{ch}'."),
+		};
 	}
 
 	private int ReadHexQuad()
@@ -504,7 +511,7 @@ public ref struct JsonReader
 		}
 	}
 
-	private void RequireCurrent(char expected)
+	private readonly void RequireCurrent(char expected)
 	{
 		if (this.position >= this.json.Length || this.json[this.position] != expected)
 		{

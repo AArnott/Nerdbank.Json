@@ -15,7 +15,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection(new JsonConverter[] { new UpperCaseStringConverter() }),
+			Converters = new ConverterCollection([new UpperCaseStringConverter()]),
 		};
 
 		string json = serializer.Serialize<string, JsonObjectSerializerTests>("Ada");
@@ -31,7 +31,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new()
 		{
-			ConverterTypes = new JsonConverterTypeCollection(new[] { typeof(GenericValueConverter<>) }),
+			ConverterTypes = new JsonConverterTypeCollection([typeof(GenericValueConverter<>)]),
 		};
 
 		GenericValue<string> value = new() { Value = "Ada" };
@@ -49,7 +49,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new()
 		{
-			ConverterFactories = new IJsonConverterFactory[] { new CharListWrapperFactory() },
+			ConverterFactories = [new CharListWrapperFactory()],
 		};
 
 		List<char> value = ['a', 'b', 'c'];

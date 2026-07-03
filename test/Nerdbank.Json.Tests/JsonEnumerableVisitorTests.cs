@@ -89,7 +89,7 @@ public partial class JsonObjectSerializerTests
 	public void SerializeDeserialize_ReadOnlyCollection_WithWitnessType()
 	{
 		JsonSerializer serializer = new();
-		ReadOnlyCollection<int> value = new(new List<int> { 3, 5, 8 });
+		ReadOnlyCollection<int> value = new([3, 5, 8]);
 
 		string json = serializer.Serialize<ReadOnlyCollection<int>, JsonObjectSerializerTests>(value);
 		ReadOnlyCollection<int>? roundTripped = serializer.Deserialize<ReadOnlyCollection<int>, JsonObjectSerializerTests>(json);

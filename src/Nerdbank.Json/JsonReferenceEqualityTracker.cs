@@ -14,7 +14,7 @@ namespace Nerdbank.Json;
 internal sealed class JsonReferenceEqualityTracker
 {
 	private readonly Dictionary<object, (int ReferenceId, bool Done)> serializedObjects = new(ReferenceEqualityComparer.Instance);
-	private readonly Dictionary<int, object?> deserializedObjects = new();
+	private readonly Dictionary<int, object?> deserializedObjects = [];
 	private int nextReferenceId = 1;
 
 	internal void WriteObject(ref JsonWriter writer, object value, JsonConverter inner, JsonSerializer serializer)

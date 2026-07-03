@@ -93,7 +93,7 @@ internal static class Polyfills
 				return string.Empty;
 			}
 
-			decoder.Convert(Array.Empty<byte>(), 0, 0, charBuffer, 0, charBuffer.Length, flush: true, out _, out int finalCharsUsed, out _);
+			decoder.Convert([], 0, 0, charBuffer, 0, charBuffer.Length, flush: true, out _, out int finalCharsUsed, out _);
 			builder.Append(charBuffer, 0, finalCharsUsed);
 			return builder.ToString();
 		}

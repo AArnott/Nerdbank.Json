@@ -3,9 +3,7 @@
 
 #pragma warning disable SA1600 // Internal helper members are intentionally undocumented in this file.
 
-using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nerdbank.Json;
@@ -22,7 +20,7 @@ public class ConverterCollection : IReadOnlyCollection<JsonConverter>
 	/// </summary>
 	/// <remarks>The created collection is empty.</remarks>
 	public ConverterCollection()
-		: this(Array.Empty<JsonConverter>())
+		: this([])
 	{
 	}
 
@@ -32,12 +30,9 @@ public class ConverterCollection : IReadOnlyCollection<JsonConverter>
 	/// <param name="converters">The converters to include.</param>
 	public ConverterCollection(IEnumerable<JsonConverter> converters)
 	{
-		if (converters is null)
-		{
-			throw new ArgumentNullException(nameof(converters));
-		}
+		Requires.NotNull(converters);
 
-		this.map = new();
+		this.map = [];
 		foreach (JsonConverter converter in converters)
 		{
 			if (converter is null)

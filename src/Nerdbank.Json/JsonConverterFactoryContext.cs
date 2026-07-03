@@ -46,10 +46,7 @@ public readonly struct JsonConverterFactoryContext
 	/// <returns>The converter.</returns>
 	public JsonConverter<T> GetConverter<T>(ITypeShape<T> shape)
 	{
-		if (shape is null)
-		{
-			throw new ArgumentNullException(nameof(shape));
-		}
+		Requires.NotNull(shape);
 
 		return this.cache?.GetOrAddConverter(shape) ?? throw new InvalidOperationException("No converter factory context is active.");
 	}

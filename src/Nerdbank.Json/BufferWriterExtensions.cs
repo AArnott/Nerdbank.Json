@@ -4,7 +4,7 @@
 // This file was originally derived from https://github.com/MessagePack-CSharp/MessagePack-CSharp/
 using System.Diagnostics.CodeAnalysis;
 
-namespace Nerdbank.Json.Utilities;
+namespace Nerdbank.Json;
 
 /// <summary>
 /// Extensions for the <see cref="IBufferWriter{T}"/> type.

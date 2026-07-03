@@ -15,7 +15,7 @@ internal struct BufferMemoryWriter
 	/// <summary>
 	/// The underlying <see cref="IBufferWriter{T}"/>.
 	/// </summary>
-	private IBufferWriter<byte> output;
+	private readonly IBufferWriter<byte> output;
 
 	/// <summary>
 	/// The result of the last call to <see cref="IBufferWriter{T}.GetMemory(int)"/>, less any bytes already "consumed" with <see cref="Advance(int)"/>.
@@ -43,7 +43,7 @@ internal struct BufferMemoryWriter
 	/// <summary>
 	/// Gets the result of the last call to <see cref="IBufferWriter{T}.GetMemory(int)"/>.
 	/// </summary>
-	internal Memory<byte> Memory => this.memory;
+	internal readonly Memory<byte> Memory => this.memory;
 
 	/// <inheritdoc cref="IBufferWriter{T}.GetSpan(int)"/>
 	internal Span<byte> GetSpan(int sizeHint = 0)

@@ -1,11 +1,9 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System;
 using System.Buffers;
 using System.Text;
-using Nerdbank.Json;
-using Xunit;
+using Microsoft;
 
 public class JsonWriterTests
 {
@@ -78,10 +76,7 @@ public class JsonWriterTests
 
 		public void Advance(int count)
 		{
-			if (count < 0)
-			{
-				throw new ArgumentOutOfRangeException(nameof(count));
-			}
+			Requires.Range(count >= 0, nameof(count), "Count must be non-negative.");
 
 			this.writtenCount += count;
 		}

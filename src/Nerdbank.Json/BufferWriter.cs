@@ -92,17 +92,17 @@ internal ref struct BufferWriter
 	/// <summary>
 	/// Gets the result of the last call to <see cref="IBufferWriter{T}.GetSpan(int)"/>.
 	/// </summary>
-	internal Span<byte> Span => this.span;
+	internal readonly Span<byte> Span => this.span;
 
 	/// <summary>
 	/// Gets the number of bytes written but not yet <see cref="Commit">committed</see>.
 	/// </summary>
-	internal int UncommittedBytes => this.buffered;
+	internal readonly int UncommittedBytes => this.buffered;
 
 	/// <summary>
 	/// Gets the rental.
 	/// </summary>
-	internal SequencePool<byte>.Rental SequenceRental => this.rental;
+	internal readonly SequencePool<byte>.Rental SequenceRental => this.rental;
 
 	/// <summary>
 	/// Gets the <see cref="BufferMemoryWriter"/> underlying this writer.
@@ -127,7 +127,7 @@ internal ref struct BufferWriter
 	{
 		this.Ensure(sizeHint);
 
-		if (this.segment.Array != null)
+		if (this.segment.Array is not null)
 		{
 			return ref this.segment.Array[this.segment.Offset + this.buffered];
 		}
@@ -210,9 +210,9 @@ internal ref struct BufferWriter
 	/// </summary>
 	/// <param name="span">Receives the uncommitted span.</param>
 	/// <returns><see langword="true" /> if an uncommitted span was set; otherwise <see langword="false" />.</returns>
-	internal bool TryGetUncommittedSpan(out ReadOnlySpan<byte> span)
+	internal readonly bool TryGetUncommittedSpan(out ReadOnlySpan<byte> span)
 	{
-		if (this.sequencePool != null)
+		if (this.sequencePool is not null)
 		{
 			span = this.segment.AsSpan(0, this.buffered);
 			return true;

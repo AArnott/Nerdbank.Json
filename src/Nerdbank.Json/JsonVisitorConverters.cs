@@ -5,9 +5,6 @@
 #pragma warning disable SA1600 // Elements should be documented
 #pragma warning disable SA1649 // File name should not need to match the first type in this multi-type helper file.
 
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Globalization;
 
 namespace Nerdbank.Json;
@@ -109,7 +106,7 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 
 	public override void Write(ref JsonWriter writer, TEnum value, JsonSerializer serializer)
 	{
-		TUnderlying underlyingValue = (TUnderlying)(object)value;
+		var underlyingValue = (TUnderlying)(object)value;
 		if (this.namesByValue?.TryGetValue(underlyingValue, out string? name) == true)
 		{
 			writer.WriteStringValue(name);
@@ -138,12 +135,12 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 	private static (Dictionary<string, TUnderlying> ValuesByName, Dictionary<TUnderlying, string> NamesByValue) CreateNameMaps(IReadOnlyDictionary<string, TUnderlying> members)
 	{
 		Dictionary<string, TUnderlying> valuesByName = new(StringComparer.OrdinalIgnoreCase);
-		Dictionary<TUnderlying, string> namesByValue = new();
+		Dictionary<TUnderlying, string> namesByValue = [];
 
 		if (!TryPopulate(valuesByName, namesByValue))
 		{
 			valuesByName = new(StringComparer.Ordinal);
-			namesByValue = new();
+			namesByValue = [];
 			if (!TryPopulate(valuesByName, namesByValue))
 			{
 				throw new InvalidOperationException($"Failed to build enum name map for {typeof(TEnum).FullName}.");
@@ -260,7 +257,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 
 		reader.ReadValueSeparator();
-		TUnion? value = (TUnion?)converter.ReadObject(ref reader, serializer);
+		var value = (TUnion?)converter.ReadObject(ref reader, serializer);
 		reader.ReadEndArray();
 		return value;
 	}
@@ -435,10 +432,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 			}
 		}
 
-		if (this.extensionData is not null)
-		{
-			this.extensionData.Write(ref writer, value, ref first);
-		}
+		this.extensionData?.Write(ref writer, value, ref first);
 
 		writer.WriteEndObject();
 	}
@@ -497,7 +491,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 				JsonConstructorParameter<TArgumentState> parameter = this.parameters[i];
 				if (parameter.IsRequired && !assignedParameters.Contains(parameter.SerializedPropertyName))
 				{
-					missingRequiredParameters ??= new List<string>();
+					missingRequiredParameters ??= [];
 					missingRequiredParameters.Add(parameter.ParameterName);
 				}
 			}

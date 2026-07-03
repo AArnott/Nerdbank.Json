@@ -100,8 +100,8 @@ public partial class JsonSerializerTests
 	public void SerializeDeserialize_ByteBuffers()
 	{
 		AssertRoundtrip(new byte[] { 1, 2, 3, 4 }, "\"AQIDBA==\"");
-		AssertRoundtrip(new Memory<byte>(new byte[] { 5, 6, 7 }), "\"BQYH\"");
-		AssertRoundtrip(new ReadOnlyMemory<byte>(new byte[] { 8, 9, 10 }), "\"CAkK\"");
+		AssertRoundtrip(new Memory<byte>([5, 6, 7]), "\"BQYH\"");
+		AssertRoundtrip(new ReadOnlyMemory<byte>([8, 9, 10]), "\"CAkK\"");
 	}
 
 #if NET8_0_OR_GREATER

@@ -6,7 +6,6 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
-using System.Reflection;
 using PolyType.Utilities;
 
 namespace Nerdbank.Json;
@@ -33,14 +32,11 @@ internal sealed class ConverterCache
 	{
 		get
 		{
-			if (this.cachedConverters is null)
+			this.cachedConverters ??= new()
 			{
-				this.cachedConverters = new()
-				{
-					DelayedValueFactory = new DelayedJsonConverterFactory(),
-					ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx),
-				};
-			}
+				DelayedValueFactory = new DelayedJsonConverterFactory(),
+				ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx),
+			};
 
 			return this.cachedConverters;
 		}
@@ -115,7 +111,7 @@ internal sealed class ConverterCache
 
 	internal JsonConverter<T> GetConverter<T>(ITypeShape<T> shape, IGenericCustomAttributeProvider? attributeProvider)
 	{
-		if (this.TryGetConverterFromAttribute(shape.Type, shape, attributeProvider, out JsonConverter? converter) && converter is not null)
+		if (TryGetConverterFromAttribute(shape.Type, shape, attributeProvider, out JsonConverter? converter) && converter is not null)
 		{
 			return (JsonConverter<T>)converter;
 		}
@@ -130,7 +126,7 @@ internal sealed class ConverterCache
 			return this.WrapWithReferencePreservation((JsonConverter<T>)runtimeConverter);
 		}
 
-		if (this.TryGetConverterFromAttribute(shape.Type, shape, attributeProvider: null, out JsonConverter? attributedConverter) && attributedConverter is not null)
+		if (TryGetConverterFromAttribute(shape.Type, shape, attributeProvider: null, out JsonConverter? attributedConverter) && attributedConverter is not null)
 		{
 			return this.WrapWithReferencePreservation((JsonConverter<T>)attributedConverter);
 		}
@@ -149,7 +145,7 @@ internal sealed class ConverterCache
 		throw new NotSupportedException($"JSON serialization does not yet support values of type {shape.Type.FullName}.");
 	}
 
-	internal bool TryGetConverterFromAttribute(Type type, ITypeShape typeShape, IGenericCustomAttributeProvider? attributeProvider, out JsonConverter? converter)
+	internal static bool TryGetConverterFromAttribute(Type type, ITypeShape typeShape, IGenericCustomAttributeProvider? attributeProvider, out JsonConverter? converter)
 	{
 		JsonConverterAttribute? attribute = null;
 		if (attributeProvider is not null)
