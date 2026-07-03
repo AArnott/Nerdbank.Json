@@ -45,9 +45,9 @@ internal class AnalyzerVerifier<TAnalyzer>
 			{
 				const string additionalFilePrefix = "AdditionalFiles.";
 				return from resourceName in Assembly.GetExecutingAssembly().GetManifestResourceNames()
-					where resourceName.StartsWith(additionalFilePrefix, StringComparison.Ordinal)
-					let content = ReadManifestResource(Assembly.GetExecutingAssembly(), resourceName)
-					select (filename: resourceName.Substring(additionalFilePrefix.Length), SourceText.From(content));
+					   where resourceName.StartsWith(additionalFilePrefix, StringComparison.Ordinal)
+					   let content = ReadManifestResource(Assembly.GetExecutingAssembly(), resourceName)
+					   select (filename: resourceName.Substring(additionalFilePrefix.Length), SourceText.From(content));
 			});
 		}
 
