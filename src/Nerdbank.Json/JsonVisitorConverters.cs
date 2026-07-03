@@ -5,9 +5,6 @@
 #pragma warning disable SA1600 // Elements should be documented
 #pragma warning disable SA1649 // File name should not need to match the first type in this multi-type helper file.
 
-using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Globalization;
 
 namespace Nerdbank.Json;
@@ -98,18 +95,18 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 	private readonly Dictionary<TUnderlying, string>? namesByValue;
 	private readonly JsonConverter<TUnderlying> underlyingConverter;
 
-	internal JsonEnumConverter(JsonConverter<TUnderlying> underlyingConverter, IReadOnlyDictionary<string, TUnderlying> members, bool serializeByName)
+	internal JsonEnumConverter(JsonConverter<TUnderlying> underlyingConverter, IReadOnlyDictionary<string, TUnderlying> members, bool serializeByName, JsonNamingPolicy? namingPolicy)
 	{
 		this.underlyingConverter = underlyingConverter;
 		if (serializeByName)
 		{
-			(this.valuesByName, this.namesByValue) = CreateNameMaps(members);
+			(this.valuesByName, this.namesByValue) = CreateNameMaps(members, namingPolicy);
 		}
 	}
 
 	public override void Write(ref JsonWriter writer, TEnum value, JsonSerializer serializer)
 	{
-		TUnderlying underlyingValue = (TUnderlying)(object)value;
+		var underlyingValue = (TUnderlying)(object)value;
 		if (this.namesByValue?.TryGetValue(underlyingValue, out string? name) == true)
 		{
 			writer.WriteStringValue(name);
@@ -135,15 +132,15 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 		return (TEnum)(object)this.underlyingConverter.Read(ref reader, serializer)!;
 	}
 
-	private static (Dictionary<string, TUnderlying> ValuesByName, Dictionary<TUnderlying, string> NamesByValue) CreateNameMaps(IReadOnlyDictionary<string, TUnderlying> members)
+	private static (Dictionary<string, TUnderlying> ValuesByName, Dictionary<TUnderlying, string> NamesByValue) CreateNameMaps(IReadOnlyDictionary<string, TUnderlying> members, JsonNamingPolicy? namingPolicy)
 	{
 		Dictionary<string, TUnderlying> valuesByName = new(StringComparer.OrdinalIgnoreCase);
-		Dictionary<TUnderlying, string> namesByValue = new();
+		Dictionary<TUnderlying, string> namesByValue = [];
 
 		if (!TryPopulate(valuesByName, namesByValue))
 		{
 			valuesByName = new(StringComparer.Ordinal);
-			namesByValue = new();
+			namesByValue = [];
 			if (!TryPopulate(valuesByName, namesByValue))
 			{
 				throw new InvalidOperationException($"Failed to build enum name map for {typeof(TEnum).FullName}.");
@@ -156,21 +153,22 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 		{
 			foreach (KeyValuePair<string, TUnderlying> pair in members)
 			{
-				if (nameMap.ContainsKey(pair.Key))
+				string name = namingPolicy?.ConvertName(pair.Key) ?? pair.Key;
+				if (nameMap.ContainsKey(name))
 				{
-					if (!EqualityComparer<TUnderlying>.Default.Equals(nameMap[pair.Key], pair.Value))
+					if (!EqualityComparer<TUnderlying>.Default.Equals(nameMap[name], pair.Value))
 					{
 						return false;
 					}
 				}
 				else
 				{
-					nameMap.Add(pair.Key, pair.Value);
+					nameMap.Add(name, pair.Value);
 				}
 
 				if (!reverseMap.ContainsKey(pair.Value))
 				{
-					reverseMap.Add(pair.Value, pair.Key);
+					reverseMap.Add(pair.Value, name);
 				}
 			}
 
@@ -260,7 +258,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 
 		reader.ReadValueSeparator();
-		TUnion? value = (TUnion?)converter.ReadObject(ref reader, serializer);
+		var value = (TUnion?)converter.ReadObject(ref reader, serializer);
 		reader.ReadEndArray();
 		return value;
 	}
@@ -435,10 +433,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 			}
 		}
 
-		if (this.extensionData is not null)
-		{
-			this.extensionData.Write(ref writer, value, ref first);
-		}
+		this.extensionData?.Write(ref writer, value, ref first);
 
 		writer.WriteEndObject();
 	}
@@ -497,7 +492,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 				JsonConstructorParameter<TArgumentState> parameter = this.parameters[i];
 				if (parameter.IsRequired && !assignedParameters.Contains(parameter.SerializedPropertyName))
 				{
-					missingRequiredParameters ??= new List<string>();
+					missingRequiredParameters ??= [];
 					missingRequiredParameters.Add(parameter.ParameterName);
 				}
 			}

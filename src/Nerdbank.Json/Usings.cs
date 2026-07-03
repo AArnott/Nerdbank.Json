@@ -3,6 +3,5 @@
 
 global using System.Buffers;
 global using Microsoft;
-global using Nerdbank.Json.Utilities;
 global using PolyType;
 global using PolyType.Abstractions;

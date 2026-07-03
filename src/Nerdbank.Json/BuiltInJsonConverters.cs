@@ -3,7 +3,6 @@
 
 #pragma warning disable SA1600 // Elements should be documented
 
-using System;
 using System.Drawing;
 using System.Globalization;
 using System.Numerics;
@@ -223,7 +222,7 @@ internal static class BuiltInJsonConverters
 
 		if (type == typeof(Point))
 		{
-			Point point = (Point)boxed!;
+			var point = (Point)boxed!;
 			writer.WriteStartArray();
 			writer.WriteNumberValue(point.X);
 			writer.WriteValueSeparator();

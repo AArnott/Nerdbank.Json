@@ -13,7 +13,7 @@ internal class SequencePool<T>
 	/// <summary>
 	/// A thread-safe pool of reusable <see cref="Sequence{T}"/> objects.
 	/// </summary>
-	internal static readonly SequencePool<T> Shared = new SequencePool<T>();
+	internal static readonly SequencePool<T> Shared = new();
 
 	/// <summary>
 	/// The value to use for <see cref="Sequence{T}.MinimumSpanLength"/>.
@@ -29,7 +29,7 @@ internal class SequencePool<T>
 	private const int MinimumSpanLength = 32 * 1024;
 
 	private readonly int maxSize;
-	private readonly Stack<Sequence<T>> pool = new Stack<Sequence<T>>();
+	private readonly Stack<Sequence<T>> pool = new();
 
 	/// <summary>
 	/// The array pool which we share with all <see cref="Sequence{T}"/> objects created by this <see cref="SequencePool{T}"/> instance.
@@ -137,7 +137,7 @@ internal class SequencePool<T>
 		/// <summary>
 		/// Gets the recyclable object.
 		/// </summary>
-		public Sequence<T> Value => this.value ?? throw new ObjectDisposedException(nameof(Rental));
+		public readonly Sequence<T> Value => this.value ?? throw new ObjectDisposedException(nameof(Rental));
 
 		/// <summary>
 		/// Returns the recyclable object to the pool.

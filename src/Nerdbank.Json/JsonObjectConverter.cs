@@ -5,9 +5,6 @@
 #pragma warning disable SA1600 // Elements should be documented
 #pragma warning disable SA1649 // File name should match first type name
 
-using System;
-using System.Collections.Generic;
-
 namespace Nerdbank.Json;
 
 internal sealed class JsonObjectConverter<T> : JsonConverter<T>
@@ -53,10 +50,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 			}
 		}
 
-		if (this.extensionData is not null)
-		{
-			this.extensionData.Write(ref writer, value, ref first);
-		}
+		this.extensionData?.Write(ref writer, value, ref first);
 
 		writer.WriteEndObject();
 	}
@@ -183,7 +177,7 @@ internal sealed class JsonExtensionData<TDeclaring, TProperty> : JsonExtensionDa
 			throw new NotSupportedException($"Extension data property on '{typeof(TDeclaring).FullName}' cannot be assigned.");
 		}
 
-		TProperty assigned = (TProperty)(object)extensionData;
+		var assigned = (TProperty)(object)extensionData;
 		this.setter!(ref value, assigned);
 	}
 

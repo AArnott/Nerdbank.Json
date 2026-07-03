@@ -50,7 +50,7 @@ public class RefParametersForRefStructsAnalyzer : DiagnosticAnalyzer
 			compilationStartContext.RegisterSymbolAction(
 				symbolContext =>
 				{
-					IMethodSymbol method = (IMethodSymbol)symbolContext.Symbol;
+					var method = (IMethodSymbol)symbolContext.Symbol;
 					foreach (IParameterSymbol parameter in method.Parameters)
 					{
 						if (parameter.RefKind == RefKind.None && guardedRefStructs.Contains(parameter.Type))

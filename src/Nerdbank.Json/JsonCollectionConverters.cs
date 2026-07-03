@@ -5,9 +5,6 @@
 #pragma warning disable SA1600 // Elements should be documented
 #pragma warning disable SA1649 // File name should match first type name
 
-using System;
-using System.Collections.Generic;
-
 namespace Nerdbank.Json;
 
 internal interface IJsonDeserializeInto<TCollection>
@@ -126,7 +123,7 @@ internal sealed class JsonParameterizedEnumerableConverter<TEnumerable, TElement
 			return default;
 		}
 
-		List<TElement> elements = new();
+		List<TElement> elements = [];
 		reader.ReadStartArray();
 		if (!reader.TryReadEndArray())
 		{
@@ -266,7 +263,7 @@ internal sealed class JsonParameterizedDictionaryConverter<TDictionary, TKey, TV
 			return default;
 		}
 
-		List<KeyValuePair<TKey, TValue>> entries = new();
+		List<KeyValuePair<TKey, TValue>> entries = [];
 		reader.ReadStartObject();
 		if (!reader.TryReadEndObject())
 		{
@@ -288,18 +285,9 @@ internal sealed class JsonParameterizedDictionaryConverter<TDictionary, TKey, TV
 	}
 }
 
-internal sealed class JsonListConverter<TCollection, TElement> : JsonConverter<TCollection>
+internal sealed class JsonListConverter<TCollection, TElement>(JsonConverter<TElement> elementConverter, Func<TCollection> createCollection) : JsonConverter<TCollection>
 	where TCollection : IEnumerable<TElement>
 {
-	private readonly JsonConverter<TElement> elementConverter;
-	private readonly Func<TCollection> createCollection;
-
-	public JsonListConverter(JsonConverter<TElement> elementConverter, Func<TCollection> createCollection)
-	{
-		this.elementConverter = elementConverter;
-		this.createCollection = createCollection;
-	}
-
 	public override void Write(ref JsonWriter writer, TCollection? value, JsonSerializer serializer)
 	{
 		if (value is null)
@@ -318,7 +306,7 @@ internal sealed class JsonListConverter<TCollection, TElement> : JsonConverter<T
 			}
 
 			first = false;
-			this.elementConverter.Write(ref writer, element, serializer);
+			elementConverter.Write(ref writer, element, serializer);
 		}
 
 		writer.WriteEndArray();
@@ -331,7 +319,7 @@ internal sealed class JsonListConverter<TCollection, TElement> : JsonConverter<T
 			return default;
 		}
 
-		if (this.createCollection() is not ICollection<TElement> collection)
+		if (createCollection() is not ICollection<TElement> collection)
 		{
 			throw new NotSupportedException($"Collection type {typeof(TCollection).FullName} must implement ICollection<{typeof(TElement).Name}>.");
 		}
@@ -344,7 +332,7 @@ internal sealed class JsonListConverter<TCollection, TElement> : JsonConverter<T
 
 		while (true)
 		{
-			collection.Add(this.elementConverter.Read(ref reader, serializer)!);
+			collection.Add(elementConverter.Read(ref reader, serializer)!);
 			if (reader.TryReadEndArray())
 			{
 				break;
@@ -357,21 +345,10 @@ internal sealed class JsonListConverter<TCollection, TElement> : JsonConverter<T
 	}
 }
 
-internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValue> : JsonConverter<TDictionary>
+internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValue>(ConverterCache owner, JsonConverter<TValue> valueConverter, Func<TDictionary> createDictionary) : JsonConverter<TDictionary>
 	where TDictionary : IEnumerable<KeyValuePair<TKey, TValue>>
 	where TKey : notnull
 {
-	private readonly ConverterCache owner;
-	private readonly JsonConverter<TValue> valueConverter;
-	private readonly Func<TDictionary> createDictionary;
-
-	public JsonDictionaryCollectionConverter(ConverterCache owner, JsonConverter<TValue> valueConverter, Func<TDictionary> createDictionary)
-	{
-		this.owner = owner;
-		this.valueConverter = valueConverter;
-		this.createDictionary = createDictionary;
-	}
-
 	public override void Write(ref JsonWriter writer, TDictionary? value, JsonSerializer serializer)
 	{
 		if (value is null)
@@ -390,8 +367,8 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 			}
 
 			first = false;
-			writer.WritePropertyName(this.owner.GetSerializedDictionaryKey(JsonDictionaryKeyConverter.FormatKey(entry.Key)));
-			this.valueConverter.Write(ref writer, entry.Value, serializer);
+			writer.WritePropertyName(owner.GetSerializedDictionaryKey(JsonDictionaryKeyConverter.FormatKey(entry.Key)));
+			valueConverter.Write(ref writer, entry.Value, serializer);
 		}
 
 		writer.WriteEndObject();
@@ -404,7 +381,7 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 			return default;
 		}
 
-		if (this.createDictionary() is not IDictionary<TKey, TValue> dictionary)
+		if (createDictionary() is not IDictionary<TKey, TValue> dictionary)
 		{
 			throw new NotSupportedException($"Dictionary type {typeof(TDictionary).FullName} must implement IDictionary<{typeof(TKey).Name}, {typeof(TValue).Name}>.");
 		}
@@ -419,7 +396,7 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 		{
 			string key = reader.ReadRequiredString();
 			reader.ReadNameSeparator();
-			dictionary.Add(JsonDictionaryKeyConverter.ParseKey<TKey>(key), this.valueConverter.Read(ref reader, serializer)!);
+			dictionary.Add(JsonDictionaryKeyConverter.ParseKey<TKey>(key), valueConverter.Read(ref reader, serializer)!);
 			if (reader.TryReadEndObject())
 			{
 				break;

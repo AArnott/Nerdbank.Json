@@ -1,10 +1,6 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using Nerdbank.Json;
-using PolyType;
-using Xunit;
-
 [GenerateShapeFor<JsonObjectSerializerTests.SomeEnum>]
 [GenerateShapeFor<JsonObjectSerializerTests.FlagEnum>]
 public partial class JsonObjectSerializerTests
@@ -44,22 +40,32 @@ public partial class JsonObjectSerializerTests
 		JsonSerializer serializer = new();
 		EnumContainer value = new() { Value = SomeEnum.Three };
 
-		string json = serializer.Serialize(value);
-
-		Assert.Equal("{\"value\":3}", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip(value, """{"value":3}""");
 	}
 
 	[Test]
 	public void SerializeDeserialize_EnumRoot_ByName()
 	{
-		JsonSerializer serializer = new() { SerializeEnumValuesByName = true };
+		JsonSerializer serializer = new() { SerializeEnumValuesByName = true, PropertyNamingPolicy = null };
 		SomeEnum value = SomeEnum.Two;
 
 		string json = serializer.Serialize<SomeEnum, JsonObjectSerializerTests>(value);
 		SomeEnum roundTripped = serializer.Deserialize<SomeEnum, JsonObjectSerializerTests>(json);
 
 		Assert.Equal("\"Two\"", json);
+		Assert.Equal(value, roundTripped);
+	}
+
+	[Test]
+	public void SerializeDeserialize_EnumRoot_ByName_CamelCase()
+	{
+		JsonSerializer serializer = new() { SerializeEnumValuesByName = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+		SomeEnum value = SomeEnum.Two;
+
+		string json = serializer.Serialize<SomeEnum, JsonObjectSerializerTests>(value);
+		SomeEnum roundTripped = serializer.Deserialize<SomeEnum, JsonObjectSerializerTests>(json);
+
+		Assert.Equal("\"two\"", json);
 		Assert.Equal(value, roundTripped);
 	}
 
@@ -76,10 +82,10 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void Serialize_EnumRoot_ByName_FallsBackToNumberWhenUnnamed()
 	{
-		JsonSerializer serializer = new() { SerializeEnumValuesByName = true };
+		this.Serializer = new() { SerializeEnumValuesByName = true };
 		FlagEnum value = FlagEnum.Read | FlagEnum.Write;
 
-		string json = serializer.Serialize<FlagEnum, JsonObjectSerializerTests>(value);
+		string json = this.Serializer.Serialize<FlagEnum, JsonObjectSerializerTests>(value);
 
 		Assert.Equal("3", json);
 	}
@@ -87,13 +93,10 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithEnumProperty_ByName()
 	{
-		JsonSerializer serializer = new() { SerializeEnumValuesByName = true };
+		this.Serializer = new() { SerializeEnumValuesByName = true };
 		EnumContainer value = new() { Value = SomeEnum.Three };
 
-		string json = serializer.Serialize(value);
-
-		Assert.Equal("{\"value\":\"Three\"}", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip(value, """{"value":"three"}""");
 	}
 
 	[GenerateShape]

@@ -12,7 +12,7 @@ public partial class JsonObjectSerializerTests
 		string json = serializer.Serialize(value);
 		ParameterizedRecord? roundTripped = serializer.Deserialize<ParameterizedRecord>(json);
 
-		Assert.Equal("{\"name\":\"Ada\",\"age\":37}", json);
+		Assert.Equal("""{"name":"Ada","age":37}""", json);
 		Assert.Equal(value, roundTripped);
 	}
 
@@ -21,7 +21,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		MixedConstructorType? value = serializer.Deserialize<MixedConstructorType>("{\"name\":\"Ada\",\"age\":37}");
+		MixedConstructorType? value = serializer.Deserialize<MixedConstructorType>("""{"name":"Ada","age":37}""");
 
 		Assert.NotNull(value);
 		Assert.Equal("Ada", value.Name);
@@ -33,7 +33,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new() { PropertyNameCaseInsensitive = true };
 
-		MixedConstructorType? value = serializer.Deserialize<MixedConstructorType>("{\"NAME\":\"Ada\",\"AGE\":37}");
+		MixedConstructorType? value = serializer.Deserialize<MixedConstructorType>("""{"NAME":"Ada","AGE":37}""");
 
 		Assert.NotNull(value);
 		Assert.Equal("Ada", value.Name);
@@ -45,13 +45,13 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		MixedConstructorTypeWithExtensionData? value = serializer.Deserialize<MixedConstructorTypeWithExtensionData>("{\"name\":\"Ada\",\"unknown\":true,\"extra\":{\"nested\":5}}\n");
+		MixedConstructorTypeWithExtensionData? value = serializer.Deserialize<MixedConstructorTypeWithExtensionData>("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""" + "\n");
 
 		Assert.NotNull(value);
 		Assert.Equal("Ada", value.Name);
 		Assert.NotNull(value.ExtensionData);
 		Assert.Equal("true", value.ExtensionData!["unknown"]);
-		Assert.Equal("{\"nested\":5}", value.ExtensionData["extra"]);
+		Assert.Equal("""{"nested":5}""", value.ExtensionData["extra"]);
 	}
 
 	[Test]
@@ -59,7 +59,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<ParameterizedRecord>("{\"age\":37}"));
+		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<ParameterizedRecord>("""{"age":37}"""));
 		Assert.Contains("Name", exception.Message);
 	}
 
@@ -68,7 +68,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new() { DeserializeDefaultValues = Nerdbank.Json.DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties };
 
-		ParameterizedRecord? value = serializer.Deserialize<ParameterizedRecord>("{\"age\":37}");
+		ParameterizedRecord? value = serializer.Deserialize<ParameterizedRecord>("""{"age":37}""");
 
 		Assert.NotNull(value);
 		Assert.Null(value.Name);
@@ -80,7 +80,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<ParameterizedRecord>("{\"name\":\"Ada\",\"name\":\"Grace\",\"age\":37}"));
+		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<ParameterizedRecord>("""{"name":"Ada","name":"Grace","age":37}"""));
 		Assert.Contains("name", exception.Message, System.StringComparison.OrdinalIgnoreCase);
 	}
 
@@ -89,7 +89,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		OptionalParameterizedRecord? value = serializer.Deserialize<OptionalParameterizedRecord>("{\"name\":\"Ada\"}");
+		OptionalParameterizedRecord? value = serializer.Deserialize<OptionalParameterizedRecord>("""{"name":"Ada"}""");
 
 		Assert.NotNull(value);
 		Assert.Equal(new OptionalParameterizedRecord("Ada", 21), value);
@@ -100,7 +100,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<ParameterizedRecord>("{\"name\":null,\"age\":37}"));
+		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<ParameterizedRecord>("""{"name":null,"age":37}"""));
 		Assert.Contains("Name", exception.Message);
 	}
 
@@ -109,7 +109,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new() { DeserializeDefaultValues = Nerdbank.Json.DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties };
 
-		ParameterizedRecord? value = serializer.Deserialize<ParameterizedRecord>("{\"name\":null,\"age\":37}");
+		ParameterizedRecord? value = serializer.Deserialize<ParameterizedRecord>("""{"name":null,"age":37}""");
 
 		Assert.NotNull(value);
 		Assert.Null(value.Name);

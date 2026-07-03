@@ -4,8 +4,6 @@
 #pragma warning disable SA1204 // Keep comparer nested near its only caller in this focused helper.
 #pragma warning disable SA1600 // Internal helper members are intentionally undocumented.
 
-using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 
@@ -14,7 +12,7 @@ namespace Nerdbank.Json;
 internal sealed class JsonReferenceEqualityTracker
 {
 	private readonly Dictionary<object, (int ReferenceId, bool Done)> serializedObjects = new(ReferenceEqualityComparer.Instance);
-	private readonly Dictionary<int, object?> deserializedObjects = new();
+	private readonly Dictionary<int, object?> deserializedObjects = [];
 	private int nextReferenceId = 1;
 
 	internal void WriteObject(ref JsonWriter writer, object value, JsonConverter inner, JsonSerializer serializer)

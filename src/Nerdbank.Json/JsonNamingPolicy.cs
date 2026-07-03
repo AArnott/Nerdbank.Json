@@ -1,8 +1,6 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -82,10 +80,7 @@ public abstract class JsonNamingPolicy
 		/// <inheritdoc/>
 		public sealed override string ConvertName(string name)
 		{
-			if (name is null)
-			{
-				throw new ArgumentNullException(nameof(name));
-			}
+			Requires.NotNull(name);
 
 			return ConvertNameCore(this.separator, this.lowercase, this.capitalizeFirstLetterOfSubsequentWords, this.capitalizeFirstLetterOfFirstWord, name.AsSpan());
 		}
@@ -190,10 +185,10 @@ public abstract class JsonNamingPolicy
 				}
 			}
 
-			string result = destination.Slice(0, charsWritten).ToString();
+			string result = destination[..charsWritten].ToString();
 			if (rentedBuffer is not null)
 			{
-				destination.Slice(0, charsWritten).Clear();
+				destination[..charsWritten].Clear();
 				ArrayPool<char>.Shared.Return(rentedBuffer);
 			}
 
@@ -219,7 +214,7 @@ public abstract class JsonNamingPolicy
 
 			if (rentedBuffer is not null)
 			{
-				destination.Slice(0, charsWritten).Clear();
+				destination[..charsWritten].Clear();
 				ArrayPool<char>.Shared.Return(rentedBuffer);
 			}
 

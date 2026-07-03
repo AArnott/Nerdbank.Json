@@ -28,11 +28,12 @@ public partial record JsonSerializer
 	private static JsonReferenceEqualityTracker? currentReferenceTracker;
 
 	/// <summary>
-	/// Gets the transformation applied to object property names during serialization and deserialization.
+	/// Gets the transformation applied to object property names and enum value names during serialization and deserialization.
 	/// </summary>
 	/// <remarks>
 	/// The default value is <see cref="JsonNamingPolicy.CamelCase"/>.
-	/// Set this property to <see langword="null"/> to preserve declared property names.
+	/// Set this property to <see langword="null"/> to preserve declared property names and enum value names.
+	/// Enum value names are transformed only when <see cref="SerializeEnumValuesByName"/> is <see langword="true"/>.
 	/// </remarks>
 	public JsonNamingPolicy? PropertyNamingPolicy
 	{
@@ -144,6 +145,7 @@ public partial record JsonSerializer
 	/// </summary>
 	/// <remarks>
 	/// The default value is <see langword="false"/>.
+	/// When enabled, <see cref="PropertyNamingPolicy"/> is applied to enum value names.
 	/// </remarks>
 	public bool SerializeEnumValuesByName
 	{

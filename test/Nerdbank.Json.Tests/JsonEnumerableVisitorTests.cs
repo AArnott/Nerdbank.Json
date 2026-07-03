@@ -18,10 +18,7 @@ public partial class JsonObjectSerializerTests
 			new Person { Name = "Grace", Age = 41, Address = new Address { City = "Arlington", PostalCode = 22201 } },
 		];
 
-		string json = serializer.Serialize<List<Person>, JsonObjectSerializerTests>(value);
-
-		Assert.Equal("[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":{\"city\":\"Arlington\",\"postalCode\":22201}}]", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip<List<Person>, JsonObjectSerializerTests>(value, """[{"name":"Ada","age":37,"address":null},{"name":"Grace","age":41,"address":{"city":"Arlington","postalCode":22201}}]""");
 	}
 
 	[Test]
@@ -34,24 +31,14 @@ public partial class JsonObjectSerializerTests
 			new Person { Name = "Grace", Age = 41 },
 		];
 
-		string json = serializer.Serialize<List<Person>, JsonObjectSerializerTests>(value);
-		List<Person>? roundTripped = serializer.Deserialize<List<Person>, JsonObjectSerializerTests>(json);
-
-		Assert.NotNull(roundTripped);
-		AssertStructuralEqual(value, roundTripped, json);
+		this.AssertRoundtrip<List<Person>, JsonObjectSerializerTests>(value);
 	}
 
 	[Test]
 	public void SerializeDeserialize_Array_WithWitnessType()
 	{
 		JsonSerializer serializer = new();
-		int[] value = [1, 2, 3, 5, 8];
-
-		string json = serializer.Serialize<int[], JsonObjectSerializerTests>(value);
-		int[]? roundTripped = serializer.Deserialize<int[], JsonObjectSerializerTests>(json);
-
-		Assert.NotNull(roundTripped);
-		AssertStructuralEqual(value, roundTripped, json);
+		this.AssertRoundtrip<int[], JsonObjectSerializerTests>([1, 2, 3, 5, 8]);
 	}
 
 	[Test]
@@ -79,24 +66,16 @@ public partial class JsonObjectSerializerTests
 			LuckyNumbers = [3, 5, 8],
 		};
 
-		string json = serializer.Serialize(value);
-
-		Assert.Equal("{\"people\":[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":null}],\"luckyNumbers\":[3,5,8]}", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip(value, """{"people":[{"name":"Ada","age":37,"address":null},{"name":"Grace","age":41,"address":null}],"luckyNumbers":[3,5,8]}""");
 	}
 
 	[Test]
 	public void SerializeDeserialize_ReadOnlyCollection_WithWitnessType()
 	{
 		JsonSerializer serializer = new();
-		ReadOnlyCollection<int> value = new(new List<int> { 3, 5, 8 });
+		ReadOnlyCollection<int> value = new([3, 5, 8]);
 
-		string json = serializer.Serialize<ReadOnlyCollection<int>, JsonObjectSerializerTests>(value);
-		ReadOnlyCollection<int>? roundTripped = serializer.Deserialize<ReadOnlyCollection<int>, JsonObjectSerializerTests>(json);
-
-		Assert.NotNull(roundTripped);
-		Assert.Equal("[3,5,8]", json);
-		AssertStructuralEqual(value, roundTripped, json);
+		this.AssertRoundtrip<ReadOnlyCollection<int>, JsonObjectSerializerTests>(value, """[3,5,8]""");
 	}
 
 	[Test]
@@ -104,7 +83,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		GetterOnlyEnumerableContainer? value = serializer.Deserialize<GetterOnlyEnumerableContainer>("{\"people\":[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":null}]}");
+		GetterOnlyEnumerableContainer? value = serializer.Deserialize<GetterOnlyEnumerableContainer>("""{"people":[{"name":"Ada","age":37,"address":null},{"name":"Grace","age":41,"address":null}]}""");
 
 		Assert.NotNull(value);
 		Assert.Equal(2, value.People.Count);

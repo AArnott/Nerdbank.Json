@@ -55,7 +55,7 @@ public ref struct JsonWriter
 	/// <summary>
 	/// Gets the number of bytes that have been written but not yet committed <see cref="Flush">flushed</see> to the underlying <see cref="IBufferWriter{T}"/>.
 	/// </summary>
-	public int UnflushedBytes => this.writer.UncommittedBytes;
+	public readonly int UnflushedBytes => this.writer.UncommittedBytes;
 
 	/// <summary>
 	/// Ensures everything previously written has been flushed to the underlying <see cref="IBufferWriter{T}"/>.
@@ -333,10 +333,7 @@ public ref struct JsonWriter
 	/// <param name="value">The raw JSON text to write.</param>
 	public void WriteRawValue(string value)
 	{
-		if (value is null)
-		{
-			throw new ArgumentNullException(nameof(value));
-		}
+		Requires.NotNull(value);
 
 		this.BeforeValueToken();
 		this.WriteUtf8(value.AsSpan());
@@ -420,7 +417,7 @@ public ref struct JsonWriter
 		return state;
 	}
 
-	private ContainerState GetCurrentContainer(ContainerKind expectedKind)
+	private readonly ContainerState GetCurrentContainer(ContainerKind expectedKind)
 	{
 		if (this.depth == 0)
 		{
@@ -436,7 +433,7 @@ public ref struct JsonWriter
 		return state;
 	}
 
-	private void SetCurrentContainer(ContainerState state) => this.stack[this.depth - 1] = state;
+	private readonly void SetCurrentContainer(ContainerState state) => this.stack[this.depth - 1] = state;
 
 	private void WriteNewLineAndIndent(int indentDepth)
 	{
@@ -463,13 +460,13 @@ public ref struct JsonWriter
 			char ch = value[i];
 			if (NeedsEscaping(ch))
 			{
-				this.WriteUtf8(value.Slice(copyStart, i - copyStart));
+				this.WriteUtf8(value[copyStart..i]);
 				this.WriteEscapedChar(ch);
 				copyStart = i + 1;
 			}
 		}
 
-		this.WriteUtf8(value.Slice(copyStart));
+		this.WriteUtf8(value[copyStart..]);
 		this.WriteByte((byte)'"');
 	}
 

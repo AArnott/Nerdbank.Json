@@ -23,9 +23,9 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 
 	private static readonly int DefaultLengthFromArrayPool = 1 + (4095 / Unsafe.SizeOf<T>());
 
-	private static readonly ReadOnlySequence<T> Empty = new ReadOnlySequence<T>(SequenceSegment.Empty, 0, SequenceSegment.Empty, 0);
+	private static readonly ReadOnlySequence<T> Empty = new(SequenceSegment.Empty, 0, SequenceSegment.Empty, 0);
 
-	private readonly Stack<SequenceSegment> segmentPool = new Stack<SequenceSegment>();
+	private readonly Stack<SequenceSegment> segmentPool = new();
 
 	private readonly MemoryPool<T>? memoryPool;
 
@@ -136,7 +136,7 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 	public void AdvanceTo(SequencePosition position)
 	{
 		var firstSegment = (SequenceSegment?)position.GetObject();
-		if (firstSegment == null)
+		if (firstSegment is null)
 		{
 			// Emulate PipeReader behavior which is to just return for default(SequencePosition)
 			return;
@@ -152,12 +152,12 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 
 		// Before making any mutations, confirm that the block specified belongs to this sequence.
 		Sequence<T>.SequenceSegment? current = this.first;
-		while (current != firstSegment && current != null)
+		while (current != firstSegment && current is not null)
 		{
 			current = current.Next;
 		}
 
-		Requires.Argument(current != null, nameof(position), "Position does not represent a valid position in this sequence.");
+		Requires.Argument(current is not null, nameof(position), "Position does not represent a valid position in this sequence.");
 
 		// Also confirm that the position is not a prior position in the block.
 		Requires.Argument(firstIndex >= current.Start, nameof(position), "Position must not be earlier than current position.");
@@ -173,7 +173,7 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 
 		this.first = firstSegment.Length == 0 ? this.RecycleAndGetNext(firstSegment) : firstSegment;
 
-		if (this.first == null)
+		if (this.first is null)
 		{
 			this.last = null;
 		}
@@ -187,7 +187,7 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 	public void Advance(int count)
 	{
 		SequenceSegment? last = this.last;
-		Verify.Operation(last != null, "Cannot advance before acquiring memory.");
+		Verify.Operation(last is not null, "Cannot advance before acquiring memory.");
 		last.Advance(count);
 		this.ConsiderMinimumSizeIncrease();
 	}
@@ -239,7 +239,7 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 	public void Reset()
 	{
 		Sequence<T>.SequenceSegment? current = this.first;
-		while (current != null)
+		while (current is not null)
 		{
 			current = this.RecycleAndGetNext(current);
 		}
@@ -253,7 +253,7 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 		int? minBufferSize = null;
 		if (sizeHint == 0)
 		{
-			if (this.last == null || this.last.WritableBytes == 0)
+			if (this.last is null || this.last.WritableBytes == 0)
 			{
 				// We're going to need more memory. Take whatever size the pool wants to give us.
 				minBufferSize = -1;
@@ -261,7 +261,7 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 		}
 		else
 		{
-			if (this.last == null || this.last.WritableBytes < sizeHint)
+			if (this.last is null || this.last.WritableBytes < sizeHint)
 			{
 				minBufferSize = Math.Max(this.MinimumSpanLength, sizeHint);
 			}
@@ -270,7 +270,7 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 		if (minBufferSize.HasValue)
 		{
 			Sequence<T>.SequenceSegment? segment = this.segmentPool.Count > 0 ? this.segmentPool.Pop() : new SequenceSegment();
-			if (this.arrayPool != null)
+			if (this.arrayPool is not null)
 			{
 				segment.Assign(this.arrayPool.Rent(minBufferSize.Value == -1 ? DefaultLengthFromArrayPool : minBufferSize.Value));
 			}
@@ -287,7 +287,7 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 
 	private void Append(SequenceSegment segment)
 	{
-		if (this.last == null)
+		if (this.last is null)
 		{
 			this.first = this.last = segment;
 		}
@@ -345,7 +345,7 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 
 	private class SequenceSegment : ReadOnlySequenceSegment<T>
 	{
-		internal static readonly SequenceSegment Empty = new SequenceSegment();
+		internal static readonly SequenceSegment Empty = new();
 
 		/// <summary>
 		/// A value indicating whether the element may contain references (and thus must be cleared).
@@ -373,12 +373,12 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 		/// <summary>
 		/// Gets the tail of memory that has not yet been committed.
 		/// </summary>
-		internal Memory<T> RemainingMemory => this.AvailableMemory.Slice(this.End);
+		internal Memory<T> RemainingMemory => this.AvailableMemory[this.End..];
 
 		/// <summary>
 		/// Gets the tail of memory that has not yet been committed.
 		/// </summary>
-		internal Span<T> RemainingSpan => this.AvailableMemory.Span.Slice(this.End);
+		internal Span<T> RemainingSpan => this.AvailableMemory.Span[this.End..];
 
 		/// <summary>
 		/// Gets the tracker for the underlying array for this segment, which can be used to recycle the array when we're disposed of.
@@ -414,7 +414,7 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 		/// <summary>
 		/// Gets a value indicating whether this segment refers to memory that came from outside and that we cannot write to nor recycle.
 		/// </summary>
-		internal bool IsForeignMemory => this.array == null && this.MemoryOwner == null;
+		internal bool IsForeignMemory => this.array is null && this.MemoryOwner is null;
 
 		/// <summary>
 		/// Assigns this (recyclable) segment a new area in memory.
@@ -457,7 +457,7 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 			this.RunningIndex = 0;
 			this.Start = 0;
 			this.End = 0;
-			if (this.array != null)
+			if (this.array is not null)
 			{
 				arrayPool!.Return(this.array);
 				this.array = null;
@@ -484,7 +484,7 @@ internal sealed class Sequence<T> : IBufferWriter<T>, IDisposable
 				// When setting Memory, we start with index 0 instead of this.Start because
 				// the first segment has an explicit index set anyway,
 				// and we don't want to double-count it here.
-				this.Memory = this.AvailableMemory.Slice(0, this.Start + this.Length);
+				this.Memory = this.AvailableMemory[..(this.Start + this.Length)];
 			}
 		}
 
