@@ -47,6 +47,39 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
+	public void SerializeDeserialize_ObjectGraph_AsObject()
+	{
+		JsonSerializer serializer = new();
+		Person value = new()
+		{
+			Name = "Ada",
+			Age = 37,
+			Address = new Address
+			{
+				City = "Seattle",
+				PostalCode = 98101,
+			},
+		};
+		ITypeShape shape = GetTypeShape<Person>();
+
+		string json = serializer.SerializeObject(value, shape);
+		Assert.Equal("{\"name\":\"Ada\",\"age\":37,\"address\":{\"city\":\"Seattle\",\"postalCode\":98101}}", json);
+
+		AssertStructuralEqual(value, Assert.IsType<Person>(serializer.DeserializeObject(json, shape)), json);
+
+		using MemoryStream stream = new();
+		serializer.SerializeObject(stream, value, shape);
+		stream.Position = 0;
+		AssertStructuralEqual(value, Assert.IsType<Person>(serializer.DeserializeObject(stream, shape)), json);
+
+		byte[] utf8 = Encoding.UTF8.GetBytes(json);
+		AssertStructuralEqual(value, Assert.IsType<Person>(serializer.DeserializeObject(utf8, shape)), json);
+
+		ReadOnlySequence<byte> sequence = CreateSequence(utf8.AsMemory(0, 10), utf8.AsMemory(10));
+		AssertStructuralEqual(value, Assert.IsType<Person>(serializer.DeserializeObject(sequence, shape)), json);
+	}
+
+	[Test]
 	public void Deserialize_ObjectGraph_IgnoresUnknownProperty()
 	{
 		JsonSerializer serializer = new();
@@ -295,7 +328,7 @@ public partial class JsonObjectSerializerTests
 
 	private static void AssertRoundtrip<T>(string json, JsonSerializer serializer, T expected)
 	{
-		ITypeShape<T> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<T>() ?? throw new InvalidOperationException($"No generated type shape found for {typeof(T)}.");
+		ITypeShape<T> shape = GetTypeShape<T>();
 		T? actual = serializer.Deserialize(json, shape);
 		Assert.True(GetStructuralEqualityComparer<T?>().Equals(expected, actual), $"Round-trip mismatch for serialized JSON: {json}");
 	}
@@ -307,9 +340,12 @@ public partial class JsonObjectSerializerTests
 
 	private static IEqualityComparer<T> GetStructuralEqualityComparer<T>()
 	{
-		ITypeShape<T> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<T>() ?? throw new InvalidOperationException($"No generated type shape found for {typeof(T)}.");
+		ITypeShape<T> shape = GetTypeShape<T>();
 		return Nerdbank.MessagePack.StructuralEqualityComparer.GetDefault(shape);
 	}
+
+	private static ITypeShape<T> GetTypeShape<T>()
+		=> PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<T>() ?? throw new InvalidOperationException($"No generated type shape found for {typeof(T)}.");
 
 	private static ReadOnlySequence<byte> CreateSequence(params ReadOnlyMemory<byte>[] segments)
 	{

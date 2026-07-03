@@ -180,6 +180,20 @@ public partial record JsonSerializer
 	internal JsonReferenceEqualityTracker ReferenceTracker => currentReferenceTracker ?? throw new InvalidOperationException("Reference tracking is only available within an active serialization or deserialization operation.");
 
 	/// <summary>
+	/// Serializes an untyped value to JSON using the specified type shape.
+	/// </summary>
+	/// <param name="writer">The writer to serialize the value into.</param>
+	/// <param name="value">The value to serialize.</param>
+	/// <param name="shape">The type shape describing the structure of <paramref name="value"/>.</param>
+	/// <param name="cancellationToken">A token to cancel the operation.</param>
+	public void SerializeObject(ref JsonWriter writer, object? value, ITypeShape shape, CancellationToken cancellationToken = default)
+	{
+		Requires.NotNull(shape);
+
+		this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, this);
+	}
+
+	/// <summary>
 	/// Serializes a value to JSON using the specified type shape.
 	/// </summary>
 	/// <typeparam name="T">The type of value to serialize.</typeparam>
@@ -197,6 +211,20 @@ public partial record JsonSerializer
 		}
 
 		this.ConverterCache.GetOrAddConverter(shape).Write(ref writer, value, this);
+	}
+
+	/// <summary>
+	/// Deserializes an untyped value from JSON using the specified type shape.
+	/// </summary>
+	/// <param name="reader">The reader to deserialize the value from.</param>
+	/// <param name="shape">The type shape describing the structure of the value to deserialize.</param>
+	/// <param name="cancellationToken">A token to cancel the operation.</param>
+	/// <returns>The deserialized value, or <see langword="null"/> if the JSON represents a null value.</returns>
+	public object? DeserializeObject(ref JsonReader reader, ITypeShape shape, CancellationToken cancellationToken = default)
+	{
+		Requires.NotNull(shape);
+
+		return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, this);
 	}
 
 	/// <summary>
