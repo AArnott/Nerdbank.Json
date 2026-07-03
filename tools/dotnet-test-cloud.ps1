@@ -88,15 +88,31 @@ if ($isMTP) {
         @extraArgs
     if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
 
-    & $dotnet test --project $RepoRoot/test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj `
-        --no-build `
-        -c $Configuration `
-        -bl:"$testBinLogTUnit" `
-        --treenode-filter '/*/*/*/*[TestCategory!=FailsInCloudTest]' `
-        @mtpArgs `
-        @dumpSwitches `
-        @extraArgs
-    if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
+    $testFrameworks = @($null)
+    if ($IncludeNativeAOT) {
+        $testFrameworks = @('net8.0', 'net9.0')
+        if ($IsWindows) { $testFrameworks += 'net472' }
+    }
+
+    foreach ($testFramework in $testFrameworks) {
+        $frameworkArgs = @()
+        $testBinLog = $testBinLogTUnit
+        if ($testFramework) {
+            $frameworkArgs = @('--framework', $testFramework)
+            $testBinLog = Join-Path $ArtifactStagingFolder (Join-Path build_logs "test-tunit-$testFramework.binlog")
+        }
+
+        & $dotnet test --project $RepoRoot/test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj `
+            --no-build `
+            -c $Configuration `
+            -bl:"$testBinLog" `
+            --treenode-filter '/*/*/*/*[TestCategory!=FailsInCloudTest]' `
+            @frameworkArgs `
+            @mtpArgs `
+            @dumpSwitches `
+            @extraArgs
+        if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
+    }
 
     if ($IncludeNativeAOT) {
         $TestExecutableName = 'Nerdbank.Json.Tests'

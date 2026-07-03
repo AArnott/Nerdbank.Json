@@ -4,8 +4,6 @@
 
 Consume Nerdbank.Json from its NuGet package.
 
-[![NuGet package](https://img.shields.io/nuget/v/Nerdbank.Json.svg)](https://nuget.org/packages/Nerdbank.Json)
-
 ## Usage
 
 Given a mutable type annotated with <xref:PolyType.GenerateShapeAttribute> like this:
