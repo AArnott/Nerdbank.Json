@@ -17,12 +17,12 @@ public readonly struct JsonConverterFactoryContext
 		this.cache = cache;
 	}
 
+#if NET
 	/// <summary>
 	/// Gets a converter for a specific type.
 	/// </summary>
 	/// <typeparam name="T">The type to convert.</typeparam>
 	/// <returns>The converter.</returns>
-#if NET
 	public JsonConverter<T> GetConverter<T>()
 		where T : IShapeable<T>
 		=> this.GetConverter(T.GetTypeShape());
@@ -36,9 +36,6 @@ public readonly struct JsonConverterFactoryContext
 	public JsonConverter<T> GetConverter<T, TProvider>()
 		where TProvider : IShapeable<T>
 		=> this.GetConverter(TProvider.GetTypeShape());
-#else
-	public JsonConverter<T> GetConverter<T>()
-		=> this.cache?.GetOrAddConverter<T>() ?? throw new InvalidOperationException("No converter factory context is active.");
 #endif
 
 	/// <summary>
@@ -56,4 +53,7 @@ public readonly struct JsonConverterFactoryContext
 
 		return this.cache?.GetOrAddConverter(shape) ?? throw new InvalidOperationException("No converter factory context is active.");
 	}
+
+	internal JsonConverter<T> GetConverterDynamically<T>()
+		=> this.cache?.GetOrAddConverter<T>() ?? throw new InvalidOperationException("No converter factory context is active.");
 }

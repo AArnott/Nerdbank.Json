@@ -19,9 +19,12 @@
   <ItemGroup>
     <PackageReference Include="Nerdbank.MessagePack" />
     <PackageReference Include="PolyType" />
+    <PackageReference Include="TUnit.Engine" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net472'">
     <PackageReference Include="System.Buffers" />
     <PackageReference Include="System.Memory" />
-    <PackageReference Include="TUnit.Engine" />
   </ItemGroup>
 
   <ItemGroup Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)','net9.0'))">
