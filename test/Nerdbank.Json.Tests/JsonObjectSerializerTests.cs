@@ -4,7 +4,7 @@
 using System.Buffers;
 using System.Text;
 
-public partial class JsonObjectSerializerTests
+public partial class JsonObjectSerializerTests : TestBase
 {
 	[Test]
 	public void Deserialize_ObjectGraph_FromMultiSegmentUtf8Sequence()
@@ -40,10 +40,7 @@ public partial class JsonObjectSerializerTests
 			},
 		};
 
-		string json = serializer.Serialize(value);
-		Assert.Equal("{\"name\":\"Ada\",\"age\":37,\"address\":{\"city\":\"Seattle\",\"postalCode\":98101}}", json);
-
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip(value, "{\"name\":\"Ada\",\"age\":37,\"address\":{\"city\":\"Seattle\",\"postalCode\":98101}}", serializer);
 	}
 
 	[Test]
@@ -151,10 +148,7 @@ public partial class JsonObjectSerializerTests
 		JsonSerializer serializer = new();
 		Person value = new() { Name = "Ada", Age = 37, Address = null };
 
-		string json = serializer.Serialize(value);
-		Assert.Equal("{\"name\":\"Ada\",\"age\":37,\"address\":null}", json);
-
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip(value, "{\"name\":\"Ada\",\"age\":37,\"address\":null}", serializer);
 	}
 
 	[Test]
@@ -172,10 +166,7 @@ public partial class JsonObjectSerializerTests
 			},
 		};
 
-		string json = serializer.Serialize(value);
-
-		Assert.Equal("{\n  \"name\": \"Ada\",\n  \"age\": 37,\n  \"address\": {\n    \"city\": \"Seattle\",\n    \"postalCode\": 98101\n  }\n}", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip(value, "{\n  \"name\": \"Ada\",\n  \"age\": 37,\n  \"address\": {\n    \"city\": \"Seattle\",\n    \"postalCode\": 98101\n  }\n}", serializer);
 	}
 
 	[Test]
@@ -209,10 +200,7 @@ public partial class JsonObjectSerializerTests
 		JsonSerializer serializer = new();
 		RenamedPropertyContainer value = new() { URLValue = "https://example.com" };
 
-		string json = serializer.Serialize(value);
-
-		Assert.Equal("{\"uri\":\"https://example.com\"}", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip(value, "{\"uri\":\"https://example.com\"}", serializer);
 	}
 
 	[Test]
@@ -325,27 +313,6 @@ public partial class JsonObjectSerializerTests
 		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => serializer.Serialize(node));
 		Assert.Contains("Reference cycles", exception.Message);
 	}
-
-	private static void AssertRoundtrip<T>(string json, JsonSerializer serializer, T expected)
-	{
-		ITypeShape<T> shape = GetTypeShape<T>();
-		T? actual = serializer.Deserialize(json, shape);
-		Assert.True(GetStructuralEqualityComparer<T?>().Equals(expected, actual), $"Round-trip mismatch for serialized JSON: {json}");
-	}
-
-	private static void AssertStructuralEqual<T>(T expected, T actual, string json)
-	{
-		Assert.True(GetStructuralEqualityComparer<T>().Equals(expected, actual), $"Round-trip mismatch for serialized JSON: {json}");
-	}
-
-	private static IEqualityComparer<T> GetStructuralEqualityComparer<T>()
-	{
-		ITypeShape<T> shape = GetTypeShape<T>();
-		return Nerdbank.MessagePack.StructuralEqualityComparer.GetDefault(shape);
-	}
-
-	private static ITypeShape<T> GetTypeShape<T>()
-		=> PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<T>() ?? throw new InvalidOperationException($"No generated type shape found for {typeof(T)}.");
 
 	private static ReadOnlySequence<byte> CreateSequence(params ReadOnlyMemory<byte>[] segments)
 	{

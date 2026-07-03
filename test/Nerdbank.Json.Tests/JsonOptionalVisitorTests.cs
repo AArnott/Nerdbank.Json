@@ -36,10 +36,7 @@ public partial class JsonObjectSerializerTests
 		JsonSerializer serializer = new();
 		OptionalContainer value = new() { Count = 7 };
 
-		string json = serializer.Serialize(value);
-
-		Assert.Equal("{\"count\":7}", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip(value, "{\"count\":7}", serializer);
 	}
 
 	[GenerateShape]

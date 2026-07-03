@@ -20,10 +20,7 @@ public partial class JsonObjectSerializerTests
 			["snake_case_key"] = 2,
 		};
 
-		string json = serializer.Serialize<Dictionary<string, int>, JsonObjectSerializerTests>(value);
-
-		Assert.Equal("{\"PascalCaseKey\":1,\"snake_case_key\":2}", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip<Dictionary<string, int>, JsonObjectSerializerTests>(value, "{\"PascalCaseKey\":1,\"snake_case_key\":2}", serializer);
 	}
 
 	[Test]
@@ -77,10 +74,7 @@ public partial class JsonObjectSerializerTests
 			},
 		};
 
-		string json = serializer.Serialize(value);
-
-		Assert.Equal("{\"scores\":{\"FirstScore\":10,\"second_score\":20}}", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip(value, "{\"scores\":{\"FirstScore\":10,\"second_score\":20}}", serializer);
 	}
 
 	[Test]

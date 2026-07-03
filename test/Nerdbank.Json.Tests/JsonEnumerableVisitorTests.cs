@@ -18,10 +18,7 @@ public partial class JsonObjectSerializerTests
 			new Person { Name = "Grace", Age = 41, Address = new Address { City = "Arlington", PostalCode = 22201 } },
 		];
 
-		string json = serializer.Serialize<List<Person>, JsonObjectSerializerTests>(value);
-
-		Assert.Equal("[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":{\"city\":\"Arlington\",\"postalCode\":22201}}]", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip<List<Person>, JsonObjectSerializerTests>(value, "[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":{\"city\":\"Arlington\",\"postalCode\":22201}}]", serializer);
 	}
 
 	[Test]
@@ -79,10 +76,7 @@ public partial class JsonObjectSerializerTests
 			LuckyNumbers = [3, 5, 8],
 		};
 
-		string json = serializer.Serialize(value);
-
-		Assert.Equal("{\"people\":[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":null}],\"luckyNumbers\":[3,5,8]}", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip(value, "{\"people\":[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":null}],\"luckyNumbers\":[3,5,8]}", serializer);
 	}
 
 	[Test]

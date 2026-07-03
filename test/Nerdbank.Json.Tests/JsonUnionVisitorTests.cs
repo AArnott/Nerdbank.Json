@@ -53,12 +53,8 @@ public partial class JsonObjectSerializerTests
 		JsonSerializer serializer = new();
 		UnionContainer value = new() { Pet = new Cat("Milo", 9) };
 
-		string json = serializer.Serialize(value);
-		UnionContainer? roundTripped = serializer.Deserialize<UnionContainer>(json);
-
-		Assert.Equal("{\"pet\":[\"Cat\",{\"lives\":9,\"name\":\"Milo\"}]}", json);
-		AssertRoundtrip(json, serializer, value);
-		AssertStructuralEqual(value, roundTripped, json);
+		UnionContainer? roundTripped = this.AssertRoundtrip(value, "{\"pet\":[\"Cat\",{\"lives\":9,\"name\":\"Milo\"}]}", serializer);
+		AssertStructuralEqual(value, roundTripped, this.LastSerializedJson!);
 	}
 
 	[GenerateShape]
