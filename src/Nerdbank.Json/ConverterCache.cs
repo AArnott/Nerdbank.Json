@@ -26,6 +26,8 @@ internal sealed class ConverterCache
 
 	internal JsonNamingPolicy? PropertyNamingPolicy => this.configuration.PropertyNamingPolicy;
 
+	internal IComparerProvider? ComparerProvider => this.configuration.ComparerProvider;
+
 	internal bool HasRuntimeConverters => this.configuration.Converters.Count > 0 || this.configuration.ConverterTypes.Count > 0 || this.configuration.ConverterFactories.Count > 0;
 
 	internal StringComparer PropertyNameComparer => this.configuration.PropertyNameCaseInsensitive ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;

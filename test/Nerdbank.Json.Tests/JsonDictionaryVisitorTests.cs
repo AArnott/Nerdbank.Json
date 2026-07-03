@@ -44,6 +44,14 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
+	public void Deserialize_Dictionary_UsesComparerProvider()
+	{
+		JsonSerializer serializer = new() { ComparerProvider = CaseInsensitiveStringComparerProvider.Instance };
+
+		Assert.Throws<ArgumentException>(() => serializer.Deserialize<Dictionary<string, int>, JsonObjectSerializerTests>("""{"Key":1,"key":2}"""));
+	}
+
+	[Test]
 	public void SerializeDeserialize_Dictionary_WithWitnessType()
 	{
 		Dictionary<string, int> value = new(StringComparer.Ordinal)
@@ -168,5 +176,15 @@ public partial class JsonObjectSerializerTests
 	internal partial class ComplexKey
 	{
 		public string? Name { get; set; }
+	}
+
+	private class CaseInsensitiveStringComparerProvider : IComparerProvider
+	{
+		internal static readonly CaseInsensitiveStringComparerProvider Instance = new();
+
+		public IComparer<T>? GetComparer<T>(ITypeShape<T> shape) => null;
+
+		public IEqualityComparer<T>? GetEqualityComparer<T>(ITypeShape<T> shape)
+			=> typeof(T) == typeof(string) ? (IEqualityComparer<T>)StringComparer.OrdinalIgnoreCase : null;
 	}
 }

@@ -54,6 +54,19 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
+	/// Gets the provider of <see cref="IEqualityComparer{T}"/> and <see cref="IComparer{T}"/> instances
+	/// to use when instantiating collections that support them.
+	/// </summary>
+	/// <remarks>
+	/// The default value is <see langword="null"/>, which uses collection defaults.
+	/// </remarks>
+	public IComparerProvider? ComparerProvider
+	{
+		get => this.configuration.ComparerProvider;
+		init => this.configuration = this.configuration with { ComparerProvider = value };
+	}
+
+	/// <summary>
 	/// Gets the runtime-registered converters that take precedence over built-in and shape-based converters.
 	/// </summary>
 	public ConverterCollection Converters
