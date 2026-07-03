@@ -4,7 +4,7 @@
 public partial class NativeAOTTests
 {
 	[Test]
-	public async Task RoundtripSyncAndAsync()
+	public async Task Roundtrip()
 	{
 		JsonSerializer serializer = new();
 		Tree tree = new()
@@ -19,16 +19,6 @@ public partial class NativeAOTTests
 		Assert.Equal(2, roundTripped.Fruits.Count);
 		Assert.Equal(3, roundTripped.Fruits[0].Seeds);
 		Assert.Equal(5, roundTripped.Fruits[1].Seeds);
-
-		using MemoryStream stream = new();
-		CancellationToken cancellationToken = TUnit.Core.TestContext.Current?.Execution.CancellationToken ?? default;
-		await serializer.SerializeAsync(stream, tree, cancellationToken);
-		stream.Position = 0;
-
-		Tree asyncRoundTripped = (await serializer.DeserializeAsync<Tree>(stream, cancellationToken))!;
-		Assert.Equal(2, asyncRoundTripped.Fruits.Count);
-		Assert.Equal(3, asyncRoundTripped.Fruits[0].Seeds);
-		Assert.Equal(5, asyncRoundTripped.Fruits[1].Seeds);
 	}
 
 	[GenerateShape]

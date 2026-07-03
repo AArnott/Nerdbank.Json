@@ -3,122 +3,244 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 #pragma warning disable SA1402 // File may only contain a single type
-#pragma warning disable SA1600 // Generated forwarding overloads are intentionally undocumented
 #pragma warning disable SA1601 // Partial elements should be documented
-#pragma warning disable CS1591 // Generated forwarding overloads are intentionally undocumented
+#pragma warning disable RS0026 // optional parameter on a method with overloads
 
-using System.Buffers;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
+using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using System.IO.Pipelines;
+using Microsoft;
 
 namespace Nerdbank.Json;
 
 #if NET
 
 public partial record JsonSerializer
-{
-<# WriteInstanceMethods(); #>
+{<# WriteClass(targetNET: true); #>
 }
 
 #endif
 
 public static partial class JsonSerializerExtensions
-{
-<# WriteExtensionMethods(); #>
+{<# WriteClass(targetNET: false); #>
 }
-<#+
-void WriteInstanceMethods()
-{
+<#
+void WriteClass(bool targetNET) {
+    static void AssembleInputs(string firstParameterModifier, string firstParameterType, string firstParameterName, bool moreParameters, out string firstParameter, out string firstArg, out string firstParameterDocId)
+    {
+        if (firstParameterModifier.Length > 0) firstParameterModifier += " ";
+        firstParameter = firstParameterType.Length == 0 ? "" : $"{firstParameterModifier}{firstParameterType} {firstParameterName}";
+        firstArg = firstParameterName.Length == 0 ? "" : $"{firstParameterModifier}{firstParameterName}";
+        firstParameterDocId = firstParameterType.Length == 0 ? "" : $"{firstParameterModifier}{firstParameterType.Replace("scoped ", "").Replace('<', '{').Replace('>', '}')}, ";
+
+        if (moreParameters)
+        {
+            if (firstParameter.Length > 0) firstParameter += ", ";
+            if (firstArg.Length > 0) firstArg += ", ";
+        }
+    }
+
+    foreach (ShapeSource shapeSource in Enum.GetValues(typeof(ShapeSource)))
+    {
+        (string genericTypeParameters, string genericTypeParametersWithElement, string typeConstraint, string getShape) = shapeSource switch
+        {
+            ShapeSource.T => ("T","T, TElement", targetNET ? "T : IShapeable<T>" : null, targetNET ? "T.GetTypeShape()" : "ResolveTypeShapeOrThrow<T>(self.ConverterCache)"),
+            ShapeSource.TProvider => ("T, TProvider","T, TElement, TProvider", targetNET ? "TProvider : IShapeable<T>" : null, targetNET ? "TProvider.GetTypeShape()" : "ResolveTypeShapeOrThrow<T, TProvider>(self.ConverterCache)"),
+            _ => throw new NotSupportedException(),
+        };
+        typeConstraint = typeConstraint is null ? "" : $"where {typeConstraint} ";
+
+        string serializerClassQualifier = targetNET ? "" : "JsonSerializer.";
+        string thisParameter = targetNET ? "" : "this JsonSerializer self, ";
+        string thisKeyword = targetNET ? "this" : "Requires.NotNull(self)";
+        string staticModifier = targetNET ? "" : "static ";
+        string methodAttributes = targetNET ? "" : """
+
+            #if NET8_0
+            	[RequiresDynamicCode(ResolveDynamicMessage)]
+            #endif
+            #if NET
+            	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
+            	[EditorBrowsable(EditorBrowsableState.Never)]
+            #endif
+            """;
+        string sourceGenRequiredDocs = targetNET ? "" : shapeSource switch
+        {
+            ShapeSource.T => $$"""
+
+            	/// <exception cref="NotSupportedException">Thrown if <typeparamref name="T"/> has no type shape created via the <see cref="GenerateShapeAttribute"/> source generator.</exception>
+            	/// <remarks>
+            	/// This overload should only be used when <typeparamref name="T"/> is decorated with the <see cref="GenerateShapeAttribute"/>.
+            	/// For non-decorated types, apply <see cref="GenerateShapeForAttribute{T}"/> to a witness type and call a serialize overload that takes a TProvider generic type parameter instead,
+            	/// or use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
+            	/// </remarks>
+            """,
+            ShapeSource.TProvider => $$"""
+
+            	/// <exception cref="NotSupportedException">Thrown if <typeparamref name="TProvider"/> has no <see cref="GenerateShapeForAttribute{T}"/> source generator attribute for <typeparamref name="T"/>.</exception>
+            	/// <remarks>
+            	/// This overload should only be used when <typeparamref name="TProvider"/> is decorated with a <see cref="GenerateShapeForAttribute{T}"/>.
+            	/// Use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
+            	/// </remarks>
+            """,
+            _ => throw new NotSupportedException(),
+        };
+
+        foreach (SerializeTransport transport in Enum.GetValues(typeof(SerializeTransport)))
+        {
+            (string returnType, string firstParameterModifier, string firstParameterType, string firstParameterName) = transport switch
+            {
+                SerializeTransport.JsonWriter => ("void", "ref", "JsonWriter", "writer"),
+                SerializeTransport.String => ("string", "", "", ""),
+                SerializeTransport.IBufferWriter => ("void", "", "IBufferWriter<byte>", "writer"),
+                SerializeTransport.Stream => ("void", "", "Stream", "stream"),
+                _ => throw new NotSupportedException(),
+            };
+            AssembleInputs(firstParameterModifier, firstParameterType, firstParameterName, true, out string firstParameter, out string firstArg, out string firstParameterDocId);
 #>
-	public void Serialize<T>(IBufferWriter<byte> writer, in T? value)
-		where T : IShapeable<T> => this.Serialize(writer, value, T.GetTypeShape());
 
-	public string Serialize<T>(in T? value)
-		where T : IShapeable<T> => this.Serialize(value, T.GetTypeShape());
+	/// <inheritdoc cref="<#=serializerClassQualifier#>Serialize{T}(<#=firstParameterDocId#>in T, ITypeShape{T}, CancellationToken)" /><#= sourceGenRequiredDocs #>
+	[ExcludeFromCodeCoverage]<#= methodAttributes #>
+	public <#= staticModifier #><#= returnType #> Serialize<<#=genericTypeParameters#>>(<#=thisParameter#><#=firstParameter#>in T? value, CancellationToken cancellationToken = default)
+		<#=typeConstraint#>=> <#= thisKeyword #>.Serialize(<#=firstArg#>value, <#=getShape#>, cancellationToken);
+<#
+        }
 
-	public void Serialize<T>(Stream stream, in T? value)
-		where T : IShapeable<T> => this.Serialize(stream, value, T.GetTypeShape());
-
-	public ValueTask SerializeAsync<T>(Stream stream, T? value, CancellationToken cancellationToken = default)
-		where T : IShapeable<T> => this.SerializeAsync(stream, value, T.GetTypeShape(), cancellationToken);
-
-	public T Deserialize<T>(string json)
-		where T : IShapeable<T> => this.Deserialize(json, T.GetTypeShape());
-
-	public T Deserialize<T>(Stream stream)
-		where T : IShapeable<T> => this.Deserialize(stream, T.GetTypeShape());
-
-	public ValueTask<T> DeserializeAsync<T>(Stream stream, CancellationToken cancellationToken = default)
-		where T : IShapeable<T> => this.DeserializeAsync(stream, T.GetTypeShape(), cancellationToken);
-
-	public void Serialize<T, TProvider>(IBufferWriter<byte> writer, in T? value)
-		where TProvider : IShapeable<T> => this.Serialize(writer, value, TProvider.GetTypeShape());
-
-	public string Serialize<T, TProvider>(in T? value)
-		where TProvider : IShapeable<T> => this.Serialize(value, TProvider.GetTypeShape());
-
-	public void Serialize<T, TProvider>(Stream stream, in T? value)
-		where TProvider : IShapeable<T> => this.Serialize(stream, value, TProvider.GetTypeShape());
-
-	public ValueTask SerializeAsync<T, TProvider>(Stream stream, T? value, CancellationToken cancellationToken = default)
-		where TProvider : IShapeable<T> => this.SerializeAsync(stream, value, TProvider.GetTypeShape(), cancellationToken);
-
-	public T Deserialize<T, TProvider>(string json)
-		where TProvider : IShapeable<T> => this.Deserialize(json, TProvider.GetTypeShape());
-
-	public T Deserialize<T, TProvider>(Stream stream)
-		where TProvider : IShapeable<T> => this.Deserialize(stream, TProvider.GetTypeShape());
-
-	public ValueTask<T> DeserializeAsync<T, TProvider>(Stream stream, CancellationToken cancellationToken = default)
-		where TProvider : IShapeable<T> => this.DeserializeAsync(stream, TProvider.GetTypeShape(), cancellationToken);
-<#+
-}
-
-void WriteExtensionMethods()
-{
+        foreach (DeserializeTransport transport in Enum.GetValues(typeof(DeserializeTransport)))
+        {
+            (string firstParameterModifier, string firstParameterType, string firstParameterName) = transport switch
+            {
+                DeserializeTransport.String => ("", "string", "json"),
+                DeserializeTransport.JsonReader => ("ref", "JsonReader", "reader"),
+                DeserializeTransport.ReadOnlyMemory => ("", "ReadOnlyMemory<byte>", "bytes"),
+                DeserializeTransport.ReadOnlySequence => ("", "scoped in ReadOnlySequence<byte>", "bytes"),
+                DeserializeTransport.Stream => ("", "Stream", "stream"),
+                _ => throw new NotSupportedException(),
+            };
+            AssembleInputs(firstParameterModifier, firstParameterType, firstParameterName, false, out string firstParameter, out string firstArg, out string firstParameterDocId);
 #>
-	public static void Serialize<T>(this JsonSerializer self, IBufferWriter<byte> writer, in T? value)
-		=> RequireSerializer(self).SerializeDynamic(writer, value);
 
-	public static string Serialize<T>(this JsonSerializer self, in T? value)
-		=> RequireSerializer(self).SerializeDynamic(value);
+	/// <inheritdoc cref="<#=serializerClassQualifier#>Deserialize{T}(<#=firstParameterDocId#>ITypeShape{T}, CancellationToken)" /><#= sourceGenRequiredDocs #>
+	[ExcludeFromCodeCoverage]<#= methodAttributes #>
+	public <#= staticModifier #>T? Deserialize<<#=genericTypeParameters#>>(<#=thisParameter#><#=firstParameter#>, CancellationToken cancellationToken = default)
+		<#=typeConstraint#>=> <#= thisKeyword #>.Deserialize(<#=firstArg#>, <#=getShape#>, cancellationToken);
+<#
+        }
 
-	public static void Serialize<T>(this JsonSerializer self, Stream stream, in T? value)
-		=> RequireSerializer(self).SerializeDynamic(stream, value);
+#if FalseAsync
+        foreach (DeserializeAsyncTransport transport in Enum.GetValues(typeof(DeserializeAsyncTransport)))
+        {
+            string firstParameterModifier = "";
+            (string firstParameterType, string firstParameterName) = transport switch
+            {
+                DeserializeAsyncTransport.PipeReader => ("PipeReader", "reader"),
+                DeserializeAsyncTransport.Stream => ("Stream", "stream"),
+                _ => throw new NotSupportedException(),
+            };
+            AssembleInputs(firstParameterModifier, firstParameterType, firstParameterName, false, out string firstParameter, out string firstArg, out string firstParameterDocId);
+#>
 
-	public static ValueTask SerializeAsync<T>(this JsonSerializer self, Stream stream, T? value, CancellationToken cancellationToken = default)
-		=> RequireSerializer(self).SerializeAsyncDynamic(stream, value, cancellationToken);
+	/// <inheritdoc cref="<#=serializerClassQualifier#>DeserializeAsync{T}(<#=firstParameterDocId#>ITypeShape{T}, CancellationToken)" /><#= sourceGenRequiredDocs #>
+#pragma warning disable RS0027 // optional parameter on a method with overloads
+	[ExcludeFromCodeCoverage]<#= methodAttributes #>
+	public <#= staticModifier #>ValueTask<T?> DeserializeAsync<<#=genericTypeParameters#>>(<#=thisParameter#><#=firstParameter#>, CancellationToken cancellationToken = default)
+#pragma warning restore RS0027 // optional parameter on a method with overloads
+		<#=typeConstraint#>=> <#= thisKeyword #>.DeserializeAsync(<#=firstArg#>, <#=getShape#>, cancellationToken);
 
-	public static T Deserialize<T>(this JsonSerializer self, string json)
-		=> RequireSerializer(self).DeserializeDynamic<T>(json);
+	/// <inheritdoc cref="<#=serializerClassQualifier#>DeserializeEnumerableAsync{T}(<#=firstParameterDocId#>ITypeShape{T}, CancellationToken)" /><#= sourceGenRequiredDocs #>
+#pragma warning disable RS0027 // optional parameter on a method with overloads
+	[ExcludeFromCodeCoverage]<#= methodAttributes #>
+	public <#= staticModifier #>IAsyncEnumerable<T?> DeserializeEnumerableAsync<<#=genericTypeParameters#>>(<#=thisParameter#><#=firstParameter#>, CancellationToken cancellationToken = default)
+#pragma warning restore RS0027 // optional parameter on a method with overloads
+		<#=typeConstraint#>=> <#= thisKeyword #>.DeserializeEnumerableAsync(<#=firstArg#>, <#=getShape#>, cancellationToken);
 
-	public static T Deserialize<T>(this JsonSerializer self, Stream stream)
-		=> RequireSerializer(self).DeserializeDynamic<T>(stream);
+	/// <inheritdoc cref="<#=serializerClassQualifier#>DeserializePathEnumerableAsync{T, TElement}(<#=firstParameterDocId#>ITypeShape{T}, <#=serializerClassQualifier#>StreamingEnumerationOptions{T, TElement}, CancellationToken)" /><#= sourceGenRequiredDocs #>
+#pragma warning disable RS0027 // optional parameter on a method with overloads
+	[ExcludeFromCodeCoverage]<#= methodAttributes #>
+	public <#= staticModifier #>IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<<#=genericTypeParametersWithElement#>>(<#=thisParameter#><#=firstParameter#>, <#=serializerClassQualifier#>StreamingEnumerationOptions<T, TElement> options, CancellationToken cancellationToken = default)
+#pragma warning restore RS0027 // optional parameter on a method with overloads
+		<#=typeConstraint#>=> <#= thisKeyword #>.DeserializePathEnumerableAsync(<#=firstArg#>, <#=getShape#>, options, cancellationToken);
+<#
+        }
+#endif // falseasync
+#if falseDeserializePath
+        foreach (DeserializeTransport transport in Enum.GetValues(typeof(DeserializeTransport)))
+        {
+            (string firstParameterModifier, string firstParameterType, string firstParameterName) = transport switch
+            {
+                DeserializeTransport.String => ("", "string", "json"),
+                DeserializeTransport.JsonReader => ("ref", "JsonReader", "reader"),
+                DeserializeTransport.ReadOnlyMemory => ("", "ReadOnlyMemory<byte>", "bytes"),
+                DeserializeTransport.ReadOnlySequence => ("", "scoped in ReadOnlySequence<byte>", "bytes"),
+                DeserializeTransport.Stream => ("", "Stream", "stream"),
+                _ => throw new NotSupportedException(),
+            };
+            AssembleInputs(firstParameterModifier, firstParameterType, firstParameterName, true, out string firstParameter, out string firstArg, out string firstParameterDocId);
+#>
 
-	public static ValueTask<T> DeserializeAsync<T>(this JsonSerializer self, Stream stream, CancellationToken cancellationToken = default)
-		=> RequireSerializer(self).DeserializeAsyncDynamic<T>(stream, cancellationToken);
+	/// <inheritdoc cref="<#=serializerClassQualifier#>DeserializePath{T, TElement}(<#=firstParameterDocId#>ITypeShape{T}, in <#=serializerClassQualifier#>DeserializePathOptions{T, TElement}, CancellationToken)" /><#= sourceGenRequiredDocs #>
+	[ExcludeFromCodeCoverage]<#= methodAttributes #>
+	public <#= staticModifier #>TElement? DeserializePath<<#=genericTypeParametersWithElement#>>(<#=thisParameter#><#=firstParameter#>in <#=serializerClassQualifier#>DeserializePathOptions<T, TElement> options, CancellationToken cancellationToken = default)
+		<#=typeConstraint#>=> <#= thisKeyword #>.DeserializePath(<#=firstArg#><#=getShape#>, options, cancellationToken);
+<#
+        }
+#endif // falseDeserializePath
 
-	public static void Serialize<T, TProvider>(this JsonSerializer self, IBufferWriter<byte> writer, in T? value)
-		=> RequireSerializer(self).Serialize(writer, value, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
+#if FalseAsync
+        foreach (SerializeAsyncTransport transport in Enum.GetValues(typeof(SerializeAsyncTransport)))
+        {
+            string firstParameterModifier = "";
+            (string firstParameterType, string firstParameterName) = transport switch
+            {
+                SerializeAsyncTransport.PipeWriter => ("PipeWriter", "writer"),
+                SerializeAsyncTransport.Stream => ("Stream", "stream"),
+                _ => throw new NotSupportedException(),
+            };
+            AssembleInputs(firstParameterModifier, firstParameterType, firstParameterName, false, out string firstParameter, out string firstArg, out string firstParameterDocId);
+#>
 
-	public static string Serialize<T, TProvider>(this JsonSerializer self, in T? value)
-		=> RequireSerializer(self).Serialize(value, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
-
-	public static void Serialize<T, TProvider>(this JsonSerializer self, Stream stream, in T? value)
-		=> RequireSerializer(self).Serialize(stream, value, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
-
-	public static ValueTask SerializeAsync<T, TProvider>(this JsonSerializer self, Stream stream, T? value, CancellationToken cancellationToken = default)
-		=> RequireSerializer(self).SerializeAsync(stream, value, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache), cancellationToken);
-
-	public static T Deserialize<T, TProvider>(this JsonSerializer self, string json)
-		=> RequireSerializer(self).Deserialize(json, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
-
-	public static T Deserialize<T, TProvider>(this JsonSerializer self, Stream stream)
-		=> RequireSerializer(self).Deserialize(stream, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache));
-
-	public static ValueTask<T> DeserializeAsync<T, TProvider>(this JsonSerializer self, Stream stream, CancellationToken cancellationToken = default)
-		=> RequireSerializer(self).DeserializeAsync(stream, ResolveTypeShapeOrThrow<T, TProvider>(RequireSerializer(self).ConverterCache), cancellationToken);
-<#+
+	/// <inheritdoc cref="<#=serializerClassQualifier#>SerializeAsync{T}(<#=firstParameterDocId#>T, ITypeShape{T}, CancellationToken)" /><#= sourceGenRequiredDocs #>
+#pragma warning disable RS0027 // optional parameter on a method with overloads
+	[ExcludeFromCodeCoverage]<#= methodAttributes #>
+	public <#= staticModifier #>ValueTask SerializeAsync<<#=genericTypeParameters#>>(<#=thisParameter#><#=firstParameter#>, in T? value, CancellationToken cancellationToken = default)
+#pragma warning restore RS0027 // optional parameter on a method with overloads
+		<#=typeConstraint#>=> <#= thisKeyword #>.SerializeAsync(<#=firstArg#>, value, <#=getShape#>, cancellationToken);
+<#
+        }
+#endif // falseAsync
+    }
 }
+#>
+<#+
+  enum SerializeTransport
+  {
+      JsonWriter,
+      String,
+      IBufferWriter,
+      Stream,
+  }
+  enum DeserializeTransport
+  {
+      String,
+      JsonReader,
+      ReadOnlyMemory,
+      ReadOnlySequence,
+      Stream,
+  }
+  enum SerializeAsyncTransport
+  {
+      PipeWriter,
+      Stream,
+  }
+  enum DeserializeAsyncTransport
+  {
+      PipeReader,
+      Stream,
+  }
+  enum ShapeSource
+  {
+  // Parameter, // This is hand-authored, and is what the automatically generated overloads forward to.
+      T,
+    TProvider,
+  }
 #>

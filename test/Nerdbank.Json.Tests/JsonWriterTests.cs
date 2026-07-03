@@ -16,6 +16,7 @@ public class JsonWriterTests
 		JsonWriter writer = new(buffer);
 
 		writer.WriteStringValue("plain ü <tag> \"quoted\" \\ slash\nnext");
+		writer.Flush();
 
 		Assert.Equal("\"plain ü <tag> \\\"quoted\\\" \\\\ slash\\nnext\"", Encoding.UTF8.GetString(buffer.WrittenArray));
 	}
@@ -27,6 +28,7 @@ public class JsonWriterTests
 		JsonWriter writer = new(buffer);
 
 		writer.WriteStringValue("a\u0001b");
+		writer.Flush();
 
 		Assert.Equal("\"a\\u0001b\"", Encoding.UTF8.GetString(buffer.WrittenArray));
 	}
@@ -38,6 +40,7 @@ public class JsonWriterTests
 		JsonWriter writer = new(buffer);
 
 		writer.WriteStringValue((string?)null);
+		writer.Flush();
 
 		Assert.Equal("null", Encoding.UTF8.GetString(buffer.WrittenArray));
 	}

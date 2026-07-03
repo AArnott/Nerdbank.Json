@@ -1,11 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using Nerdbank.Json;
-using PolyType;
-using Xunit;
 
 [GenerateShapeFor<List<JsonObjectSerializerTests.Person>>]
 [GenerateShapeFor<int[]>]
@@ -22,7 +18,7 @@ public partial class JsonObjectSerializerTests
 			new Person { Name = "Grace", Age = 41, Address = new Address { City = "Arlington", PostalCode = 22201 } },
 		];
 
-		string json = serializer.Serialize(value);
+		string json = serializer.Serialize<List<Person>, JsonObjectSerializerTests>(value);
 
 		Assert.Equal("[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":{\"city\":\"Arlington\",\"postalCode\":22201}}]", json);
 		AssertRoundtrip(json, serializer, value);
@@ -39,8 +35,9 @@ public partial class JsonObjectSerializerTests
 		];
 
 		string json = serializer.Serialize<List<Person>, JsonObjectSerializerTests>(value);
-		List<Person> roundTripped = serializer.Deserialize<List<Person>, JsonObjectSerializerTests>(json);
+		List<Person>? roundTripped = serializer.Deserialize<List<Person>, JsonObjectSerializerTests>(json);
 
+		Assert.NotNull(roundTripped);
 		AssertStructuralEqual(value, roundTripped, json);
 	}
 
@@ -51,8 +48,9 @@ public partial class JsonObjectSerializerTests
 		int[] value = [1, 2, 3, 5, 8];
 
 		string json = serializer.Serialize<int[], JsonObjectSerializerTests>(value);
-		int[] roundTripped = serializer.Deserialize<int[], JsonObjectSerializerTests>(json);
+		int[]? roundTripped = serializer.Deserialize<int[], JsonObjectSerializerTests>(json);
 
+		Assert.NotNull(roundTripped);
 		AssertStructuralEqual(value, roundTripped, json);
 	}
 
@@ -94,8 +92,9 @@ public partial class JsonObjectSerializerTests
 		ReadOnlyCollection<int> value = new(new List<int> { 3, 5, 8 });
 
 		string json = serializer.Serialize<ReadOnlyCollection<int>, JsonObjectSerializerTests>(value);
-		ReadOnlyCollection<int> roundTripped = serializer.Deserialize<ReadOnlyCollection<int>, JsonObjectSerializerTests>(json);
+		ReadOnlyCollection<int>? roundTripped = serializer.Deserialize<ReadOnlyCollection<int>, JsonObjectSerializerTests>(json);
 
+		Assert.NotNull(roundTripped);
 		Assert.Equal("[3,5,8]", json);
 		AssertStructuralEqual(value, roundTripped, json);
 	}
@@ -105,8 +104,9 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		GetterOnlyEnumerableContainer value = serializer.Deserialize<GetterOnlyEnumerableContainer>("{\"people\":[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":null}]}");
+		GetterOnlyEnumerableContainer? value = serializer.Deserialize<GetterOnlyEnumerableContainer>("{\"people\":[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":null}]}");
 
+		Assert.NotNull(value);
 		Assert.Equal(2, value.People.Count);
 		Assert.Equal("Ada", value.People[0].Name);
 		Assert.Equal("Grace", value.People[1].Name);

@@ -13,24 +13,24 @@ namespace Nerdbank.Json;
 /// <summary>
 /// An immutable collection of concrete JSON converters.
 /// </summary>
-public class JsonConverterCollection : IReadOnlyCollection<JsonConverter>
+public class ConverterCollection : IReadOnlyCollection<JsonConverter>
 {
 	private readonly Dictionary<Type, JsonConverter> map;
 
 	/// <summary>
-	/// Initializes a new instance of the <see cref="JsonConverterCollection"/> class.
+	/// Initializes a new instance of the <see cref="ConverterCollection"/> class.
 	/// </summary>
 	/// <remarks>The created collection is empty.</remarks>
-	public JsonConverterCollection()
+	public ConverterCollection()
 		: this(Array.Empty<JsonConverter>())
 	{
 	}
 
 	/// <summary>
-	/// Initializes a new instance of the <see cref="JsonConverterCollection"/> class from a sequence of converters.
+	/// Initializes a new instance of the <see cref="ConverterCollection"/> class from a sequence of converters.
 	/// </summary>
 	/// <param name="converters">The converters to include.</param>
-	public JsonConverterCollection(IEnumerable<JsonConverter> converters)
+	public ConverterCollection(IEnumerable<JsonConverter> converters)
 	{
 		if (converters is null)
 		{

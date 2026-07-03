@@ -1,10 +1,6 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using Nerdbank.Json;
-using PolyType;
-using Xunit;
-
 public partial class JsonObjectSerializerTests
 {
 	[Test]
@@ -14,9 +10,10 @@ public partial class JsonObjectSerializerTests
 		SurrogateBackedType value = new(3, 5);
 
 		string json = serializer.Serialize(value);
-		SurrogateBackedType roundTripped = serializer.Deserialize<SurrogateBackedType>(json);
+		SurrogateBackedType? roundTripped = serializer.Deserialize<SurrogateBackedType>(json);
 
 		Assert.Equal("{\"a\":3,\"b\":5}", json);
+		Assert.NotNull(roundTripped);
 		Assert.Equal(8, roundTripped.Sum);
 	}
 

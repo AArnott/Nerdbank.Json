@@ -53,7 +53,7 @@ jobs:
       run: |
         dotnet publish test/AotCompatibilityTest/AotCompatibilityTest.csproj -c ${{ env.BUILDCONFIGURATION }}
         dotnet publish test/AotNativeConsole/AotNativeConsole.csproj -c ${{ env.BUILDCONFIGURATION }}
-        dotnet publish test/Nerdbank.Json.TUnit/Nerdbank.Json.TUnit.csproj -c ${{ env.BUILDCONFIGURATION }}
+        dotnet publish test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj -c ${{ env.BUILDCONFIGURATION }} -f net10.0
       shell: pwsh
     - name: 🧪 test
       run: tools/dotnet-test-cloud.ps1 -Configuration ${{ env.BUILDCONFIGURATION }} -Agent ${{ runner.os }} -IncludeNativeAOT

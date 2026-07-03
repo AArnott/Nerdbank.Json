@@ -4,10 +4,9 @@
 #pragma warning disable SA1201 // Local writer helper ordering keeps container state adjacent to writer implementation details.
 #pragma warning disable SA1204 // Static helper placement is kept close to their call sites in this low-level writer.
 
-using System;
-using System.Buffers;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace Nerdbank.Json;
 
@@ -21,9 +20,11 @@ public ref struct JsonWriter
 {
 	private const byte LineFeed = (byte)'\n';
 	private const byte Space = (byte)' ';
-	private readonly bool writeIndented;
-	private ContainerState[] stack;
-	private IBufferWriter<byte> writer;
+
+	private static readonly Encoding Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+	private ContainerState[] stack = new ContainerState[8];
+	private BufferWriter writer;
 	private int depth;
 	private bool pendingPropertyValue;
 
@@ -31,20 +32,35 @@ public ref struct JsonWriter
 	/// Initializes a new instance of the <see cref="JsonWriter"/> struct.
 	/// </summary>
 	/// <param name="writer">The destination for UTF-8 JSON bytes.</param>
-	/// <param name="writeIndented">A value indicating whether line breaks and indentation should be written.</param>
-	public JsonWriter(IBufferWriter<byte> writer, bool writeIndented = false)
-	{
-		if (writer is null)
-		{
-			throw new ArgumentNullException(nameof(writer));
-		}
+	public JsonWriter(IBufferWriter<byte> writer) => this.writer = new BufferWriter(Requires.NotNull(writer));
 
-		this.stack = new ContainerState[8];
-		this.writeIndented = writeIndented;
-		this.writer = writer;
-		this.depth = 0;
-		this.pendingPropertyValue = false;
-	}
+	/// <summary>
+	/// Initializes a new instance of the <see cref="JsonWriter"/> struct.
+	/// </summary>
+	/// <param name="sequencePool">The pool to use for allocating sequences.</param>
+	/// <param name="array">The initial buffer to write into.</param>
+	internal JsonWriter(SequencePool<byte> sequencePool, byte[] array) => this.writer = new BufferWriter(sequencePool, array);
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="JsonWriter"/> struct.
+	/// </summary>
+	/// <param name="writer">The buffer writer to use for output.</param>
+	internal JsonWriter(BufferWriter writer) => this.writer = writer;
+
+	/// <summary>
+	/// Gets a value indicating whether line breaks and indentation should be written.
+	/// </summary>
+	public bool WriteIndented { get; init; }
+
+	/// <summary>
+	/// Gets the number of bytes that have been written but not yet committed <see cref="Flush">flushed</see> to the underlying <see cref="IBufferWriter{T}"/>.
+	/// </summary>
+	public int UnflushedBytes => this.writer.UncommittedBytes;
+
+	/// <summary>
+	/// Ensures everything previously written has been flushed to the underlying <see cref="IBufferWriter{T}"/>.
+	/// </summary>
+	public void Flush() => this.writer.Commit();
 
 	/// <summary>
 	/// Writes the JSON <see langword="null"/> literal.
@@ -81,7 +97,7 @@ public ref struct JsonWriter
 	public void WriteEndObject()
 	{
 		ContainerState state = this.PopContainer(ContainerKind.Object);
-		if (this.writeIndented && state.Count > 0)
+		if (this.WriteIndented && state.Count > 0)
 		{
 			this.WriteNewLineAndIndent(this.depth);
 		}
@@ -105,7 +121,7 @@ public ref struct JsonWriter
 	public void WriteEndArray()
 	{
 		ContainerState state = this.PopContainer(ContainerKind.Array);
-		if (this.writeIndented && state.Count > 0)
+		if (this.WriteIndented && state.Count > 0)
 		{
 			this.WriteNewLineAndIndent(this.depth);
 		}
@@ -119,7 +135,7 @@ public ref struct JsonWriter
 	public void WriteValueSeparator()
 	{
 		this.WriteByte((byte)',');
-		if (this.writeIndented)
+		if (this.WriteIndented)
 		{
 			this.WriteByte(LineFeed);
 		}
@@ -132,7 +148,7 @@ public ref struct JsonWriter
 	public void WritePropertyName(string name)
 	{
 		ContainerState state = this.GetCurrentContainer(ContainerKind.Object);
-		if (this.writeIndented)
+		if (this.WriteIndented)
 		{
 			if (state.Count == 0)
 			{
@@ -144,7 +160,7 @@ public ref struct JsonWriter
 
 		this.WriteQuotedString(name.AsSpan());
 		this.WriteByte((byte)':');
-		if (this.writeIndented)
+		if (this.WriteIndented)
 		{
 			this.WriteByte(Space);
 		}
@@ -326,6 +342,30 @@ public ref struct JsonWriter
 		this.WriteUtf8(value.AsSpan());
 	}
 
+	/// <summary>
+	/// Flushes any uncommitted bytes to the underlying <see cref="IBufferWriter{T}"/> and returns the written bytes as a string.
+	/// </summary>
+	/// <returns>The written bytes as a string.</returns>
+	internal string FlushAndGetString()
+	{
+		if (this.writer.TryGetUncommittedSpan(out ReadOnlySpan<byte> span))
+		{
+			return Encoding.GetString(span);
+		}
+		else
+		{
+			if (this.writer.SequenceRental.Value is null)
+			{
+				throw new NotSupportedException("This instance was not initialized to support this operation.");
+			}
+
+			this.Flush();
+			string result = Encoding.GetString(this.writer.SequenceRental.Value.AsReadOnlySequence);
+			this.writer.SequenceRental.Dispose();
+			return result;
+		}
+	}
+
 	private void BeforeValueToken()
 	{
 		if (this.pendingPropertyValue)
@@ -345,7 +385,7 @@ public ref struct JsonWriter
 			return;
 		}
 
-		if (this.writeIndented)
+		if (this.WriteIndented)
 		{
 			if (state.Count == 0)
 			{
