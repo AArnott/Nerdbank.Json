@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Globalization;
 using System.Numerics;
 using System.Text;
+using PolyType.Abstractions;
 
 [GenerateShapeFor<char>]
 [GenerateShapeFor<byte>]
@@ -85,29 +86,29 @@ public partial class JsonSerializerTests : TestBase
 			cultureJson = "\"\"";
 		}
 
-		this.AssertRoundtrip(new BigInteger(1234567890123456789L), "1234567890123456789");
-		this.AssertRoundtrip(
+		this.AssertRoundtripBclComparer(new BigInteger(1234567890123456789L), "1234567890123456789");
+		this.AssertRoundtripBclComparer(
 			new DateTime(2026, 6, 25, 18, 17, 16, 123, DateTimeKind.Utc).AddTicks(4567),
 			"\"2026-06-25T18:17:16.1234567Z\"");
-		this.AssertRoundtrip(
+		this.AssertRoundtripBclComparer(
 			new DateTimeOffset(2026, 6, 25, 18, 17, 16, 123, TimeSpan.FromHours(-7)).AddTicks(4567),
 			"\"2026-06-25T18:17:16.1234567-07:00\"");
-		this.AssertRoundtrip(
+		this.AssertRoundtripBclComparer(
 			new TimeSpan(1, 2, 3, 4, 5).Add(TimeSpan.FromTicks(6)),
 			"\"1.02:03:04.0050006\"");
-		this.AssertRoundtrip(
+		this.AssertRoundtripBclComparer(
 			Guid.Parse("01234567-89ab-cdef-0123-456789abcdef"),
 			"\"01234567-89ab-cdef-0123-456789abcdef\"");
-		this.AssertRoundtrip(
+		this.AssertRoundtripBclComparer(
 			new Version(1, 2, 3, 4),
 			"\"1.2.3.4\"");
-		this.AssertRoundtrip(
+		this.AssertRoundtripBclComparer(
 			new Uri("https://example.com/a?b=c", UriKind.Absolute),
 			"\"https://example.com/a?b=c\"");
-		this.AssertRoundtrip(culture, cultureJson);
-		this.AssertRoundtrip(Encoding.UTF8, "\"utf-8\"");
-		this.AssertRoundtrip(Color.FromArgb(unchecked((int)0xFF336699)), "-13408615");
-		this.AssertRoundtrip(new Point(12, -34), "[12,-34]");
+		this.AssertRoundtripBclComparer(culture, cultureJson);
+		this.AssertRoundtripBclComparer(Encoding.UTF8, "\"utf-8\"");
+		this.AssertRoundtripBclComparer(Color.FromArgb(unchecked((int)0xFF336699)), "-13408615");
+		this.AssertRoundtripBclComparer(new Point(12, -34), "[12,-34]");
 	}
 
 	[Test]
@@ -189,12 +190,8 @@ public partial class JsonSerializerTests : TestBase
 	}
 
 	private void AssertRoundtrip<T>(T value, string expectedJson)
-	{
-		ITypeShape<T> shape = GetTypeShape<T>();
-		string json = this.Serializer.Serialize(value, shape);
-		Assert.Equal(expectedJson, json);
+		=> this.AssertRoundtrip(value, TypeShapeResolver.ResolveDynamic<T>() ?? TypeShapeResolver.ResolveDynamicOrThrow<T, JsonSerializerTests>(), expectedJson);
 
-		T? roundTripped = this.Serializer.Deserialize(json, shape);
-		AssertEqual(value, roundTripped!);
-	}
+	private void AssertRoundtripBclComparer<T>(T value, string expectedJson)
+		=> this.AssertRoundtrip(value, TypeShapeResolver.ResolveDynamic<T>() ?? TypeShapeResolver.ResolveDynamicOrThrow<T, JsonSerializerTests>(), expectedJson, EqualityComparer<T>.Default);
 }

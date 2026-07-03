@@ -7,11 +7,10 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void SerializeDeserialize_NullableStruct_Null_WithWitnessType()
 	{
-		JsonSerializer serializer = new();
 		int? value = null;
 
-		string json = serializer.Serialize<int?, JsonObjectSerializerTests>(value);
-		int? roundTripped = serializer.Deserialize<int?, JsonObjectSerializerTests>(json);
+		string json = this.Serializer.Serialize<int?, JsonObjectSerializerTests>(value);
+		int? roundTripped = this.Serializer.Deserialize<int?, JsonObjectSerializerTests>(json);
 
 		Assert.Equal("null", json);
 		Assert.Equal(value, roundTripped);
@@ -20,11 +19,10 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void SerializeDeserialize_NullableStruct_Value_WithWitnessType()
 	{
-		JsonSerializer serializer = new();
 		int? value = 42;
 
-		string json = serializer.Serialize<int?, JsonObjectSerializerTests>(value);
-		int? roundTripped = serializer.Deserialize<int?, JsonObjectSerializerTests>(json);
+		string json = this.Serializer.Serialize<int?, JsonObjectSerializerTests>(value);
+		int? roundTripped = this.Serializer.Deserialize<int?, JsonObjectSerializerTests>(json);
 
 		Assert.Equal("42", json);
 		Assert.Equal(value, roundTripped);
@@ -33,10 +31,9 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithNullableStructProperty()
 	{
-		JsonSerializer serializer = new();
 		OptionalContainer value = new() { Count = 7 };
 
-		this.AssertRoundtrip(value, """{"count":7}""", serializer);
+		this.AssertRoundtrip(value, """{"count":7}""");
 	}
 
 	[GenerateShape]

@@ -13,14 +13,13 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void SerializeDeserialize_Dictionary_LeavesKeysUntouchedByDefault()
 	{
-		JsonSerializer serializer = new();
 		Dictionary<string, int> value = new(StringComparer.Ordinal)
 		{
 			["PascalCaseKey"] = 1,
 			["snake_case_key"] = 2,
 		};
 
-		this.AssertRoundtrip<Dictionary<string, int>, JsonObjectSerializerTests>(value, """{"PascalCaseKey":1,"snake_case_key":2}""", serializer);
+		this.AssertRoundtrip<Dictionary<string, int>, JsonObjectSerializerTests>(value, """{"PascalCaseKey":1,"snake_case_key":2}""");
 	}
 
 	[Test]
@@ -47,24 +46,18 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void SerializeDeserialize_Dictionary_WithWitnessType()
 	{
-		JsonSerializer serializer = new();
 		Dictionary<string, int> value = new(StringComparer.Ordinal)
 		{
 			["PascalCaseKey"] = 1,
 			["snake_case_key"] = 2,
 		};
 
-		string json = serializer.Serialize<Dictionary<string, int>, JsonObjectSerializerTests>(value);
-		Dictionary<string, int>? roundTripped = serializer.Deserialize<Dictionary<string, int>, JsonObjectSerializerTests>(json);
-
-		Assert.NotNull(roundTripped);
-		AssertStructuralEqual(value, roundTripped, json);
+		this.AssertRoundtrip<Dictionary<string, int>, JsonObjectSerializerTests>(value);
 	}
 
 	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithDictionaryProperty()
 	{
-		JsonSerializer serializer = new();
 		DictionaryContainer value = new()
 		{
 			Scores = new Dictionary<string, int>(StringComparer.Ordinal)
@@ -74,29 +67,24 @@ public partial class JsonObjectSerializerTests
 			},
 		};
 
-		this.AssertRoundtrip(value, """{"scores":{"FirstScore":10,"second_score":20}}""", serializer);
+		this.AssertRoundtrip(value, """{"scores":{"FirstScore":10,"second_score":20}}""");
 	}
 
 	[Test]
 	public void SerializeDeserialize_Dictionary_WithIntKeys()
 	{
-		JsonSerializer serializer = new();
 		Dictionary<int, string> value = new()
 		{
 			[1] = "one",
 			[20] = "twenty",
 		};
 
-		string json = serializer.Serialize<Dictionary<int, string>, JsonObjectSerializerTests>(value);
-
-		Assert.Equal("""{"1":"one","20":"twenty"}""", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip<Dictionary<int, string>, JsonObjectSerializerTests>(value, """{"1":"one","20":"twenty"}""");
 	}
 
 	[Test]
 	public void SerializeDeserialize_Dictionary_WithGuidKeys()
 	{
-		JsonSerializer serializer = new();
 		Guid first = Guid.Parse("f2cb13e4-7c12-4db6-b978-6a83abf1e9bf");
 		Guid second = Guid.Parse("cefe95cc-6f79-4c5d-9c7e-8b8d9c61c4b2");
 		Dictionary<Guid, int> value = new()
@@ -105,16 +93,12 @@ public partial class JsonObjectSerializerTests
 			[second] = 2,
 		};
 
-		string json = serializer.Serialize<Dictionary<Guid, int>, JsonObjectSerializerTests>(value);
-
-		Assert.Equal("""{"f2cb13e4-7c12-4db6-b978-6a83abf1e9bf":1,"cefe95cc-6f79-4c5d-9c7e-8b8d9c61c4b2":2}""", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip<Dictionary<Guid, int>, JsonObjectSerializerTests>(value, """{"f2cb13e4-7c12-4db6-b978-6a83abf1e9bf":1,"cefe95cc-6f79-4c5d-9c7e-8b8d9c61c4b2":2}""");
 	}
 
 	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithIntKeyDictionaryProperty()
 	{
-		JsonSerializer serializer = new();
 		IntKeyDictionaryContainer value = new()
 		{
 			Counts = new Dictionary<int, string>
@@ -124,48 +108,37 @@ public partial class JsonObjectSerializerTests
 			},
 		};
 
-		string json = serializer.Serialize(value);
-
-		Assert.Equal("""{"counts":{"3":"three","5":"five"}}""", json);
-		AssertRoundtrip(json, serializer, value);
+		this.AssertRoundtrip<IntKeyDictionaryContainer>(value, """{"counts":{"3":"three","5":"five"}}""");
 	}
 
 	[Test]
 	public void Serialize_Dictionary_WithComplexKeys_ThrowsNotSupportedException()
 	{
-		JsonSerializer serializer = new();
 		Dictionary<ComplexKey, int> value = new()
 		{
 			[new ComplexKey { Name = "alpha" }] = 1,
 		};
 
-		NotSupportedException exception = Assert.Throws<NotSupportedException>(() => serializer.Serialize<Dictionary<ComplexKey, int>, JsonObjectSerializerTests>(value));
+		NotSupportedException exception = Assert.Throws<NotSupportedException>(() => this.Serializer.Serialize<Dictionary<ComplexKey, int>, JsonObjectSerializerTests>(value));
 		Assert.Contains(typeof(ComplexKey).FullName ?? nameof(ComplexKey), exception.Message, StringComparison.Ordinal);
 	}
 
 	[Test]
 	public void SerializeDeserialize_ReadOnlyDictionary_WithWitnessType()
 	{
-		JsonSerializer serializer = new();
 		ReadOnlyDictionary<string, int> value = new(new Dictionary<string, int>(StringComparer.Ordinal)
 		{
 			["FirstScore"] = 10,
 			["second_score"] = 20,
 		});
 
-		string json = serializer.Serialize<ReadOnlyDictionary<string, int>, JsonObjectSerializerTests>(value);
-		ReadOnlyDictionary<string, int>? roundTripped = serializer.Deserialize<ReadOnlyDictionary<string, int>, JsonObjectSerializerTests>(json);
-
-		Assert.Equal("""{"FirstScore":10,"second_score":20}""", json);
-		AssertStructuralEqual(value, roundTripped, json);
+		this.AssertRoundtrip<ReadOnlyDictionary<string, int>, JsonObjectSerializerTests>(value, """{"FirstScore":10,"second_score":20}""");
 	}
 
 	[Test]
 	public void Deserialize_ObjectGraph_Populates_GetterOnlyDictionaryProperty()
 	{
-		JsonSerializer serializer = new();
-
-		GetterOnlyDictionaryContainer? value = serializer.Deserialize<GetterOnlyDictionaryContainer>("""{"scores":{"FirstScore":10,"second_score":20}}""");
+		GetterOnlyDictionaryContainer? value = this.Serializer.Deserialize<GetterOnlyDictionaryContainer>("""{"scores":{"FirstScore":10,"second_score":20}}""");
 
 		Assert.NotNull(value);
 		Assert.Equal(2, value.Scores.Count);

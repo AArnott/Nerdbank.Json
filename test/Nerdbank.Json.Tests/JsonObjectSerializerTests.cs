@@ -3,13 +3,13 @@
 
 using System.Buffers;
 using System.Text;
+using PolyType.Abstractions;
 
 public partial class JsonObjectSerializerTests : TestBase
 {
 	[Test]
 	public void Deserialize_ObjectGraph_FromMultiSegmentUtf8Sequence()
 	{
-		JsonSerializer serializer = new();
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"name":"München","age":37,"address":null}""");
 		int splitIndex = Array.IndexOf(utf8, (byte)0xC3);
 		Assert.True(splitIndex > 0);
@@ -19,16 +19,15 @@ public partial class JsonObjectSerializerTests : TestBase
 			utf8.AsMemory(splitIndex + 1, 1),
 			utf8.AsMemory(splitIndex + 2));
 
-		Person? value = serializer.Deserialize<Person>(json);
+		Person value = this.Serializer.Deserialize<Person>(json)!;
 		Person expected = new() { Name = "München", Age = 37, Address = null };
 
-		AssertStructuralEqual(expected, value, Encoding.UTF8.GetString(utf8));
+		AssertStructuralEqual<Person>(expected, value);
 	}
 
 	[Test]
 	public void SerializeDeserialize_ObjectGraph()
 	{
-		JsonSerializer serializer = new();
 		Person value = new()
 		{
 			Name = "Ada",
@@ -40,13 +39,12 @@ public partial class JsonObjectSerializerTests : TestBase
 			},
 		};
 
-		this.AssertRoundtrip(value, """{"name":"Ada","age":37,"address":{"city":"Seattle","postalCode":98101}}""", serializer);
+		this.AssertRoundtrip(value, """{"name":"Ada","age":37,"address":{"city":"Seattle","postalCode":98101}}""");
 	}
 
 	[Test]
 	public void SerializeDeserialize_ObjectGraph_AsObject()
 	{
-		JsonSerializer serializer = new();
 		Person value = new()
 		{
 			Name = "Ada",
@@ -57,31 +55,33 @@ public partial class JsonObjectSerializerTests : TestBase
 				PostalCode = 98101,
 			},
 		};
-		ITypeShape shape = GetTypeShape<Person>();
+#if NET
+		ITypeShape<Person> shape = TypeShapeResolver.Resolve<Person>();
+#else
+		ITypeShape<Person> shape = TypeShapeResolver.ResolveDynamicOrThrow<Person>();
+#endif
 
-		string json = serializer.SerializeObject(value, shape);
+		string json = this.Serializer.SerializeObject(value, shape);
 		Assert.Equal("""{"name":"Ada","age":37,"address":{"city":"Seattle","postalCode":98101}}""", json);
 
-		AssertStructuralEqual(value, Assert.IsType<Person>(serializer.DeserializeObject(json, shape)), json);
+		AssertStructuralEqual(value, Assert.IsType<Person>(this.Serializer.DeserializeObject(json, shape)), shape);
 
 		using MemoryStream stream = new();
-		serializer.SerializeObject(stream, value, shape);
+		this.Serializer.SerializeObject(stream, value, shape);
 		stream.Position = 0;
-		AssertStructuralEqual(value, Assert.IsType<Person>(serializer.DeserializeObject(stream, shape)), json);
+		AssertStructuralEqual(value, Assert.IsType<Person>(this.Serializer.DeserializeObject(stream, shape)), shape);
 
 		byte[] utf8 = Encoding.UTF8.GetBytes(json);
-		AssertStructuralEqual(value, Assert.IsType<Person>(serializer.DeserializeObject(utf8, shape)), json);
+		AssertStructuralEqual(value, Assert.IsType<Person>(this.Serializer.DeserializeObject(utf8, shape)), shape);
 
 		ReadOnlySequence<byte> sequence = CreateSequence(utf8.AsMemory(0, 10), utf8.AsMemory(10));
-		AssertStructuralEqual(value, Assert.IsType<Person>(serializer.DeserializeObject(sequence, shape)), json);
+		AssertStructuralEqual(value, Assert.IsType<Person>(this.Serializer.DeserializeObject(sequence, shape)), shape);
 	}
 
 	[Test]
 	public void Deserialize_ObjectGraph_IgnoresUnknownProperty()
 	{
-		JsonSerializer serializer = new();
-
-		Person? value = serializer.Deserialize<Person>("""{"name":"Ada","unknown":true,"age":37,"address":{"city":"Seattle","postalCode":98101,"ignored":"x"}}""");
+		Person? value = this.Serializer.Deserialize<Person>("""{"name":"Ada","unknown":true,"age":37,"address":{"city":"Seattle","postalCode":98101,"ignored":"x"}}""");
 		Assert.NotNull(value);
 		Person expected = new()
 		{
@@ -90,15 +90,13 @@ public partial class JsonObjectSerializerTests : TestBase
 			Address = new Address { City = "Seattle", PostalCode = 98101 },
 		};
 
-		AssertStructuralEqual(expected, value, """{"name":"Ada","unknown":true,"age":37,"address":{"city":"Seattle","postalCode":98101,"ignored":"x"}}""");
+		AssertStructuralEqual(expected, value);
 	}
 
 	[Test]
 	public void Deserialize_ObjectGraph_CanCaptureUnknownPropertiesIntoExtensionData()
 	{
-		JsonSerializer serializer = new();
-
-		ExtensionDataPerson? value = serializer.Deserialize<ExtensionDataPerson>("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""" + "\n");
+		ExtensionDataPerson? value = this.Serializer.Deserialize<ExtensionDataPerson>("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""" + "\n");
 
 		Assert.NotNull(value);
 		Assert.Equal("Ada", value.Name);
@@ -110,7 +108,6 @@ public partial class JsonObjectSerializerTests : TestBase
 	[Test]
 	public void Serialize_ObjectGraph_WritesExtensionDataMembers()
 	{
-		JsonSerializer serializer = new();
 		ExtensionDataPerson value = new()
 		{
 			Name = "Ada",
@@ -121,7 +118,7 @@ public partial class JsonObjectSerializerTests : TestBase
 			},
 		};
 
-		string json = serializer.Serialize(value);
+		string json = this.Serializer.Serialize(value);
 
 		Assert.Equal("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""", json);
 	}
@@ -129,9 +126,9 @@ public partial class JsonObjectSerializerTests : TestBase
 	[Test]
 	public void Deserialize_ObjectGraph_CaseInsensitivePropertyNames_WhenEnabled()
 	{
-		JsonSerializer serializer = new() { PropertyNameCaseInsensitive = true };
+		this.Serializer = new() { PropertyNameCaseInsensitive = true };
 
-		Person? value = serializer.Deserialize<Person>("""{"NAME":"Ada","AGE":37,"ADDRESS":{"CITY":"Seattle","POSTALCODE":98101}}""");
+		Person value = this.Serializer.Deserialize<Person>("""{"NAME":"Ada","AGE":37,"ADDRESS":{"CITY":"Seattle","POSTALCODE":98101}}""")!;
 		Person expected = new()
 		{
 			Name = "Ada",
@@ -139,22 +136,21 @@ public partial class JsonObjectSerializerTests : TestBase
 			Address = new Address { City = "Seattle", PostalCode = 98101 },
 		};
 
-		AssertStructuralEqual(expected, value, """{"NAME":"Ada","AGE":37,"ADDRESS":{"CITY":"Seattle","POSTALCODE":98101}}""");
+		AssertStructuralEqual(expected, value);
 	}
 
 	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithNullNestedObject()
 	{
-		JsonSerializer serializer = new();
 		Person value = new() { Name = "Ada", Age = 37, Address = null };
 
-		this.AssertRoundtrip(value, """{"name":"Ada","age":37,"address":null}""", serializer);
+		this.AssertRoundtrip(value, """{"name":"Ada","age":37,"address":null}""");
 	}
 
 	[Test]
 	public void Serialize_ObjectGraph_CanIndentOutput()
 	{
-		JsonSerializer serializer = new() { WriteIndented = true };
+		this.Serializer = new() { WriteIndented = true };
 		Person value = new()
 		{
 			Name = "Ada",
@@ -167,30 +163,29 @@ public partial class JsonObjectSerializerTests : TestBase
 		};
 		string expectedJson = "{\n  \"name\": \"Ada\",\n  \"age\": 37,\n  \"address\": {\n    \"city\": \"Seattle\",\n    \"postalCode\": 98101\n  }\n}";
 
-		this.AssertRoundtrip(value, expectedJson, serializer);
+		this.AssertRoundtrip(value, expectedJson);
 	}
 
 	[Test]
 	public void SerializeDeserialize_Stream()
 	{
-		JsonSerializer serializer = new();
 		Person value = new() { Name = "Grace", Age = 41 };
 
 		using MemoryStream stream = new();
-		serializer.Serialize(stream, value);
+		this.Serializer.Serialize(stream, value);
 		stream.Position = 0;
 
-		Person? roundTripped = serializer.Deserialize<Person>(stream);
-		AssertStructuralEqual(value, roundTripped, serializer.Serialize(value));
+		Person roundTripped = this.Serializer.Deserialize<Person>(stream)!;
+		AssertStructuralEqual(value, roundTripped);
 	}
 
 	[Test]
 	public void Serialize_ObjectGraph_CanDisableNamingPolicy()
 	{
-		JsonSerializer serializer = new() { PropertyNamingPolicy = null };
+		this.Serializer = new() { PropertyNamingPolicy = null };
 		Person value = new() { Name = "Ada", Age = 37 };
 
-		string json = serializer.Serialize(value);
+		string json = this.Serializer.Serialize(value);
 
 		Assert.Equal("""{"Name":"Ada","Age":37,"Address":null}""", json);
 	}
@@ -198,19 +193,18 @@ public partial class JsonObjectSerializerTests : TestBase
 	[Test]
 	public void Serialize_ObjectGraph_ExplicitPropertyNameOverridesNamingPolicy()
 	{
-		JsonSerializer serializer = new();
 		RenamedPropertyContainer value = new() { URLValue = "https://example.com" };
 
-		this.AssertRoundtrip(value, """{"uri":"https://example.com"}""", serializer);
+		this.AssertRoundtrip(value, """{"uri":"https://example.com"}""");
 	}
 
 	[Test]
 	public void Serialize_ObjectGraph_CanOmitDefaultValues()
 	{
-		JsonSerializer serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.Never };
+		this.Serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.Never };
 		Person value = new() { Name = "Ada", Age = 0, Address = null };
 
-		string json = serializer.Serialize(value);
+		string json = this.Serializer.Serialize(value);
 
 		Assert.Equal("""{"name":"Ada"}""", json);
 	}
@@ -218,10 +212,10 @@ public partial class JsonObjectSerializerTests : TestBase
 	[Test]
 	public void Serialize_ObjectGraph_CanRetainReferenceTypeDefaultsOnly()
 	{
-		JsonSerializer serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.ReferenceTypes };
+		this.Serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.ReferenceTypes };
 		Person value = new() { Name = "Ada", Age = 0, Address = null };
 
-		string json = serializer.Serialize(value);
+		string json = this.Serializer.Serialize(value);
 
 		Assert.Equal("""{"name":"Ada","address":null}""", json);
 	}
@@ -229,10 +223,10 @@ public partial class JsonObjectSerializerTests : TestBase
 	[Test]
 	public void Serialize_ObjectGraph_CanRetainValueTypeDefaultsOnly()
 	{
-		JsonSerializer serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.ValueTypes };
+		this.Serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.ValueTypes };
 		Person value = new() { Name = null, Age = 0, Address = null };
 
-		string json = serializer.Serialize(value);
+		string json = this.Serializer.Serialize(value);
 
 		Assert.Equal("""{"age":0}""", json);
 	}
@@ -240,10 +234,10 @@ public partial class JsonObjectSerializerTests : TestBase
 	[Test]
 	public void Serialize_ObjectGraph_RequiredPropertiesAreRetainedWhenRequested()
 	{
-		JsonSerializer serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.Required };
+		this.Serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.Required };
 		RequiredDefaultValueContainer value = new() { Count = 0, Name = null };
 
-		string json = serializer.Serialize(value);
+		string json = this.Serializer.Serialize(value);
 
 		Assert.Equal("""{"count":0}""", json);
 	}
@@ -251,27 +245,23 @@ public partial class JsonObjectSerializerTests : TestBase
 	[Test]
 	public void Deserialize_ObjectGraph_MissingRequiredProperty_ThrowsFormatException()
 	{
-		JsonSerializer serializer = new();
-
-		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<RequiredPropertyContainer>("""{}"""));
+		FormatException exception = Assert.Throws<FormatException>(() => this.Serializer.Deserialize<RequiredPropertyContainer>("""{}"""));
 		Assert.Contains("Name", exception.Message);
 	}
 
 	[Test]
 	public void Deserialize_ObjectGraph_NullForNonNullableProperty_ThrowsFormatException()
 	{
-		JsonSerializer serializer = new();
-
-		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<NonNullablePropertyContainer>("""{"name":null}"""));
+		FormatException exception = Assert.Throws<FormatException>(() => this.Serializer.Deserialize<NonNullablePropertyContainer>("""{"name":null}"""));
 		Assert.Contains("Name", exception.Message);
 	}
 
 	[Test]
 	public void Deserialize_ObjectGraph_MissingRequiredProperty_CanBeAllowed()
 	{
-		JsonSerializer serializer = new() { DeserializeDefaultValues = DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties };
+		this.Serializer = new() { DeserializeDefaultValues = DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties };
 
-		RequiredPropertyContainer? value = serializer.Deserialize<RequiredPropertyContainer>("{}");
+		RequiredPropertyContainer? value = this.Serializer.Deserialize<RequiredPropertyContainer>("{}");
 
 		Assert.NotNull(value);
 		Assert.Null(value.Name);
@@ -280,9 +270,9 @@ public partial class JsonObjectSerializerTests : TestBase
 	[Test]
 	public void Deserialize_ObjectGraph_NullForNonNullableProperty_CanBeAllowed()
 	{
-		JsonSerializer serializer = new() { DeserializeDefaultValues = DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties };
+		this.Serializer = new() { DeserializeDefaultValues = DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties };
 
-		NonNullablePropertyContainer? value = serializer.Deserialize<NonNullablePropertyContainer>("""{"name":null}""");
+		NonNullablePropertyContainer? value = this.Serializer.Deserialize<NonNullablePropertyContainer>("""{"name":null}""");
 
 		Assert.NotNull(value);
 		Assert.Null(value.Name);
@@ -291,14 +281,14 @@ public partial class JsonObjectSerializerTests : TestBase
 	[Test]
 	public void SerializeDeserialize_ObjectGraph_PreserveReferences()
 	{
-		JsonSerializer serializer = new() { PreserveReferences = ReferencePreservationMode.RejectCycles };
+		this.Serializer = new() { PreserveReferences = ReferencePreservationMode.RejectCycles };
 		SharedLeaf sharedLeaf = new() { Name = "Ada" };
 		SharedRoot value = new() { Left = sharedLeaf, Right = sharedLeaf };
 
-		string json = serializer.Serialize(value);
+		string json = this.Serializer.Serialize(value);
 		Assert.Equal("""{"$id":1,"$value":{"left":{"$id":2,"$value":{"name":"Ada"}},"right":{"$ref":2}}}""", json);
 
-		SharedRoot? roundTripped = serializer.Deserialize<SharedRoot>(json);
+		SharedRoot? roundTripped = this.Serializer.Deserialize<SharedRoot>(json);
 		Assert.NotNull(roundTripped?.Left);
 		Assert.Same(roundTripped.Left, roundTripped.Right);
 		Assert.Equal("Ada", roundTripped.Left.Name);
@@ -307,11 +297,11 @@ public partial class JsonObjectSerializerTests : TestBase
 	[Test]
 	public void Serialize_ObjectGraph_RejectsReferenceCycles()
 	{
-		JsonSerializer serializer = new() { PreserveReferences = ReferencePreservationMode.RejectCycles };
+		this.Serializer = new() { PreserveReferences = ReferencePreservationMode.RejectCycles };
 		CyclicNode node = new();
 		node.Next = node;
 
-		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => serializer.Serialize(node));
+		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Serialize(node));
 		Assert.Contains("Reference cycles", exception.Message);
 	}
 

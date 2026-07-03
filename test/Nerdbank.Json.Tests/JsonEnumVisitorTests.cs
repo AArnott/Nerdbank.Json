@@ -40,7 +40,7 @@ public partial class JsonObjectSerializerTests
 		JsonSerializer serializer = new();
 		EnumContainer value = new() { Value = SomeEnum.Three };
 
-		this.AssertRoundtrip(value, """{"value":3}""", serializer);
+		this.AssertRoundtrip(value, """{"value":3}""");
 	}
 
 	[Test]
@@ -82,10 +82,10 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void Serialize_EnumRoot_ByName_FallsBackToNumberWhenUnnamed()
 	{
-		JsonSerializer serializer = new() { SerializeEnumValuesByName = true };
+		this.Serializer = new() { SerializeEnumValuesByName = true };
 		FlagEnum value = FlagEnum.Read | FlagEnum.Write;
 
-		string json = serializer.Serialize<FlagEnum, JsonObjectSerializerTests>(value);
+		string json = this.Serializer.Serialize<FlagEnum, JsonObjectSerializerTests>(value);
 
 		Assert.Equal("3", json);
 	}
@@ -93,10 +93,10 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithEnumProperty_ByName()
 	{
-		JsonSerializer serializer = new() { SerializeEnumValuesByName = true };
+		this.Serializer = new() { SerializeEnumValuesByName = true };
 		EnumContainer value = new() { Value = SomeEnum.Three };
 
-		this.AssertRoundtrip(value, """{"value":"three"}""", serializer);
+		this.AssertRoundtrip(value, """{"value":"three"}""");
 	}
 
 	[GenerateShape]

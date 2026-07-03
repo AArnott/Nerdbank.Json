@@ -18,7 +18,7 @@ public partial class JsonObjectSerializerTests
 			new Person { Name = "Grace", Age = 41, Address = new Address { City = "Arlington", PostalCode = 22201 } },
 		];
 
-		this.AssertRoundtrip<List<Person>, JsonObjectSerializerTests>(value, """[{"name":"Ada","age":37,"address":null},{"name":"Grace","age":41,"address":{"city":"Arlington","postalCode":22201}}]""", serializer);
+		this.AssertRoundtrip<List<Person>, JsonObjectSerializerTests>(value, """[{"name":"Ada","age":37,"address":null},{"name":"Grace","age":41,"address":{"city":"Arlington","postalCode":22201}}]""");
 	}
 
 	[Test]
@@ -31,24 +31,14 @@ public partial class JsonObjectSerializerTests
 			new Person { Name = "Grace", Age = 41 },
 		];
 
-		string json = serializer.Serialize<List<Person>, JsonObjectSerializerTests>(value);
-		List<Person>? roundTripped = serializer.Deserialize<List<Person>, JsonObjectSerializerTests>(json);
-
-		Assert.NotNull(roundTripped);
-		AssertStructuralEqual(value, roundTripped, json);
+		this.AssertRoundtrip<List<Person>, JsonObjectSerializerTests>(value);
 	}
 
 	[Test]
 	public void SerializeDeserialize_Array_WithWitnessType()
 	{
 		JsonSerializer serializer = new();
-		int[] value = [1, 2, 3, 5, 8];
-
-		string json = serializer.Serialize<int[], JsonObjectSerializerTests>(value);
-		int[]? roundTripped = serializer.Deserialize<int[], JsonObjectSerializerTests>(json);
-
-		Assert.NotNull(roundTripped);
-		AssertStructuralEqual(value, roundTripped, json);
+		this.AssertRoundtrip<int[], JsonObjectSerializerTests>([1, 2, 3, 5, 8]);
 	}
 
 	[Test]
@@ -76,7 +66,7 @@ public partial class JsonObjectSerializerTests
 			LuckyNumbers = [3, 5, 8],
 		};
 
-		this.AssertRoundtrip(value, """{"people":[{"name":"Ada","age":37,"address":null},{"name":"Grace","age":41,"address":null}],"luckyNumbers":[3,5,8]}""", serializer);
+		this.AssertRoundtrip(value, """{"people":[{"name":"Ada","age":37,"address":null},{"name":"Grace","age":41,"address":null}],"luckyNumbers":[3,5,8]}""");
 	}
 
 	[Test]
@@ -85,12 +75,7 @@ public partial class JsonObjectSerializerTests
 		JsonSerializer serializer = new();
 		ReadOnlyCollection<int> value = new([3, 5, 8]);
 
-		string json = serializer.Serialize<ReadOnlyCollection<int>, JsonObjectSerializerTests>(value);
-		ReadOnlyCollection<int>? roundTripped = serializer.Deserialize<ReadOnlyCollection<int>, JsonObjectSerializerTests>(json);
-
-		Assert.NotNull(roundTripped);
-		Assert.Equal("""[3,5,8]""", json);
-		AssertStructuralEqual(value, roundTripped, json);
+		this.AssertRoundtrip<ReadOnlyCollection<int>, JsonObjectSerializerTests>(value, """[3,5,8]""");
 	}
 
 	[Test]

@@ -3,138 +3,116 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Nerdbank.MessagePack;
+using PolyType.Abstractions;
 
 public abstract class TestBase
 {
-	public JsonSerializer Serializer = new();
+	protected JsonSerializer Serializer { get; set; } = new();
 
-	public string? LastSerializedJson { get; set; }
+	protected string? LastSerializedJson { get; set; }
 
-	public T? Roundtrip<T>(T value)
+	protected static void AssertStructuralEqual<T>(T expected, T actual, IEqualityComparer<T>? equalityComparer = null)
 #if NET
-		where T : IShapeable<T>
+		where T : IShapeable<T> => AssertStructuralEqual<T>(expected, actual, T.GetTypeShape(), equalityComparer);
+#else
+		=> AssertStructuralEqual(expected, actual, TypeShapeResolver.ResolveDynamicOrThrow<T>(), equalityComparer);
 #endif
+
+	protected static void AssertStructuralEqual<T>(T expected, T actual, ITypeShape<T> shape, IEqualityComparer<T>? equalityComparer = null)
 	{
-		string json = this.Serializer.Serialize(value);
-		this.LastSerializedJson = json;
-		Console.WriteLine(json);
-		return this.Serializer.Deserialize<T>(json);
+		equalityComparer ??= StructuralEqualityComparer.GetDefault<T>(shape);
+		Assert.Equal(expected, actual, equalityComparer);
 	}
 
-	public T? Roundtrip<T, TWitness>(T value, JsonSerializer? serializer = null)
+	[MemberNotNull(nameof(LastSerializedJson))]
+	protected T? Roundtrip<T>(T value)
+#if NET
+		where T : IShapeable<T> => this.Roundtrip(value, T.GetTypeShape());
+#else
+		=> this.Roundtrip(value, TypeShapeResolver.ResolveDynamicOrThrow<T>());
+#endif
+
+	[MemberNotNull(nameof(LastSerializedJson))]
+	protected T? Roundtrip<T, TProvider>(T value)
+#if NET
+		where TProvider : IShapeable<T> => this.Roundtrip(value, TProvider.GetTypeShape());
+#else
+		=> this.Roundtrip(value, TypeShapeResolver.ResolveDynamicOrThrow<T, TProvider>());
+#endif
+
+	[MemberNotNull(nameof(LastSerializedJson))]
+	protected T? Roundtrip<T>(T value, ITypeShape<T> shape)
 	{
-		serializer ??= this.Serializer;
-		ITypeShape<T> shape = GetTypeShape<T>();
-		string json = serializer.Serialize(value, shape);
+		string json = this.Serializer.Serialize(value, shape);
 		this.LastSerializedJson = json;
-		Console.WriteLine(json);
-		return serializer.Deserialize(json, shape);
+		TestContext.Current?.OutputWriter.WriteLine(json);
+		return this.Serializer.Deserialize(json, shape);
 	}
 
-	public T? AssertRoundtrip<T>(T value, IEqualityComparer<T>? equalityComparer = null)
+	[MemberNotNull(nameof(LastSerializedJson))]
+	protected T? AssertRoundtrip<T>(T value, IEqualityComparer<T>? equalityComparer = null)
 #if NET
-		where T : IShapeable<T>
+		where T : IShapeable<T> => this.AssertRoundtrip(value, T.GetTypeShape(), equalityComparer);
+#else
+		=> this.AssertRoundtrip(value, TypeShapeResolver.ResolveDynamicOrThrow<T>(), equalityComparer);
 #endif
+
+	[MemberNotNull(nameof(LastSerializedJson))]
+	protected T? AssertRoundtrip<T, TProvider>(T value, IEqualityComparer<T>? equalityComparer = null)
+#if NET
+		where TProvider : IShapeable<T> => this.AssertRoundtrip(value, TProvider.GetTypeShape(), equalityComparer);
+#else
+		=> this.AssertRoundtrip(value, TypeShapeResolver.ResolveDynamicOrThrow<T, TProvider>(), equalityComparer);
+#endif
+
+	[MemberNotNull(nameof(LastSerializedJson))]
+	protected T? AssertRoundtrip<T>(T value, ITypeShape<T> shape, IEqualityComparer<T>? equalityComparer = null)
 	{
-		T? result = this.Roundtrip(value);
-		AssertStructuralEqual(value, result!, this.LastSerializedJson!, equalityComparer);
+		T result = this.Roundtrip(value, shape)!;
+		AssertStructuralEqual(value, result, shape, equalityComparer);
 		return result;
 	}
 
-	public T? AssertRoundtrip<T>(T value, [StringSyntax(StringSyntaxAttribute.Json)] string expectedJson, JsonSerializer? serializer = null, IEqualityComparer<T>? equalityComparer = null)
+	[MemberNotNull(nameof(LastSerializedJson))]
+	protected T? AssertRoundtrip<T>(T value, [StringSyntax(StringSyntaxAttribute.Json)] string expectedJson, IEqualityComparer<T>? equalityComparer = null)
 #if NET
-		where T : IShapeable<T>
+		where T : IShapeable<T> => this.AssertRoundtrip(value, T.GetTypeShape(), expectedJson, equalityComparer);
+#else
+		=> this.AssertRoundtrip(value, TypeShapeResolver.ResolveDynamicOrThrow<T>(), expectedJson, equalityComparer);
 #endif
+
+	[MemberNotNull(nameof(LastSerializedJson))]
+	protected T? AssertRoundtrip<T, TProvider>(T value, [StringSyntax(StringSyntaxAttribute.Json)] string expectedJson, IEqualityComparer<T>? equalityComparer = null)
+#if NET
+		where TProvider : IShapeable<T> => this.AssertRoundtrip(value, TProvider.GetTypeShape(), expectedJson, equalityComparer);
+#else
+		=> this.AssertRoundtrip(value, TypeShapeResolver.ResolveDynamicOrThrow<T, TProvider>(), expectedJson, equalityComparer);
+#endif
+
+	[MemberNotNull(nameof(LastSerializedJson))]
+	protected T? AssertRoundtrip<T>(T value, ITypeShape<T> shape, [StringSyntax(StringSyntaxAttribute.Json)] string expectedJson, IEqualityComparer<T>? equalityComparer = null)
 	{
-		serializer ??= this.Serializer;
-		string json = serializer.Serialize(value);
+		string json = this.Serializer.Serialize(value, shape);
 		this.LastSerializedJson = json;
 		Console.WriteLine(json);
 		Assert.Equal(expectedJson, json);
 
-		T? result = serializer.Deserialize<T>(json);
-		AssertStructuralEqual(value, result!, json, equalityComparer);
+		T result = this.Serializer.Deserialize(json, shape)!;
+		AssertStructuralEqual(value, result, shape, equalityComparer);
 		return result;
 	}
 
-	public T? AssertRoundtrip<T, TWitness>(T value, [StringSyntax(StringSyntaxAttribute.Json)] string expectedJson, JsonSerializer? serializer = null, IEqualityComparer<T>? equalityComparer = null)
+	protected T? AssertDeserializesTo<T>([StringSyntax(StringSyntaxAttribute.Json)] string json, T expected, ITypeShape<T> shape, IEqualityComparer<T>? equalityComparer = null)
 	{
-		serializer ??= this.Serializer;
-		ITypeShape<T> shape = GetTypeShape<T>();
-		string json = serializer.Serialize(value, shape);
-		this.LastSerializedJson = json;
-		Console.WriteLine(json);
-		Assert.Equal(expectedJson, json);
-
-		T? result = serializer.Deserialize(json, shape);
-		AssertStructuralEqual(value, result!, json, equalityComparer);
-		return result;
-	}
-
-	protected static T? AssertRoundtrip<T>([StringSyntax(StringSyntaxAttribute.Json)] string json, JsonSerializer serializer, T expected, IEqualityComparer<T>? equalityComparer = null)
-	{
-		T? actual = serializer.Deserialize(json, GetTypeShape<T>());
-		AssertStructuralEqual(expected, actual!, json, equalityComparer);
+		T? actual = this.Serializer.Deserialize<T>(json, shape);
+		AssertStructuralEqual(expected, actual!, shape, equalityComparer);
 		return actual;
 	}
 
-	protected static T? AssertDeserializesTo<T>([StringSyntax(StringSyntaxAttribute.Json)] string json, T expected, JsonSerializer? serializer = null, IEqualityComparer<T>? equalityComparer = null)
-#if NET
-		where T : IShapeable<T>
-#endif
+	protected T? AssertDeserializesTo<T, TWitness>([StringSyntax(StringSyntaxAttribute.Json)] string json, T expected, ITypeShape<T> shape, IEqualityComparer<T>? equalityComparer = null)
 	{
-		serializer ??= new JsonSerializer();
-		T? actual = serializer.Deserialize<T>(json);
-		AssertStructuralEqual(expected, actual!, json, equalityComparer);
+		T actual = this.Serializer.Deserialize(json, shape)!;
+		AssertStructuralEqual(expected, actual, shape, equalityComparer);
 		return actual;
 	}
-
-	protected static T? AssertDeserializesTo<T, TWitness>([StringSyntax(StringSyntaxAttribute.Json)] string json, T expected, JsonSerializer? serializer = null, IEqualityComparer<T>? equalityComparer = null)
-	{
-		serializer ??= new JsonSerializer();
-		T? actual = serializer.Deserialize(json, GetTypeShape<T>());
-		AssertStructuralEqual(expected, actual!, json, equalityComparer);
-		return actual;
-	}
-
-	protected static void AssertStructuralEqual<T>(T expected, T actual, [StringSyntax(StringSyntaxAttribute.Json)] string json, IEqualityComparer<T>? equalityComparer = null)
-		=> Assert.True((equalityComparer ?? GetStructuralEqualityComparer<T>()).Equals(expected, actual), $"Round-trip mismatch for serialized JSON: {json}");
-
-	protected static void AssertEqual<T>(T expected, T actual, IEqualityComparer<T>? equalityComparer = null)
-	{
-		if (equalityComparer is not null)
-		{
-			Assert.True(equalityComparer.Equals(expected, actual));
-			return;
-		}
-
-		if (expected is byte[] expectedBytes && actual is byte[] actualBytes)
-		{
-			Assert.Equal(expectedBytes, actualBytes);
-			return;
-		}
-
-		if (expected is Memory<byte> expectedMemory && actual is Memory<byte> actualMemory)
-		{
-			Assert.True(expectedMemory.Span.SequenceEqual(actualMemory.Span));
-			return;
-		}
-
-		if (expected is ReadOnlyMemory<byte> expectedReadOnlyMemory && actual is ReadOnlyMemory<byte> actualReadOnlyMemory)
-		{
-			Assert.True(expectedReadOnlyMemory.Span.SequenceEqual(actualReadOnlyMemory.Span));
-			return;
-		}
-
-		Assert.Equal(expected, actual);
-	}
-
-	protected static IEqualityComparer<T> GetStructuralEqualityComparer<T>()
-	{
-		ITypeShape<T>? shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<T>();
-		return shape is null ? EqualityComparer<T>.Default : StructuralEqualityComparer.GetDefault(shape);
-	}
-
-	protected static ITypeShape<T> GetTypeShape<T>()
-		=> PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<T>() ?? throw new InvalidOperationException($"No generated type shape found for {typeof(T)}.");
 }

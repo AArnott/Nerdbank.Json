@@ -1,60 +1,37 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using PolyType.Abstractions;
-
 public partial class JsonObjectSerializerTests
 {
 	[Test]
 	public void SerializeDeserialize_UnionBaseType_UsesNullAlias()
 	{
-		JsonSerializer serializer = new();
 		Animal value = new("Milo");
 
-		ITypeShape<Animal> shape = TypeShapeResolver.ResolveDynamicOrThrow<Animal>();
-		string json = serializer.Serialize(value, shape);
-		Animal? roundTripped = serializer.Deserialize(json, shape);
-
-		Assert.Equal("""[null,{"name":"Milo"}]""", json);
-		Assert.Equal(value, roundTripped);
+		this.AssertRoundtrip(value, """[null,{"name":"Milo"}]""");
 	}
 
 	[Test]
 	public void SerializeDeserialize_UnionDerivedType_UsesStringAlias()
 	{
-		JsonSerializer serializer = new();
 		Animal value = new Cat("Milo", 9);
 
-		ITypeShape<Animal> shape = TypeShapeResolver.ResolveDynamicOrThrow<Animal>();
-		string json = serializer.Serialize(value, shape);
-		Animal? roundTripped = serializer.Deserialize(json, shape);
-
-		Assert.Equal("""["Cat",{"lives":9,"name":"Milo"}]""", json);
-		Assert.Equal(value, roundTripped);
+		this.AssertRoundtrip(value, """["Cat",{"lives":9,"name":"Milo"}]""");
 	}
 
 	[Test]
 	public void SerializeDeserialize_UnionDerivedType_UsesIntegerTagWhenSpecified()
 	{
-		JsonSerializer serializer = new();
 		TaggedAnimal value = new TaggedCat("Otis", 7);
 
-		ITypeShape<TaggedAnimal> shape = TypeShapeResolver.ResolveDynamicOrThrow<TaggedAnimal>();
-		string json = serializer.Serialize(value, shape);
-		TaggedAnimal? roundTripped = serializer.Deserialize(json, shape);
-
-		Assert.Equal("""[3,{"lives":7,"name":"Otis"}]""", json);
-		Assert.Equal(value, roundTripped);
+		this.AssertRoundtrip(value, """[3,{"lives":7,"name":"Otis"}]""");
 	}
 
 	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithUnionProperty()
 	{
-		JsonSerializer serializer = new();
 		UnionContainer value = new() { Pet = new Cat("Milo", 9) };
-
-		UnionContainer? roundTripped = this.AssertRoundtrip(value, """{"pet":["Cat",{"lives":9,"name":"Milo"}]}""", serializer);
-		AssertStructuralEqual(value, roundTripped, this.LastSerializedJson!);
+		this.AssertRoundtrip(value, """{"pet":["Cat",{"lives":9,"name":"Milo"}]}""");
 	}
 
 	[GenerateShape]
