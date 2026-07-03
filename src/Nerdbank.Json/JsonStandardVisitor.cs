@@ -20,7 +20,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		where TEnum : struct
 	{
 		JsonConverter<TUnderlying> underlyingConverter = this.GetConverter(enumShape.UnderlyingType, attributeProvider: null);
-		return new JsonEnumConverter<TEnum, TUnderlying>(underlyingConverter, enumShape.Members, owner.SerializeEnumValuesByName);
+		return new JsonEnumConverter<TEnum, TUnderlying>(underlyingConverter, enumShape.Members, owner.SerializeEnumValuesByName, owner.PropertyNamingPolicy);
 	}
 
 	public override object? VisitOptional<TOptional, TElement>(IOptionalTypeShape<TOptional, TElement> optionalShape, object? state = null)

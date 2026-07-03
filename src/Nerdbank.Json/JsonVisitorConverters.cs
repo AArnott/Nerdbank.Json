@@ -95,12 +95,12 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 	private readonly Dictionary<TUnderlying, string>? namesByValue;
 	private readonly JsonConverter<TUnderlying> underlyingConverter;
 
-	internal JsonEnumConverter(JsonConverter<TUnderlying> underlyingConverter, IReadOnlyDictionary<string, TUnderlying> members, bool serializeByName)
+	internal JsonEnumConverter(JsonConverter<TUnderlying> underlyingConverter, IReadOnlyDictionary<string, TUnderlying> members, bool serializeByName, JsonNamingPolicy? namingPolicy)
 	{
 		this.underlyingConverter = underlyingConverter;
 		if (serializeByName)
 		{
-			(this.valuesByName, this.namesByValue) = CreateNameMaps(members);
+			(this.valuesByName, this.namesByValue) = CreateNameMaps(members, namingPolicy);
 		}
 	}
 
@@ -132,7 +132,7 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 		return (TEnum)(object)this.underlyingConverter.Read(ref reader, serializer)!;
 	}
 
-	private static (Dictionary<string, TUnderlying> ValuesByName, Dictionary<TUnderlying, string> NamesByValue) CreateNameMaps(IReadOnlyDictionary<string, TUnderlying> members)
+	private static (Dictionary<string, TUnderlying> ValuesByName, Dictionary<TUnderlying, string> NamesByValue) CreateNameMaps(IReadOnlyDictionary<string, TUnderlying> members, JsonNamingPolicy? namingPolicy)
 	{
 		Dictionary<string, TUnderlying> valuesByName = new(StringComparer.OrdinalIgnoreCase);
 		Dictionary<TUnderlying, string> namesByValue = [];
@@ -153,21 +153,22 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 		{
 			foreach (KeyValuePair<string, TUnderlying> pair in members)
 			{
-				if (nameMap.ContainsKey(pair.Key))
+				string name = namingPolicy?.ConvertName(pair.Key) ?? pair.Key;
+				if (nameMap.ContainsKey(name))
 				{
-					if (!EqualityComparer<TUnderlying>.Default.Equals(nameMap[pair.Key], pair.Value))
+					if (!EqualityComparer<TUnderlying>.Default.Equals(nameMap[name], pair.Value))
 					{
 						return false;
 					}
 				}
 				else
 				{
-					nameMap.Add(pair.Key, pair.Value);
+					nameMap.Add(name, pair.Value);
 				}
 
 				if (!reverseMap.ContainsKey(pair.Value))
 				{
-					reverseMap.Add(pair.Value, pair.Key);
+					reverseMap.Add(pair.Value, name);
 				}
 			}
 

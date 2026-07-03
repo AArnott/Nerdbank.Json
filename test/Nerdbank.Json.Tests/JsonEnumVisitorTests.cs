@@ -49,13 +49,26 @@ public partial class JsonObjectSerializerTests
 	[Test]
 	public void SerializeDeserialize_EnumRoot_ByName()
 	{
-		JsonSerializer serializer = new() { SerializeEnumValuesByName = true };
+		JsonSerializer serializer = new() { SerializeEnumValuesByName = true, PropertyNamingPolicy = null };
 		SomeEnum value = SomeEnum.Two;
 
 		string json = serializer.Serialize<SomeEnum, JsonObjectSerializerTests>(value);
 		SomeEnum roundTripped = serializer.Deserialize<SomeEnum, JsonObjectSerializerTests>(json);
 
 		Assert.Equal("\"Two\"", json);
+		Assert.Equal(value, roundTripped);
+	}
+
+	[Test]
+	public void SerializeDeserialize_EnumRoot_ByName_CamelCase()
+	{
+		JsonSerializer serializer = new() { SerializeEnumValuesByName = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+		SomeEnum value = SomeEnum.Two;
+
+		string json = serializer.Serialize<SomeEnum, JsonObjectSerializerTests>(value);
+		SomeEnum roundTripped = serializer.Deserialize<SomeEnum, JsonObjectSerializerTests>(json);
+
+		Assert.Equal("\"two\"", json);
 		Assert.Equal(value, roundTripped);
 	}
 
@@ -88,7 +101,7 @@ public partial class JsonObjectSerializerTests
 
 		string json = serializer.Serialize(value);
 
-		Assert.Equal("{\"value\":\"Three\"}", json);
+		Assert.Equal("{\"value\":\"three\"}", json);
 		AssertRoundtrip(json, serializer, value);
 	}
 
