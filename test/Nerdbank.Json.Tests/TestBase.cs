@@ -94,25 +94,11 @@ public abstract class TestBase
 	{
 		string json = this.Serializer.Serialize(value, shape);
 		this.LastSerializedJson = json;
-		Console.WriteLine(json);
+		TestContext.Current?.OutputWriter.WriteLine(json);
 		Assert.Equal(expectedJson, json);
 
 		T result = this.Serializer.Deserialize(json, shape)!;
 		AssertStructuralEqual(value, result, shape, equalityComparer);
 		return result;
-	}
-
-	protected T? AssertDeserializesTo<T>([StringSyntax(StringSyntaxAttribute.Json)] string json, T expected, ITypeShape<T> shape, IEqualityComparer<T>? equalityComparer = null)
-	{
-		T? actual = this.Serializer.Deserialize<T>(json, shape);
-		AssertStructuralEqual(expected, actual!, shape, equalityComparer);
-		return actual;
-	}
-
-	protected T? AssertDeserializesTo<T, TWitness>([StringSyntax(StringSyntaxAttribute.Json)] string json, T expected, ITypeShape<T> shape, IEqualityComparer<T>? equalityComparer = null)
-	{
-		T actual = this.Serializer.Deserialize(json, shape)!;
-		AssertStructuralEqual(expected, actual, shape, equalityComparer);
-		return actual;
 	}
 }
