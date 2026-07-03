@@ -11,7 +11,7 @@ public partial class NativeAOTTests : TestBase
 			Fruits = [new Fruit(3), new Fruit(5)],
 		};
 
-		Tree roundTripped = this.AssertRoundtrip(tree, "{\"fruits\":[{\"seeds\":3},{\"seeds\":5}]}")!;
+		Tree roundTripped = this.AssertRoundtrip(tree, """{"fruits":[{"seeds":3},{"seeds":5}]}""")!;
 		Assert.Equal(2, roundTripped.Fruits.Count);
 		Assert.Equal(3, roundTripped.Fruits[0].Seeds);
 		Assert.Equal(5, roundTripped.Fruits[1].Seeds);

@@ -10,7 +10,7 @@ public partial class JsonObjectSerializerTests : TestBase
 	public void Deserialize_ObjectGraph_FromMultiSegmentUtf8Sequence()
 	{
 		JsonSerializer serializer = new();
-		byte[] utf8 = Encoding.UTF8.GetBytes("{\"name\":\"München\",\"age\":37,\"address\":null}");
+		byte[] utf8 = Encoding.UTF8.GetBytes("""{"name":"München","age":37,"address":null}""");
 		int splitIndex = Array.IndexOf(utf8, (byte)0xC3);
 		Assert.True(splitIndex > 0);
 
@@ -40,7 +40,7 @@ public partial class JsonObjectSerializerTests : TestBase
 			},
 		};
 
-		this.AssertRoundtrip(value, "{\"name\":\"Ada\",\"age\":37,\"address\":{\"city\":\"Seattle\",\"postalCode\":98101}}", serializer);
+		this.AssertRoundtrip(value, """{"name":"Ada","age":37,"address":{"city":"Seattle","postalCode":98101}}""", serializer);
 	}
 
 	[Test]
@@ -60,7 +60,7 @@ public partial class JsonObjectSerializerTests : TestBase
 		ITypeShape shape = GetTypeShape<Person>();
 
 		string json = serializer.SerializeObject(value, shape);
-		Assert.Equal("{\"name\":\"Ada\",\"age\":37,\"address\":{\"city\":\"Seattle\",\"postalCode\":98101}}", json);
+		Assert.Equal("""{"name":"Ada","age":37,"address":{"city":"Seattle","postalCode":98101}}""", json);
 
 		AssertStructuralEqual(value, Assert.IsType<Person>(serializer.DeserializeObject(json, shape)), json);
 
@@ -81,7 +81,7 @@ public partial class JsonObjectSerializerTests : TestBase
 	{
 		JsonSerializer serializer = new();
 
-		Person? value = serializer.Deserialize<Person>("{\"name\":\"Ada\",\"unknown\":true,\"age\":37,\"address\":{\"city\":\"Seattle\",\"postalCode\":98101,\"ignored\":\"x\"}}");
+		Person? value = serializer.Deserialize<Person>("""{"name":"Ada","unknown":true,"age":37,"address":{"city":"Seattle","postalCode":98101,"ignored":"x"}}""");
 		Assert.NotNull(value);
 		Person expected = new()
 		{
@@ -90,7 +90,7 @@ public partial class JsonObjectSerializerTests : TestBase
 			Address = new Address { City = "Seattle", PostalCode = 98101 },
 		};
 
-		AssertStructuralEqual(expected, value, "{\"name\":\"Ada\",\"unknown\":true,\"age\":37,\"address\":{\"city\":\"Seattle\",\"postalCode\":98101,\"ignored\":\"x\"}}");
+		AssertStructuralEqual(expected, value, """{"name":"Ada","unknown":true,"age":37,"address":{"city":"Seattle","postalCode":98101,"ignored":"x"}}""");
 	}
 
 	[Test]
@@ -98,13 +98,13 @@ public partial class JsonObjectSerializerTests : TestBase
 	{
 		JsonSerializer serializer = new();
 
-		ExtensionDataPerson? value = serializer.Deserialize<ExtensionDataPerson>("{\"name\":\"Ada\",\"unknown\":true,\"extra\":{\"nested\":5}}\n");
+		ExtensionDataPerson? value = serializer.Deserialize<ExtensionDataPerson>("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""" + "\n");
 
 		Assert.NotNull(value);
 		Assert.Equal("Ada", value.Name);
 		Assert.NotNull(value.ExtensionData);
 		Assert.Equal("true", value.ExtensionData!["unknown"]);
-		Assert.Equal("{\"nested\":5}", value.ExtensionData["extra"]);
+		Assert.Equal("""{"nested":5}""", value.ExtensionData["extra"]);
 	}
 
 	[Test]
@@ -117,13 +117,13 @@ public partial class JsonObjectSerializerTests : TestBase
 			ExtensionData = new Dictionary<string, string>
 			{
 				["unknown"] = "true",
-				["extra"] = "{\"nested\":5}",
+				["extra"] = """{"nested":5}""",
 			},
 		};
 
 		string json = serializer.Serialize(value);
 
-		Assert.Equal("{\"name\":\"Ada\",\"unknown\":true,\"extra\":{\"nested\":5}}", json);
+		Assert.Equal("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""", json);
 	}
 
 	[Test]
@@ -131,7 +131,7 @@ public partial class JsonObjectSerializerTests : TestBase
 	{
 		JsonSerializer serializer = new() { PropertyNameCaseInsensitive = true };
 
-		Person? value = serializer.Deserialize<Person>("{\"NAME\":\"Ada\",\"AGE\":37,\"ADDRESS\":{\"CITY\":\"Seattle\",\"POSTALCODE\":98101}}");
+		Person? value = serializer.Deserialize<Person>("""{"NAME":"Ada","AGE":37,"ADDRESS":{"CITY":"Seattle","POSTALCODE":98101}}""");
 		Person expected = new()
 		{
 			Name = "Ada",
@@ -139,7 +139,7 @@ public partial class JsonObjectSerializerTests : TestBase
 			Address = new Address { City = "Seattle", PostalCode = 98101 },
 		};
 
-		AssertStructuralEqual(expected, value, "{\"NAME\":\"Ada\",\"AGE\":37,\"ADDRESS\":{\"CITY\":\"Seattle\",\"POSTALCODE\":98101}}");
+		AssertStructuralEqual(expected, value, """{"NAME":"Ada","AGE":37,"ADDRESS":{"CITY":"Seattle","POSTALCODE":98101}}""");
 	}
 
 	[Test]
@@ -148,7 +148,7 @@ public partial class JsonObjectSerializerTests : TestBase
 		JsonSerializer serializer = new();
 		Person value = new() { Name = "Ada", Age = 37, Address = null };
 
-		this.AssertRoundtrip(value, "{\"name\":\"Ada\",\"age\":37,\"address\":null}", serializer);
+		this.AssertRoundtrip(value, """{"name":"Ada","age":37,"address":null}""", serializer);
 	}
 
 	[Test]
@@ -165,8 +165,9 @@ public partial class JsonObjectSerializerTests : TestBase
 				PostalCode = 98101,
 			},
 		};
+		string expectedJson = "{\n  \"name\": \"Ada\",\n  \"age\": 37,\n  \"address\": {\n    \"city\": \"Seattle\",\n    \"postalCode\": 98101\n  }\n}";
 
-		this.AssertRoundtrip(value, "{\n  \"name\": \"Ada\",\n  \"age\": 37,\n  \"address\": {\n    \"city\": \"Seattle\",\n    \"postalCode\": 98101\n  }\n}", serializer);
+		this.AssertRoundtrip(value, expectedJson, serializer);
 	}
 
 	[Test]
@@ -191,7 +192,7 @@ public partial class JsonObjectSerializerTests : TestBase
 
 		string json = serializer.Serialize(value);
 
-		Assert.Equal("{\"Name\":\"Ada\",\"Age\":37,\"Address\":null}", json);
+		Assert.Equal("""{"Name":"Ada","Age":37,"Address":null}""", json);
 	}
 
 	[Test]
@@ -200,7 +201,7 @@ public partial class JsonObjectSerializerTests : TestBase
 		JsonSerializer serializer = new();
 		RenamedPropertyContainer value = new() { URLValue = "https://example.com" };
 
-		this.AssertRoundtrip(value, "{\"uri\":\"https://example.com\"}", serializer);
+		this.AssertRoundtrip(value, """{"uri":"https://example.com"}""", serializer);
 	}
 
 	[Test]
@@ -211,7 +212,7 @@ public partial class JsonObjectSerializerTests : TestBase
 
 		string json = serializer.Serialize(value);
 
-		Assert.Equal("{\"name\":\"Ada\"}", json);
+		Assert.Equal("""{"name":"Ada"}""", json);
 	}
 
 	[Test]
@@ -222,7 +223,7 @@ public partial class JsonObjectSerializerTests : TestBase
 
 		string json = serializer.Serialize(value);
 
-		Assert.Equal("{\"name\":\"Ada\",\"address\":null}", json);
+		Assert.Equal("""{"name":"Ada","address":null}""", json);
 	}
 
 	[Test]
@@ -233,7 +234,7 @@ public partial class JsonObjectSerializerTests : TestBase
 
 		string json = serializer.Serialize(value);
 
-		Assert.Equal("{\"age\":0}", json);
+		Assert.Equal("""{"age":0}""", json);
 	}
 
 	[Test]
@@ -244,7 +245,7 @@ public partial class JsonObjectSerializerTests : TestBase
 
 		string json = serializer.Serialize(value);
 
-		Assert.Equal("{\"count\":0}", json);
+		Assert.Equal("""{"count":0}""", json);
 	}
 
 	[Test]
@@ -252,7 +253,7 @@ public partial class JsonObjectSerializerTests : TestBase
 	{
 		JsonSerializer serializer = new();
 
-		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<RequiredPropertyContainer>("{}"));
+		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<RequiredPropertyContainer>("""{}"""));
 		Assert.Contains("Name", exception.Message);
 	}
 
@@ -261,7 +262,7 @@ public partial class JsonObjectSerializerTests : TestBase
 	{
 		JsonSerializer serializer = new();
 
-		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<NonNullablePropertyContainer>("{\"name\":null}"));
+		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<NonNullablePropertyContainer>("""{"name":null}"""));
 		Assert.Contains("Name", exception.Message);
 	}
 
@@ -281,7 +282,7 @@ public partial class JsonObjectSerializerTests : TestBase
 	{
 		JsonSerializer serializer = new() { DeserializeDefaultValues = DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties };
 
-		NonNullablePropertyContainer? value = serializer.Deserialize<NonNullablePropertyContainer>("{\"name\":null}");
+		NonNullablePropertyContainer? value = serializer.Deserialize<NonNullablePropertyContainer>("""{"name":null}""");
 
 		Assert.NotNull(value);
 		Assert.Null(value.Name);
@@ -295,7 +296,7 @@ public partial class JsonObjectSerializerTests : TestBase
 		SharedRoot value = new() { Left = sharedLeaf, Right = sharedLeaf };
 
 		string json = serializer.Serialize(value);
-		Assert.Equal("{\"$id\":1,\"$value\":{\"left\":{\"$id\":2,\"$value\":{\"name\":\"Ada\"}},\"right\":{\"$ref\":2}}}", json);
+		Assert.Equal("""{"$id":1,"$value":{"left":{"$id":2,"$value":{"name":"Ada"}},"right":{"$ref":2}}}""", json);
 
 		SharedRoot? roundTripped = serializer.Deserialize<SharedRoot>(json);
 		Assert.NotNull(roundTripped?.Left);

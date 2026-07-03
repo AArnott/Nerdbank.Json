@@ -18,7 +18,7 @@ public partial class JsonObjectSerializerTests
 			new Person { Name = "Grace", Age = 41, Address = new Address { City = "Arlington", PostalCode = 22201 } },
 		];
 
-		this.AssertRoundtrip<List<Person>, JsonObjectSerializerTests>(value, "[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":{\"city\":\"Arlington\",\"postalCode\":22201}}]", serializer);
+		this.AssertRoundtrip<List<Person>, JsonObjectSerializerTests>(value, """[{"name":"Ada","age":37,"address":null},{"name":"Grace","age":41,"address":{"city":"Arlington","postalCode":22201}}]""", serializer);
 	}
 
 	[Test]
@@ -76,7 +76,7 @@ public partial class JsonObjectSerializerTests
 			LuckyNumbers = [3, 5, 8],
 		};
 
-		this.AssertRoundtrip(value, "{\"people\":[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":null}],\"luckyNumbers\":[3,5,8]}", serializer);
+		this.AssertRoundtrip(value, """{"people":[{"name":"Ada","age":37,"address":null},{"name":"Grace","age":41,"address":null}],"luckyNumbers":[3,5,8]}""", serializer);
 	}
 
 	[Test]
@@ -89,7 +89,7 @@ public partial class JsonObjectSerializerTests
 		ReadOnlyCollection<int>? roundTripped = serializer.Deserialize<ReadOnlyCollection<int>, JsonObjectSerializerTests>(json);
 
 		Assert.NotNull(roundTripped);
-		Assert.Equal("[3,5,8]", json);
+		Assert.Equal("""[3,5,8]""", json);
 		AssertStructuralEqual(value, roundTripped, json);
 	}
 
@@ -98,7 +98,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new();
 
-		GetterOnlyEnumerableContainer? value = serializer.Deserialize<GetterOnlyEnumerableContainer>("{\"people\":[{\"name\":\"Ada\",\"age\":37,\"address\":null},{\"name\":\"Grace\",\"age\":41,\"address\":null}]}");
+		GetterOnlyEnumerableContainer? value = serializer.Deserialize<GetterOnlyEnumerableContainer>("""{"people":[{"name":"Ada","age":37,"address":null},{"name":"Grace","age":41,"address":null}]}""");
 
 		Assert.NotNull(value);
 		Assert.Equal(2, value.People.Count);

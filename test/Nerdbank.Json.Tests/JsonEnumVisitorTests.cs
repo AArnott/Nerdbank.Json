@@ -40,7 +40,7 @@ public partial class JsonObjectSerializerTests
 		JsonSerializer serializer = new();
 		EnumContainer value = new() { Value = SomeEnum.Three };
 
-		this.AssertRoundtrip(value, "{\"value\":3}", serializer);
+		this.AssertRoundtrip(value, """{"value":3}""", serializer);
 	}
 
 	[Test]
@@ -96,7 +96,7 @@ public partial class JsonObjectSerializerTests
 		JsonSerializer serializer = new() { SerializeEnumValuesByName = true };
 		EnumContainer value = new() { Value = SomeEnum.Three };
 
-		this.AssertRoundtrip(value, "{\"value\":\"three\"}", serializer);
+		this.AssertRoundtrip(value, """{"value":"three"}""", serializer);
 	}
 
 	[GenerateShape]

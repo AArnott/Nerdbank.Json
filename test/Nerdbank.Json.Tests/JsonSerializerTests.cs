@@ -46,7 +46,9 @@ public partial class JsonSerializerTests : TestBase
 {
 	[Test]
 	public void Serialize_StringUsesRfc8259EscapingRules()
-		=> this.AssertRoundtrip("ü <tag> \"quoted\" \\ slash\nnext", "\"ü <tag> \\\"quoted\\\" \\\\ slash\\nnext\"");
+		=> this.AssertRoundtrip(
+			"ü <tag> \"quoted\" \\ slash\nnext",
+			"\"ü <tag> \\\"quoted\\\" \\\\ slash\\nnext\"");
 
 	[Test]
 	public void SerializeDeserialize_PrimitiveScalars()
@@ -84,12 +86,24 @@ public partial class JsonSerializerTests : TestBase
 		}
 
 		this.AssertRoundtrip(new BigInteger(1234567890123456789L), "1234567890123456789");
-		this.AssertRoundtrip(new DateTime(2026, 6, 25, 18, 17, 16, 123, DateTimeKind.Utc).AddTicks(4567), "\"2026-06-25T18:17:16.1234567Z\"");
-		this.AssertRoundtrip(new DateTimeOffset(2026, 6, 25, 18, 17, 16, 123, TimeSpan.FromHours(-7)).AddTicks(4567), "\"2026-06-25T18:17:16.1234567-07:00\"");
-		this.AssertRoundtrip(new TimeSpan(1, 2, 3, 4, 5).Add(TimeSpan.FromTicks(6)), "\"1.02:03:04.0050006\"");
-		this.AssertRoundtrip(Guid.Parse("01234567-89ab-cdef-0123-456789abcdef"), "\"01234567-89ab-cdef-0123-456789abcdef\"");
-		this.AssertRoundtrip(new Version(1, 2, 3, 4), "\"1.2.3.4\"");
-		this.AssertRoundtrip(new Uri("https://example.com/a?b=c", UriKind.Absolute), "\"https://example.com/a?b=c\"");
+		this.AssertRoundtrip(
+			new DateTime(2026, 6, 25, 18, 17, 16, 123, DateTimeKind.Utc).AddTicks(4567),
+			"\"2026-06-25T18:17:16.1234567Z\"");
+		this.AssertRoundtrip(
+			new DateTimeOffset(2026, 6, 25, 18, 17, 16, 123, TimeSpan.FromHours(-7)).AddTicks(4567),
+			"\"2026-06-25T18:17:16.1234567-07:00\"");
+		this.AssertRoundtrip(
+			new TimeSpan(1, 2, 3, 4, 5).Add(TimeSpan.FromTicks(6)),
+			"\"1.02:03:04.0050006\"");
+		this.AssertRoundtrip(
+			Guid.Parse("01234567-89ab-cdef-0123-456789abcdef"),
+			"\"01234567-89ab-cdef-0123-456789abcdef\"");
+		this.AssertRoundtrip(
+			new Version(1, 2, 3, 4),
+			"\"1.2.3.4\"");
+		this.AssertRoundtrip(
+			new Uri("https://example.com/a?b=c", UriKind.Absolute),
+			"\"https://example.com/a?b=c\"");
 		this.AssertRoundtrip(culture, cultureJson);
 		this.AssertRoundtrip(Encoding.UTF8, "\"utf-8\"");
 		this.AssertRoundtrip(Color.FromArgb(unchecked((int)0xFF336699)), "-13408615");
@@ -111,9 +125,15 @@ public partial class JsonSerializerTests : TestBase
 		this.AssertRoundtrip((Half)1.5f, "1.5");
 		this.AssertRoundtrip(Int128.Parse("170141183460469231731687303715884105727", CultureInfo.InvariantCulture), "170141183460469231731687303715884105727");
 		this.AssertRoundtrip(UInt128.Parse("340282366920938463463374607431768211455", CultureInfo.InvariantCulture), "340282366920938463463374607431768211455");
-		this.AssertRoundtrip(DateOnly.ParseExact("2026-06-25", "yyyy-MM-dd", CultureInfo.InvariantCulture), "\"2026-06-25\"");
-		this.AssertRoundtrip(TimeOnly.ParseExact("18:17:16.1234567", "HH:mm:ss.fffffff", CultureInfo.InvariantCulture), "\"18:17:16.1234567\"");
-		this.AssertRoundtrip(new Rune(0x1F98A), "\"🦊\"");
+		this.AssertRoundtrip(
+			DateOnly.ParseExact("2026-06-25", "yyyy-MM-dd", CultureInfo.InvariantCulture),
+			"\"2026-06-25\"");
+		this.AssertRoundtrip(
+			TimeOnly.ParseExact("18:17:16.1234567", "HH:mm:ss.fffffff", CultureInfo.InvariantCulture),
+			"\"18:17:16.1234567\"");
+		this.AssertRoundtrip(
+			new Rune(0x1F98A),
+			"\"🦊\"");
 	}
 #endif
 
@@ -143,7 +163,7 @@ public partial class JsonSerializerTests : TestBase
 	{
 		JsonSerializer serializer = new();
 
-		Assert.Throws<FormatException>(() => serializer.Deserialize<Point, JsonSerializerTests>("[12,-34,]"));
+		Assert.Throws<FormatException>(() => serializer.Deserialize<Point, JsonSerializerTests>("""[12,-34,]"""));
 	}
 
 	[Test]
@@ -151,7 +171,11 @@ public partial class JsonSerializerTests : TestBase
 	{
 		JsonSerializer serializer = new() { ReadCommentHandling = JsonCommentHandling.Skip };
 
-		Point value = serializer.Deserialize<Point, JsonSerializerTests>("[/* x */12, // y\r\n -34]");
+		Point value = serializer.Deserialize<Point, JsonSerializerTests>(
+			"""
+			[/* x */12, // y
+			 -34]
+			""");
 
 		Assert.Equal(new Point(12, -34), value);
 	}
@@ -161,7 +185,7 @@ public partial class JsonSerializerTests : TestBase
 	{
 		JsonSerializer serializer = new();
 
-		Assert.Throws<FormatException>(() => serializer.Deserialize<Point, JsonSerializerTests>("[/* x */12,-34]"));
+		Assert.Throws<FormatException>(() => serializer.Deserialize<Point, JsonSerializerTests>("""[/* x */12,-34]"""));
 	}
 
 	private void AssertRoundtrip<T>(T value, string expectedJson)

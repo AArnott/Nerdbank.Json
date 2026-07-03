@@ -15,7 +15,7 @@ public partial class JsonObjectSerializerTests
 		string json = serializer.Serialize(value, shape);
 		Animal? roundTripped = serializer.Deserialize(json, shape);
 
-		Assert.Equal("[null,{\"name\":\"Milo\"}]", json);
+		Assert.Equal("""[null,{"name":"Milo"}]""", json);
 		Assert.Equal(value, roundTripped);
 	}
 
@@ -29,7 +29,7 @@ public partial class JsonObjectSerializerTests
 		string json = serializer.Serialize(value, shape);
 		Animal? roundTripped = serializer.Deserialize(json, shape);
 
-		Assert.Equal("[\"Cat\",{\"lives\":9,\"name\":\"Milo\"}]", json);
+		Assert.Equal("""["Cat",{"lives":9,"name":"Milo"}]""", json);
 		Assert.Equal(value, roundTripped);
 	}
 
@@ -43,7 +43,7 @@ public partial class JsonObjectSerializerTests
 		string json = serializer.Serialize(value, shape);
 		TaggedAnimal? roundTripped = serializer.Deserialize(json, shape);
 
-		Assert.Equal("[3,{\"lives\":7,\"name\":\"Otis\"}]", json);
+		Assert.Equal("""[3,{"lives":7,"name":"Otis"}]""", json);
 		Assert.Equal(value, roundTripped);
 	}
 
@@ -53,7 +53,7 @@ public partial class JsonObjectSerializerTests
 		JsonSerializer serializer = new();
 		UnionContainer value = new() { Pet = new Cat("Milo", 9) };
 
-		UnionContainer? roundTripped = this.AssertRoundtrip(value, "{\"pet\":[\"Cat\",{\"lives\":9,\"name\":\"Milo\"}]}", serializer);
+		UnionContainer? roundTripped = this.AssertRoundtrip(value, """{"pet":["Cat",{"lives":9,"name":"Milo"}]}""", serializer);
 		AssertStructuralEqual(value, roundTripped, this.LastSerializedJson!);
 	}
 

@@ -12,7 +12,7 @@ public partial class JsonObjectSerializerTests
 		string json = serializer.Serialize(value);
 		SurrogateBackedType? roundTripped = serializer.Deserialize<SurrogateBackedType>(json);
 
-		Assert.Equal("{\"a\":3,\"b\":5}", json);
+		Assert.Equal("""{"a":3,"b":5}""", json);
 		Assert.NotNull(roundTripped);
 		Assert.Equal(8, roundTripped.Sum);
 	}
