@@ -3,7 +3,6 @@
 
 #pragma warning disable SA1600 // Elements should be documented
 
-using System;
 using System.Globalization;
 using System.Numerics;
 using System.Text;

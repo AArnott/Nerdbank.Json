@@ -4,8 +4,6 @@
 #pragma warning disable SA1204 // Keep comparer nested near its only caller in this focused helper.
 #pragma warning disable SA1600 // Internal helper members are intentionally undocumented.
 
-using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 

@@ -7,8 +7,6 @@
 
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
-using System.IO.Pipelines;
-using Microsoft;
 
 namespace Nerdbank.Json;
 

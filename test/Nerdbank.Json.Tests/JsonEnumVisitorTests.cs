@@ -1,10 +1,6 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using Nerdbank.Json;
-using PolyType;
-using Xunit;
-
 [GenerateShapeFor<JsonObjectSerializerTests.SomeEnum>]
 [GenerateShapeFor<JsonObjectSerializerTests.FlagEnum>]
 public partial class JsonObjectSerializerTests

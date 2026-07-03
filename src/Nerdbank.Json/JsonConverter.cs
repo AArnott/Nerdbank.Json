@@ -4,7 +4,6 @@
 #pragma warning disable SA1402 // File may only contain a single type
 #pragma warning disable SA1600 // Internal helper elements are intentionally undocumented in this file.
 
-using System;
 using PolyType.Utilities;
 
 namespace Nerdbank.Json;
