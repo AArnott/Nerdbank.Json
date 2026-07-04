@@ -1,0 +1,105 @@
+# Security
+
+Security considerations come into play especially when deserializing data from an untrusted source.
+Vulnerabilities typically include denial of service attacks at the deserializer level itself but may involve far more damaging vulnerabilities depending on how the deserialized data is later used by an application.
+
+In this topic, we will focus on the vulnerabilities that are specific to the deserialization layer.
+
+## Adjusting secure defaults
+
+In some cases secure defaults can impact required functionality.
+For the built-in converters in Nerdbank.Json, the primary knobs are <xref:Nerdbank.Json.SerializationContext.MaxDepth>, <xref:Nerdbank.Json.SerializationContext.Security>, and <xref:Nerdbank.Json.JsonSerializer.ComparerProvider?displayProperty=nameWithType>.
+The <xref:Nerdbank.Json.SecuritySettings> instance carried on <xref:Nerdbank.Json.SerializationContext> is also available for custom converters that want to honor additional application-specific policy.
+
+In this example, the serializer is configured with a custom depth limit while preserving the secure comparer behavior used for hash-based collections:
+
+[!code-csharp[](../../samples/cs/Security.cs#SetSecuritySettings_Custom)]
+
+When you are dealing exclusively with trusted data, you may also opt out of the secure comparer provider and use <xref:Nerdbank.Json.SecuritySettings.TrustedData> to communicate trusted-data semantics to any custom converters you have authored:
+
+[!code-csharp[](../../samples/cs/Security.cs#SetSecuritySettings_TrustedData)]
+
+
+## Stack overflows
+
+A very simple attack to carry out is crashing the deserializing process by forcing the deserializer to "stack overflow".
+With each nested structure (e.g. an object or array) in JSON, another frame is added to the deserializing thread's "stack".
+This stack space is limited and if exceeded, the process will crash.
+It can take very little JSON input to crash a deserializing application that does not guard against such stack overflows.
+
+Nerdbank.Json protects against such attacks by artificially limiting the level of nesting that is allowed before a deserializer will throw an exception that can be caught and processed by an application rather than crash it.
+This limit is set by <xref:Nerdbank.Json.SerializationContext.MaxDepth>, which by default is set to a conservative value that should prevent stack overflows.
+When the data to be deserialized has a legitimate need for deeper nesting than the default limit allows, this limit may be adjusted, like this:
+
+[!code-csharp[](../../samples/cs/Security.cs#SetMaxDepth)]
+
+## Hash collisions
+
+When deserializing data into a dictionary or any other collection that hashes a key to provide fast lookup times, an adversary may carefully choose the keys in the collection such that when deserialized, the hash codes will collide, reducing the performance of the collection from its typical O(1) or "constant time" performance to O(n) or "linear time" performance.
+Such a performance degradation can be dramatic, particularly when combined with an application's other algorithms that may multiply this effect.
+This is a very cheap way for an adversary to bring the application to a crawl, leading to a denial of service to other innocent users.
+
+To defend against this threat while deserializing untrusted data, it is important to use collision resistant hash functions for the keys in your collections.
+Doing so dramatically increases the cost to the attacker to carry out this attack and should severely limit the impact they can have on your service.
+
+> [!IMPORTANT]
+> The collections types included with .NET do _not_ use collision resistant hash functions by default except for <xref:System.String> specifically when it is used as a key.
+> .NET does not supply collision resistant hash functions to use for any other type.
+> The <xref:System.HashCode> type in particular does _not_ offer collision resistance.
+> They must come from your own code or a library with cryptographic hash functions.
+
+Nerdbank.Json protects against such attacks by using a collision resistant hash function for all hash-based collections that accept an <xref:System.Collections.Generic.IEqualityComparer`1> during construction.
+Collision resistant hashing comes at a small perf cost during deserialization.
+
+This secure-by-default behavior may be overridden by setting the <xref:Nerdbank.Json.JsonSerializer.ComparerProvider?displayProperty=nameWithType> property.
+This property may be cleared of its default value to improve performance when deserializing trusted data, or you may wish to provide your own object that is aware of the particular hashing/equality needs of your data types.
+
+> [!NOTE]
+> Hash collision resistance has no impact on the serialized data itself.
+> A program may defend itself against hash collision attacks without breaking interoperability with other parties that they exchange data with.
+
+### Specifying custom comparers
+
+You can specify a particular <xref:System.Collections.Generic.IEqualityComparer`1> for a particular collection by instantiating your collections yourself in your data type's constructor or using a field or property initializer.
+
+Here is an example:
+
+[!code-csharp[](../../samples/cs/Security.cs#SecureEqualityComparers)]
+
+> [!IMPORTANT]
+> Note how the collection properties do _not_ define a property setter.
+> This is crucial to the threat mitigation, since it activates the deserializer behavior of not recreating the collection using the default (insecure) equality comparer.
+
+In this example, we use <xref:Nerdbank.MessagePack.StructuralEqualityComparer.GetHashCollisionResistant*?displayProperty=nameWithType>, which provides a collision resistant implementation of <xref:System.Collections.Generic.IEqualityComparer`1>.
+This implementation uses the SIP hash algorithm, which is known for its high performance and collision resistance.
+While it will function for virtually any data type, its behavior is not correct in all cases and you may need to implement your own secure hash function.
+Please review the documentation for <xref:Nerdbank.MessagePack.StructuralEqualityComparer.GetHashCollisionResistant*> for more information.
+
+## Multiple values for the same property
+
+Attackers will sometimes attempt to exploit vulnerabilities in a system by providing multiple values for the same property.
+Consider this JSON object:
+
+```json
+{ "accessRequested": "guest", "accessRequested": "admin" }
+```
+
+If this object represents a request and was received and checked for necessary permissions before being forwarded to a processor, there's a potential exploit.
+If the permission check only scans for the first definition of the `accessRequested` property and sees that `guest` permission is requested, it may approve and forward the request to the processor.
+The processor may need to understand the whole object and therefore fully deserialize it.
+If the deserializer is implemented as most are, the last value given for a property may be the one last applied to the deserialized object.
+This means that although the security check saw "guest", the processor will see "admin".
+
+There is no good reason for a serialized object to define two values for the same property.
+The same exploit is possible with objects encoded in JSON.
+Nerdbank.Json mitigates this threat automatically by throwing a <xref:Nerdbank.Json.JsonSerializationException> with its <xref:Nerdbank.Json.JsonSerializationException.Code> property set to <xref:Nerdbank.Json.JsonSerializationException.ErrorCode.DoublePropertyAssignment> during deserialization when any such double assignment is detected.
+
+## Loading arbitrary types
+
+When data to be deserialized can specify the type into which the data is deserialized, attackers may exploit that capability to get a trusted program to misbehave by feeding it data contrived to deserialize into objects that are configured to exhibit unexpected behavior favorable to the attacker.
+
+Nerdbank.Json does not support deserialization of arbitrary types.
+Data must deserialize into a graph of a known, closed set of types.
+[Unions](unions.md) may be used to allow the data to dictate which of a closed set of derived types may be activated for a given base class, however.
+
+An application may author a [custom converter](custom-converters.md) to add support for data dictating the type to be deserialized, but this is not recommended for security reasons.

@@ -34,6 +34,32 @@ public partial class JsonObjectSerializerTests
 		this.AssertRoundtrip(value, """{"pet":["Cat",{"lives":9,"name":"Milo"}]}""");
 	}
 
+	[Test]
+	public void Serialize_Union_ExceedingMaxDepth_Throws()
+	{
+		this.Serializer = this.Serializer with
+		{
+			StartingContext = this.Serializer.StartingContext with { MaxDepth = 1 },
+		};
+
+		Animal value = new Cat("Milo", 9);
+
+		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Serialize(value));
+		Assert.Contains("Exceeded maximum depth", exception.Message);
+	}
+
+	[Test]
+	public void Deserialize_Union_ExceedingMaxDepth_Throws()
+	{
+		this.Serializer = this.Serializer with
+		{
+			StartingContext = this.Serializer.StartingContext with { MaxDepth = 1 },
+		};
+
+		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Deserialize<Animal>("""["Cat",{"lives":9,"name":"Milo"}]"""));
+		Assert.Contains("Exceeded maximum depth", exception.Message);
+	}
+
 	[GenerateShape]
 	[DerivedTypeShape(typeof(Cat))]
 	internal partial record Animal(string Name);

@@ -24,8 +24,11 @@ public partial record JsonSerializer
 #endif
 
 	private JsonSerializerConfiguration configuration = JsonSerializerConfiguration.Default;
-	[ThreadStatic]
-	private static JsonReferenceEqualityTracker? currentReferenceTracker;
+
+	/// <summary>
+	/// Gets the starting context to begin serializations and deserializations with.
+	/// </summary>
+	public SerializationContext StartingContext { get; init; } = new();
 
 	/// <inheritdoc cref="JsonSerializerConfiguration.PropertyNamingPolicy"/>
 	public JsonNamingPolicy? PropertyNamingPolicy
@@ -130,8 +133,6 @@ public partial record JsonSerializer
 	/// </summary>
 	internal ConverterCache ConverterCache => this.configuration.ConverterCache;
 
-	internal JsonReferenceEqualityTracker ReferenceTracker => currentReferenceTracker ?? throw new InvalidOperationException("Reference tracking is only available within an active serialization or deserialization operation.");
-
 	/// <summary>
 	/// Serializes an untyped value to JSON using the specified type shape.
 	/// </summary>
@@ -143,7 +144,8 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(shape);
 
-		this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, this);
+		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, context);
 	}
 
 	/// <summary>
@@ -157,13 +159,15 @@ public partial record JsonSerializer
 	public void Serialize<T>(ref JsonWriter writer, in T? value, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(shape);
+		SerializationContext context = this.CreateSerializationContext(cancellationToken);
 
 		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TrySerialize(ref writer, value))
 		{
+			context.CancellationToken.ThrowIfCancellationRequested();
 			return;
 		}
 
-		this.ConverterCache.GetOrAddConverter(shape).Write(ref writer, value, this);
+		this.ConverterCache.GetOrAddConverter(shape).Write(ref writer, value, context);
 	}
 
 	/// <summary>
@@ -177,7 +181,8 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(shape);
 
-		return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, this);
+		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, context);
 	}
 
 	/// <summary>
@@ -191,16 +196,24 @@ public partial record JsonSerializer
 	public T? Deserialize<T>(ref JsonReader reader, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(shape);
+		SerializationContext context = this.CreateSerializationContext(cancellationToken);
 
 		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, out T value))
 		{
+			context.CancellationToken.ThrowIfCancellationRequested();
 			return value;
 		}
 
-		return this.ConverterCache.GetOrAddConverter(shape).Read(ref reader, this);
+		return this.ConverterCache.GetOrAddConverter(shape).Read(ref reader, context);
 	}
 
 	private bool CanUseBuiltInFastPath(Type type) => !this.ConverterCache.HasRuntimeConverters && (this.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(type));
 
 	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
+
+	private SerializationContext CreateSerializationContext(CancellationToken cancellationToken)
+	{
+		CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken;
+		return this.StartingContext.Start(this, this.ConverterCache, effectiveCancellationToken);
+	}
 }

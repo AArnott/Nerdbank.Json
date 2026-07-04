@@ -193,4 +193,36 @@ public partial class JsonSerializerTests : TestBase
 
 		Assert.Throws<FormatException>(() => serializer.Deserialize<Point, JsonSerializerTests>("""[/* x */12,-34]"""));
 	}
+
+	[Test]
+	public void Serialize_NestedBuiltInComplexType_ExceedingMaxDepth_Throws()
+	{
+		this.Serializer = this.Serializer with
+		{
+			StartingContext = this.Serializer.StartingContext with { MaxDepth = 1 },
+		};
+
+		PointContainer value = new() { Location = new Point(12, -34) };
+
+		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Serialize(value));
+		Assert.Contains("Exceeded maximum depth", exception.Message);
+	}
+
+	[Test]
+	public void Deserialize_NestedBuiltInComplexType_ExceedingMaxDepth_Throws()
+	{
+		this.Serializer = this.Serializer with
+		{
+			StartingContext = this.Serializer.StartingContext with { MaxDepth = 1 },
+		};
+
+		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Deserialize<PointContainer>("""{"location":[12,-34]}"""));
+		Assert.Contains("Exceeded maximum depth", exception.Message);
+	}
+
+	[GenerateShape]
+	internal partial class PointContainer
+	{
+		public Point Location { get; set; }
+	}
 }

@@ -76,12 +76,22 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
-	public void Deserialize_RecordWithParameterizedConstructor_DuplicateParameter_ThrowsFormatException()
+	public void Deserialize_RecordWithParameterizedConstructor_DuplicateParameter_ThrowsJsonSerializationException()
 	{
 		JsonSerializer serializer = new();
 
-		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<ParameterizedRecord>("""{"name":"Ada","name":"Grace","age":37}"""));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<ParameterizedRecord>("""{"name":"Ada","name":"Grace","age":37}"""));
 		Assert.Contains("name", exception.Message, System.StringComparison.OrdinalIgnoreCase);
+		Assert.Equal(JsonSerializationException.ErrorCode.DoublePropertyAssignment, exception.Code);
+	}
+
+	[Test]
+	public void Deserialize_RecordWithParameterizedConstructor_DuplicateParameter_CaseInsensitive_ThrowsJsonSerializationException()
+	{
+		JsonSerializer serializer = new() { PropertyNameCaseInsensitive = true };
+
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<ParameterizedRecord>("""{"Name":"Ada","name":"Grace","age":37}"""));
+		Assert.Equal(JsonSerializationException.ErrorCode.DoublePropertyAssignment, exception.Code);
 	}
 
 	[Test]

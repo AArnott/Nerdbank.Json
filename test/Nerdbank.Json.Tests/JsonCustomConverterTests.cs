@@ -117,12 +117,12 @@ public partial class JsonObjectSerializerTests
 
 	internal sealed partial class UpperCaseStringConverter : JsonConverter<string>
 	{
-		public override void Write(ref JsonWriter writer, string? value, JsonSerializer serializer)
+		public override void Write(ref JsonWriter writer, string? value, SerializationContext context)
 		{
 			writer.WriteStringValue(value?.ToUpperInvariant());
 		}
 
-		public override string? Read(ref JsonReader reader, JsonSerializer serializer)
+		public override string? Read(ref JsonReader reader, SerializationContext context)
 		{
 			string? value = reader.ReadString();
 			return value?.ToLowerInvariant();
@@ -138,7 +138,7 @@ public partial class JsonObjectSerializerTests
 
 	internal sealed partial class AttributedStringWrapperConverter : JsonConverter<AttributedStringWrapper>
 	{
-		public override void Write(ref JsonWriter writer, AttributedStringWrapper? value, JsonSerializer serializer)
+		public override void Write(ref JsonWriter writer, AttributedStringWrapper? value, SerializationContext context)
 		{
 			if (value is null)
 			{
@@ -152,7 +152,7 @@ public partial class JsonObjectSerializerTests
 			writer.WriteEndObject();
 		}
 
-		public override AttributedStringWrapper? Read(ref JsonReader reader, JsonSerializer serializer)
+		public override AttributedStringWrapper? Read(ref JsonReader reader, SerializationContext context)
 		{
 			if (reader.TryReadNull())
 			{
@@ -178,7 +178,7 @@ public partial class JsonObjectSerializerTests
 
 	internal sealed partial class GenericValueConverter<T> : JsonConverter<GenericValue<T>>
 	{
-		public override void Write(ref JsonWriter writer, GenericValue<T>? value, JsonSerializer serializer)
+		public override void Write(ref JsonWriter writer, GenericValue<T>? value, SerializationContext context)
 		{
 			if (value is null)
 			{
@@ -192,7 +192,7 @@ public partial class JsonObjectSerializerTests
 			writer.WriteEndObject();
 		}
 
-		public override GenericValue<T>? Read(ref JsonReader reader, JsonSerializer serializer)
+		public override GenericValue<T>? Read(ref JsonReader reader, SerializationContext context)
 		{
 			if (reader.TryReadNull())
 			{
@@ -221,7 +221,7 @@ public partial class JsonObjectSerializerTests
 
 	private sealed class CharListWrapperConverter(JsonConverter<char> elementConverter) : JsonConverter<List<char>>
 	{
-		public override void Write(ref JsonWriter writer, List<char>? value, JsonSerializer serializer)
+		public override void Write(ref JsonWriter writer, List<char>? value, SerializationContext context)
 		{
 			if (value is null)
 			{
@@ -238,14 +238,14 @@ public partial class JsonObjectSerializerTests
 					writer.WriteValueSeparator();
 				}
 
-				elementConverter.Write(ref writer, value[i], serializer);
+				elementConverter.Write(ref writer, value[i], context);
 			}
 
 			writer.WriteEndArray();
 			writer.WriteEndArray();
 		}
 
-		public override List<char>? Read(ref JsonReader reader, JsonSerializer serializer)
+		public override List<char>? Read(ref JsonReader reader, SerializationContext context)
 		{
 			if (reader.TryReadNull())
 			{
@@ -263,7 +263,7 @@ public partial class JsonObjectSerializerTests
 					reader.ReadValueSeparator();
 				}
 
-				result.Add(elementConverter.Read(ref reader, serializer));
+				result.Add(elementConverter.Read(ref reader, context));
 				first = false;
 			}
 

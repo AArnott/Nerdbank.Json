@@ -13,12 +13,14 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 	private readonly JsonExtensionData<T>? extensionData;
 	private readonly JsonProperty<T>[] properties;
 	private readonly Dictionary<string, JsonProperty<T>> propertiesByName;
+	private readonly StringComparer propertyNameComparer;
 
 	internal JsonObjectConverter(Func<T> factory, JsonProperty<T>[] properties, StringComparer propertyNameComparer, JsonExtensionData<T>? extensionData = null)
 	{
 		this.factory = factory;
 		this.extensionData = extensionData;
 		this.properties = properties;
+		this.propertyNameComparer = propertyNameComparer;
 		this.propertiesByName = new Dictionary<string, JsonProperty<T>>(properties.Length, propertyNameComparer);
 		for (int i = 0; i < properties.Length; i++)
 		{
@@ -26,13 +28,15 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 		}
 	}
 
-	public override void Write(ref JsonWriter writer, T? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
 	{
 		if (value is null)
 		{
 			writer.WriteNullValue();
 			return;
 		}
+
+		context.DepthStep();
 
 		writer.WriteStartObject();
 		bool first = true;
@@ -44,7 +48,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 				continue;
 			}
 
-			if (property.Write(ref writer, value, serializer, first))
+			if (property.Write(ref writer, value, context, first))
 			{
 				first = false;
 			}
@@ -55,14 +59,17 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 		writer.WriteEndObject();
 	}
 
-	public override T? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override T? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (!typeof(T).IsValueType && reader.TryReadNull())
 		{
 			return default;
 		}
 
+		context.DepthStep();
+
 		T result = this.factory();
+		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
 		{
@@ -72,11 +79,12 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 		while (true)
 		{
 			string propertyName = reader.ReadRequiredString();
+			collisionDetection.MarkAsRead(propertyName);
 			reader.ReadNameSeparator();
 
 			if (this.propertiesByName.TryGetValue(propertyName, out JsonProperty<T>? property) && property.CanDeserialize)
 			{
-				property.Read(ref reader, ref result, serializer);
+				property.Read(ref reader, ref result, context);
 			}
 			else if (this.extensionData is not null)
 			{
@@ -226,9 +234,9 @@ internal abstract class JsonProperty<TDeclaring>
 
 	internal abstract bool CanDeserialize { get; }
 
-	internal abstract bool Write(ref JsonWriter writer, TDeclaring container, JsonSerializer serializer, bool first);
+	internal abstract bool Write(ref JsonWriter writer, TDeclaring container, SerializationContext context, bool first);
 
-	internal abstract void Read(ref JsonReader reader, ref TDeclaring container, JsonSerializer serializer);
+	internal abstract void Read(ref JsonReader reader, ref TDeclaring container, SerializationContext context);
 }
 
 internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclaring>
@@ -257,7 +265,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 
 	internal override bool CanDeserialize => this.setter is not null || this.deserializeIntoExistingInstance;
 
-	internal override bool Write(ref JsonWriter writer, TDeclaring container, JsonSerializer serializer, bool first)
+	internal override bool Write(ref JsonWriter writer, TDeclaring container, SerializationContext context, bool first)
 	{
 		if (this.getter is null)
 		{
@@ -265,7 +273,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		}
 
 		TProperty? value = this.getter(ref container);
-		if (!this.ShouldSerializeValue(value, serializer.SerializeDefaultValues))
+		if (!this.ShouldSerializeValue(value, context.SerializeDefaultValues))
 		{
 			return false;
 		}
@@ -276,19 +284,19 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		}
 
 		writer.WritePropertyName(this.Name);
-		this.converter.Write(ref writer, value, serializer);
+		this.converter.Write(ref writer, value, context);
 		return true;
 	}
 
-	internal override void Read(ref JsonReader reader, ref TDeclaring container, JsonSerializer serializer)
+	internal override void Read(ref JsonReader reader, ref TDeclaring container, SerializationContext context)
 	{
 		if (this.setter is not null)
 		{
-			TProperty? value = this.converter.Read(ref reader, serializer);
+			TProperty? value = this.converter.Read(ref reader, context);
 			if (this.isNonNullableReferenceType
 				&& value is null
 				&& !typeof(TProperty).IsValueType
-				&& (serializer.DeserializeDefaultValues & DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties) != DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties)
+				&& (context.DeserializeDefaultValues & DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties) != DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties)
 			{
 				throw new FormatException($"Property '{this.memberName}' does not allow null values.");
 			}
@@ -305,7 +313,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 			}
 
 			TProperty collection = this.getter(ref container);
-			deserializeInto.DeserializeInto(ref reader, ref collection, serializer);
+			deserializeInto.DeserializeInto(ref reader, ref collection, context);
 			return;
 		}
 

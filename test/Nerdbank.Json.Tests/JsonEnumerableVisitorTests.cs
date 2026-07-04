@@ -4,6 +4,7 @@
 using System.Collections.ObjectModel;
 
 [GenerateShapeFor<List<JsonObjectSerializerTests.Person>>]
+[GenerateShapeFor<List<List<List<int>>>>]
 [GenerateShapeFor<int[]>]
 [GenerateShapeFor<ReadOnlyCollection<int>>]
 public partial class JsonObjectSerializerTests
@@ -89,6 +90,32 @@ public partial class JsonObjectSerializerTests
 		Assert.Equal(2, value.People.Count);
 		Assert.Equal("Ada", value.People[0].Name);
 		Assert.Equal("Grace", value.People[1].Name);
+	}
+
+	[Test]
+	public void Serialize_DeeplyNestedEnumerable_ExceedingMaxDepth_Throws()
+	{
+		this.Serializer = this.Serializer with
+		{
+			StartingContext = this.Serializer.StartingContext with { MaxDepth = 2 },
+		};
+
+		List<List<List<int>>> value = [[[1]]];
+
+		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Serialize<List<List<List<int>>>, JsonObjectSerializerTests>(value));
+		Assert.Contains("Exceeded maximum depth", exception.Message);
+	}
+
+	[Test]
+	public void Deserialize_DeeplyNestedEnumerable_ExceedingMaxDepth_Throws()
+	{
+		this.Serializer = this.Serializer with
+		{
+			StartingContext = this.Serializer.StartingContext with { MaxDepth = 2 },
+		};
+
+		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Deserialize<List<List<List<int>>>, JsonObjectSerializerTests>("[[[1]]]"));
+		Assert.Contains("Exceeded maximum depth", exception.Message);
 	}
 
 	[GenerateShape]
