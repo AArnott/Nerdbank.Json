@@ -226,9 +226,17 @@ internal sealed class JsonExtensionData<TDeclaring, TProperty> : JsonExtensionDa
 
 internal abstract class JsonProperty<TDeclaring>
 {
-	internal JsonProperty(string name) => this.Name = name;
+	private readonly byte[] encodedName;
+
+	internal JsonProperty(string name)
+	{
+		this.Name = name;
+		this.encodedName = JsonWriter.EncodePropertyName(name);
+	}
 
 	internal string Name { get; }
+
+	internal ReadOnlySpan<byte> EncodedName => this.encodedName;
 
 	internal abstract bool CanSerialize { get; }
 
@@ -283,7 +291,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 			writer.WriteValueSeparator();
 		}
 
-		writer.WritePropertyName(this.Name);
+		writer.WritePropertyName(this.EncodedName);
 		this.converter.Write(ref writer, value, context);
 		return true;
 	}

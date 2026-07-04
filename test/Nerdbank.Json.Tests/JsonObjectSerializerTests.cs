@@ -231,6 +231,14 @@ public partial class JsonObjectSerializerTests : TestBase
 	}
 
 	[Test]
+	public void Serialize_ObjectGraph_ExplicitPropertyNameEscapesSpecialCharacters()
+	{
+		EscapedPropertyNameContainer value = new() { Value = 3 };
+
+		this.AssertRoundtrip(value, """{"say\"hi":3}""");
+	}
+
+	[Test]
 	public void Serialize_ObjectGraph_CanOmitDefaultValues()
 	{
 		this.Serializer = new() { SerializeDefaultValues = SerializeDefaultValuesPolicy.Never };
@@ -430,6 +438,13 @@ public partial class JsonObjectSerializerTests : TestBase
 	{
 		[PropertyShape(Name = "uri")]
 		public string? URLValue { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class EscapedPropertyNameContainer
+	{
+		[PropertyShape(Name = "say\"hi")]
+		public int Value { get; set; }
 	}
 
 	[GenerateShape]
