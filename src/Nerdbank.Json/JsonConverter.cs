@@ -15,9 +15,9 @@ public abstract class JsonConverter
 {
 	internal abstract Type DataType { get; }
 
-	internal abstract void WriteObject(ref JsonWriter writer, object? value, JsonSerializer serializer);
+	internal abstract void WriteObject(ref JsonWriter writer, object? value, SerializationContext context);
 
-	internal abstract object? ReadObject(ref JsonReader reader, JsonSerializer serializer);
+	internal abstract object? ReadObject(ref JsonReader reader, SerializationContext context);
 }
 
 /// <summary>
@@ -33,36 +33,54 @@ public abstract class JsonConverter<T> : JsonConverter
 	/// </summary>
 	/// <param name="writer">The writer to receive the JSON value.</param>
 	/// <param name="value">The value to write.</param>
-	/// <param name="serializer">The serializer invoking the converter.</param>
-	public abstract void Write(ref JsonWriter writer, T? value, JsonSerializer serializer);
+	/// <param name="context">Context for the serialization operation.</param>
+	public abstract void Write(ref JsonWriter writer, T? value, SerializationContext context);
 
 	/// <summary>
 	/// Reads a value from JSON.
 	/// </summary>
 	/// <param name="reader">The reader to consume the JSON value from.</param>
-	/// <param name="serializer">The serializer invoking the converter.</param>
+	/// <param name="context">Context for the deserialization operation.</param>
 	/// <returns>The deserialized value.</returns>
-	public abstract T? Read(ref JsonReader reader, JsonSerializer serializer);
+	public abstract T? Read(ref JsonReader reader, SerializationContext context);
 
-	internal sealed override void WriteObject(ref JsonWriter writer, object? value, JsonSerializer serializer)
-		=> this.Write(ref writer, (T?)value, serializer);
+	internal sealed override void WriteObject(ref JsonWriter writer, object? value, SerializationContext context)
+		=> this.Write(ref writer, (T?)value, context);
 
-	internal sealed override object? ReadObject(ref JsonReader reader, JsonSerializer serializer)
-		=> this.Read(ref reader, serializer);
+	internal sealed override object? ReadObject(ref JsonReader reader, SerializationContext context)
+		=> this.Read(ref reader, context);
 }
 
 internal sealed class BuiltInJsonConverter<T> : JsonConverter<T>
 {
-	public override void Write(ref JsonWriter writer, T? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
 	{
+		if (BuiltInJsonConverters.RequiresNestedContext(typeof(T)))
+		{
+			context.DepthStep();
+		}
+		else
+		{
+			context.CancellationToken.ThrowIfCancellationRequested();
+		}
+
 		if (!BuiltInJsonConverters.TrySerialize(ref writer, value))
 		{
 			throw new NotSupportedException($"The built-in JSON serializer does not yet support values of type {typeof(T).FullName}.");
 		}
 	}
 
-	public override T? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override T? Read(ref JsonReader reader, SerializationContext context)
 	{
+		if (BuiltInJsonConverters.RequiresNestedContext(typeof(T)))
+		{
+			context.DepthStep();
+		}
+		else
+		{
+			context.CancellationToken.ThrowIfCancellationRequested();
+		}
+
 		if (!BuiltInJsonConverters.TryDeserialize(ref reader, out T value))
 		{
 			throw new NotSupportedException($"The built-in JSON serializer does not yet support values of type {typeof(T).FullName}.");
@@ -79,10 +97,10 @@ internal sealed class DelayedJsonConverterFactory : IDelayedValueFactory
 
 	private sealed class DelayedJsonConverter<T>(DelayedValue<JsonConverter> self) : JsonConverter<T>
 	{
-		public override void Write(ref JsonWriter writer, T? value, JsonSerializer serializer)
-			=> ((JsonConverter<T>)self.Result).Write(ref writer, value, serializer);
+		public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
+			=> ((JsonConverter<T>)self.Result).Write(ref writer, value, context);
 
-		public override T? Read(ref JsonReader reader, JsonSerializer serializer)
-			=> ((JsonConverter<T>)self.Result).Read(ref reader, serializer);
+		public override T? Read(ref JsonReader reader, SerializationContext context)
+			=> ((JsonConverter<T>)self.Result).Read(ref reader, context);
 	}
 }

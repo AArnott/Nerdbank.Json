@@ -12,6 +12,11 @@ namespace Nerdbank.Json;
 
 internal static class BuiltInJsonConverters
 {
+	internal static bool RequiresNestedContext(Type type)
+	{
+		return type == typeof(Point);
+	}
+
 	internal static bool IsSupported(Type type)
 	{
 		return type == typeof(string)

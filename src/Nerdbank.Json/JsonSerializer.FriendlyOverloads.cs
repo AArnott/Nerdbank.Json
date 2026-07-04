@@ -33,17 +33,8 @@ public partial record JsonSerializer
 		{
 			WriteIndented = this.WriteIndented,
 		};
-		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
-		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
-		try
-		{
-			this.Serialize(ref jsonWriter, value, shape, cancellationToken);
-			jsonWriter.Flush();
-		}
-		finally
-		{
-			currentReferenceTracker = priorTracker;
-		}
+		this.Serialize(ref jsonWriter, value, shape, cancellationToken);
+		jsonWriter.Flush();
 	}
 
 	/// <summary>
@@ -65,16 +56,7 @@ public partial record JsonSerializer
 			{
 				WriteIndented = this.WriteIndented,
 			};
-			JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
-			currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
-			try
-			{
-				this.Serialize(ref writer, value, shape, cancellationToken);
-			}
-			finally
-			{
-				currentReferenceTracker = priorTracker;
-			}
+			this.Serialize(ref writer, value, shape, cancellationToken);
 
 			return writer.FlushAndGetString();
 		}
@@ -99,16 +81,7 @@ public partial record JsonSerializer
 			{
 				WriteIndented = this.WriteIndented,
 			};
-			JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
-			currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
-			try
-			{
-				this.SerializeObject(ref writer, value, shape, cancellationToken);
-			}
-			finally
-			{
-				currentReferenceTracker = priorTracker;
-			}
+			this.SerializeObject(ref writer, value, shape, cancellationToken);
 
 			return writer.FlushAndGetString();
 		}
@@ -128,17 +101,8 @@ public partial record JsonSerializer
 		{
 			WriteIndented = this.WriteIndented,
 		};
-		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
-		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
-		try
-		{
-			this.SerializeObject(ref jsonWriter, value, shape, cancellationToken);
-			jsonWriter.Flush();
-		}
-		finally
-		{
-			currentReferenceTracker = priorTracker;
-		}
+		this.SerializeObject(ref jsonWriter, value, shape, cancellationToken);
+		jsonWriter.Flush();
 	}
 
 	/// <summary>
@@ -181,18 +145,9 @@ public partial record JsonSerializer
 		Requires.NotNull(shape);
 
 		JsonReader reader = new(json.AsSpan(), this.AllowTrailingCommas, this.ReadCommentHandling);
-		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
-		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
-		try
-		{
-			T? value = this.Deserialize(ref reader, shape, cancellationToken);
-			reader.EnsureFullyConsumed();
-			return value;
-		}
-		finally
-		{
-			currentReferenceTracker = priorTracker;
-		}
+		T? value = this.Deserialize(ref reader, shape, cancellationToken);
+		reader.EnsureFullyConsumed();
+		return value;
 	}
 
 	/// <inheritdoc cref="DeserializeObject(ref JsonReader, ITypeShape, CancellationToken)"/>
@@ -202,18 +157,9 @@ public partial record JsonSerializer
 		Requires.NotNull(shape);
 
 		JsonReader reader = new(json.AsSpan(), this.AllowTrailingCommas, this.ReadCommentHandling);
-		JsonReferenceEqualityTracker? priorTracker = currentReferenceTracker;
-		currentReferenceTracker = this.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker();
-		try
-		{
-			object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
-			reader.EnsureFullyConsumed();
-			return value;
-		}
-		finally
-		{
-			currentReferenceTracker = priorTracker;
-		}
+		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
+		reader.EnsureFullyConsumed();
+		return value;
 	}
 
 	/// <summary>

@@ -9,7 +9,7 @@ namespace Nerdbank.Json;
 
 internal interface IJsonDeserializeInto<TCollection>
 {
-	void DeserializeInto(ref JsonReader reader, ref TCollection collection, JsonSerializer serializer);
+	void DeserializeInto(ref JsonReader reader, ref TCollection collection, SerializationContext context);
 }
 
 internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonConverter<TEnumerable>
@@ -25,13 +25,15 @@ internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonCon
 
 	protected JsonConverter<TElement> ElementConverter => this.elementConverter;
 
-	public override void Write(ref JsonWriter writer, TEnumerable? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TEnumerable? value, SerializationContext context)
 	{
 		if (value is null)
 		{
 			writer.WriteNullValue();
 			return;
 		}
+
+		context.DepthStep();
 
 		writer.WriteStartArray();
 		bool first = true;
@@ -43,7 +45,7 @@ internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonCon
 			}
 
 			first = false;
-			this.elementConverter.Write(ref writer, element, serializer);
+			this.elementConverter.Write(ref writer, element, context);
 		}
 
 		writer.WriteEndArray();
@@ -57,7 +59,7 @@ internal sealed class JsonReadOnlyEnumerableConverter<TEnumerable, TElement> : J
 	{
 	}
 
-	public override TEnumerable? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TEnumerable? Read(ref JsonReader reader, SerializationContext context)
 		=> throw new NotSupportedException($"JSON deserialization does not support read-only enumerable type {typeof(TEnumerable).FullName}.");
 }
 
@@ -75,7 +77,7 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 		this.constructionOptions = constructionOptions;
 	}
 
-	public void DeserializeInto(ref JsonReader reader, ref TEnumerable collection, JsonSerializer serializer)
+	public void DeserializeInto(ref JsonReader reader, ref TEnumerable collection, SerializationContext context)
 	{
 		reader.ReadStartArray();
 		if (reader.TryReadEndArray())
@@ -85,7 +87,7 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 
 		while (true)
 		{
-			this.addElement(ref collection, this.ElementConverter.Read(ref reader, serializer)!);
+			this.addElement(ref collection, this.ElementConverter.Read(ref reader, context)!);
 			if (reader.TryReadEndArray())
 			{
 				break;
@@ -95,15 +97,17 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 		}
 	}
 
-	public override TEnumerable? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TEnumerable? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (reader.TryReadNull())
 		{
 			return default;
 		}
 
+		context.DepthStep();
+
 		TEnumerable result = this.constructor(this.constructionOptions);
-		this.DeserializeInto(ref reader, ref result, serializer);
+		this.DeserializeInto(ref reader, ref result, context);
 		return result;
 	}
 }
@@ -120,12 +124,14 @@ internal sealed class JsonParameterizedEnumerableConverter<TEnumerable, TElement
 		this.constructionOptions = constructionOptions;
 	}
 
-	public override TEnumerable? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TEnumerable? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (reader.TryReadNull())
 		{
 			return default;
 		}
+
+		context.DepthStep();
 
 		List<TElement> elements = [];
 		reader.ReadStartArray();
@@ -133,7 +139,7 @@ internal sealed class JsonParameterizedEnumerableConverter<TEnumerable, TElement
 		{
 			while (true)
 			{
-				elements.Add(this.ElementConverter.Read(ref reader, serializer)!);
+				elements.Add(this.ElementConverter.Read(ref reader, context)!);
 				if (reader.TryReadEndArray())
 				{
 					break;
@@ -163,13 +169,15 @@ internal abstract class JsonDictionaryConverter<TDictionary, TKey, TValue> : Jso
 
 	protected JsonConverter<TValue> ValueConverter => this.valueConverter;
 
-	public override void Write(ref JsonWriter writer, TDictionary? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TDictionary? value, SerializationContext context)
 	{
 		if (value is null)
 		{
 			writer.WriteNullValue();
 			return;
 		}
+
+		context.DepthStep();
 
 		writer.WriteStartObject();
 		bool first = true;
@@ -182,7 +190,7 @@ internal abstract class JsonDictionaryConverter<TDictionary, TKey, TValue> : Jso
 
 			first = false;
 			writer.WritePropertyName(this.owner.GetSerializedDictionaryKey(JsonDictionaryKeyConverter.FormatKey(entry.Key)));
-			this.valueConverter.Write(ref writer, entry.Value, serializer);
+			this.valueConverter.Write(ref writer, entry.Value, context);
 		}
 
 		writer.WriteEndObject();
@@ -197,7 +205,7 @@ internal sealed class JsonReadOnlyDictionaryConverter<TDictionary, TKey, TValue>
 	{
 	}
 
-	public override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TDictionary? Read(ref JsonReader reader, SerializationContext context)
 		=> throw new NotSupportedException($"JSON deserialization does not support read-only dictionary type {typeof(TDictionary).FullName}.");
 }
 
@@ -216,7 +224,7 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 		this.constructionOptions = constructionOptions;
 	}
 
-	public void DeserializeInto(ref JsonReader reader, ref TDictionary collection, JsonSerializer serializer)
+	public void DeserializeInto(ref JsonReader reader, ref TDictionary collection, SerializationContext context)
 	{
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
@@ -228,7 +236,7 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 		{
 			string key = reader.ReadRequiredString();
 			reader.ReadNameSeparator();
-			this.addEntry(ref collection, JsonDictionaryKeyConverter.ParseKey<TKey>(key), this.ValueConverter.Read(ref reader, serializer)!);
+			this.addEntry(ref collection, JsonDictionaryKeyConverter.ParseKey<TKey>(key), this.ValueConverter.Read(ref reader, context)!);
 			if (reader.TryReadEndObject())
 			{
 				break;
@@ -238,15 +246,17 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 		}
 	}
 
-	public override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TDictionary? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (reader.TryReadNull())
 		{
 			return default;
 		}
 
+		context.DepthStep();
+
 		TDictionary result = this.constructor(this.constructionOptions);
-		this.DeserializeInto(ref reader, ref result, serializer);
+		this.DeserializeInto(ref reader, ref result, context);
 		return result;
 	}
 }
@@ -264,12 +274,14 @@ internal sealed class JsonParameterizedDictionaryConverter<TDictionary, TKey, TV
 		this.constructionOptions = constructionOptions;
 	}
 
-	public override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TDictionary? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (reader.TryReadNull())
 		{
 			return default;
 		}
+
+		context.DepthStep();
 
 		List<KeyValuePair<TKey, TValue>> entries = [];
 		reader.ReadStartObject();
@@ -279,7 +291,7 @@ internal sealed class JsonParameterizedDictionaryConverter<TDictionary, TKey, TV
 			{
 				string key = reader.ReadRequiredString();
 				reader.ReadNameSeparator();
-				entries.Add(new(JsonDictionaryKeyConverter.ParseKey<TKey>(key), this.ValueConverter.Read(ref reader, serializer)!));
+				entries.Add(new(JsonDictionaryKeyConverter.ParseKey<TKey>(key), this.ValueConverter.Read(ref reader, context)!));
 				if (reader.TryReadEndObject())
 				{
 					break;
@@ -296,13 +308,15 @@ internal sealed class JsonParameterizedDictionaryConverter<TDictionary, TKey, TV
 internal sealed class JsonListConverter<TCollection, TElement>(JsonConverter<TElement> elementConverter, Func<TCollection> createCollection) : JsonConverter<TCollection>
 	where TCollection : IEnumerable<TElement>
 {
-	public override void Write(ref JsonWriter writer, TCollection? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TCollection? value, SerializationContext context)
 	{
 		if (value is null)
 		{
 			writer.WriteNullValue();
 			return;
 		}
+
+		context.DepthStep();
 
 		writer.WriteStartArray();
 		bool first = true;
@@ -314,18 +328,20 @@ internal sealed class JsonListConverter<TCollection, TElement>(JsonConverter<TEl
 			}
 
 			first = false;
-			elementConverter.Write(ref writer, element, serializer);
+			elementConverter.Write(ref writer, element, context);
 		}
 
 		writer.WriteEndArray();
 	}
 
-	public override TCollection? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TCollection? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (reader.TryReadNull())
 		{
 			return default;
 		}
+
+		context.DepthStep();
 
 		if (createCollection() is not ICollection<TElement> collection)
 		{
@@ -340,7 +356,7 @@ internal sealed class JsonListConverter<TCollection, TElement>(JsonConverter<TEl
 
 		while (true)
 		{
-			collection.Add(elementConverter.Read(ref reader, serializer)!);
+			collection.Add(elementConverter.Read(ref reader, context)!);
 			if (reader.TryReadEndArray())
 			{
 				break;
@@ -357,13 +373,15 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 	where TDictionary : IEnumerable<KeyValuePair<TKey, TValue>>
 	where TKey : notnull
 {
-	public override void Write(ref JsonWriter writer, TDictionary? value, JsonSerializer serializer)
+	public override void Write(ref JsonWriter writer, TDictionary? value, SerializationContext context)
 	{
 		if (value is null)
 		{
 			writer.WriteNullValue();
 			return;
 		}
+
+		context.DepthStep();
 
 		writer.WriteStartObject();
 		bool first = true;
@@ -376,18 +394,20 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 
 			first = false;
 			writer.WritePropertyName(owner.GetSerializedDictionaryKey(JsonDictionaryKeyConverter.FormatKey(entry.Key)));
-			valueConverter.Write(ref writer, entry.Value, serializer);
+			valueConverter.Write(ref writer, entry.Value, context);
 		}
 
 		writer.WriteEndObject();
 	}
 
-	public override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
+	public override TDictionary? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (reader.TryReadNull())
 		{
 			return default;
 		}
+
+		context.DepthStep();
 
 		if (createDictionary() is not IDictionary<TKey, TValue> dictionary)
 		{
@@ -404,7 +424,7 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 		{
 			string key = reader.ReadRequiredString();
 			reader.ReadNameSeparator();
-			dictionary.Add(JsonDictionaryKeyConverter.ParseKey<TKey>(key), valueConverter.Read(ref reader, serializer)!);
+			dictionary.Add(JsonDictionaryKeyConverter.ParseKey<TKey>(key), valueConverter.Read(ref reader, context)!);
 			if (reader.TryReadEndObject())
 			{
 				break;

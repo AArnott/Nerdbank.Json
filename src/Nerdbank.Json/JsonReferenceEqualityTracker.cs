@@ -15,7 +15,7 @@ internal sealed class JsonReferenceEqualityTracker
 	private readonly Dictionary<int, object?> deserializedObjects = [];
 	private int nextReferenceId = 1;
 
-	internal void WriteObject(ref JsonWriter writer, object value, JsonConverter inner, JsonSerializer serializer)
+	internal void WriteObject(ref JsonWriter writer, object value, JsonConverter inner, SerializationContext context)
 	{
 		if (this.TryGetSerializedObject(value, out int referenceId))
 		{
@@ -34,13 +34,13 @@ internal sealed class JsonReferenceEqualityTracker
 		writer.WriteNumberValue(assignedReferenceId);
 		writer.WriteValueSeparator();
 		writer.WritePropertyName("$value");
-		inner.WriteObject(ref writer, value, serializer);
+		inner.WriteObject(ref writer, value, context);
 		writer.WriteEndObject();
 
 		this.serializedObjects[value] = (assignedReferenceId, true);
 	}
 
-	internal T ReadObject<T>(ref JsonReader reader, JsonConverter<T> inner, JsonSerializer serializer)
+	internal T ReadObject<T>(ref JsonReader reader, JsonConverter<T> inner, SerializationContext context)
 	{
 		reader.ReadStartObject();
 		string firstPropertyName = reader.ReadRequiredString();
@@ -81,7 +81,7 @@ internal sealed class JsonReferenceEqualityTracker
 			throw new FormatException("Reference-preserved values with '$id' must also include a '$value' property.");
 		}
 
-		T value = inner.Read(ref reader, serializer) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
+		T value = inner.Read(ref reader, context) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
 		this.deserializedObjects.Add(assignedReferenceId, value);
 
 		if (!reader.TryReadEndObject())
