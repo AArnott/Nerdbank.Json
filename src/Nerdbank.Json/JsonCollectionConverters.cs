@@ -65,12 +65,14 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 {
 	private readonly EnumerableAppender<TEnumerable, TElement> addElement;
 	private readonly MutableCollectionConstructor<TElement, TEnumerable> constructor;
+	private readonly CollectionConstructionOptions<TElement> constructionOptions;
 
-	internal JsonMutableEnumerableConverter(Func<TEnumerable, IEnumerable<TElement>> getEnumerable, JsonConverter<TElement> elementConverter, EnumerableAppender<TEnumerable, TElement> addElement, MutableCollectionConstructor<TElement, TEnumerable> constructor)
+	internal JsonMutableEnumerableConverter(Func<TEnumerable, IEnumerable<TElement>> getEnumerable, JsonConverter<TElement> elementConverter, EnumerableAppender<TEnumerable, TElement> addElement, MutableCollectionConstructor<TElement, TEnumerable> constructor, CollectionConstructionOptions<TElement> constructionOptions)
 		: base(getEnumerable, elementConverter)
 	{
 		this.addElement = addElement;
 		this.constructor = constructor;
+		this.constructionOptions = constructionOptions;
 	}
 
 	public void DeserializeInto(ref JsonReader reader, ref TEnumerable collection, JsonSerializer serializer)
@@ -100,7 +102,7 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 			return default;
 		}
 
-		TEnumerable result = this.constructor(default);
+		TEnumerable result = this.constructor(this.constructionOptions);
 		this.DeserializeInto(ref reader, ref result, serializer);
 		return result;
 	}
@@ -109,11 +111,13 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 internal sealed class JsonParameterizedEnumerableConverter<TEnumerable, TElement> : JsonEnumerableConverter<TEnumerable, TElement>
 {
 	private readonly ParameterizedCollectionConstructor<TElement, TElement, TEnumerable> constructor;
+	private readonly CollectionConstructionOptions<TElement> constructionOptions;
 
-	internal JsonParameterizedEnumerableConverter(Func<TEnumerable, IEnumerable<TElement>> getEnumerable, JsonConverter<TElement> elementConverter, ParameterizedCollectionConstructor<TElement, TElement, TEnumerable> constructor)
+	internal JsonParameterizedEnumerableConverter(Func<TEnumerable, IEnumerable<TElement>> getEnumerable, JsonConverter<TElement> elementConverter, ParameterizedCollectionConstructor<TElement, TElement, TEnumerable> constructor, CollectionConstructionOptions<TElement> constructionOptions)
 		: base(getEnumerable, elementConverter)
 	{
 		this.constructor = constructor;
+		this.constructionOptions = constructionOptions;
 	}
 
 	public override TEnumerable? Read(ref JsonReader reader, JsonSerializer serializer)
@@ -139,7 +143,7 @@ internal sealed class JsonParameterizedEnumerableConverter<TEnumerable, TElement
 			}
 		}
 
-		return this.constructor(elements.ToArray(), default);
+		return this.constructor(elements.ToArray(), this.constructionOptions);
 	}
 }
 
@@ -202,12 +206,14 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 {
 	private readonly DictionaryInserter<TDictionary, TKey, TValue> addEntry;
 	private readonly MutableCollectionConstructor<TKey, TDictionary> constructor;
+	private readonly CollectionConstructionOptions<TKey> constructionOptions;
 
-	internal JsonMutableDictionaryConverter(Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable, JsonConverter<TValue> valueConverter, ConverterCache owner, DictionaryInserter<TDictionary, TKey, TValue> addEntry, MutableCollectionConstructor<TKey, TDictionary> constructor)
+	internal JsonMutableDictionaryConverter(Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable, JsonConverter<TValue> valueConverter, ConverterCache owner, DictionaryInserter<TDictionary, TKey, TValue> addEntry, MutableCollectionConstructor<TKey, TDictionary> constructor, CollectionConstructionOptions<TKey> constructionOptions)
 		: base(getReadable, valueConverter, owner)
 	{
 		this.addEntry = addEntry;
 		this.constructor = constructor;
+		this.constructionOptions = constructionOptions;
 	}
 
 	public void DeserializeInto(ref JsonReader reader, ref TDictionary collection, JsonSerializer serializer)
@@ -239,7 +245,7 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 			return default;
 		}
 
-		TDictionary result = this.constructor(default);
+		TDictionary result = this.constructor(this.constructionOptions);
 		this.DeserializeInto(ref reader, ref result, serializer);
 		return result;
 	}
@@ -249,11 +255,13 @@ internal sealed class JsonParameterizedDictionaryConverter<TDictionary, TKey, TV
 	where TKey : notnull
 {
 	private readonly ParameterizedCollectionConstructor<TKey, KeyValuePair<TKey, TValue>, TDictionary> constructor;
+	private readonly CollectionConstructionOptions<TKey> constructionOptions;
 
-	internal JsonParameterizedDictionaryConverter(Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable, JsonConverter<TValue> valueConverter, ConverterCache owner, ParameterizedCollectionConstructor<TKey, KeyValuePair<TKey, TValue>, TDictionary> constructor)
+	internal JsonParameterizedDictionaryConverter(Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable, JsonConverter<TValue> valueConverter, ConverterCache owner, ParameterizedCollectionConstructor<TKey, KeyValuePair<TKey, TValue>, TDictionary> constructor, CollectionConstructionOptions<TKey> constructionOptions)
 		: base(getReadable, valueConverter, owner)
 	{
 		this.constructor = constructor;
+		this.constructionOptions = constructionOptions;
 	}
 
 	public override TDictionary? Read(ref JsonReader reader, JsonSerializer serializer)
@@ -281,7 +289,7 @@ internal sealed class JsonParameterizedDictionaryConverter<TDictionary, TKey, TV
 			}
 		}
 
-		return this.constructor(entries.ToArray(), default);
+		return this.constructor(entries.ToArray(), this.constructionOptions);
 	}
 }
 

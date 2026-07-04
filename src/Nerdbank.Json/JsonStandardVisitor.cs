@@ -33,12 +33,13 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 	{
 		JsonConverter<TElement> elementConverter = this.GetConverter(enumerableShape.ElementType, attributeProvider: null);
 		Func<TEnumerable, IEnumerable<TElement>> getEnumerable = enumerableShape.GetGetEnumerable();
+		CollectionConstructionOptions<TElement> constructionOptions = this.GetCollectionOptions(enumerableShape.ElementType, enumerableShape.SupportedComparer);
 
 		return enumerableShape.ConstructionStrategy switch
 		{
 			CollectionConstructionStrategy.None => new JsonReadOnlyEnumerableConverter<TEnumerable, TElement>(getEnumerable, elementConverter),
-			CollectionConstructionStrategy.Mutable => new JsonMutableEnumerableConverter<TEnumerable, TElement>(getEnumerable, elementConverter, enumerableShape.GetAppender(), enumerableShape.GetDefaultConstructor()),
-			CollectionConstructionStrategy.Parameterized => new JsonParameterizedEnumerableConverter<TEnumerable, TElement>(getEnumerable, elementConverter, enumerableShape.GetParameterizedConstructor()),
+			CollectionConstructionStrategy.Mutable => new JsonMutableEnumerableConverter<TEnumerable, TElement>(getEnumerable, elementConverter, enumerableShape.GetAppender(), enumerableShape.GetDefaultConstructor(), constructionOptions),
+			CollectionConstructionStrategy.Parameterized => new JsonParameterizedEnumerableConverter<TEnumerable, TElement>(getEnumerable, elementConverter, enumerableShape.GetParameterizedConstructor(), constructionOptions),
 			_ => throw new NotSupportedException($"JSON serialization does not recognize enumerable construction strategy {enumerableShape.ConstructionStrategy} for {enumerableShape.Type.FullName}."),
 		};
 	}
@@ -52,12 +53,13 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 
 		JsonConverter<TValue> valueConverter = this.GetConverter(dictionaryShape.ValueType, attributeProvider: null);
 		Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable = dictionaryShape.GetGetDictionary();
+		CollectionConstructionOptions<TKey> constructionOptions = this.GetCollectionOptions(dictionaryShape.KeyType, dictionaryShape.SupportedComparer);
 
 		return dictionaryShape.ConstructionStrategy switch
 		{
 			CollectionConstructionStrategy.None => new JsonReadOnlyDictionaryConverter<TDictionary, TKey, TValue>(getReadable, valueConverter, owner),
-			CollectionConstructionStrategy.Mutable => new JsonMutableDictionaryConverter<TDictionary, TKey, TValue>(getReadable, valueConverter, owner, dictionaryShape.GetInserter(DictionaryInsertionMode.Throw), dictionaryShape.GetDefaultConstructor()),
-			CollectionConstructionStrategy.Parameterized => new JsonParameterizedDictionaryConverter<TDictionary, TKey, TValue>(getReadable, valueConverter, owner, dictionaryShape.GetParameterizedConstructor()),
+			CollectionConstructionStrategy.Mutable => new JsonMutableDictionaryConverter<TDictionary, TKey, TValue>(getReadable, valueConverter, owner, dictionaryShape.GetInserter(DictionaryInsertionMode.Throw), dictionaryShape.GetDefaultConstructor(), constructionOptions),
+			CollectionConstructionStrategy.Parameterized => new JsonParameterizedDictionaryConverter<TDictionary, TKey, TValue>(getReadable, valueConverter, owner, dictionaryShape.GetParameterizedConstructor(), constructionOptions),
 			_ => throw new NotSupportedException($"JSON serialization does not recognize dictionary construction strategy {dictionaryShape.ConstructionStrategy} for {dictionaryShape.Type.FullName}."),
 		};
 	}
@@ -278,5 +280,21 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		}
 
 		return (JsonConverter<T>)context.GetOrAdd(shape)!;
+	}
+
+	private CollectionConstructionOptions<TKey> GetCollectionOptions<TKey>(ITypeShape<TKey> keyShape, CollectionComparerOptions requiredComparer)
+	{
+		if (owner.ComparerProvider is null)
+		{
+			return default;
+		}
+
+		return requiredComparer switch
+		{
+			CollectionComparerOptions.None => default,
+			CollectionComparerOptions.Comparer => new CollectionConstructionOptions<TKey> { Comparer = owner.ComparerProvider.GetComparer(keyShape) },
+			CollectionComparerOptions.EqualityComparer => new CollectionConstructionOptions<TKey> { EqualityComparer = owner.ComparerProvider.GetEqualityComparer(keyShape) },
+			_ => throw new NotSupportedException($"JSON serialization does not recognize collection comparer option {requiredComparer}."),
+		};
 	}
 }

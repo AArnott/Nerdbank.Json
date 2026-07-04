@@ -41,6 +41,13 @@ public partial record JsonSerializer
 		init => this.configuration = this.configuration with { DictionaryKeyNamingPolicy = value };
 	}
 
+	/// <inheritdoc cref="JsonSerializerConfiguration.ComparerProvider"/>
+	public MessagePack.IComparerProvider? ComparerProvider
+	{
+		get => this.configuration.ComparerProvider;
+		init => this.configuration = this.configuration with { ComparerProvider = value };
+	}
+
 	/// <inheritdoc cref="JsonSerializerConfiguration.Converters"/>
 	public ConverterCollection Converters
 	{

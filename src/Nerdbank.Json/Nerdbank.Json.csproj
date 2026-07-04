@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.VisualStudio.Validation" />
+    <PackageReference Include="Nerdbank.MessagePack" />
     <PackageReference Include="PolyType" />
     <PackageReference Include="System.Buffers" />
     <PackageReference Include="System.IO.Pipelines" />

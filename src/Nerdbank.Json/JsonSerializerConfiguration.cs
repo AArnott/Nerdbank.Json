@@ -14,6 +14,7 @@ internal record JsonSerializerConfiguration
 	private IReadOnlyList<IJsonConverterFactory> converterFactories = [];
 	private JsonConverterTypeCollection converterTypes = new();
 	private bool allowTrailingCommas;
+	private MessagePack.IComparerProvider? comparerProvider = MessagePack.SecureComparerProvider.Default;
 	private DeserializeDefaultValuesPolicy deserializeDefaultValues;
 	private JsonNamingPolicy? dictionaryKeyNamingPolicy;
 	private bool propertyNameCaseInsensitive;
@@ -75,6 +76,27 @@ internal record JsonSerializerConfiguration
 	{
 		get => this.allowTrailingCommas;
 		init => this.allowTrailingCommas = value;
+	}
+
+	/// <summary>
+	/// Gets the provider of <see cref="IEqualityComparer{T}"/> and <see cref="IComparer{T}"/> instances
+	/// to use when instantiating collections that support them.
+	/// </summary>
+	/// <value>
+	/// The default value is an instance of <see cref="MessagePack.SecureComparerProvider"/>,
+	/// which provides hash collision resistance for improved security when deserializing untrusted data.
+	/// </value>
+	/// <remarks>
+	/// This property may be cleared from its secure default for improved performance when deserializing trusted data.
+	/// </remarks>
+	internal MessagePack.IComparerProvider? ComparerProvider
+	{
+		get => this.comparerProvider;
+		init
+		{
+			this.comparerProvider = value;
+			this.converterCache = null;
+		}
 	}
 
 	/// <summary>
