@@ -27,147 +27,91 @@ public partial record JsonSerializer
 	[ThreadStatic]
 	private static JsonReferenceEqualityTracker? currentReferenceTracker;
 
-	/// <summary>
-	/// Gets the transformation applied to object property names and enum value names during serialization and deserialization.
-	/// </summary>
-	/// <remarks>
-	/// The default value is <see cref="JsonNamingPolicy.CamelCase"/>.
-	/// Set this property to <see langword="null"/> to preserve declared property names and enum value names.
-	/// Enum value names are transformed only when <see cref="SerializeEnumValuesByName"/> is <see langword="true"/>.
-	/// </remarks>
+	/// <inheritdoc cref="JsonSerializerConfiguration.PropertyNamingPolicy"/>
 	public JsonNamingPolicy? PropertyNamingPolicy
 	{
 		get => this.configuration.PropertyNamingPolicy;
 		init => this.configuration = this.configuration with { PropertyNamingPolicy = value };
 	}
 
-	/// <summary>
-	/// Gets the transformation applied to dictionary keys during serialization and deserialization.
-	/// </summary>
-	/// <remarks>
-	/// The default value is <see langword="null"/>, which preserves dictionary keys as declared.
-	/// </remarks>
+	/// <inheritdoc cref="JsonSerializerConfiguration.DictionaryKeyNamingPolicy"/>
 	public JsonNamingPolicy? DictionaryKeyNamingPolicy
 	{
 		get => this.configuration.DictionaryKeyNamingPolicy;
 		init => this.configuration = this.configuration with { DictionaryKeyNamingPolicy = value };
 	}
 
-	/// <summary>
-	/// Gets the runtime-registered converters that take precedence over built-in and shape-based converters.
-	/// </summary>
+	/// <inheritdoc cref="JsonSerializerConfiguration.Converters"/>
 	public ConverterCollection Converters
 	{
 		get => this.configuration.Converters;
 		init => this.configuration = this.configuration with { Converters = value };
 	}
 
-	/// <summary>
-	/// Gets a value indicating whether a trailing comma is permitted before the end of a JSON array or object during deserialization.
-	/// </summary>
-	/// <remarks>
-	/// The default value is <see langword="false"/>.
-	/// </remarks>
+	/// <inheritdoc cref="JsonSerializerConfiguration.AllowTrailingCommas"/>
 	public bool AllowTrailingCommas
 	{
 		get => this.configuration.AllowTrailingCommas;
 		init => this.configuration = this.configuration with { AllowTrailingCommas = value };
 	}
 
-	/// <summary>
-	/// Gets the runtime-registered converter types that take precedence after <see cref="Converters"/>.
-	/// </summary>
+	/// <inheritdoc cref="JsonSerializerConfiguration.ConverterTypes"/>
 	public JsonConverterTypeCollection ConverterTypes
 	{
 		get => this.configuration.ConverterTypes;
 		init => this.configuration = this.configuration with { ConverterTypes = value };
 	}
 
-	/// <summary>
-	/// Gets the runtime-registered converter factories that are consulted after <see cref="Converters"/> and <see cref="ConverterTypes"/>.
-	/// </summary>
+	/// <inheritdoc cref="JsonSerializerConfiguration.ConverterFactories"/>
 	public IReadOnlyList<IJsonConverterFactory> ConverterFactories
 	{
 		get => this.configuration.ConverterFactories;
 		init => this.configuration = this.configuration with { ConverterFactories = value };
 	}
 
-	/// <summary>
-	/// Gets the policy for handling JSON comments during deserialization.
-	/// </summary>
-	/// <remarks>
-	/// The default value is <see cref="JsonCommentHandling.Disallow"/>.
-	/// </remarks>
+	/// <inheritdoc cref="JsonSerializerConfiguration.ReadCommentHandling"/>
 	public JsonCommentHandling ReadCommentHandling
 	{
 		get => this.configuration.ReadCommentHandling;
 		init => this.configuration = this.configuration with { ReadCommentHandling = value };
 	}
 
-	/// <summary>
-	/// Gets a value indicating whether JSON object property names are matched case-insensitively during deserialization.
-	/// </summary>
-	/// <remarks>
-	/// The default value is <see langword="false"/>.
-	/// </remarks>
+	/// <inheritdoc cref="JsonSerializerConfiguration.PropertyNameCaseInsensitive"/>
 	public bool PropertyNameCaseInsensitive
 	{
 		get => this.configuration.PropertyNameCaseInsensitive;
 		init => this.configuration = this.configuration with { PropertyNameCaseInsensitive = value };
 	}
 
-	/// <summary>
-	/// Gets a value indicating whether serialized JSON should be formatted with indentation and line breaks.
-	/// </summary>
-	/// <remarks>
-	/// The default value is <see langword="false"/>.
-	/// </remarks>
+	/// <inheritdoc cref="JsonSerializerConfiguration.WriteIndented"/>
 	public bool WriteIndented
 	{
 		get => this.configuration.WriteIndented;
 		init => this.configuration = this.configuration with { WriteIndented = value };
 	}
 
-	/// <summary>
-	/// Gets the policy that determines whether properties with default values are serialized.
-	/// </summary>
-	/// <remarks>
-	/// The default value is <see cref="SerializeDefaultValuesPolicy.Always"/>.
-	/// </remarks>
+	/// <inheritdoc cref="JsonSerializerConfiguration.SerializeDefaultValues"/>
 	public SerializeDefaultValuesPolicy SerializeDefaultValues
 	{
 		get => this.configuration.SerializeDefaultValues;
 		init => this.configuration = this.configuration with { SerializeDefaultValues = value };
 	}
 
-	/// <summary>
-	/// Gets a value indicating whether enum values should be serialized by name rather than by numeric value when possible.
-	/// </summary>
-	/// <remarks>
-	/// The default value is <see langword="false"/>.
-	/// When enabled, <see cref="PropertyNamingPolicy"/> is applied to enum value names.
-	/// </remarks>
+	/// <inheritdoc cref="JsonSerializerConfiguration.SerializeEnumValuesByName"/>
 	public bool SerializeEnumValuesByName
 	{
 		get => this.configuration.SerializeEnumValuesByName;
 		init => this.configuration = this.configuration with { SerializeEnumValuesByName = value };
 	}
 
-	/// <summary>
-	/// Gets the policy that determines how deserialization handles missing or <see langword="null"/> values.
-	/// </summary>
-	/// <remarks>
-	/// The default value is <see cref="DeserializeDefaultValuesPolicy.Default"/>.
-	/// </remarks>
+	/// <inheritdoc cref="JsonSerializerConfiguration.DeserializeDefaultValues"/>
 	public DeserializeDefaultValuesPolicy DeserializeDefaultValues
 	{
 		get => this.configuration.DeserializeDefaultValues;
 		init => this.configuration = this.configuration with { DeserializeDefaultValues = value };
 	}
 
-	/// <summary>
-	/// Gets the mode that preserves reference equality during serialization and deserialization.
-	/// </summary>
+	/// <inheritdoc cref="JsonSerializerConfiguration.PreserveReferences"/>
 	public ReferencePreservationMode PreserveReferences
 	{
 		get => this.configuration.PreserveReferences;
