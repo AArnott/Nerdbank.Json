@@ -57,10 +57,14 @@ public partial record JsonSerializer
 	/// Gets the provider of <see cref="IEqualityComparer{T}"/> and <see cref="IComparer{T}"/> instances
 	/// to use when instantiating collections that support them.
 	/// </summary>
+	/// <value>
+	/// The default value is an instance of <see cref="Nerdbank.MessagePack.SecureComparerProvider"/>,
+	/// which provides hash collision resistance for improved security when deserializing untrusted data.
+	/// </value>
 	/// <remarks>
-	/// The default value is <see langword="null"/>, which uses collection defaults.
+	/// This property may be cleared from its secure default for improved performance when deserializing trusted data.
 	/// </remarks>
-	public IComparerProvider? ComparerProvider
+	public MessagePack.IComparerProvider? ComparerProvider
 	{
 		get => this.configuration.ComparerProvider;
 		init => this.configuration = this.configuration with { ComparerProvider = value };

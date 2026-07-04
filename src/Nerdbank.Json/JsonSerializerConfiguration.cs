@@ -14,7 +14,7 @@ internal record JsonSerializerConfiguration
 	private IReadOnlyList<IJsonConverterFactory> converterFactories = [];
 	private JsonConverterTypeCollection converterTypes = new();
 	private bool allowTrailingCommas;
-	private IComparerProvider? comparerProvider;
+	private MessagePack.IComparerProvider? comparerProvider = MessagePack.SecureComparerProvider.Default;
 	private DeserializeDefaultValuesPolicy deserializeDefaultValues;
 	private JsonNamingPolicy? dictionaryKeyNamingPolicy;
 	private bool propertyNameCaseInsensitive;
@@ -63,7 +63,7 @@ internal record JsonSerializerConfiguration
 		init => this.allowTrailingCommas = value;
 	}
 
-	internal IComparerProvider? ComparerProvider
+	internal MessagePack.IComparerProvider? ComparerProvider
 	{
 		get => this.comparerProvider;
 		init

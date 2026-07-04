@@ -178,7 +178,7 @@ public partial class JsonObjectSerializerTests
 		public string? Name { get; set; }
 	}
 
-	private class CaseInsensitiveStringComparerProvider : IComparerProvider
+	private class CaseInsensitiveStringComparerProvider : Nerdbank.MessagePack.IComparerProvider
 	{
 		internal static readonly CaseInsensitiveStringComparerProvider Instance = new();
 
