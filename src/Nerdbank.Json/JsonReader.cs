@@ -77,6 +77,10 @@ public ref struct JsonReader
 		this.position = 0;
 	}
 
+	/// <summary>
+	/// Attempts to read a JSON <see langword="null"/> literal.
+	/// </summary>
+	/// <returns><see langword="true"/> if a <see langword="null"/> literal was consumed; otherwise, <see langword="false"/>.</returns>
 	public bool TryReadNull()
 	{
 		if (this.readingUtf8)
@@ -101,6 +105,10 @@ public ref struct JsonReader
 		return false;
 	}
 
+	/// <summary>
+	/// Reads a required JSON boolean literal.
+	/// </summary>
+	/// <returns>The boolean value that was read.</returns>
 	public bool ReadBoolean()
 	{
 		if (this.readingUtf8)
@@ -137,6 +145,10 @@ public ref struct JsonReader
 		throw new FormatException("Expected a JSON boolean literal.");
 	}
 
+	/// <summary>
+	/// Reads a JSON string value that may be <see langword="null"/>.
+	/// </summary>
+	/// <returns>The decoded string value, or <see langword="null"/> when the next token is a JSON <see langword="null"/> literal.</returns>
 	public string? ReadString()
 	{
 		if (this.TryReadNull())
@@ -147,6 +159,10 @@ public ref struct JsonReader
 		return this.ReadRequiredString();
 	}
 
+	/// <summary>
+	/// Reads a required JSON string value.
+	/// </summary>
+	/// <returns>The decoded string value.</returns>
 	public string ReadRequiredString()
 	{
 		if (this.readingUtf8)
@@ -186,6 +202,10 @@ public ref struct JsonReader
 		throw new FormatException("Unterminated JSON string.");
 	}
 
+	/// <summary>
+	/// Reads a JSON string that must contain exactly one character.
+	/// </summary>
+	/// <returns>The character encoded in the JSON string.</returns>
 	public char ReadChar()
 	{
 		string value = this.ReadRequiredString();
@@ -197,6 +217,10 @@ public ref struct JsonReader
 		return value[0];
 	}
 
+	/// <summary>
+	/// Reads the next JSON number token without converting it to a numeric type.
+	/// </summary>
+	/// <returns>The raw number token as text.</returns>
 	public string ReadNumberToken()
 	{
 		if (this.readingUtf8)
@@ -227,14 +251,25 @@ public ref struct JsonReader
 		return this.json[start..this.position].ToString();
 	}
 
+	/// <summary>
+	/// Reads a base64-encoded JSON string value that may be <see langword="null"/>.
+	/// </summary>
+	/// <returns>The decoded bytes, or <see langword="null"/> when the next token is a JSON <see langword="null"/> literal.</returns>
 	public byte[]? ReadBase64Bytes()
 	{
 		string? value = this.ReadString();
 		return value is null ? null : Convert.FromBase64String(value);
 	}
 
+	/// <summary>
+	/// Reads a required base64-encoded JSON string value.
+	/// </summary>
+	/// <returns>The decoded bytes.</returns>
 	public byte[] ReadRequiredBase64Bytes() => Convert.FromBase64String(this.ReadRequiredString());
 
+	/// <summary>
+	/// Reads the opening token for a JSON object.
+	/// </summary>
 	public void ReadStartObject()
 	{
 		if (this.readingUtf8)
@@ -250,11 +285,18 @@ public ref struct JsonReader
 		this.position++;
 	}
 
+	/// <summary>
+	/// Attempts to read the closing token for a JSON object.
+	/// </summary>
+	/// <returns><see langword="true"/> if the object terminator was consumed; otherwise, <see langword="false"/>.</returns>
 	public bool TryReadEndObject()
 	{
 		return this.readingUtf8 ? this.TryReadEndToken((byte)'}') : this.TryReadEndToken('}');
 	}
 
+	/// <summary>
+	/// Reads the name/value separator between a JSON property name and value.
+	/// </summary>
 	public void ReadNameSeparator()
 	{
 		if (this.readingUtf8)
@@ -270,6 +312,9 @@ public ref struct JsonReader
 		this.position++;
 	}
 
+	/// <summary>
+	/// Reads the opening token for a JSON array.
+	/// </summary>
 	public void ReadStartArray()
 	{
 		if (this.readingUtf8)
@@ -285,11 +330,18 @@ public ref struct JsonReader
 		this.position++;
 	}
 
+	/// <summary>
+	/// Attempts to read the closing token for a JSON array.
+	/// </summary>
+	/// <returns><see langword="true"/> if the array terminator was consumed; otherwise, <see langword="false"/>.</returns>
 	public bool TryReadEndArray()
 	{
 		return this.readingUtf8 ? this.TryReadEndToken((byte)']') : this.TryReadEndToken(']');
 	}
 
+	/// <summary>
+	/// Reads the closing token for a JSON array.
+	/// </summary>
 	public void ReadEndArray()
 	{
 		if (!this.TryReadEndArray())
@@ -298,6 +350,9 @@ public ref struct JsonReader
 		}
 	}
 
+	/// <summary>
+	/// Reads the separator between consecutive JSON values.
+	/// </summary>
 	public void ReadValueSeparator()
 	{
 		if (this.readingUtf8)
@@ -313,6 +368,9 @@ public ref struct JsonReader
 		this.position++;
 	}
 
+	/// <summary>
+	/// Verifies that the entire input has been consumed except for insignificant whitespace.
+	/// </summary>
 	public void EnsureFullyConsumed()
 	{
 		if (this.readingUtf8)
@@ -333,6 +391,9 @@ public ref struct JsonReader
 		}
 	}
 
+	/// <summary>
+	/// Skips over the next JSON value.
+	/// </summary>
 	public void SkipValue()
 	{
 		if (this.readingUtf8)
@@ -407,6 +468,10 @@ public ref struct JsonReader
 		}
 	}
 
+	/// <summary>
+	/// Reads the next JSON value and returns its raw JSON text.
+	/// </summary>
+	/// <returns>The raw JSON representation of the next value.</returns>
 	public string ReadRawValue()
 	{
 		if (this.readingUtf8)
@@ -522,6 +587,15 @@ public ref struct JsonReader
 		return this.json[this.position];
 	}
 
+	private static int HexToInt(byte value)
+		=> value switch
+		{
+			>= (byte)'0' and <= (byte)'9' => value - (byte)'0',
+			>= (byte)'A' and <= (byte)'F' => value - (byte)'A' + 10,
+			>= (byte)'a' and <= (byte)'f' => value - (byte)'a' + 10,
+			_ => throw new FormatException("Invalid hex digit in JSON unicode escape sequence."),
+		};
+
 	private void SkipWhiteSpace()
 	{
 		this.position = this.SkipInsignificantCharacters(this.position);
@@ -551,6 +625,7 @@ public ref struct JsonReader
 
 					continue;
 				}
+
 				if (next == '*')
 				{
 					index += 2;
@@ -558,16 +633,20 @@ public ref struct JsonReader
 					{
 						index++;
 					}
+
 					if (index + 1 >= this.json.Length)
 					{
 						throw new FormatException("Unterminated JSON block comment.");
 					}
+
 					index += 2;
 					continue;
 				}
 			}
+
 			break;
 		}
+
 		return index;
 	}
 
@@ -579,6 +658,7 @@ public ref struct JsonReader
 			this.position = index + 1;
 			return true;
 		}
+
 		if (this.allowTrailingCommas && index < this.json.Length && this.json[index] == ',')
 		{
 			int afterComma = this.SkipInsignificantCharacters(index + 1);
@@ -588,6 +668,7 @@ public ref struct JsonReader
 				return true;
 			}
 		}
+
 		return false;
 	}
 
@@ -598,6 +679,7 @@ public ref struct JsonReader
 			this.position++;
 			return true;
 		}
+
 		return false;
 	}
 
@@ -608,6 +690,7 @@ public ref struct JsonReader
 		{
 			this.position++;
 		}
+
 		if (requireAtLeastOne && this.position == start)
 		{
 			throw new FormatException("Expected one or more digits in the JSON number.");
@@ -620,6 +703,7 @@ public ref struct JsonReader
 		{
 			throw new FormatException("Unterminated JSON escape sequence.");
 		}
+
 		char ch = this.json[this.position++];
 		return ch switch
 		{
@@ -642,6 +726,7 @@ public ref struct JsonReader
 		{
 			throw new FormatException("Incomplete JSON unicode escape sequence.");
 		}
+
 		ReadOnlySpan<char> hex = this.json.Slice(this.position, 4);
 		this.position += 4;
 		return int.Parse(hex.ToString(), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
@@ -654,6 +739,7 @@ public ref struct JsonReader
 		{
 			return;
 		}
+
 		while (true)
 		{
 			this.SkipValue();
@@ -661,6 +747,7 @@ public ref struct JsonReader
 			{
 				return;
 			}
+
 			this.ReadValueSeparator();
 		}
 	}
@@ -672,6 +759,7 @@ public ref struct JsonReader
 		{
 			return;
 		}
+
 		while (true)
 		{
 			this.ReadRequiredString();
@@ -681,6 +769,7 @@ public ref struct JsonReader
 			{
 				return;
 			}
+
 			this.ReadValueSeparator();
 		}
 	}
@@ -700,6 +789,7 @@ public ref struct JsonReader
 			token = this.ReadNumberTokenUtf8Core();
 			return true;
 		}
+
 		token = default;
 		return false;
 	}
@@ -720,9 +810,11 @@ public ref struct JsonReader
 				{
 					return Encoding.UTF8.GetString(this.utf8Json[segmentStart..(this.position - 1)]);
 				}
+
 				builder.Append(Encoding.UTF8.GetString(this.utf8Json[segmentStart..(this.position - 1)]));
 				return builder.ToString();
 			}
+
 			if (ch == (byte)'\\')
 			{
 				builder ??= new StringBuilder();
@@ -731,6 +823,7 @@ public ref struct JsonReader
 				segmentStart = this.position;
 			}
 		}
+
 		throw new FormatException("Unterminated JSON string.");
 	}
 
@@ -741,17 +834,20 @@ public ref struct JsonReader
 		if (this.TryConsume((byte)'-'))
 		{
 		}
+
 		this.ReadDigitsUtf8(requireAtLeastOne: true);
 		if (this.TryConsume((byte)'.'))
 		{
 			this.ReadDigitsUtf8(requireAtLeastOne: true);
 		}
+
 		if (this.TryConsume((byte)'e') || this.TryConsume((byte)'E'))
 		{
 			this.TryConsume((byte)'+');
 			this.TryConsume((byte)'-');
 			this.ReadDigitsUtf8(requireAtLeastOne: true);
 		}
+
 		return this.utf8Json[start..this.position];
 	}
 
@@ -770,6 +866,7 @@ public ref struct JsonReader
 				index++;
 				continue;
 			}
+
 			if (this.commentHandling == JsonCommentHandling.Skip && ch == (byte)'/' && index + 1 < this.utf8Json.Length)
 			{
 				byte next = this.utf8Json[index + 1];
@@ -780,8 +877,10 @@ public ref struct JsonReader
 					{
 						index++;
 					}
+
 					continue;
 				}
+
 				if (next == (byte)'*')
 				{
 					index += 2;
@@ -789,16 +888,20 @@ public ref struct JsonReader
 					{
 						index++;
 					}
+
 					if (index + 1 >= this.utf8Json.Length)
 					{
 						throw new FormatException("Unterminated JSON block comment.");
 					}
+
 					index += 2;
 					continue;
 				}
 			}
+
 			break;
 		}
+
 		return index;
 	}
 
@@ -810,6 +913,7 @@ public ref struct JsonReader
 			this.position = index + 1;
 			return true;
 		}
+
 		if (this.allowTrailingCommas && index < this.utf8Json.Length && this.utf8Json[index] == (byte)',')
 		{
 			int afterComma = this.SkipInsignificantCharactersUtf8(index + 1);
@@ -819,6 +923,7 @@ public ref struct JsonReader
 				return true;
 			}
 		}
+
 		return false;
 	}
 
@@ -829,6 +934,7 @@ public ref struct JsonReader
 			this.position++;
 			return true;
 		}
+
 		return false;
 	}
 
@@ -839,6 +945,7 @@ public ref struct JsonReader
 		{
 			this.position++;
 		}
+
 		if (requireAtLeastOne && this.position == start)
 		{
 			throw new FormatException("Expected one or more digits in the JSON number.");
@@ -851,6 +958,7 @@ public ref struct JsonReader
 		{
 			throw new FormatException("Unterminated JSON escape sequence.");
 		}
+
 		byte ch = this.utf8Json[this.position++];
 		return ch switch
 		{
@@ -873,22 +981,15 @@ public ref struct JsonReader
 		{
 			throw new FormatException("Incomplete JSON unicode escape sequence.");
 		}
+
 		int value = 0;
 		for (int i = 0; i < 4; i++)
 		{
 			value = (value << 4) | HexToInt(this.utf8Json[this.position++]);
 		}
+
 		return value;
 	}
-
-	private static int HexToInt(byte value)
-		=> value switch
-		{
-			>= (byte)'0' and <= (byte)'9' => value - (byte)'0',
-			>= (byte)'A' and <= (byte)'F' => value - (byte)'A' + 10,
-			>= (byte)'a' and <= (byte)'f' => value - (byte)'a' + 10,
-			_ => throw new FormatException("Invalid hex digit in JSON unicode escape sequence."),
-		};
 
 	private void SkipArrayUtf8()
 	{
@@ -897,6 +998,7 @@ public ref struct JsonReader
 		{
 			return;
 		}
+
 		while (true)
 		{
 			this.SkipValue();
@@ -904,6 +1006,7 @@ public ref struct JsonReader
 			{
 				return;
 			}
+
 			this.ReadValueSeparator();
 		}
 	}
@@ -915,6 +1018,7 @@ public ref struct JsonReader
 		{
 			return;
 		}
+
 		while (true)
 		{
 			this.SkipStringUtf8();
@@ -924,6 +1028,7 @@ public ref struct JsonReader
 			{
 				return;
 			}
+
 			this.ReadValueSeparator();
 		}
 	}
@@ -940,15 +1045,18 @@ public ref struct JsonReader
 			{
 				return;
 			}
+
 			if (ch == (byte)'\\')
 			{
 				if (this.position >= this.utf8Json.Length)
 				{
 					throw new FormatException("Unterminated JSON escape sequence.");
 				}
+
 				this.position++;
 			}
 		}
+
 		throw new FormatException("Unterminated JSON string.");
 	}
 
