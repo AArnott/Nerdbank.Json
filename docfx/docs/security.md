@@ -8,13 +8,14 @@ In this topic, we will focus on the vulnerabilities that are specific to the des
 ## Adjusting secure defaults
 
 In some cases secure defaults can impact required functionality.
-Adjusting these limits can be achieved through the <xref:Nerdbank.Json.SecuritySettings> class.
+For the built-in converters in Nerdbank.Json, the primary knobs are <xref:Nerdbank.Json.SerializationContext.MaxDepth>, <xref:Nerdbank.Json.SerializationContext.Security>, and <xref:Nerdbank.Json.JsonSerializer.ComparerProvider?displayProperty=nameWithType>.
+The <xref:Nerdbank.Json.SecuritySettings> instance carried on <xref:Nerdbank.Json.SerializationContext> is also available for custom converters that want to honor additional application-specific policy.
 
-In this example, limits can be set to whatever level suits your application, balancing security with functionality:
+In this example, the serializer is configured with a custom depth limit while preserving the secure comparer behavior used for hash-based collections:
 
 [!code-csharp[](../../samples/cs/Security.cs#SetSecuritySettings_Custom)]
 
-When you are dealing exclusively with trusted data, you can lift all limits like this:
+When you are dealing exclusively with trusted data, you may also opt out of the secure comparer provider and use <xref:Nerdbank.Json.SecuritySettings.TrustedData> to communicate trusted-data semantics to any custom converters you have authored:
 
 [!code-csharp[](../../samples/cs/Security.cs#SetSecuritySettings_TrustedData)]
 
@@ -22,12 +23,12 @@ When you are dealing exclusively with trusted data, you can lift all limits like
 ## Stack overflows
 
 A very simple attack to carry out is crashing the deserializing process by forcing the deserializer to "stack overflow".
-With each nested structure (e.g. a map or array) in msgpack, another frame is added to the deserializing thread's "stack".
+With each nested structure (e.g. an object or array) in JSON, another frame is added to the deserializing thread's "stack".
 This stack space is limited and if exceeded, the process will crash.
-It can take less than 500 bytes of msgpack to crash a deserializing application that does not guard against such stack overflows.
+It can take very little JSON input to crash a deserializing application that does not guard against such stack overflows.
 
 Nerdbank.Json protects against such attacks by artificially limiting the level of nesting that is allowed before a deserializer will throw an exception that can be caught and processed by an application rather than crash it.
-This limit is set by @Nerdbank.Json.SecuritySettings.MaxDepth, which by default is set to a conservative default value that should prevent stack overflows.
+This limit is set by <xref:Nerdbank.Json.SerializationContext.MaxDepth>, which by default is set to a conservative value that should prevent stack overflows.
 When the data to be deserialized has a legitimate need for deeper nesting than the default limit allows, this limit may be adjusted, like this:
 
 [!code-csharp[](../../samples/cs/Security.cs#SetMaxDepth)]
@@ -42,12 +43,12 @@ To defend against this threat while deserializing untrusted data, it is importan
 Doing so dramatically increases the cost to the attacker to carry out this attack and should severely limit the impact they can have on your service.
 
 > [!IMPORTANT]
-> The collections types included with .NET do _not_ use collision resistant hash functions by default except for @System.String specifically when it is used as a key.
+> The collections types included with .NET do _not_ use collision resistant hash functions by default except for <xref:System.String> specifically when it is used as a key.
 > .NET does not supply collision resistant hash functions to use for any other type.
-> The @System.HashCode type in particular does _not_ offer collision resistance.
+> The <xref:System.HashCode> type in particular does _not_ offer collision resistance.
 > They must come from your own code or a library with cryptographic hash functions.
 
-Nerdbank.Json protects against such attacks by using a collision resistant hash function for all hash-based collections that accept an @System.Collections.Generic.IEqualityComparer`1 during construction.
+Nerdbank.Json protects against such attacks by using a collision resistant hash function for all hash-based collections that accept an <xref:System.Collections.Generic.IEqualityComparer`1> during construction.
 Collision resistant hashing comes at a small perf cost during deserialization.
 
 This secure-by-default behavior may be overridden by setting the <xref:Nerdbank.Json.JsonSerializer.ComparerProvider?displayProperty=nameWithType> property.
@@ -59,7 +60,7 @@ This property may be cleared of its default value to improve performance when de
 
 ### Specifying custom comparers
 
-You can specify a particular @System.Collections.Generic.IEqualityComparer`1 for a particular collection by instantiating your collections yourself in your data type's constructor or using a field or property initializer.
+You can specify a particular <xref:System.Collections.Generic.IEqualityComparer`1> for a particular collection by instantiating your collections yourself in your data type's constructor or using a field or property initializer.
 
 Here is an example:
 
@@ -69,17 +70,10 @@ Here is an example:
 > Note how the collection properties do _not_ define a property setter.
 > This is crucial to the threat mitigation, since it activates the deserializer behavior of not recreating the collection using the default (insecure) equality comparer.
 
-In this example, we use @Nerdbank.MessagePack.StructuralEqualityComparer.GetHashCollisionResistant*?displayProperty=nameWithType, which provides a collision resistant implementation of @System.Collections.Generic.IEqualityComparer`1.
+In this example, we use <xref:Nerdbank.MessagePack.StructuralEqualityComparer.GetHashCollisionResistant*?displayProperty=nameWithType>, which provides a collision resistant implementation of <xref:System.Collections.Generic.IEqualityComparer`1>.
 This implementation uses the SIP hash algorithm, which is known for its high performance and collision resistance.
 While it will function for virtually any data type, its behavior is not correct in all cases and you may need to implement your own secure hash function.
-Please review the documentation for @Nerdbank.MessagePack.StructuralEqualityComparer.GetHashCollisionResistant* for more information.
-
-## Excessive CPU use
-
-When deserializing into an <xref:System.Dynamic.ExpandoObject> using <xref:Nerdbank.Json.OptionalConverters.WithExpandoObjectConverter*>, care must be taken because its <xref:System.Collections.Generic.IDictionary`2.Add(`0,`1)> method is implemented as an `O(n)` algorithm, meaning that overall deserialization of the object is an `O(n²)` algorithm.
-
-A conservative property count limit is set by default to mitigate this threat.
-This limit may be adjusted via the <xref:Nerdbank.Json.SecuritySettings.ExpandoObjectMaxPropertyCount> property.
+Please review the documentation for <xref:Nerdbank.MessagePack.StructuralEqualityComparer.GetHashCollisionResistant*> for more information.
 
 ## Multiple values for the same property
 
@@ -90,7 +84,7 @@ Consider this JSON object:
 { "accessRequested": "guest", "accessRequested": "admin" }
 ```
 
-If this object represents a request and was received and checked for necessary permissions before the being forwarded to a processor, there's a potential exploit.
+If this object represents a request and was received and checked for necessary permissions before being forwarded to a processor, there's a potential exploit.
 If the permission check only scans for the first definition of the `accessRequested` property and sees that `guest` permission is requested, it may approve and forward the request to the processor.
 The processor may need to understand the whole object and therefore fully deserialize it.
 If the deserializer is implemented as most are, the last value given for a property may be the one last applied to the deserialized object.

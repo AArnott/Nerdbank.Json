@@ -106,6 +106,38 @@ public partial class JsonObjectSerializerTests : TestBase
 	}
 
 	[Test]
+	public void Deserialize_ObjectGraph_DuplicateProperty_ThrowsJsonSerializationException()
+	{
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<Person>("""{"name":"Ada","name":"Grace","age":37,"address":null}"""));
+		Assert.Equal(JsonSerializationException.ErrorCode.DoublePropertyAssignment, exception.Code);
+		Assert.Contains("name", exception.Message, System.StringComparison.OrdinalIgnoreCase);
+	}
+
+	[Test]
+	public void Deserialize_ObjectGraph_DuplicateUnknownProperty_ThrowsJsonSerializationException()
+	{
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<Person>("""{"name":"Ada","unknown":true,"unknown":false,"age":37,"address":null}"""));
+		Assert.Equal(JsonSerializationException.ErrorCode.DoublePropertyAssignment, exception.Code);
+		Assert.Contains("unknown", exception.Message, System.StringComparison.OrdinalIgnoreCase);
+	}
+
+	[Test]
+	public void Deserialize_ObjectGraph_DuplicateProperty_CaseInsensitive_ThrowsJsonSerializationException()
+	{
+		this.Serializer = new() { PropertyNameCaseInsensitive = true };
+
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<Person>("""{"Name":"Ada","name":"Grace","age":37,"address":null}"""));
+		Assert.Equal(JsonSerializationException.ErrorCode.DoublePropertyAssignment, exception.Code);
+	}
+
+	[Test]
+	public void Deserialize_ObjectGraph_DuplicateExtensionDataProperty_ThrowsJsonSerializationException()
+	{
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<ExtensionDataPerson>("""{"name":"Ada","unknown":true,"unknown":false}"""));
+		Assert.Equal(JsonSerializationException.ErrorCode.DoublePropertyAssignment, exception.Code);
+	}
+
+	[Test]
 	public void Serialize_ObjectGraph_WritesExtensionDataMembers()
 	{
 		ExtensionDataPerson value = new()

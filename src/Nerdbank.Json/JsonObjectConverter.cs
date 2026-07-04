@@ -13,12 +13,14 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 	private readonly JsonExtensionData<T>? extensionData;
 	private readonly JsonProperty<T>[] properties;
 	private readonly Dictionary<string, JsonProperty<T>> propertiesByName;
+	private readonly StringComparer propertyNameComparer;
 
 	internal JsonObjectConverter(Func<T> factory, JsonProperty<T>[] properties, StringComparer propertyNameComparer, JsonExtensionData<T>? extensionData = null)
 	{
 		this.factory = factory;
 		this.extensionData = extensionData;
 		this.properties = properties;
+		this.propertyNameComparer = propertyNameComparer;
 		this.propertiesByName = new Dictionary<string, JsonProperty<T>>(properties.Length, propertyNameComparer);
 		for (int i = 0; i < properties.Length; i++)
 		{
@@ -67,6 +69,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 		context.DepthStep();
 
 		T result = this.factory();
+		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
 		{
@@ -76,6 +79,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 		while (true)
 		{
 			string propertyName = reader.ReadRequiredString();
+			collisionDetection.MarkAsRead(propertyName);
 			reader.ReadNameSeparator();
 
 			if (this.propertiesByName.TryGetValue(propertyName, out JsonProperty<T>? property) && property.CanDeserialize)

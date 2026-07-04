@@ -402,8 +402,9 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 	private readonly Constructor<TArgumentState, TDeclaring> constructor;
 	private readonly JsonConstructorParameter<TArgumentState>[] parameters;
 	private readonly Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName;
+	private readonly StringComparer propertyNameComparer;
 
-	internal JsonObjectWithConstructorConverter(JsonProperty<TDeclaring>[] properties, Func<TArgumentState> argumentStateFactory, Constructor<TArgumentState, TDeclaring> constructor, JsonConstructorParameter<TArgumentState>[] parameters, Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName, JsonExtensionData<TDeclaring>? extensionData = null)
+	internal JsonObjectWithConstructorConverter(JsonProperty<TDeclaring>[] properties, Func<TArgumentState> argumentStateFactory, Constructor<TArgumentState, TDeclaring> constructor, JsonConstructorParameter<TArgumentState>[] parameters, Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName, StringComparer propertyNameComparer, JsonExtensionData<TDeclaring>? extensionData = null)
 	{
 		this.extensionData = extensionData;
 		this.properties = properties;
@@ -411,6 +412,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		this.constructor = constructor;
 		this.parameters = parameters;
 		this.parametersByName = parametersByName;
+		this.propertyNameComparer = propertyNameComparer;
 	}
 
 	public override void Write(ref JsonWriter writer, TDeclaring? value, SerializationContext context)
@@ -456,19 +458,24 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		TArgumentState argumentState = this.argumentStateFactory();
 		HashSet<string> assignedParameters = new(StringComparer.Ordinal);
 		Dictionary<string, string>? extensionData = null;
+		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
 		reader.ReadStartObject();
 		if (!reader.TryReadEndObject())
 		{
 			while (true)
 			{
 				string propertyName = reader.ReadRequiredString();
+				collisionDetection.MarkAsRead(propertyName);
 				reader.ReadNameSeparator();
 
 				if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
 				{
 					if (!assignedParameters.Add(parameter.SerializedPropertyName))
 					{
-						throw new FormatException($"The constructor parameter '{parameter.ParameterName}' has already been assigned a value.");
+						throw new JsonSerializationException($"The parameter '{parameter.ParameterName}' has already been assigned a value.")
+						{
+							Code = JsonSerializationException.ErrorCode.DoublePropertyAssignment,
+						};
 					}
 
 					parameter.Read(ref reader, ref argumentState, context);
