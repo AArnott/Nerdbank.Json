@@ -305,77 +305,77 @@ internal static class BuiltInJsonConverters
 
 		if (type == typeof(byte))
 		{
-			result = byte.Parse(reader.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+			result = reader.ReadByteValue();
 			value = (T)result;
 			return true;
 		}
 
 		if (type == typeof(sbyte))
 		{
-			result = sbyte.Parse(reader.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+			result = reader.ReadSByteValue();
 			value = (T)result;
 			return true;
 		}
 
 		if (type == typeof(short))
 		{
-			result = short.Parse(reader.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+			result = reader.ReadInt16Value();
 			value = (T)result;
 			return true;
 		}
 
 		if (type == typeof(ushort))
 		{
-			result = ushort.Parse(reader.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+			result = reader.ReadUInt16Value();
 			value = (T)result;
 			return true;
 		}
 
 		if (type == typeof(int))
 		{
-			result = int.Parse(reader.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+			result = reader.ReadInt32Value();
 			value = (T)result;
 			return true;
 		}
 
 		if (type == typeof(uint))
 		{
-			result = uint.Parse(reader.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+			result = reader.ReadUInt32Value();
 			value = (T)result;
 			return true;
 		}
 
 		if (type == typeof(long))
 		{
-			result = long.Parse(reader.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+			result = reader.ReadInt64Value();
 			value = (T)result;
 			return true;
 		}
 
 		if (type == typeof(ulong))
 		{
-			result = ulong.Parse(reader.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+			result = reader.ReadUInt64Value();
 			value = (T)result;
 			return true;
 		}
 
 		if (type == typeof(float))
 		{
-			result = float.Parse(reader.ReadNumberToken(), NumberStyles.Float, CultureInfo.InvariantCulture);
+			result = reader.ReadSingleValue();
 			value = (T)result;
 			return true;
 		}
 
 		if (type == typeof(double))
 		{
-			result = double.Parse(reader.ReadNumberToken(), NumberStyles.Float, CultureInfo.InvariantCulture);
+			result = reader.ReadDoubleValue();
 			value = (T)result;
 			return true;
 		}
 
 		if (type == typeof(decimal))
 		{
-			result = decimal.Parse(reader.ReadNumberToken(), NumberStyles.Float, CultureInfo.InvariantCulture);
+			result = reader.ReadDecimalValue();
 			value = (T)result;
 			return true;
 		}
@@ -466,7 +466,7 @@ internal static class BuiltInJsonConverters
 
 		if (type == typeof(Color))
 		{
-			result = Color.FromArgb(int.Parse(reader.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture));
+			result = Color.FromArgb(reader.ReadInt32Value());
 			value = (T)result;
 			return true;
 		}
@@ -474,9 +474,9 @@ internal static class BuiltInJsonConverters
 		if (type == typeof(Point))
 		{
 			reader.ReadStartArray();
-			int x = int.Parse(reader.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+			int x = reader.ReadInt32Value();
 			reader.ReadValueSeparator();
-			int y = int.Parse(reader.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+			int y = reader.ReadInt32Value();
 			reader.ReadEndArray();
 			result = new Point(x, y);
 			value = (T)result;

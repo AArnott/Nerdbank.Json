@@ -94,6 +94,27 @@ public partial class JsonObjectSerializerTests : TestBase
 	}
 
 	[Test]
+	public void Deserialize_EmptyObjectGraph_IgnoresUnknownProperty()
+	{
+		EmptyContainer? value = this.Serializer.Deserialize<EmptyContainer>("""{"unknown":1}""");
+
+		Assert.NotNull(value);
+	}
+
+	[Test]
+	public void Deserialize_ObjectGraph_FromUtf8WithBom()
+	{
+		byte[] utf8Json = [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes("""{"name":"Ada","age":37,"address":null}""")];
+
+		Person? value = this.Serializer.Deserialize<Person>(utf8Json);
+
+		Assert.NotNull(value);
+		Assert.Equal("Ada", value.Name);
+		Assert.Equal(37, value.Age);
+		Assert.Null(value.Address);
+	}
+
+	[Test]
 	public void Deserialize_ObjectGraph_CanCaptureUnknownPropertiesIntoExtensionData()
 	{
 		ExtensionDataPerson? value = this.Serializer.Deserialize<ExtensionDataPerson>("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""" + "\n");
@@ -228,6 +249,14 @@ public partial class JsonObjectSerializerTests : TestBase
 		RenamedPropertyContainer value = new() { URLValue = "https://example.com" };
 
 		this.AssertRoundtrip(value, """{"uri":"https://example.com"}""");
+	}
+
+	[Test]
+	public void Serialize_ObjectGraph_ExplicitPropertyNameEscapesSpecialCharacters()
+	{
+		EscapedPropertyNameContainer value = new() { Value = 3 };
+
+		this.AssertRoundtrip(value, """{"say\"hi":3}""");
 	}
 
 	[Test]
@@ -409,6 +438,11 @@ public partial class JsonObjectSerializerTests : TestBase
 	}
 
 	[GenerateShape]
+	internal partial class EmptyContainer
+	{
+	}
+
+	[GenerateShape]
 	internal partial class Address
 	{
 		public string? City { get; set; }
@@ -430,6 +464,13 @@ public partial class JsonObjectSerializerTests : TestBase
 	{
 		[PropertyShape(Name = "uri")]
 		public string? URLValue { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class EscapedPropertyNameContainer
+	{
+		[PropertyShape(Name = "say\"hi")]
+		public int Value { get; set; }
 	}
 
 	[GenerateShape]

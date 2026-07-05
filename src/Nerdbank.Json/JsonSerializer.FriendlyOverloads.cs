@@ -144,7 +144,8 @@ public partial record JsonSerializer
 		Requires.NotNull(json);
 		Requires.NotNull(shape);
 
-		JsonReader reader = new(json.AsSpan(), this.AllowTrailingCommas, this.ReadCommentHandling);
+		byte[] utf8Json = Encoding.UTF8.GetBytes(json);
+		JsonReader reader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
 		T? value = this.Deserialize(ref reader, shape, cancellationToken);
 		reader.EnsureFullyConsumed();
 		return value;
@@ -156,7 +157,8 @@ public partial record JsonSerializer
 		Requires.NotNull(json);
 		Requires.NotNull(shape);
 
-		JsonReader reader = new(json.AsSpan(), this.AllowTrailingCommas, this.ReadCommentHandling);
+		byte[] utf8Json = Encoding.UTF8.GetBytes(json);
+		JsonReader reader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
 		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
 		reader.EnsureFullyConsumed();
 		return value;
@@ -174,8 +176,12 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(stream);
 
-		using StreamReader reader = new(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, 1024, leaveOpen: true);
-		return this.Deserialize(reader.ReadToEnd(), shape, cancellationToken);
+		using MemoryStream buffer = new();
+		stream.CopyTo(buffer);
+		JsonReader reader = new(buffer.GetBuffer().AsSpan(0, checked((int)buffer.Length)), this.AllowTrailingCommas, this.ReadCommentHandling);
+		T? value = this.Deserialize(ref reader, shape, cancellationToken);
+		reader.EnsureFullyConsumed();
+		return value;
 	}
 
 	/// <inheritdoc cref="DeserializeObject(ref JsonReader, ITypeShape, CancellationToken)"/>
@@ -186,22 +192,30 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(stream);
 
-		using StreamReader reader = new(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, 1024, leaveOpen: true);
-		return this.DeserializeObject(reader.ReadToEnd(), shape, cancellationToken);
+		using MemoryStream buffer = new();
+		stream.CopyTo(buffer);
+		JsonReader reader = new(buffer.GetBuffer().AsSpan(0, checked((int)buffer.Length)), this.AllowTrailingCommas, this.ReadCommentHandling);
+		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
+		reader.EnsureFullyConsumed();
+		return value;
 	}
 
 	/// <inheritdoc cref="Deserialize{T}(in ReadOnlySequence{byte}, ITypeShape{T}, CancellationToken)"/>
 	public T? Deserialize<T>(ReadOnlyMemory<byte> buffer, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
-		string json = Encoding.UTF8.GetString(buffer.Span);
-		return this.Deserialize(json, shape, cancellationToken);
+		JsonReader reader = new(buffer.Span, this.AllowTrailingCommas, this.ReadCommentHandling);
+		T? value = this.Deserialize(ref reader, shape, cancellationToken);
+		reader.EnsureFullyConsumed();
+		return value;
 	}
 
 	/// <inheritdoc cref="DeserializeObject(ref JsonReader, ITypeShape, CancellationToken)"/>
 	public object? DeserializeObject(ReadOnlyMemory<byte> buffer, ITypeShape shape, CancellationToken cancellationToken = default)
 	{
-		string json = Encoding.UTF8.GetString(buffer.Span);
-		return this.DeserializeObject(json, shape, cancellationToken);
+		JsonReader reader = new(buffer.Span, this.AllowTrailingCommas, this.ReadCommentHandling);
+		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
+		reader.EnsureFullyConsumed();
+		return value;
 	}
 
 	/// <inheritdoc cref="Deserialize{T}(ref JsonReader, ITypeShape{T}, CancellationToken)"/>
@@ -210,8 +224,10 @@ public partial record JsonSerializer
 	public T? Deserialize<T>(scoped in ReadOnlySequence<byte> buffer, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 #pragma warning restore CS1573 // Parameter has no matching param tag in the XML comment (but other parameters do)
 	{
-		string json = Encoding.UTF8.GetString(buffer);
-		return this.Deserialize(json, shape, cancellationToken);
+		JsonReader reader = new(buffer, this.AllowTrailingCommas, this.ReadCommentHandling);
+		T? value = this.Deserialize(ref reader, shape, cancellationToken);
+		reader.EnsureFullyConsumed();
+		return value;
 	}
 
 	/// <inheritdoc cref="DeserializeObject(ref JsonReader, ITypeShape, CancellationToken)"/>
@@ -220,7 +236,9 @@ public partial record JsonSerializer
 	public object? DeserializeObject(scoped in ReadOnlySequence<byte> buffer, ITypeShape shape, CancellationToken cancellationToken = default)
 #pragma warning restore CS1573 // Parameter has no matching param tag in the XML comment (but other parameters do)
 	{
-		string json = Encoding.UTF8.GetString(buffer);
-		return this.DeserializeObject(json, shape, cancellationToken);
+		JsonReader reader = new(buffer, this.AllowTrailingCommas, this.ReadCommentHandling);
+		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
+		reader.EnsureFullyConsumed();
+		return value;
 	}
 }

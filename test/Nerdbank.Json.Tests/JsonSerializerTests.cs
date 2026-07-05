@@ -195,6 +195,14 @@ public partial class JsonSerializerTests : TestBase
 	}
 
 	[Test]
+	public void Deserialize_Point_Int32Overflow_ThrowsOverflowException()
+	{
+		JsonSerializer serializer = new();
+
+		Assert.Throws<OverflowException>(() => serializer.Deserialize<Point, JsonSerializerTests>("""[2147483648,1]"""));
+	}
+
+	[Test]
 	public void Serialize_NestedBuiltInComplexType_ExceedingMaxDepth_Throws()
 	{
 		this.Serializer = this.Serializer with

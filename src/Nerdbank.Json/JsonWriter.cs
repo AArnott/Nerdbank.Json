@@ -147,27 +147,9 @@ public ref struct JsonWriter
 	/// <param name="name">The property name to write.</param>
 	public void WritePropertyName(string name)
 	{
-		ContainerState state = this.GetCurrentContainer(ContainerKind.Object);
-		if (this.WriteIndented)
-		{
-			if (state.Count == 0)
-			{
-				this.WriteByte(LineFeed);
-			}
-
-			this.WriteIndent(this.depth);
-		}
-
+		ContainerState state = this.PreparePropertyName();
 		this.WriteQuotedString(name.AsSpan());
-		this.WriteByte((byte)':');
-		if (this.WriteIndented)
-		{
-			this.WriteByte(Space);
-		}
-
-		state.Count++;
-		this.SetCurrentContainer(state);
-		this.pendingPropertyValue = true;
+		this.FinishPropertyName(state);
 	}
 
 	/// <summary>
@@ -363,6 +345,33 @@ public ref struct JsonWriter
 		}
 	}
 
+	/// <summary>
+	/// Writes an already-escaped UTF-8 JSON property name, including its surrounding quotes.
+	/// </summary>
+	/// <param name="utf8EncodedName">The UTF-8 property name token to write.</param>
+	internal void WritePropertyName(ReadOnlySpan<byte> utf8EncodedName)
+	{
+		ContainerState state = this.PreparePropertyName();
+		this.Write(utf8EncodedName);
+		this.FinishPropertyName(state);
+	}
+
+	/// <summary>
+	/// Encodes a property name as a quoted, escaped UTF-8 JSON token.
+	/// </summary>
+	/// <param name="name">The property name to encode.</param>
+	/// <returns>The quoted UTF-8 JSON token.</returns>
+	internal static byte[] EncodePropertyName(string name)
+	{
+		Requires.NotNull(name);
+
+		byte[] scratch = new byte[checked((name.Length * 6) + 2)];
+		JsonWriter jsonWriter = new(SequencePool<byte>.Shared, scratch);
+		jsonWriter.WriteQuotedString(name.AsSpan());
+		Assumes.True(jsonWriter.writer.TryGetUncommittedSpan(out ReadOnlySpan<byte> span));
+		return span.ToArray();
+	}
+
 	private void BeforeValueToken()
 	{
 		if (this.pendingPropertyValue)
@@ -434,6 +443,35 @@ public ref struct JsonWriter
 	}
 
 	private readonly void SetCurrentContainer(ContainerState state) => this.stack[this.depth - 1] = state;
+
+	private ContainerState PreparePropertyName()
+	{
+		ContainerState state = this.GetCurrentContainer(ContainerKind.Object);
+		if (this.WriteIndented)
+		{
+			if (state.Count == 0)
+			{
+				this.WriteByte(LineFeed);
+			}
+
+			this.WriteIndent(this.depth);
+		}
+
+		return state;
+	}
+
+	private void FinishPropertyName(ContainerState state)
+	{
+		this.WriteByte((byte)':');
+		if (this.WriteIndented)
+		{
+			this.WriteByte(Space);
+		}
+
+		state.Count++;
+		this.SetCurrentContainer(state);
+		this.pendingPropertyValue = true;
+	}
 
 	private void WriteNewLineAndIndent(int indentDepth)
 	{
