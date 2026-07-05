@@ -12,19 +12,47 @@ namespace Nerdbank.Json;
 /// </summary>
 internal struct PropertyCollisionDetection
 {
-	private readonly HashSet<string> propertyNames;
+	private readonly StringComparer comparer;
+	private readonly bool[]? manyKnownPropertyNames;
+	private ulong knownPropertyNames;
+	private HashSet<string>? propertyNames;
 
-	internal PropertyCollisionDetection(StringComparer comparer)
+	internal PropertyCollisionDetection(StringComparer comparer, int knownPropertyCount = 0)
 	{
-		this.propertyNames = new(comparer);
+		this.comparer = comparer;
+		this.manyKnownPropertyNames = knownPropertyCount > 64 ? new bool[knownPropertyCount] : null;
+		this.knownPropertyNames = 0;
+		this.propertyNames = null;
 	}
 
 	internal void MarkAsRead(string propertyName)
 	{
-		if (!this.propertyNames.Add(propertyName))
+		if (!(this.propertyNames ??= new(this.comparer)).Add(propertyName))
 		{
 			ThrowAlreadyAssigned(propertyName);
 		}
+	}
+
+	internal void MarkAsRead(int knownPropertyIndex, string propertyName)
+	{
+		if (this.manyKnownPropertyNames is not null)
+		{
+			if (this.manyKnownPropertyNames[knownPropertyIndex])
+			{
+				ThrowAlreadyAssigned(propertyName);
+			}
+
+			this.manyKnownPropertyNames[knownPropertyIndex] = true;
+			return;
+		}
+
+		ulong mask = 1UL << knownPropertyIndex;
+		if ((this.knownPropertyNames & mask) != 0)
+		{
+			ThrowAlreadyAssigned(propertyName);
+		}
+
+		this.knownPropertyNames |= mask;
 	}
 
 	[DoesNotReturn]

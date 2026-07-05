@@ -5,6 +5,8 @@
 #pragma warning disable SA1600 // Elements should be documented
 #pragma warning disable SA1649 // File name should match first type name
 
+using System.Text;
+
 namespace Nerdbank.Json;
 
 internal sealed class JsonObjectConverter<T> : JsonConverter<T>
@@ -12,6 +14,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 	private readonly Func<T> factory;
 	private readonly JsonExtensionData<T>? extensionData;
 	private readonly JsonProperty<T>[] properties;
+	private readonly Utf8PropertyLookup<T>? utf8PropertiesByName;
 	private readonly Dictionary<string, JsonProperty<T>> propertiesByName;
 	private readonly StringComparer propertyNameComparer;
 
@@ -24,7 +27,13 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 		this.propertiesByName = new Dictionary<string, JsonProperty<T>>(properties.Length, propertyNameComparer);
 		for (int i = 0; i < properties.Length; i++)
 		{
+			properties[i].Index = i;
 			this.propertiesByName[properties[i].Name] = properties[i];
+		}
+
+		if (propertyNameComparer == StringComparer.Ordinal)
+		{
+			this.utf8PropertiesByName = new(properties);
 		}
 	}
 
@@ -69,7 +78,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 		context.DepthStep();
 
 		T result = this.factory();
-		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
+		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
 		{
@@ -78,16 +87,42 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 
 		while (true)
 		{
-			string propertyName = reader.ReadRequiredString();
-			collisionDetection.MarkAsRead(propertyName);
+			string? propertyName = null;
+			JsonProperty<T>? property = null;
+			if (this.utf8PropertiesByName is not null && reader.TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> utf8PropertyName))
+			{
+				if (this.utf8PropertiesByName.TryGetValue(utf8PropertyName, out property))
+				{
+					collisionDetection.MarkAsRead(property!.Index, property.Name);
+				}
+				else
+				{
+					propertyName = Encoding.UTF8.GetString(utf8PropertyName[1..^1]);
+					collisionDetection.MarkAsRead(propertyName);
+				}
+			}
+			else
+			{
+				propertyName = reader.ReadRequiredString();
+				if (this.propertiesByName.TryGetValue(propertyName, out property))
+				{
+					collisionDetection.MarkAsRead(property.Index, property.Name);
+				}
+				else
+				{
+					collisionDetection.MarkAsRead(propertyName);
+				}
+			}
+
 			reader.ReadNameSeparator();
 
-			if (this.propertiesByName.TryGetValue(propertyName, out JsonProperty<T>? property) && property.CanDeserialize)
+			if (property is not null && property.CanDeserialize)
 			{
 				property.Read(ref reader, ref result, context);
 			}
 			else if (this.extensionData is not null)
 			{
+				propertyName ??= property?.Name ?? throw new InvalidOperationException("The property name should be available for extension data.");
 				this.extensionData.Read(ref reader, ref result, propertyName);
 			}
 			else
@@ -236,6 +271,8 @@ internal abstract class JsonProperty<TDeclaring>
 
 	internal string Name { get; }
 
+	internal int Index { get; set; }
+
 	internal ReadOnlySpan<byte> EncodedName => this.encodedName;
 
 	internal abstract bool CanSerialize { get; }
@@ -360,5 +397,73 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		}
 
 		return (policy & SerializeDefaultValuesPolicy.ReferenceTypes) == SerializeDefaultValuesPolicy.ReferenceTypes;
+	}
+}
+
+internal sealed class Utf8PropertyLookup<TDeclaring>
+{
+	private readonly int[] buckets;
+	private readonly Entry[] entries;
+
+	internal Utf8PropertyLookup(JsonProperty<TDeclaring>[] properties)
+	{
+		this.buckets = new int[properties.Length];
+		this.entries = new Entry[properties.Length];
+		for (int i = 0; i < properties.Length; i++)
+		{
+			JsonProperty<TDeclaring> property = properties[i];
+			ReadOnlySpan<byte> name = property.EncodedName;
+			int hashCode = GetHashCode(name);
+			int bucketIndex = (hashCode & 0x7fffffff) % this.buckets.Length;
+			this.entries[i] = new Entry(hashCode, this.buckets[bucketIndex] - 1, property);
+			this.buckets[bucketIndex] = i + 1;
+		}
+	}
+
+	internal bool TryGetValue(ReadOnlySpan<byte> name, out JsonProperty<TDeclaring>? property)
+	{
+		int hashCode = GetHashCode(name);
+		for (int i = this.buckets[(hashCode & 0x7fffffff) % this.buckets.Length] - 1; i >= 0; i = this.entries[i].Next)
+		{
+			Entry entry = this.entries[i];
+			if (entry.HashCode == hashCode && name.SequenceEqual(entry.Property.EncodedName))
+			{
+				property = entry.Property;
+				return true;
+			}
+		}
+
+		property = null;
+		return false;
+	}
+
+	private static int GetHashCode(ReadOnlySpan<byte> name)
+	{
+		unchecked
+		{
+			int hash = 17;
+			for (int i = 0; i < name.Length; i++)
+			{
+				hash = (hash * 31) + name[i];
+			}
+
+			return hash;
+		}
+	}
+
+	private readonly struct Entry
+	{
+		internal Entry(int hashCode, int next, JsonProperty<TDeclaring> property)
+		{
+			this.HashCode = hashCode;
+			this.Next = next;
+			this.Property = property;
+		}
+
+		internal int HashCode { get; }
+
+		internal int Next { get; }
+
+		internal JsonProperty<TDeclaring> Property { get; }
 	}
 }

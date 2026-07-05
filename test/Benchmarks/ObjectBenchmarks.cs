@@ -204,6 +204,7 @@ public partial class ObjectBenchmarks
 	}
 }
 
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(ObjectBenchmarks.SmallModel))]
 [JsonSerializable(typeof(ObjectBenchmarks.WideModel))]
 internal sealed partial class BenchmarkJsonContext : JsonSerializerContext

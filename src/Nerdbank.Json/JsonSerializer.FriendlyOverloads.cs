@@ -144,7 +144,8 @@ public partial record JsonSerializer
 		Requires.NotNull(json);
 		Requires.NotNull(shape);
 
-		JsonReader reader = new(json.AsSpan(), this.AllowTrailingCommas, this.ReadCommentHandling);
+		byte[] utf8Json = Encoding.UTF8.GetBytes(json);
+		JsonReader reader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
 		T? value = this.Deserialize(ref reader, shape, cancellationToken);
 		reader.EnsureFullyConsumed();
 		return value;
@@ -156,7 +157,8 @@ public partial record JsonSerializer
 		Requires.NotNull(json);
 		Requires.NotNull(shape);
 
-		JsonReader reader = new(json.AsSpan(), this.AllowTrailingCommas, this.ReadCommentHandling);
+		byte[] utf8Json = Encoding.UTF8.GetBytes(json);
+		JsonReader reader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
 		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
 		reader.EnsureFullyConsumed();
 		return value;
