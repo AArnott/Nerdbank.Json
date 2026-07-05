@@ -276,81 +276,125 @@ public ref struct JsonReader
 	}
 
 	internal byte ReadByteValue()
-		=> this.TryReadUtf8NumberToken(out ReadOnlySpan<byte> utf8Token)
-			&& Utf8Parser.TryParse(utf8Token, out byte utf8Value, out int bytesConsumed)
-			&& bytesConsumed == utf8Token.Length
-			? utf8Value
-			: byte.Parse(this.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	{
+		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
+		if (Utf8Parser.TryParse(utf8Token, out byte utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
+		{
+			return utf8Value;
+		}
+
+		return byte.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
 
 	internal sbyte ReadSByteValue()
-		=> this.TryReadUtf8NumberToken(out ReadOnlySpan<byte> utf8Token)
-			&& Utf8Parser.TryParse(utf8Token, out sbyte utf8Value, out int bytesConsumed)
-			&& bytesConsumed == utf8Token.Length
-			? utf8Value
-			: sbyte.Parse(this.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	{
+		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
+		if (Utf8Parser.TryParse(utf8Token, out sbyte utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
+		{
+			return utf8Value;
+		}
+
+		return sbyte.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
 
 	internal short ReadInt16Value()
-		=> this.TryReadUtf8NumberToken(out ReadOnlySpan<byte> utf8Token)
-			&& Utf8Parser.TryParse(utf8Token, out short utf8Value, out int bytesConsumed)
-			&& bytesConsumed == utf8Token.Length
-			? utf8Value
-			: short.Parse(this.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	{
+		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
+		if (Utf8Parser.TryParse(utf8Token, out short utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
+		{
+			return utf8Value;
+		}
+
+		return short.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
 
 	internal ushort ReadUInt16Value()
-		=> this.TryReadUtf8NumberToken(out ReadOnlySpan<byte> utf8Token)
-			&& Utf8Parser.TryParse(utf8Token, out ushort utf8Value, out int bytesConsumed)
-			&& bytesConsumed == utf8Token.Length
-			? utf8Value
-			: ushort.Parse(this.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	{
+		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
+		if (Utf8Parser.TryParse(utf8Token, out ushort utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
+		{
+			return utf8Value;
+		}
+
+		return ushort.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
 
 	internal int ReadInt32Value()
-		=> this.TryReadUtf8NumberToken(out ReadOnlySpan<byte> utf8Token)
-			&& Utf8Parser.TryParse(utf8Token, out int utf8Value, out int bytesConsumed)
-			&& bytesConsumed == utf8Token.Length
-			? utf8Value
-			: int.Parse(this.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	{
+		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
+		if (Utf8Parser.TryParse(utf8Token, out int utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
+		{
+			return utf8Value;
+		}
+
+		return int.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
 
 	internal uint ReadUInt32Value()
-		=> this.TryReadUtf8NumberToken(out ReadOnlySpan<byte> utf8Token)
-			&& Utf8Parser.TryParse(utf8Token, out uint utf8Value, out int bytesConsumed)
-			&& bytesConsumed == utf8Token.Length
-			? utf8Value
-			: uint.Parse(this.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	{
+		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
+		if (Utf8Parser.TryParse(utf8Token, out uint utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
+		{
+			return utf8Value;
+		}
+
+		return uint.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
 
 	internal long ReadInt64Value()
-		=> this.TryReadUtf8NumberToken(out ReadOnlySpan<byte> utf8Token)
-			&& Utf8Parser.TryParse(utf8Token, out long utf8Value, out int bytesConsumed)
-			&& bytesConsumed == utf8Token.Length
-			? utf8Value
-			: long.Parse(this.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	{
+		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
+		if (Utf8Parser.TryParse(utf8Token, out long utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
+		{
+			return utf8Value;
+		}
+
+		return long.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
 
 	internal ulong ReadUInt64Value()
-		=> this.TryReadUtf8NumberToken(out ReadOnlySpan<byte> utf8Token)
-			&& Utf8Parser.TryParse(utf8Token, out ulong utf8Value, out int bytesConsumed)
-			&& bytesConsumed == utf8Token.Length
-			? utf8Value
-			: ulong.Parse(this.ReadNumberToken(), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	{
+		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
+		if (Utf8Parser.TryParse(utf8Token, out ulong utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
+		{
+			return utf8Value;
+		}
+
+		return ulong.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
 
 	internal float ReadSingleValue()
-		=> this.TryReadUtf8NumberToken(out ReadOnlySpan<byte> utf8Token)
-			&& Utf8Parser.TryParse(utf8Token, out float utf8Value, out int bytesConsumed)
-			&& bytesConsumed == utf8Token.Length
-			? utf8Value
-			: float.Parse(this.ReadNumberToken(), NumberStyles.Float, CultureInfo.InvariantCulture);
+	{
+		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
+		if (Utf8Parser.TryParse(utf8Token, out float utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
+		{
+			return utf8Value;
+		}
+
+		return float.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Float, CultureInfo.InvariantCulture);
+	}
 
 	internal double ReadDoubleValue()
-		=> this.TryReadUtf8NumberToken(out ReadOnlySpan<byte> utf8Token)
-			&& Utf8Parser.TryParse(utf8Token, out double utf8Value, out int bytesConsumed)
-			&& bytesConsumed == utf8Token.Length
-			? utf8Value
-			: double.Parse(this.ReadNumberToken(), NumberStyles.Float, CultureInfo.InvariantCulture);
+	{
+		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
+		if (Utf8Parser.TryParse(utf8Token, out double utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
+		{
+			return utf8Value;
+		}
+
+		return double.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Float, CultureInfo.InvariantCulture);
+	}
 
 	internal decimal ReadDecimalValue()
-		=> this.TryReadUtf8NumberToken(out ReadOnlySpan<byte> utf8Token)
-			&& Utf8Parser.TryParse(utf8Token, out decimal utf8Value, out int bytesConsumed)
-			&& bytesConsumed == utf8Token.Length
-			? utf8Value
-			: decimal.Parse(this.ReadNumberToken(), NumberStyles.Float, CultureInfo.InvariantCulture);
+	{
+		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
+		if (Utf8Parser.TryParse(utf8Token, out decimal utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
+		{
+			return utf8Value;
+		}
+
+		return decimal.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Float, CultureInfo.InvariantCulture);
+	}
 
 	internal char PeekValueToken()
 	{
@@ -399,12 +443,6 @@ public ref struct JsonReader
 			>= (byte)'a' and <= (byte)'f' => value - (byte)'a' + 10,
 			_ => throw new FormatException("Invalid hex digit in JSON unicode escape sequence."),
 		};
-
-	private bool TryReadUtf8NumberToken(out ReadOnlySpan<byte> token)
-	{
-		token = this.ReadNumberTokenUtf8Core();
-		return true;
-	}
 
 	private string ReadRequiredUtf8String()
 	{
@@ -472,6 +510,16 @@ public ref struct JsonReader
 	{
 		while (index < this.utf8Json.Length)
 		{
+			if (index == 0
+				&& this.utf8Json.Length >= 3
+				&& this.utf8Json[0] == 0xEF
+				&& this.utf8Json[1] == 0xBB
+				&& this.utf8Json[2] == 0xBF)
+			{
+				index = 3;
+				continue;
+			}
+
 			byte ch = this.utf8Json[index];
 			if (ch is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
 			{

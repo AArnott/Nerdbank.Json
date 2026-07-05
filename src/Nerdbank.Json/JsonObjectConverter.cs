@@ -31,7 +31,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 			this.propertiesByName[properties[i].Name] = properties[i];
 		}
 
-		if (propertyNameComparer == StringComparer.Ordinal)
+		if (propertyNameComparer == StringComparer.Ordinal && properties.Length > 0)
 		{
 			this.utf8PropertiesByName = new(properties);
 		}
