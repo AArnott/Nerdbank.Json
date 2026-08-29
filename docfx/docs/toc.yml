@@ -5,6 +5,8 @@ items:
     href: getting-started.md
   - name: Unions
     href: unions.md
+  - name: Runtime Union Configuration
+    href: runtime-unions.md
   - name: Custom Converters
     href: custom-converters.md
   - name: Serialization Callbacks

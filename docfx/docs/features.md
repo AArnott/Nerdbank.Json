@@ -62,6 +62,7 @@ Current behavior:
 * `JsonSerializer.AllowTrailingCommas` can accept trailing commas while reading arrays and objects.
 * `JsonSerializer.ReadCommentHandling` can skip `//` and `/* */` comments while deserializing.
 * Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
+* `JsonSerializer.Unions` can add, replace, extend, or disable unions at runtime using explicitly supplied type shapes, and can opt into an experimental discriminator-free duck-typing strategy.
 
 Converter registration notes:
 

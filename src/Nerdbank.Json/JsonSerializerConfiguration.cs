@@ -21,6 +21,7 @@ internal record JsonSerializerConfiguration
 	private JsonNamingPolicy? propertyNamingPolicy = JsonNamingPolicy.CamelCase;
 	private JsonCommentHandling readCommentHandling;
 	private ReferencePreservationMode preserveReferences;
+	private JsonUnionConfiguration unionConfiguration = JsonUnionConfiguration.Default;
 	private bool serializeEnumValuesByName;
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
 	private bool writeIndented;
@@ -207,6 +208,19 @@ internal record JsonSerializerConfiguration
 		init
 		{
 			this.preserveReferences = value;
+			this.converterCache = null;
+		}
+	}
+
+	/// <summary>
+	/// Gets the runtime union overrides applied during serialization and deserialization.
+	/// </summary>
+	internal JsonUnionConfiguration UnionConfiguration
+	{
+		get => this.unionConfiguration;
+		init
+		{
+			this.unionConfiguration = value ?? throw new ArgumentNullException(nameof(value));
 			this.converterCache = null;
 		}
 	}

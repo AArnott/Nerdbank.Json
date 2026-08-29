@@ -5,6 +5,7 @@
 #pragma warning disable SA1500 // Multidimensional array literals use a compact nested-brace layout.
 
 using System.Collections.Generic;
+using PolyType.Abstractions;
 
 internal static class ManyModels
 {
@@ -18,9 +19,33 @@ internal static class ManyModels
 		Verify(snapshot, roundTripped);
 
 		VerifyCycle();
+		VerifyRuntimeUnion();
 
 		Console.WriteLine("Success");
 	}
+
+	private static void VerifyRuntimeUnion()
+	{
+		JsonSerializer serializer = new()
+		{
+			Unions = JsonUnionConfiguration.Default.WithUnion(
+				JsonUnion<Payload>.Create()
+					.AddCase<TextPayload>("text", ShapeOf<TextPayload>())
+					.AddCase<NumberPayload>("number", ShapeOf<NumberPayload>())),
+		};
+
+		Payload value = new TextPayload("hello");
+		string json = serializer.Serialize<Payload>(value);
+		Payload roundTripped = serializer.Deserialize<Payload>(json)!;
+
+		if (roundTripped is not TextPayload { Text: "hello" })
+		{
+			throw new InvalidOperationException("Runtime union configuration did not round-trip.");
+		}
+	}
+
+	private static ITypeShape<T> ShapeOf<T>()
+		where T : IShapeable<T> => T.GetTypeShape();
 
 	private static void VerifyCycle()
 	{
@@ -181,3 +206,12 @@ internal partial class LinkNode
 
 	public LinkNode? Next { get; set; }
 }
+
+[GenerateShape]
+internal abstract partial record Payload;
+
+[GenerateShape]
+internal partial record TextPayload(string Text) : Payload;
+
+[GenerateShape]
+internal partial record NumberPayload(int Value) : Payload;

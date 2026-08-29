@@ -140,6 +140,11 @@ internal sealed class ConverterCache
 			return this.WrapWithReferencePreservation(new BuiltInJsonConverter<T>());
 		}
 
+		if (this.configuration.UnionConfiguration.TryGetEntry(shape.Type, out object? unionEntry) && unionEntry is not null)
+		{
+			return this.WrapWithReferencePreservation(RuntimeUnionBuilder.Build(this, shape, unionEntry, visitor));
+		}
+
 		object? converter = shape.Accept(visitor, state);
 		if (converter is JsonConverter jsonConverter)
 		{

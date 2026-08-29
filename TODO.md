@@ -48,7 +48,7 @@ documentation, and samples where a runnable example adds value.
   names must remain collision-safe and the feature stays opt-in because it changes
   the JSON wire shape.
 
-- [ ] **Runtime union configuration and discriminator-free unions.**
+- [x] **Runtime union configuration and discriminator-free unions.**
   Allow callers to add, replace, disable, or extend generated union definitions
   using explicitly supplied `ITypeShape` instances so the feature remains
   NativeAOT-safe. Also support an opt-in duck-typing strategy for legacy JSON that
