@@ -30,6 +30,8 @@ internal abstract class RuntimeUnionCase<TBase>
 	internal abstract JsonConverter<TBase> BuildConverter(ConverterCache owner);
 
 	internal abstract IObjectTypeShape? GetObjectShape();
+
+	internal abstract ITypeShape GetCaseShape();
 }
 
 internal sealed class RuntimeUnionCase<TBase, TCase> : RuntimeUnionCase<TBase>
@@ -49,6 +51,8 @@ internal sealed class RuntimeUnionCase<TBase, TCase> : RuntimeUnionCase<TBase>
 		=> new JsonRuntimeUnionCaseConverter<TBase, TCase>((JsonConverter<TCase>)owner.GetOrAddConverter(this.caseShape));
 
 	internal override IObjectTypeShape? GetObjectShape() => this.caseShape as IObjectTypeShape;
+
+	internal override ITypeShape GetCaseShape() => this.caseShape;
 }
 
 internal sealed class JsonRuntimeUnionCaseConverter<TBase, TCase> : JsonConverter<TBase>

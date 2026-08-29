@@ -17,4 +17,6 @@ items:
     href: multidimensional-arrays.md
   - name: Reference Preservation
     href: reference-preservation.md
+  - name: JSON Schema Export
+    href: json-schema.md
   - href: security.md

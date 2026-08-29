@@ -59,7 +59,7 @@ documentation, and samples where a runnable example adds value.
   before freezing the API; compatibility with the current representation is
   required by default.
 
-- [ ] **JSON Schema export.**
+- [x] **JSON Schema export.**
   Generate a JSON Schema document from the effective converter graph and serializer
   configuration. This is more directly applicable to JSON than MessagePack's
   schema projection and should describe naming policies, required and nullable

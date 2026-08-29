@@ -36,6 +36,10 @@ internal sealed class ConverterCache
 
 	internal JsonCommentHandling ReadCommentHandling => this.configuration.ReadCommentHandling;
 
+	internal ReferencePreservationMode PreserveReferences => this.configuration.PreserveReferences;
+
+	internal JsonUnionConfiguration UnionConfiguration => this.configuration.UnionConfiguration;
+
 	private MultiProviderTypeCache CachedConverters
 	{
 		get
@@ -193,6 +197,24 @@ internal sealed class ConverterCache
 		}
 
 		return new ReferencePreservingJsonConverter<T>(converter);
+	}
+
+	internal bool ShouldPreserveReferences(Type type) => this.configuration.PreserveReferences != ReferencePreservationMode.Off && RequiresReferencePreservation(type);
+
+	internal bool TryGetCustomConverter(ITypeShape shape, out JsonConverter? converter)
+	{
+		if (this.TryGetRuntimeProfferedConverter(shape.Type, shape, out converter) && converter is not null)
+		{
+			return true;
+		}
+
+		if (TryGetConverterFromAttribute(shape.Type, shape, attributeProvider: null, out converter) && converter is not null)
+		{
+			return true;
+		}
+
+		converter = null;
+		return false;
 	}
 
 	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);

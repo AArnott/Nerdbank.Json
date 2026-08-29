@@ -15,6 +15,19 @@ public abstract class JsonConverter
 {
 	internal abstract Type DataType { get; }
 
+	/// <summary>
+	/// Produces a JSON Schema fragment that describes how this converter represents its value, or
+	/// <see langword="null"/> if this converter cannot describe its representation.
+	/// </summary>
+	/// <param name="context">The schema-generation context, which resolves nested schemas and shared definitions.</param>
+	/// <param name="typeShape">The shape of the type this converter handles.</param>
+	/// <returns>
+	/// A schema fragment, or <see langword="null"/> to indicate the representation is undocumented. When
+	/// <see langword="null"/> is returned, the exporter emits a permissive schema annotated with a conspicuous
+	/// comment rather than pretending to know the representation.
+	/// </returns>
+	public virtual JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => null;
+
 	internal abstract void WriteObject(ref JsonWriter writer, object? value, SerializationContext context);
 
 	internal abstract object? ReadObject(ref JsonReader reader, SerializationContext context);

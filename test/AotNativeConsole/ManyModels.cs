@@ -20,8 +20,20 @@ internal static class ManyModels
 
 		VerifyCycle();
 		VerifyRuntimeUnion();
+		VerifySchema();
 
 		Console.WriteLine("Success");
+	}
+
+	private static void VerifySchema()
+	{
+		JsonSerializer serializer = new();
+		string schema = serializer.GetJsonSchema<DeviceSnapshot>();
+
+		if (!schema.Contains("\"$schema\"") || !schema.Contains("\"type\":\"object\"") || !schema.Contains("\"deviceId\""))
+		{
+			throw new InvalidOperationException("JSON schema export did not describe the model.");
+		}
 	}
 
 	private static void VerifyRuntimeUnion()
