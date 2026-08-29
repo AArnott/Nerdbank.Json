@@ -63,7 +63,7 @@ internal sealed class JsonReadOnlyEnumerableConverter<TEnumerable, TElement> : J
 		=> throw new NotSupportedException($"JSON deserialization does not support read-only enumerable type {typeof(TEnumerable).FullName}.");
 }
 
-internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : JsonEnumerableConverter<TEnumerable, TElement>, IJsonDeserializeInto<TEnumerable>
+internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : JsonEnumerableConverter<TEnumerable, TElement>, IJsonDeserializeInto<TEnumerable>, IJsonReferencePreservingConverter<TEnumerable>
 {
 	private readonly EnumerableAppender<TEnumerable, TElement> addElement;
 	private readonly MutableCollectionConstructor<TElement, TEnumerable> constructor;
@@ -97,6 +97,14 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 		}
 	}
 
+	public TEnumerable CreateReferenceInstance() => this.constructor(this.constructionOptions);
+
+	public void PopulateReference(ref JsonReader reader, ref TEnumerable instance, SerializationContext context)
+	{
+		context.DepthStep();
+		this.DeserializeInto(ref reader, ref instance, context);
+	}
+
 	public override TEnumerable? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (reader.TryReadNull())
@@ -104,10 +112,8 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 			return default;
 		}
 
-		context.DepthStep();
-
-		TEnumerable result = this.constructor(this.constructionOptions);
-		this.DeserializeInto(ref reader, ref result, context);
+		TEnumerable result = this.CreateReferenceInstance();
+		this.PopulateReference(ref reader, ref result, context);
 		return result;
 	}
 }
@@ -209,7 +215,7 @@ internal sealed class JsonReadOnlyDictionaryConverter<TDictionary, TKey, TValue>
 		=> throw new NotSupportedException($"JSON deserialization does not support read-only dictionary type {typeof(TDictionary).FullName}.");
 }
 
-internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> : JsonDictionaryConverter<TDictionary, TKey, TValue>, IJsonDeserializeInto<TDictionary>
+internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> : JsonDictionaryConverter<TDictionary, TKey, TValue>, IJsonDeserializeInto<TDictionary>, IJsonReferencePreservingConverter<TDictionary>
 	where TKey : notnull
 {
 	private readonly DictionaryInserter<TDictionary, TKey, TValue> addEntry;
@@ -246,6 +252,14 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 		}
 	}
 
+	public TDictionary CreateReferenceInstance() => this.constructor(this.constructionOptions);
+
+	public void PopulateReference(ref JsonReader reader, ref TDictionary instance, SerializationContext context)
+	{
+		context.DepthStep();
+		this.DeserializeInto(ref reader, ref instance, context);
+	}
+
 	public override TDictionary? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (reader.TryReadNull())
@@ -253,10 +267,8 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 			return default;
 		}
 
-		context.DepthStep();
-
-		TDictionary result = this.constructor(this.constructionOptions);
-		this.DeserializeInto(ref reader, ref result, context);
+		TDictionary result = this.CreateReferenceInstance();
+		this.PopulateReference(ref reader, ref result, context);
 		return result;
 	}
 }

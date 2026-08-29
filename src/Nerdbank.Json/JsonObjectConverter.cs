@@ -9,7 +9,7 @@ using System.Text;
 
 namespace Nerdbank.Json;
 
-internal sealed class JsonObjectConverter<T> : JsonConverter<T>
+internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferencePreservingConverter<T>
 {
 	private readonly Func<T> factory;
 	private readonly JsonExtensionData<T>? extensionData;
@@ -76,15 +76,23 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 			return default;
 		}
 
+		T result = this.factory();
+		this.PopulateReference(ref reader, ref result, context);
+		return result;
+	}
+
+	public T CreateReferenceInstance() => this.factory();
+
+	public void PopulateReference(ref JsonReader reader, ref T result, SerializationContext context)
+	{
 		context.DepthStep();
 
-		T result = this.factory();
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
 		{
 			(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
-			return result;
+			return;
 		}
 
 		while (true)
@@ -141,7 +149,6 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 		}
 
 		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
-		return result;
 	}
 }
 

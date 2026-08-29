@@ -13,4 +13,6 @@ items:
     href: collection-comparers.md
   - name: Multidimensional Arrays
     href: multidimensional-arrays.md
+  - name: Reference Preservation
+    href: reference-preservation.md
   - href: security.md

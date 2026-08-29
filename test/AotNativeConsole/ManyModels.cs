@@ -17,7 +17,24 @@ internal static class ManyModels
 		DeviceSnapshot roundTripped = serializer.Deserialize<DeviceSnapshot>(json)!;
 		Verify(snapshot, roundTripped);
 
+		VerifyCycle();
+
 		Console.WriteLine("Success");
+	}
+
+	private static void VerifyCycle()
+	{
+		JsonSerializer serializer = new() { PreserveReferences = ReferencePreservationMode.AllowCycles };
+		LinkNode node = new() { Label = "self" };
+		node.Next = node;
+
+		string json = serializer.Serialize(node);
+		LinkNode roundTripped = serializer.Deserialize<LinkNode>(json)!;
+
+		if (!ReferenceEquals(roundTripped, roundTripped.Next) || roundTripped.Label != "self")
+		{
+			throw new InvalidOperationException("Reference cycle did not round-trip under AllowCycles.");
+		}
 	}
 
 	private static DeviceSnapshot CreateSnapshot()
@@ -155,4 +172,12 @@ internal partial class SensorReading
 	public string Name { get; set; } = string.Empty;
 
 	public decimal Value { get; set; }
+}
+
+[GenerateShape]
+internal partial class LinkNode
+{
+	public string? Label { get; set; }
+
+	public LinkNode? Next { get; set; }
 }

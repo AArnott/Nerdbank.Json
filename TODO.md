@@ -39,7 +39,7 @@ documentation, and samples where a runnable example adds value.
   cancellation, integer-overflow, and allocation limits while measuring the
   additional buffering required to infer dimensions.
 
-- [ ] **Cyclical reference preservation.**
+- [x] **Cyclical reference preservation.**
   Extend `$id`/`$ref` reference preservation to allow cycles, matching
   MessagePack's opt-in `AllowCycles` mode. The current `RejectCycles` mode remains
   valuable and behavior-compatible. Deserialization must register mutable objects

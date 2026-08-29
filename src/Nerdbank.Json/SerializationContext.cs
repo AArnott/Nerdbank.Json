@@ -127,7 +127,7 @@ public record struct SerializationContext
 			CancellationToken = cancellationToken,
 			SerializeDefaultValues = owner.SerializeDefaultValues,
 			DeserializeDefaultValues = owner.DeserializeDefaultValues,
-			ReferenceTracker = owner.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker(),
+			ReferenceTracker = owner.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker(owner.PreserveReferences),
 		};
 	}
 }

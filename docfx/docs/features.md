@@ -95,7 +95,8 @@ Enum notes:
 Reference preservation notes:
 
 * When `JsonSerializer.PreserveReferences` is enabled, reference-typed values are wrapped in JSON metadata objects using `$id`, `$ref`, and `$value`.
-* Reference cycles are rejected.
+* `ReferencePreservationMode.RejectCycles` preserves repeated references and rejects reference cycles.
+* `ReferencePreservationMode.AllowCycles` additionally allows reference cycles by registering mutable objects and collections before their members are populated; immutable or constructor-bound objects cannot be back-referenced while under construction.
 
 Current limitations:
 

@@ -17,4 +17,16 @@ public enum ReferencePreservationMode
 	/// Repeated references are preserved and reference cycles are rejected.
 	/// </summary>
 	RejectCycles,
+
+	/// <summary>
+	/// Repeated references are preserved and reference cycles are allowed.
+	/// </summary>
+	/// <remarks>
+	/// This mode uses the same <c>$id</c>/<c>$ref</c> wire format as <see cref="RejectCycles"/>, but additionally
+	/// permits an object to reference itself directly or indirectly. During deserialization, mutable objects,
+	/// collections, and dictionaries are registered before their members are populated so that back-references
+	/// resolve to the object under construction. Immutable or constructor-bound objects cannot be registered early,
+	/// so a back-reference to such an object that is still being constructed fails with a clear error.
+	/// </remarks>
+	AllowCycles,
 }

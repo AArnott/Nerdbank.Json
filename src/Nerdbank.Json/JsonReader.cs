@@ -285,6 +285,16 @@ public ref struct JsonReader
 		return this.position < this.utf8Json.Length && this.utf8Json[this.position] == (byte)'[';
 	}
 
+	/// <summary>
+	/// Gets a value indicating whether the next significant token is a JSON <see langword="null"/> literal, without consuming it.
+	/// </summary>
+	/// <returns><see langword="true"/> if the next token is a JSON null literal; otherwise, <see langword="false"/>.</returns>
+	internal bool IsNextTokenNull()
+	{
+		this.SkipWhiteSpaceUtf8();
+		return this.utf8Json.Length - this.position >= 4 && this.utf8Json.Slice(this.position, 4).SequenceEqual("null"u8);
+	}
+
 	internal byte ReadByteValue()
 	{
 		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();

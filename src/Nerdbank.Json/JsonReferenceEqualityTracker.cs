@@ -13,7 +13,14 @@ internal sealed class JsonReferenceEqualityTracker
 {
 	private readonly Dictionary<object, (int ReferenceId, bool Done)> serializedObjects = new(ReferenceEqualityComparer.Instance);
 	private readonly Dictionary<int, object?> deserializedObjects = [];
+	private readonly bool allowCycles;
+	private HashSet<int>? inProgressUnregisteredIds;
 	private int nextReferenceId = 1;
+
+	internal JsonReferenceEqualityTracker(ReferencePreservationMode mode)
+	{
+		this.allowCycles = mode == ReferencePreservationMode.AllowCycles;
+	}
 
 	internal void WriteObject(ref JsonWriter writer, object value, JsonConverter inner, SerializationContext context)
 	{
@@ -54,12 +61,17 @@ internal sealed class JsonReferenceEqualityTracker
 				throw new FormatException("A reference object may only contain a '$ref' property.");
 			}
 
-			if (!this.deserializedObjects.TryGetValue(referenceId, out object? referenced) || referenced is null)
+			if (this.deserializedObjects.TryGetValue(referenceId, out object? referenced) && referenced is not null)
 			{
-				throw new FormatException($"Reference id '{referenceId}' was not previously defined.");
+				return (T)referenced;
 			}
 
-			return (T)referenced;
+			if (this.inProgressUnregisteredIds is not null && this.inProgressUnregisteredIds.Contains(referenceId))
+			{
+				throw new FormatException($"Reference id '{referenceId}' refers to an immutable or constructor-bound object that is still being constructed. Such objects cannot participate in a reference cycle.");
+			}
+
+			throw new FormatException($"Reference id '{referenceId}' was not previously defined.");
 		}
 
 		if (firstPropertyName != "$id")
@@ -68,7 +80,8 @@ internal sealed class JsonReferenceEqualityTracker
 		}
 
 		int assignedReferenceId = ReadReferenceId(ref reader);
-		if (this.deserializedObjects.ContainsKey(assignedReferenceId))
+		if (this.deserializedObjects.ContainsKey(assignedReferenceId) ||
+			(this.inProgressUnregisteredIds is not null && this.inProgressUnregisteredIds.Contains(assignedReferenceId)))
 		{
 			throw new FormatException($"Reference id '{assignedReferenceId}' was assigned more than once.");
 		}
@@ -81,8 +94,35 @@ internal sealed class JsonReferenceEqualityTracker
 			throw new FormatException("Reference-preserved values with '$id' must also include a '$value' property.");
 		}
 
-		T value = inner.Read(ref reader, context) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
-		this.deserializedObjects.Add(assignedReferenceId, value);
+		T value;
+		if (this.allowCycles && inner is IJsonReferencePreservingConverter<T> earlyRegistration && !reader.IsNextTokenNull())
+		{
+			// Register the object before its members are populated so that a back-reference resolves to it.
+			value = earlyRegistration.CreateReferenceInstance();
+			this.deserializedObjects.Add(assignedReferenceId, value);
+			earlyRegistration.PopulateReference(ref reader, ref value, context);
+		}
+		else if (this.allowCycles)
+		{
+			// The inner converter cannot register an instance before populating it (for example, immutable
+			// constructor-bound objects). Track the id so a cyclic back-reference produces a clear error.
+			(this.inProgressUnregisteredIds ??= []).Add(assignedReferenceId);
+			try
+			{
+				value = inner.Read(ref reader, context) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
+			}
+			finally
+			{
+				this.inProgressUnregisteredIds.Remove(assignedReferenceId);
+			}
+
+			this.deserializedObjects.Add(assignedReferenceId, value);
+		}
+		else
+		{
+			value = inner.Read(ref reader, context) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
+			this.deserializedObjects.Add(assignedReferenceId, value);
+		}
 
 		if (!reader.TryReadEndObject())
 		{
@@ -100,9 +140,9 @@ internal sealed class JsonReferenceEqualityTracker
 			return false;
 		}
 
-		if (!slot.Done)
+		if (!slot.Done && !this.allowCycles)
 		{
-			throw new InvalidOperationException("Reference cycles are not supported when reference preservation is enabled.");
+			throw new InvalidOperationException("Reference cycles are not supported when reference preservation is set to RejectCycles. Use AllowCycles to serialize cyclic graphs.");
 		}
 
 		referenceId = slot.ReferenceId;
