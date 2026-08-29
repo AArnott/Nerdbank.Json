@@ -123,7 +123,7 @@ internal sealed class ConverterCache
 		return this.GetOrAddConverter(shape);
 	}
 
-	internal JsonConverter CreateConverter<T>(ITypeShape<T> shape, TypeShapeVisitor visitor)
+	internal JsonConverter CreateConverter<T>(ITypeShape<T> shape, TypeShapeVisitor visitor, object? state = null)
 	{
 		if (this.TryGetRuntimeProfferedConverter(shape.Type, shape, out JsonConverter? runtimeConverter) && runtimeConverter is not null)
 		{
@@ -140,7 +140,7 @@ internal sealed class ConverterCache
 			return this.WrapWithReferencePreservation(new BuiltInJsonConverter<T>());
 		}
 
-		object? converter = shape.Accept(visitor, null);
+		object? converter = shape.Accept(visitor, state);
 		if (converter is JsonConverter jsonConverter)
 		{
 			return this.WrapWithReferencePreservation((JsonConverter<T>)jsonConverter);

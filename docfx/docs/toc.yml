@@ -9,4 +9,6 @@ items:
     href: custom-converters.md
   - name: Serialization Callbacks
     href: serialization-callbacks.md
+  - name: Collection Comparers
+    href: collection-comparers.md
   - href: security.md

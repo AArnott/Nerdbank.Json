@@ -38,6 +38,10 @@ internal static class ManyModels
 				[1] = "roof",
 				[2] = "outdoor",
 			},
+			Labels = new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["Region"] = "north",
+			},
 			Readings =
 			[
 				new SensorReading { Name = "temperature", Value = 21.5m },
@@ -69,6 +73,11 @@ internal static class ManyModels
 		if (expected.Tags.Count != actual.Tags.Count || expected.Readings.Count != actual.Readings.Count || !actual.CallbackObserved)
 		{
 			throw new InvalidOperationException("Collection counts changed during round-trip or the deserialization callback did not run.");
+		}
+
+		if (actual.Labels.Count != 1 || !actual.Labels.TryGetValue("REGION", out string? region) || region != "north")
+		{
+			throw new InvalidOperationException("Member-specified collection comparer was not applied during deserialization.");
 		}
 
 		for (int i = 0; i < expected.Readings.Count; i++)
@@ -110,6 +119,9 @@ internal partial class DeviceSnapshot : IJsonSerializationCallbacks
 
 	public Dictionary<int, string> Tags { get; set; } = [];
 
+	[JsonCollectionComparer(typeof(CaseInsensitiveStringComparer))]
+	public Dictionary<string, string> Labels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
 	public List<SensorReading> Readings { get; set; } = [];
 
 	internal bool CallbackObserved => this.callbackObserved;
@@ -119,6 +131,13 @@ internal partial class DeviceSnapshot : IJsonSerializationCallbacks
 	}
 
 	public void OnAfterDeserialize() => this.callbackObserved = true;
+}
+
+internal sealed class CaseInsensitiveStringComparer : IEqualityComparer<string>
+{
+	public bool Equals(string? x, string? y) => StringComparer.OrdinalIgnoreCase.Equals(x, y);
+
+	public int GetHashCode(string obj) => StringComparer.OrdinalIgnoreCase.GetHashCode(obj);
 }
 
 [GenerateShape]

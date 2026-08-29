@@ -21,7 +21,7 @@ documentation, and samples where a runnable example adds value.
   should avoid callbacks that expose partially initialized objects unless a
   compelling scenario requires them.
 
-- [ ] **Per-member collection comparer selection.**
+- [x] **Per-member collection comparer selection.**
   Add an attribute-driven way to select an `IEqualityComparer<T>` or
   `IComparer<T>` for a collection property or constructor parameter. The
   serializer already has a global secure comparer provider, but cannot preserve
