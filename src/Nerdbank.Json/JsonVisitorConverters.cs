@@ -424,6 +424,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		}
 
 		context.DepthStep();
+		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
 
 		writer.WriteStartObject();
 		bool first = true;
@@ -524,6 +525,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 			this.extensionData.Apply(result, extensionData);
 		}
 
+		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 		return result;
 	}
 }

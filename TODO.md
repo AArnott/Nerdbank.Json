@@ -11,7 +11,7 @@ documentation, and samples where a runnable example adds value.
 
 ## Punch list
 
-- [ ] **Serialization lifecycle callbacks.**
+- [x] **Serialization lifecycle callbacks.**
   Provide a JSON-specific callback interface that notifies an object immediately
   before serialization and immediately after deserialization. This is useful for
   validation, computed state, and restoring invariants. Callbacks must participate

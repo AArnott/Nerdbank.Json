@@ -22,13 +22,13 @@
 
 ## Testing
 
-This repository uses xunit v3 with Microsoft.Testing.Platform (MTP v2). Traditional VSTest `--filter` expressions do not work.
+This repository uses TUnit with Microsoft.Testing.Platform (MTP v2). Traditional VSTest `--filter` expressions do not work.
 
 - Build with `dotnet build -c Release`.
 - Run all tests with `dotnet test --no-build -c Release`.
 - Run one project with `dotnet test --project test/Library.Tests/Library.Tests.csproj --no-build -c Release`.
-- Put runner options after `--`, for example `--filter-method`, `--filter-class`, `--filter-namespace`, `--filter-trait`, or `--filter-not-trait`.
-- Skip unstable tests with `-- --filter-not-trait "FailsInCloudTest=true"` when applicable.
+- Put runner options after `--`. Use `--treenode-filter` for targeted test selection and `--list-tests` to inspect available test node paths.
+- Skip unstable tests with an appropriate `--treenode-filter` expression when applicable.
 
 ## Documentation
 
@@ -41,4 +41,3 @@ This repository uses xunit v3 with Microsoft.Testing.Platform (MTP v2). Traditio
 - Honor StyleCop rules and fix build warnings after tests pass.
 - Use namespace statements instead of namespace blocks in new C# files.
 - Add API documentation comments to all new public and internal members.
-

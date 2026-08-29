@@ -7,4 +7,6 @@ items:
     href: unions.md
   - name: Custom Converters
     href: custom-converters.md
+  - name: Serialization Callbacks
+    href: serialization-callbacks.md
   - href: security.md

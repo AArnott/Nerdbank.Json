@@ -66,9 +66,9 @@ internal static class ManyModels
 			throw new InvalidOperationException("Payload round-trip mismatch.");
 		}
 
-		if (expected.Tags.Count != actual.Tags.Count || expected.Readings.Count != actual.Readings.Count)
+		if (expected.Tags.Count != actual.Tags.Count || expected.Readings.Count != actual.Readings.Count || !actual.CallbackObserved)
 		{
-			throw new InvalidOperationException("Collection counts changed during round-trip.");
+			throw new InvalidOperationException("Collection counts changed during round-trip or the deserialization callback did not run.");
 		}
 
 		for (int i = 0; i < expected.Readings.Count; i++)
@@ -82,8 +82,10 @@ internal static class ManyModels
 }
 
 [GenerateShape]
-internal partial class DeviceSnapshot
+internal partial class DeviceSnapshot : IJsonSerializationCallbacks
 {
+	private bool callbackObserved;
+
 	public Guid DeviceId { get; set; }
 
 	public string Name { get; set; } = string.Empty;
@@ -109,6 +111,14 @@ internal partial class DeviceSnapshot
 	public Dictionary<int, string> Tags { get; set; } = [];
 
 	public List<SensorReading> Readings { get; set; } = [];
+
+	internal bool CallbackObserved => this.callbackObserved;
+
+	public void OnBeforeSerialize()
+	{
+	}
+
+	public void OnAfterDeserialize() => this.callbackObserved = true;
 }
 
 [GenerateShape]

@@ -52,6 +52,7 @@ Current behavior:
 * `JsonSerializer.ConverterFactories` can register runtime converter factories for type-driven interception.
 * `JsonConverterAttribute` can attach custom converters directly to types, properties, and constructor parameters.
 * `JsonExtensionDataAttribute` can capture unknown object members into a dictionary of raw JSON fragments for forward-compatible round-tripping.
+* Types implementing `IJsonSerializationCallbacks` can validate or prepare state before serialization and restore invariants after deserialization.
 * `JsonSerializer.SerializeDefaultValues` can omit default-valued properties during serialization.
 * `JsonSerializer.SerializeEnumValuesByName` can serialize enums as strings when simple names exist.
 * `JsonSerializer.DeserializeDefaultValues` can relax required-member and non-nullable reference enforcement during deserialization.

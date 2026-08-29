@@ -46,6 +46,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 		}
 
 		context.DepthStep();
+		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
 
 		writer.WriteStartObject();
 		bool first = true;
@@ -82,6 +83,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
 		{
+			(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 			return result;
 		}
 
@@ -138,6 +140,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>
 			reader.ReadValueSeparator();
 		}
 
+		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 		return result;
 	}
 }
