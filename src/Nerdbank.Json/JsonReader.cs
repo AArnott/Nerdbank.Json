@@ -275,6 +275,16 @@ public ref struct JsonReader
 		return Encoding.UTF8.GetString(this.utf8Json[utf8Start..this.position]);
 	}
 
+	/// <summary>
+	/// Gets a value indicating whether the next significant token opens a JSON array, without consuming it.
+	/// </summary>
+	/// <returns><see langword="true"/> if the next token is a JSON array start token; otherwise, <see langword="false"/>.</returns>
+	internal bool IsNextTokenStartArray()
+	{
+		this.SkipWhiteSpaceUtf8();
+		return this.position < this.utf8Json.Length && this.utf8Json[this.position] == (byte)'[';
+	}
+
 	internal byte ReadByteValue()
 	{
 		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();

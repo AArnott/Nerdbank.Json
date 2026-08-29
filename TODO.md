@@ -30,7 +30,7 @@ documentation, and samples where a runnable example adds value.
   unconstrained runtime reflection. Existing getter-only collection initializers
   remain the preferred zero-configuration alternative.
 
-- [ ] **Rectangular multidimensional arrays.**
+- [x] **Rectangular multidimensional arrays.**
   Support rank-2 and higher rectangular arrays using nested JSON arrays. JSON has
   no rectangular-array metadata, so deserialization must reject ragged input and
   infer dimensions before allocating the final array. Unlike MessagePack, a

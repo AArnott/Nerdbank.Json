@@ -11,4 +11,6 @@ items:
     href: serialization-callbacks.md
   - name: Collection Comparers
     href: collection-comparers.md
+  - name: Multidimensional Arrays
+    href: multidimensional-arrays.md
   - href: security.md

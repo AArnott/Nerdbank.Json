@@ -32,6 +32,12 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 	public override object? VisitEnumerable<TEnumerable, TElement>(IEnumerableTypeShape<TEnumerable, TElement> enumerableShape, object? state = null)
 	{
 		JsonConverter<TElement> elementConverter = this.GetConverter(enumerableShape.ElementType, attributeProvider: null);
+
+		if (enumerableShape.Type.IsArray && enumerableShape.Rank > 1)
+		{
+			return new JsonMultidimensionalArrayConverter<TEnumerable, TElement>(elementConverter, enumerableShape.Rank);
+		}
+
 		Func<TEnumerable, IEnumerable<TElement>> getEnumerable = enumerableShape.GetGetEnumerable();
 		CollectionConstructionOptions<TElement> constructionOptions = this.GetCollectionOptions(enumerableShape, enumerableShape.ElementType, enumerableShape.SupportedComparer, state as MemberComparerInfluence);
 

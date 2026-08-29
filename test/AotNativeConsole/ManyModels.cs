@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 #pragma warning disable SA1402 // File may contain closely related model types.
+#pragma warning disable SA1500 // Multidimensional array literals use a compact nested-brace layout.
 
 using System.Collections.Generic;
 
@@ -47,6 +48,7 @@ internal static class ManyModels
 				new SensorReading { Name = "temperature", Value = 21.5m },
 				new SensorReading { Name = "humidity", Value = 0.42m },
 			],
+			Grid = new int[,] { { 1, 2, 3 }, { 4, 5, 6 } },
 		};
 
 	private static void Verify(DeviceSnapshot expected, DeviceSnapshot actual)
@@ -78,6 +80,11 @@ internal static class ManyModels
 		if (actual.Labels.Count != 1 || !actual.Labels.TryGetValue("REGION", out string? region) || region != "north")
 		{
 			throw new InvalidOperationException("Member-specified collection comparer was not applied during deserialization.");
+		}
+
+		if (actual.Grid.Rank != 2 || actual.Grid.GetLength(0) != 2 || actual.Grid.GetLength(1) != 3 || actual.Grid[1, 2] != 6)
+		{
+			throw new InvalidOperationException("Rectangular multidimensional array did not round-trip.");
 		}
 
 		for (int i = 0; i < expected.Readings.Count; i++)
@@ -123,6 +130,8 @@ internal partial class DeviceSnapshot : IJsonSerializationCallbacks
 	public Dictionary<string, string> Labels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
 	public List<SensorReading> Readings { get; set; } = [];
+
+	public int[,] Grid { get; set; } = new int[0, 0];
 
 	internal bool CallbackObserved => this.callbackObserved;
 

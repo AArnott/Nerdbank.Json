@@ -39,6 +39,7 @@ Current behavior:
 * Mutable `ICollection<T>` implementations with public parameterless constructors can be serialized and deserialized.
 * Mutable `IDictionary<TKey, TValue>` implementations with public parameterless constructors can be serialized and deserialized when `TKey` is a supported simple key type.
 * Getter-only mutable collection and dictionary properties are populated into their existing instances during deserialization.
+* Rectangular multidimensional arrays (rank 2 and higher) serialize to and from nested JSON arrays.
 * Unknown JSON properties are ignored during deserialization unless an extension-data property captures them.
 * Property names default to camelCase.
 * `JsonSerializer.PropertyNamingPolicy` can be set to `null` or another `JsonNamingPolicy` built-in.
