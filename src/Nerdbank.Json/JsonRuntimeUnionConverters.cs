@@ -207,11 +207,15 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 	private readonly RuntimeUnionCaseEntry<TBase>[] cases;
 	private readonly Dictionary<Type, int> byType;
 	private readonly StringComparer nameComparer;
+	private readonly bool allowTrailingCommas;
+	private readonly JsonCommentHandling commentHandling;
 
-	internal JsonDuckTypingUnionConverter(RuntimeUnionCaseEntry<TBase>[] cases, StringComparer nameComparer)
+	internal JsonDuckTypingUnionConverter(RuntimeUnionCaseEntry<TBase>[] cases, StringComparer nameComparer, bool allowTrailingCommas, JsonCommentHandling commentHandling)
 	{
 		this.cases = cases;
 		this.nameComparer = nameComparer;
+		this.allowTrailingCommas = allowTrailingCommas;
+		this.commentHandling = commentHandling;
 		this.byType = new(cases.Length);
 		for (int i = 0; i < cases.Length; i++)
 		{
@@ -273,7 +277,7 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 			throw new FormatException($"The JSON object provides insufficient evidence to select a duck-typing union case for '{typeof(TBase).FullName}'; no configured case had all its required properties present.");
 		}
 
-		JsonReader inner = new(rawUtf8);
+		JsonReader inner = new(rawUtf8, this.allowTrailingCommas, this.commentHandling);
 		return this.cases[match].Converter.Read(ref inner, context);
 	}
 
@@ -293,7 +297,7 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 	private HashSet<string> ScanPropertyNames(byte[] rawUtf8)
 	{
 		HashSet<string> names = new(this.nameComparer);
-		JsonReader reader = new(rawUtf8);
+		JsonReader reader = new(rawUtf8, this.allowTrailingCommas, this.commentHandling);
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
 		{
@@ -363,7 +367,7 @@ internal static class RuntimeUnionBuilder
 		VerifyUniqueAliases(caseEntries);
 
 		return definition.DuckTyping
-			? new JsonDuckTypingUnionConverter<TBase>([.. caseEntries], nameComparer)
+			? new JsonDuckTypingUnionConverter<TBase>([.. caseEntries], nameComparer, owner.AllowTrailingCommas, owner.ReadCommentHandling)
 			: new JsonRuntimeUnionConverter<TBase>(baseConverter, [.. caseEntries], nameComparer);
 	}
 

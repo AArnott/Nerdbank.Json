@@ -50,6 +50,9 @@ Duck typing has important constraints:
   <xref:System.FormatException>.
 * Each case must declare at least one required property, or configuration fails.
 * Property names respect the serializer's naming policy.
+* The buffered re-scan honors the serializer's `AllowTrailingCommas` and `ReadCommentHandling`
+  settings, so comments and trailing commas inside a duck-typed object are handled exactly as they
+  are for the outer document.
 
 A conventional single-property object discriminator is intentionally not introduced, because the
 two-element envelope remains the compatible default.

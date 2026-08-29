@@ -32,6 +32,10 @@ internal sealed class ConverterCache
 
 	internal StringComparer PropertyNameComparer => this.configuration.PropertyNameCaseInsensitive ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
+	internal bool AllowTrailingCommas => this.configuration.AllowTrailingCommas;
+
+	internal JsonCommentHandling ReadCommentHandling => this.configuration.ReadCommentHandling;
+
 	private MultiProviderTypeCache CachedConverters
 	{
 		get

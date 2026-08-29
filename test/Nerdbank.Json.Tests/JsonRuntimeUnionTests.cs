@@ -226,6 +226,55 @@ public partial class JsonRuntimeUnionTests : TestBase
 		Assert.Equal(value, serializer.Deserialize(json, Shape<Shape2, Shape2>()));
 	}
 
+	[Test]
+	public void DuckTyping_HonorsAllowTrailingCommas()
+	{
+		JsonSerializer serializer = DuckSerializer() with { AllowTrailingCommas = true };
+
+		Shape2? result = serializer.Deserialize("""{"radius":2.5,}""", Shape<Shape2, Shape2>());
+		Assert.Equal(new Circle(2.5), result);
+	}
+
+	[Test]
+	public void DuckTyping_TrailingComma_ThrowsWhenDisabled()
+	{
+		JsonSerializer serializer = DuckSerializer();
+
+		Assert.Throws<FormatException>(() => serializer.Deserialize("""{"radius":2.5,}""", Shape<Shape2, Shape2>()));
+	}
+
+	[Test]
+	public void DuckTyping_HonorsCommentSkip()
+	{
+		JsonSerializer serializer = DuckSerializer() with { ReadCommentHandling = JsonCommentHandling.Skip };
+
+		string json =
+			"""
+			{/* which */ "radius": 2.5 // trailing
+			}
+			""";
+
+		Shape2? result = serializer.Deserialize(json, Shape<Shape2, Shape2>());
+		Assert.Equal(new Circle(2.5), result);
+	}
+
+	[Test]
+	public void DuckTyping_Comments_ThrowWhenDisabled()
+	{
+		JsonSerializer serializer = DuckSerializer();
+
+		Assert.Throws<FormatException>(() => serializer.Deserialize("""{/* c */"radius":2.5}""", Shape<Shape2, Shape2>()));
+	}
+
+	private static JsonSerializer DuckSerializer() => new()
+	{
+		Unions = JsonUnionConfiguration.Default.WithUnion(
+			JsonUnion<Shape2>.Create()
+				.AddCase("circle", Shape<Circle, Circle>())
+				.AddCase("square", Shape<Square, Square>())
+				.UseDuckTyping()),
+	};
+
 	private static ITypeShape<T> Shape<T, TProvider>()
 #if NET
 		where TProvider : IShapeable<T> => TProvider.GetTypeShape();
