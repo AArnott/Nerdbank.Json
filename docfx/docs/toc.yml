@@ -21,4 +21,6 @@ items:
     href: json-schema.md
   - name: Targeted Deserialization
     href: targeted-deserialization.md
+  - name: Asynchronous Streaming
+    href: async-streaming.md
   - href: security.md

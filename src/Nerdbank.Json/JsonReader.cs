@@ -55,6 +55,11 @@ public ref struct JsonReader
 	}
 
 	/// <summary>
+	/// Gets the number of bytes consumed from the start of the input buffer.
+	/// </summary>
+	internal readonly int BytesConsumed => this.position;
+
+	/// <summary>
 	/// Attempts to read a JSON <see langword="null"/> literal.
 	/// </summary>
 	/// <returns><see langword="true"/> if a <see langword="null"/> literal was consumed; otherwise, <see langword="false"/>.</returns>

@@ -77,7 +77,7 @@ documentation, and samples where a runnable example adds value.
   A lower-level pre-parsed path API should avoid repeated expression analysis and
   allocations. Missing paths need an explicit throw-versus-default policy.
 
-- [ ] **True asynchronous and incremental stream I/O.**
+- [x] **True asynchronous and incremental stream I/O.**
   Replace full-payload buffering in stream overloads with `PipeReader`/`PipeWriter`
   based incremental operation, and expose pipe overloads where useful. Custom
   converters need async hooks with correct default buffering behavior and a way to

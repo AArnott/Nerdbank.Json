@@ -22,8 +22,43 @@ internal static class ManyModels
 		VerifyRuntimeUnion();
 		VerifySchema();
 		VerifyTargeted();
+		VerifyAsync().GetAwaiter().GetResult();
 
 		Console.WriteLine("Success");
+	}
+
+	private static async Task VerifyAsync()
+	{
+		JsonSerializer serializer = new()
+		{
+			StartingContext = new SerializationContext { UnflushedBytesThreshold = 512 },
+		};
+
+		int[] numbers = new int[5000];
+		for (int i = 0; i < numbers.Length; i++)
+		{
+			numbers[i] = i;
+		}
+
+		using MemoryStream stream = new();
+		await serializer.SerializeAsync<int[], IntArrayWitness>(stream, numbers);
+		stream.Position = 0;
+		int[]? roundTripped = await serializer.DeserializeAsync<int[], IntArrayWitness>(stream);
+
+		if (roundTripped is null || roundTripped.Length != numbers.Length || roundTripped[4999] != 4999)
+		{
+			throw new InvalidOperationException("Asynchronous streaming round-trip failed.");
+		}
+
+		using MemoryStream objStream = new();
+		DeviceSnapshot snapshot = CreateSnapshot();
+		await serializer.SerializeAsync(objStream, snapshot);
+		objStream.Position = 0;
+		DeviceSnapshot restored = (await serializer.DeserializeAsync<DeviceSnapshot>(objStream))!;
+		if (restored.Name != snapshot.Name || restored.Grid[1, 2] != 6)
+		{
+			throw new InvalidOperationException("Asynchronous object round-trip failed.");
+		}
 	}
 
 	private static void VerifyTargeted()
@@ -257,6 +292,9 @@ internal partial record NumberPayload(int Value) : Payload;
 
 [GenerateShapeFor<int>]
 internal partial class IntWitness;
+
+[GenerateShapeFor<int[]>]
+internal partial class IntArrayWitness;
 
 [GenerateShape]
 internal partial record Track(Coord Position);

@@ -13,6 +13,17 @@ namespace Nerdbank.Json;
 /// </summary>
 public abstract class JsonConverter
 {
+	/// <summary>
+	/// Gets a value indicating whether this converter's asynchronous methods should be preferred over its synchronous
+	/// methods when a graph is being (de)serialized asynchronously.
+	/// </summary>
+	/// <remarks>
+	/// The default is <see langword="false"/>, which means the default asynchronous methods buffer a whole value and
+	/// delegate to the synchronous methods. Converters that may (de)serialize very large values should override the
+	/// asynchronous methods, set this to <see langword="true"/>, and stream fragments so that memory use stays bounded.
+	/// </remarks>
+	public virtual bool PreferAsyncSerialization => false;
+
 	internal abstract Type DataType { get; }
 
 	/// <summary>
@@ -50,6 +61,10 @@ public abstract class JsonConverter
 	internal abstract void WriteObject(ref JsonWriter writer, object? value, SerializationContext context);
 
 	internal abstract object? ReadObject(ref JsonReader reader, SerializationContext context);
+
+	internal abstract ValueTask WriteObjectAsync(JsonAsyncWriter writer, object? value, SerializationContext context);
+
+	internal abstract ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context);
 }
 
 /// <summary>
@@ -76,11 +91,62 @@ public abstract class JsonConverter<T> : JsonConverter
 	/// <returns>The deserialized value.</returns>
 	public abstract T? Read(ref JsonReader reader, SerializationContext context);
 
+	/// <summary>
+	/// Writes a value as JSON to an asynchronous, incremental writer.
+	/// </summary>
+	/// <param name="writer">The asynchronous writer.</param>
+	/// <param name="value">The value to write.</param>
+	/// <param name="context">Context for the serialization operation.</param>
+	/// <returns>A task tracking the asynchronous write.</returns>
+	/// <remarks>
+	/// The default implementation writes the whole value synchronously and then flushes the pipe if the buffer is large.
+	/// Override this only when a value may be very large; write fragments and periodically call
+	/// <see cref="JsonAsyncWriter.FlushIfAppropriateAsync"/> to keep memory bounded.
+	/// </remarks>
+	public virtual ValueTask WriteAsync(JsonAsyncWriter writer, T? value, SerializationContext context)
+	{
+		Requires.NotNull(writer);
+		context.CancellationToken.ThrowIfCancellationRequested();
+
+		JsonWriter syncWriter = writer.CreateWriter();
+		this.Write(ref syncWriter, value, context);
+		writer.ReturnWriter(ref syncWriter);
+		return writer.FlushIfAppropriateAsync(context);
+	}
+
+	/// <summary>
+	/// Reads a value from an asynchronous, incremental reader.
+	/// </summary>
+	/// <param name="reader">The asynchronous reader.</param>
+	/// <param name="context">Context for the deserialization operation.</param>
+	/// <returns>A task whose result is the deserialized value.</returns>
+	/// <remarks>
+	/// The default implementation buffers the next complete JSON value and delegates to <see cref="Read"/>. Override
+	/// this only when a value may be very large; read fragments and periodically await more data so memory stays bounded.
+	/// </remarks>
+	public virtual async ValueTask<T?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		context.CancellationToken.ThrowIfCancellationRequested();
+
+		await reader.BufferNextValueAsync(context).ConfigureAwait(false);
+		JsonReader syncReader = reader.CreateBufferedReader();
+		T? result = this.Read(ref syncReader, context);
+		reader.ReturnReader(ref syncReader);
+		return result;
+	}
+
 	internal sealed override void WriteObject(ref JsonWriter writer, object? value, SerializationContext context)
 		=> this.Write(ref writer, (T?)value, context);
 
 	internal sealed override object? ReadObject(ref JsonReader reader, SerializationContext context)
 		=> this.Read(ref reader, context);
+
+	internal sealed override ValueTask WriteObjectAsync(JsonAsyncWriter writer, object? value, SerializationContext context)
+		=> this.WriteAsync(writer, (T?)value, context);
+
+	internal sealed override async ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context)
+		=> await this.ReadAsync(reader, context).ConfigureAwait(false);
 }
 
 internal sealed class BuiltInJsonConverter<T> : JsonConverter<T>

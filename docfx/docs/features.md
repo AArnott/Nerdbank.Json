@@ -110,9 +110,10 @@ Current limitations:
 
 ## Stream APIs
 
-Nerdbank.Json now exposes synchronous and asynchronous stream overloads for serializer entry points.
-
-The current implementation buffers the full JSON payload in memory before writing to or reading from the stream. This keeps the public surface moving forward while the lower-level incremental streaming model is still being built.
+Nerdbank.Json exposes synchronous stream overloads plus **true asynchronous, incremental** stream and
+pipe overloads (`SerializeAsync`/`DeserializeAsync`) built on `PipeReader`/`PipeWriter`. These stream
+large object graphs without buffering the whole payload, apply backpressure, and honor cancellation
+and explicit stream ownership. See [Asynchronous streaming](async-streaming.md).
 
 ## Behavioral Notes
 

@@ -37,6 +37,8 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		}
 	}
 
+	public override bool PreferAsyncSerialization => true;
+
 	public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
 	{
 		if (value is null)
@@ -67,6 +69,44 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		this.extensionData?.Write(ref writer, value, ref first);
 
 		writer.WriteEndObject();
+	}
+
+	public override async ValueTask WriteAsync(JsonAsyncWriter writer, T? value, SerializationContext context)
+	{
+		Requires.NotNull(writer);
+		if (value is null)
+		{
+			await writer.WriteNullAsync(context).ConfigureAwait(false);
+			return;
+		}
+
+		context.DepthStep();
+		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
+
+		JsonWriter syncWriter = writer.CreateWriter();
+		syncWriter.WriteStartObject();
+		writer.ReturnWriter(ref syncWriter);
+
+		bool first = true;
+		for (int i = 0; i < this.properties.Length; i++)
+		{
+			JsonProperty<T> property = this.properties[i];
+			if (!property.CanSerialize)
+			{
+				continue;
+			}
+
+			if (await property.WriteAsync(writer, value, context, first).ConfigureAwait(false))
+			{
+				first = false;
+			}
+		}
+
+		syncWriter = writer.CreateWriter();
+		this.extensionData?.Write(ref syncWriter, value, ref first);
+		syncWriter.WriteEndObject();
+		writer.ReturnWriter(ref syncWriter);
+		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
 	}
 
 	public override T? Read(ref JsonReader reader, SerializationContext context)
@@ -291,6 +331,8 @@ internal abstract class JsonProperty<TDeclaring>
 
 	internal abstract bool Write(ref JsonWriter writer, TDeclaring container, SerializationContext context, bool first);
 
+	internal abstract ValueTask<bool> WriteAsync(JsonAsyncWriter writer, TDeclaring container, SerializationContext context, bool first);
+
 	internal abstract void Read(ref JsonReader reader, ref TDeclaring container, SerializationContext context);
 }
 
@@ -340,6 +382,31 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 
 		writer.WritePropertyName(this.EncodedName);
 		this.converter.Write(ref writer, value, context);
+		return true;
+	}
+
+	internal override async ValueTask<bool> WriteAsync(JsonAsyncWriter writer, TDeclaring container, SerializationContext context, bool first)
+	{
+		if (this.getter is null)
+		{
+			throw new InvalidOperationException("Property has no getter.");
+		}
+
+		TProperty? value = this.getter(ref container);
+		if (!this.ShouldSerializeValue(value, context.SerializeDefaultValues))
+		{
+			return false;
+		}
+
+		JsonWriter syncWriter = writer.CreateWriter();
+		if (!first)
+		{
+			syncWriter.WriteValueSeparator();
+		}
+
+		syncWriter.WritePropertyName(this.EncodedName);
+		writer.ReturnWriter(ref syncWriter);
+		await writer.WriteValueAsync(this.converter, value, context).ConfigureAwait(false);
 		return true;
 	}
 
