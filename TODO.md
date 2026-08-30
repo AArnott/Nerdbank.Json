@@ -86,7 +86,7 @@ documentation, and samples where a runnable example adds value.
   numbers, comments, and delimiters without copying whole documents. Cancellation,
   backpressure, stream ownership, and trailing-data behavior must be explicit.
 
-- [ ] **Asynchronous sequence streaming.**
+- [x] **Asynchronous sequence streaming.**
   Build on incremental I/O to return `IAsyncEnumerable<T>` for elements in a large
   top-level JSON array and, where practical, for newline-delimited JSON values.
   Also support streaming a sequence selected by a typed path inside an object

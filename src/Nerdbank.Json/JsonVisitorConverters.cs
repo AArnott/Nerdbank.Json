@@ -288,6 +288,28 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		return converter.TryNavigate(ref reader, in segment, options);
 	}
 
+	public override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+	{
+		await reader.ReadStartArrayAsync(context).ConfigureAwait(false);
+		JsonConverter converter;
+		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			converter = this.baseConverter;
+		}
+		else if (await reader.PeekNextByteAsync().ConfigureAwait(false) == '"')
+		{
+			converter = this.ResolveStringAlias(await reader.ReadStringValueAsync(context).ConfigureAwait(false));
+		}
+		else
+		{
+			converter = this.ResolveIntegerAlias(int.Parse(await reader.ReadNumberTokenAsync(context).ConfigureAwait(false), CultureInfo.InvariantCulture));
+		}
+
+		await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+		int inner = await converter.TryNavigateAsync(reader, segment, options, context).ConfigureAwait(false);
+		return inner < 0 ? -1 : inner + 1;
+	}
+
 	private bool TryGetSerializer(TUnion value, out JsonUnionCaseMetadata<TUnion> unionCase)
 	{
 		int index = this.getUnionCaseIndex(ref value);
@@ -341,6 +363,9 @@ internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter
 
 	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
 		=> this.inner.TryNavigate(ref reader, in segment, options);
+
+	public override ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> this.inner.TryNavigateAsync(reader, segment, options, context);
 }
 
 internal sealed class JsonConstructorVisitorState<TDeclaring>

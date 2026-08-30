@@ -23,4 +23,6 @@ items:
     href: targeted-deserialization.md
   - name: Asynchronous Streaming
     href: async-streaming.md
+  - name: Asynchronous Sequences
+    href: async-sequences.md
   - href: security.md

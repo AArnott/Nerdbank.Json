@@ -58,6 +58,27 @@ public abstract class JsonConverter
 	public virtual bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
 		=> JsonTargetedNavigator.NavigateRawToken(ref reader, in segment, options);
 
+	/// <summary>
+	/// Asynchronously advances the reader from this converter's value toward the child selected by a targeted-navigation
+	/// segment, without buffering the enclosing document.
+	/// </summary>
+	/// <param name="reader">The asynchronous reader positioned at this converter's JSON value.</param>
+	/// <param name="segment">The member or index to navigate into.</param>
+	/// <param name="options">The navigation options (name comparer and case sensitivity).</param>
+	/// <param name="context">The serialization context.</param>
+	/// <returns>
+	/// A task whose result is the number of JSON containers this converter left open on the path to the selected child
+	/// (so the caller can later consume them), or a negative value when the child is absent (a missing path).
+	/// </returns>
+	/// <remarks>
+	/// The default implementation navigates a self-describing JSON object or array using the asynchronous reader.
+	/// Converters whose representation is a union envelope or a custom shape should override this method to translate the
+	/// segment into a navigation over their representation, typically by delegating to the converter of the underlying
+	/// value and adding the number of containers they themselves opened.
+	/// </remarks>
+	public virtual ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> JsonAsyncTargetedNavigator.NavigateRawTokenAsync(reader, segment, options, context);
+
 	internal abstract void WriteObject(ref JsonWriter writer, object? value, SerializationContext context);
 
 	internal abstract object? ReadObject(ref JsonReader reader, SerializationContext context);

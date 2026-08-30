@@ -22,6 +22,41 @@ internal static class JsonPathExpressionParser
 		ConverterCache owner,
 		JsonNamingPolicy? dictionaryKeyNamingPolicy)
 	{
+		(JsonPath path, JsonConverter?[] converters, ITypeShape current) = WalkAccesses(expression, rootShape, owner, dictionaryKeyNamingPolicy);
+		if (current.Type != typeof(TValue))
+		{
+			throw new NotSupportedException($"The targeted-deserialization expression resolves to '{current.Type.FullName}', which does not match the requested type '{typeof(TValue).FullName}'.");
+		}
+
+		return (path, converters, (ITypeShape<TValue>)current);
+	}
+
+	internal static (JsonPath Path, JsonConverter?[] Converters, ITypeShape<TElement> ElementShape) ParseSequence<TRoot, TElement>(
+		Expression<Func<TRoot, IEnumerable<TElement>>> expression,
+		ITypeShape<TRoot> rootShape,
+		ConverterCache owner,
+		JsonNamingPolicy? dictionaryKeyNamingPolicy)
+	{
+		(JsonPath path, JsonConverter?[] converters, ITypeShape current) = WalkAccesses(expression, rootShape, owner, dictionaryKeyNamingPolicy);
+		if (current is not IEnumerableTypeShape enumerable)
+		{
+			throw new NotSupportedException($"The targeted-sequence expression resolves to '{current.Type.FullName}', which is not an array or list.");
+		}
+
+		if (enumerable.ElementType is not ITypeShape<TElement> elementShape)
+		{
+			throw new NotSupportedException($"The targeted-sequence element type '{enumerable.ElementType.Type.FullName}' does not match the requested element type '{typeof(TElement).FullName}'.");
+		}
+
+		return (path, converters, elementShape);
+	}
+
+	private static (JsonPath Path, JsonConverter?[] Converters, ITypeShape Current) WalkAccesses(
+		LambdaExpression expression,
+		ITypeShape rootShape,
+		ConverterCache owner,
+		JsonNamingPolicy? dictionaryKeyNamingPolicy)
+	{
 		ParameterExpression parameter = expression.Parameters[0];
 		List<Access> accesses = [];
 		Expression node = expression.Body;
@@ -92,12 +127,7 @@ internal static class JsonPathExpressionParser
 			}
 		}
 
-		if (current.Type != typeof(TValue))
-		{
-			throw new NotSupportedException($"The targeted-deserialization expression resolves to '{current.Type.FullName}', which does not match the requested type '{typeof(TValue).FullName}'.");
-		}
-
-		return (path, [.. converters], (ITypeShape<TValue>)current);
+		return (path, [.. converters], current);
 	}
 
 	private static (JsonPath Path, ITypeShape Current) ApplyIndexOrKey(JsonPath path, ITypeShape current, object? indexOrKey, JsonNamingPolicy? dictionaryKeyNamingPolicy)

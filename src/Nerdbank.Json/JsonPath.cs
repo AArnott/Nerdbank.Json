@@ -38,6 +38,9 @@ public sealed class JsonPath
 	/// <summary>Gets the ordered path segments.</summary>
 	internal ReadOnlySpan<JsonPathSegment> Segments => this.segments;
 
+	/// <summary>Gets the ordered path segments as an array, for use where a span cannot cross an <see langword="await"/>.</summary>
+	internal JsonPathSegment[] SegmentArray => this.segments;
+
 	/// <summary>
 	/// Returns a path that appends selection of an object property or dictionary entry by its serialized JSON name.
 	/// </summary>

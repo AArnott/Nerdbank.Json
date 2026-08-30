@@ -71,7 +71,57 @@ internal static class ManyModels
 		{
 			throw new InvalidOperationException("Asynchronous reference-preserving cycle round-trip failed.");
 		}
+
+		await VerifySequenceAsync();
 	}
+
+	private static async Task VerifySequenceAsync()
+	{
+		JsonSerializer serializer = new();
+
+		using MemoryStream arrayStream = new();
+		await serializer.SerializeArrayAsync(arrayStream, Source(1000), WitnessShape<int, IntWitness>());
+		arrayStream.Position = 0;
+
+		int expected = 0;
+		await foreach (int value in serializer.DeserializeArrayAsync(arrayStream, WitnessShape<int, IntWitness>()))
+		{
+			if (value != expected++)
+			{
+				throw new InvalidOperationException("Asynchronous array streaming produced an unexpected element.");
+			}
+		}
+
+		if (expected != 1000)
+		{
+			throw new InvalidOperationException("Asynchronous array streaming produced the wrong number of elements.");
+		}
+
+		byte[] envelope = Encoding.UTF8.GetBytes("{\"meta\":\"x\",\"items\":[3,5,7],\"count\":3}");
+		using MemoryStream pathStream = new(envelope);
+		int sum = 0;
+		await foreach (int value in serializer.DeserializeArrayAtAsync(pathStream, JsonPath.Root.Member("items"), WitnessShape<int, IntWitness>()))
+		{
+			sum += value;
+		}
+
+		if (sum != 15)
+		{
+			throw new InvalidOperationException("Asynchronous path-selected sequence streaming failed.");
+		}
+
+		static async IAsyncEnumerable<int> Source(int count)
+		{
+			for (int i = 0; i < count; i++)
+			{
+				await Task.Yield();
+				yield return i;
+			}
+		}
+	}
+
+	private static ITypeShape<T> WitnessShape<T, TProvider>()
+		where TProvider : IShapeable<T> => TProvider.GetTypeShape();
 
 	private static void VerifyTargeted()
 	{

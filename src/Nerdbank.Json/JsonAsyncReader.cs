@@ -57,6 +57,18 @@ public sealed class JsonAsyncReader : IDisposable
 		BlockCommentStar,
 	}
 
+	private enum CloseState : byte
+	{
+		Normal,
+		String,
+		StringEscape,
+		StringUnicode,
+		Slash,
+		LineComment,
+		BlockComment,
+		BlockCommentStar,
+	}
+
 	/// <summary>
 	/// Gets a cancellation token that applies to all reads from this reader.
 	/// </summary>
@@ -155,7 +167,7 @@ public sealed class JsonAsyncReader : IDisposable
 
 		while (true)
 		{
-			if (this.hasBufferedRead && this.TrySkipInsignificant(out byte significant))
+			if (this.hasBufferedRead && this.TrySkipInsignificant(out byte significant, out _))
 			{
 				return significant;
 			}
@@ -167,6 +179,69 @@ public sealed class JsonAsyncReader : IDisposable
 
 			await this.ReadMoreAsync().ConfigureAwait(false);
 		}
+	}
+
+	/// <summary>
+	/// Peeks at the next significant byte, additionally reporting whether a line terminator was skipped on the way there.
+	/// Used to enforce newline framing for newline-delimited JSON.
+	/// </summary>
+	/// <returns>The next significant byte (or <c>-1</c> at end of stream) and whether a line break preceded it.</returns>
+	public async ValueTask<(int Byte, bool SawLineTerminator)> PeekNextByteAcrossLinesAsync()
+	{
+		this.ThrowIfReaderNotReturned();
+		if (!this.bomChecked)
+		{
+			await this.SkipByteOrderMarkAsync().ConfigureAwait(false);
+		}
+
+		bool sawLineTerminator = false;
+		while (true)
+		{
+			if (this.hasBufferedRead)
+			{
+				bool found = this.TrySkipInsignificant(out byte significant, out bool lineTerminator);
+				sawLineTerminator |= lineTerminator;
+				if (found)
+				{
+					return (significant, sawLineTerminator);
+				}
+			}
+
+			if (this.isCompleted)
+			{
+				return (-1, sawLineTerminator);
+			}
+
+			await this.ReadMoreAsync().ConfigureAwait(false);
+		}
+	}
+
+	/// <summary>
+	/// Reads a JSON string value (buffered, bounded by its own size) and returns the decoded string.
+	/// </summary>
+	/// <param name="context">The serialization context.</param>
+	/// <returns>A task whose result is the decoded string.</returns>
+	public async ValueTask<string> ReadStringValueAsync(SerializationContext context)
+	{
+		await this.BufferNextValueAsync(context).ConfigureAwait(false);
+		JsonReader sync = this.CreateBufferedReader();
+		string value = sync.ReadRequiredString();
+		this.ReturnReader(ref sync);
+		return value;
+	}
+
+	/// <summary>
+	/// Reads a JSON number token (buffered, bounded by its own size) and returns its raw text.
+	/// </summary>
+	/// <param name="context">The serialization context.</param>
+	/// <returns>A task whose result is the number token text.</returns>
+	public async ValueTask<string> ReadNumberTokenAsync(SerializationContext context)
+	{
+		await this.BufferNextValueAsync(context).ConfigureAwait(false);
+		JsonReader sync = this.CreateBufferedReader();
+		string token = sync.ReadNumberToken();
+		this.ReturnReader(ref sync);
+		return token;
 	}
 
 	/// <summary>
@@ -313,6 +388,160 @@ public sealed class JsonAsyncReader : IDisposable
 	}
 
 	/// <summary>
+	/// Consumes the remainder of a given number of already-open JSON containers, discarding bytes as they are scanned,
+	/// so that a partially-navigated envelope can be validated and drained without buffering it.
+	/// </summary>
+	/// <param name="openContainers">The number of containers that were entered but not yet closed.</param>
+	/// <param name="context">The serialization context.</param>
+	/// <returns>A task that completes when the containers have been closed.</returns>
+	/// <exception cref="FormatException">Thrown if the stream ends before the containers are closed.</exception>
+	public async ValueTask CloseContainersAsync(int openContainers, SerializationContext context)
+	{
+		if (openContainers <= 0)
+		{
+			return;
+		}
+
+		this.ThrowIfReaderNotReturned();
+		context.CancellationToken.ThrowIfCancellationRequested();
+		bool skipComments = this.commentHandling == JsonCommentHandling.Skip;
+		int depth = openContainers;
+		CloseState mode = CloseState.Normal;
+		int unicodeRemaining = 0;
+		while (true)
+		{
+			if (this.hasBufferedRead && !this.buffer.IsEmpty)
+			{
+				long consumed = 0;
+				bool done = false;
+				foreach (ReadOnlyMemory<byte> memory in this.buffer)
+				{
+					ReadOnlySpan<byte> span = memory.Span;
+					for (int i = 0; i < span.Length; i++)
+					{
+						byte b = span[i];
+						switch (mode)
+						{
+							case CloseState.Normal:
+								switch (b)
+								{
+									case (byte)'"':
+										mode = CloseState.String;
+										break;
+									case (byte)'{':
+									case (byte)'[':
+										depth++;
+										break;
+									case (byte)'}':
+									case (byte)']':
+										if (--depth == 0)
+										{
+											consumed += i + 1;
+											done = true;
+										}
+
+										break;
+									case (byte)'/':
+										if (skipComments)
+										{
+											mode = CloseState.Slash;
+										}
+
+										break;
+								}
+
+								break;
+							case CloseState.String:
+								if (b == (byte)'\\')
+								{
+									mode = CloseState.StringEscape;
+								}
+								else if (b == (byte)'"')
+								{
+									mode = CloseState.Normal;
+								}
+
+								break;
+							case CloseState.StringEscape:
+								if (b == (byte)'u')
+								{
+									mode = CloseState.StringUnicode;
+									unicodeRemaining = 4;
+								}
+								else
+								{
+									mode = CloseState.String;
+								}
+
+								break;
+							case CloseState.StringUnicode:
+								if (--unicodeRemaining == 0)
+								{
+									mode = CloseState.String;
+								}
+
+								break;
+							case CloseState.Slash:
+								mode = b == (byte)'*' ? CloseState.BlockComment : CloseState.LineComment;
+								break;
+							case CloseState.LineComment:
+								if (b is (byte)'\n' or (byte)'\r')
+								{
+									mode = CloseState.Normal;
+								}
+
+								break;
+							case CloseState.BlockComment:
+								if (b == (byte)'*')
+								{
+									mode = CloseState.BlockCommentStar;
+								}
+
+								break;
+							case CloseState.BlockCommentStar:
+								if (b == (byte)'/')
+								{
+									mode = CloseState.Normal;
+								}
+								else if (b != (byte)'*')
+								{
+									mode = CloseState.BlockComment;
+								}
+
+								break;
+						}
+
+						if (done)
+						{
+							break;
+						}
+					}
+
+					if (done)
+					{
+						break;
+					}
+
+					consumed += span.Length;
+				}
+
+				this.buffer = this.buffer.Slice(consumed);
+				if (done)
+				{
+					return;
+				}
+			}
+
+			if (this.isCompleted)
+			{
+				throw new FormatException("Unexpected end of stream while closing the JSON envelope.");
+			}
+
+			await this.ReadMoreAsync().ConfigureAwait(false);
+		}
+	}
+
+	/// <summary>
 	/// Verifies that no significant data (other than whitespace and, when allowed, comments) follows the value already read.
 	/// </summary>
 	/// <param name="context">The serialization context.</param>
@@ -330,11 +559,8 @@ public sealed class JsonAsyncReader : IDisposable
 	/// <inheritdoc/>
 	public void Dispose()
 	{
-		if (!this.readerReturned)
-		{
-			throw new InvalidOperationException("A synchronous reader was not returned before disposing this object.");
-		}
-
+		// Do not throw if a synchronous reader was outstanding: Dispose runs during exception unwinding
+		// (for example a malformed-value FormatException), and throwing here would mask the original error.
 		if (this.hasBufferedRead)
 		{
 			this.pipeReader.AdvanceTo(this.buffer.Start, this.buffer.End);
@@ -544,11 +770,12 @@ public sealed class JsonAsyncReader : IDisposable
 		return false;
 	}
 
-	private bool TrySkipInsignificant(out byte significant)
+	private bool TrySkipInsignificant(out byte significant, out bool sawLineTerminator)
 	{
 		bool skipComments = this.commentHandling == JsonCommentHandling.Skip;
 		long offset = 0;
 		long slashPos = -1;
+		sawLineTerminator = false;
 		foreach (ReadOnlyMemory<byte> memory in this.buffer)
 		{
 			ReadOnlySpan<byte> span = memory.Span;
@@ -556,6 +783,11 @@ public sealed class JsonAsyncReader : IDisposable
 			{
 				byte b = span[i];
 				long pos = offset + i;
+				if (b is (byte)'\n' or (byte)'\r')
+				{
+					sawLineTerminator = true;
+				}
+
 				switch (this.skipState)
 				{
 					case SkipState.None:

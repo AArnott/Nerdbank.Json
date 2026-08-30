@@ -177,6 +177,14 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 #endif
 
 	[GenerateShape]
+	internal partial struct Probe
+	{
+		public Probe(string text) => this.Text = text;
+
+		public string Text { get; set; }
+	}
+
+	[GenerateShape]
 	internal partial class MutableModel : IJsonSerializationCallbacks
 	{
 		private bool callbackObserved;
@@ -214,14 +222,6 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 		public string? Name { get; set; }
 
 		public Node? Next { get; set; }
-	}
-
-	[GenerateShape]
-	internal partial struct Probe
-	{
-		public Probe(string text) => this.Text = text;
-
-		public string Text { get; set; }
 	}
 
 	internal sealed class ProbeConverter : JsonConverter<Probe>
