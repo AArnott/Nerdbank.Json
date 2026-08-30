@@ -57,7 +57,10 @@ internal class AnalyzerVerifier<TAnalyzer>
 		protected override CompilationOptions CreateCompilationOptions()
 		{
 			var compilationOptions = (CSharpCompilationOptions)base.CreateCompilationOptions();
-			return compilationOptions.WithWarningLevel(99).WithSpecificDiagnosticOptions(compilationOptions.SpecificDiagnosticOptions.SetItem("CS1591", ReportDiagnostic.Suppress));
+			return compilationOptions
+				.WithNullableContextOptions(NullableContextOptions.Enable)
+				.WithWarningLevel(99)
+				.WithSpecificDiagnosticOptions(compilationOptions.SpecificDiagnosticOptions.SetItem("CS1591", ReportDiagnostic.Suppress));
 		}
 
 		private static string ReadManifestResource(Assembly assembly, string resourceName)

@@ -113,7 +113,7 @@ documentation, and samples where a runnable example adds value.
   support media-type selection, cancellation, problem reporting, and streaming
   bodies once incremental I/O is available.
 
-- [ ] **Analyzer coverage for the new contracts.**
+- [x] **Analyzer coverage for the new contracts.**
   Add diagnostics and, where safe, code fixes for invalid callback declarations,
   incompatible comparer attributes, malformed runtime union registrations,
   async converter lifetime mistakes, and custom converters that omit schema or

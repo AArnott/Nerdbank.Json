@@ -1,6 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <Import Project="..\Analyzers.props" />
 
+    <PropertyGroup>
+        <!-- Honor this analyzer project's own version.json so its assembly identity is unique per commit
+             (assemblyVersion precision = revision). The repo-wide GitVersionBaseDirectory in Directory.Build.props
+             otherwise forces version calculation from the repo root, whose version.json uses the default (minor)
+             precision and would produce a constant assembly version that analyzer hosts cache incorrectly. -->
+        <GitVersionBaseDirectory>$(MSBuildProjectDirectory)</GitVersionBaseDirectory>
+    </PropertyGroup>
+
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     </ItemGroup>
