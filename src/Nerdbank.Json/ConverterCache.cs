@@ -189,16 +189,6 @@ internal sealed class ConverterCache
 		return true;
 	}
 
-	private JsonConverter<T> WrapWithReferencePreservation<T>(JsonConverter<T> converter)
-	{
-		if (this.configuration.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(typeof(T)))
-		{
-			return converter;
-		}
-
-		return new ReferencePreservingJsonConverter<T>(converter);
-	}
-
 	internal bool ShouldPreserveReferences(Type type) => this.configuration.PreserveReferences != ReferencePreservationMode.Off && RequiresReferencePreservation(type);
 
 	internal bool TryGetCustomConverter(ITypeShape shape, out JsonConverter? converter)
@@ -215,6 +205,16 @@ internal sealed class ConverterCache
 
 		converter = null;
 		return false;
+	}
+
+	private JsonConverter<T> WrapWithReferencePreservation<T>(JsonConverter<T> converter)
+	{
+		if (this.configuration.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(typeof(T)))
+		{
+			return converter;
+		}
+
+		return new ReferencePreservingJsonConverter<T>(converter);
 	}
 
 	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);

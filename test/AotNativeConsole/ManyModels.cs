@@ -21,8 +21,24 @@ internal static class ManyModels
 		VerifyCycle();
 		VerifyRuntimeUnion();
 		VerifySchema();
+		VerifyTargeted();
 
 		Console.WriteLine("Success");
+	}
+
+	private static void VerifyTargeted()
+	{
+		JsonSerializer serializer = new();
+		DeviceSnapshot snapshot = CreateSnapshot();
+		string json = serializer.Serialize(snapshot);
+
+		string? name = serializer.DeserializeAt<DeviceSnapshot, string>(json, x => x.Name);
+		int cell = serializer.DeserializeAt<int, IntWitness>(json, JsonPath.Root.Member("grid").Index(1).Index(2));
+
+		if (name != "Weather station" || cell != 6)
+		{
+			throw new InvalidOperationException("Targeted deserialization did not select the expected values.");
+		}
 	}
 
 	private static void VerifySchema()
@@ -227,3 +243,6 @@ internal partial record TextPayload(string Text) : Payload;
 
 [GenerateShape]
 internal partial record NumberPayload(int Value) : Payload;
+
+[GenerateShapeFor<int>]
+internal partial class IntWitness;

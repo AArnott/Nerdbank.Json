@@ -64,6 +64,7 @@ Current behavior:
 * Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
 * `JsonSerializer.Unions` can add, replace, extend, or disable unions at runtime using explicitly supplied type shapes, and can opt into an experimental discriminator-free duck-typing strategy.
 * `JsonSerializer.GetJsonSchema` can export a JSON Schema (draft 2020-12) document describing the effective representation of a type.
+* `JsonSerializer.DeserializeAt` can deserialize only a single value selected by a `JsonPath` or a member-access expression, skipping unrelated JSON.
 
 Converter registration notes:
 

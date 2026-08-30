@@ -68,7 +68,7 @@ documentation, and samples where a runnable example adds value.
   exporter must emit an explicit warning/annotation rather than pretend to know
   their representation. Schema generation must be shape-driven and NativeAOT-safe.
 
-- [ ] **Targeted deserialization.**
+- [x] **Targeted deserialization.**
   Add strongly typed path-based APIs that skip unrelated JSON and deserialize only
   a requested property, index, or dictionary value. Reuse the converter graph so
   naming policies, custom converters, and union envelopes remain correct.

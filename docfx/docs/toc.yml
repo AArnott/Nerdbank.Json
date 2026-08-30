@@ -19,4 +19,6 @@ items:
     href: reference-preservation.md
   - name: JSON Schema Export
     href: json-schema.md
+  - name: Targeted Deserialization
+    href: targeted-deserialization.md
   - href: security.md
