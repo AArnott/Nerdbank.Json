@@ -104,7 +104,7 @@ documentation, and samples where a runnable example adds value.
   fragments, impose property-count and depth limits, and document that
   `ExpandoObject` construction can exhibit quadratic behavior.
 
-- [ ] **ASP.NET Core MVC formatters.**
+- [x] **ASP.NET Core MVC formatters.**
   Add a separate NativeAOT-compatible integration package with JSON input and
   output formatters backed by Nerdbank.Json and an explicitly supplied
   source-generated `ITypeShapeProvider`. This is useful when applications want

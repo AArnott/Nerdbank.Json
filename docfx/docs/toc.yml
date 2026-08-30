@@ -27,4 +27,6 @@ items:
     href: async-sequences.md
   - name: Untyped JSON and DOM
     href: untyped-json.md
+  - name: ASP.NET Core MVC Formatters
+    href: aspnetcore-mvc.md
   - href: security.md

@@ -25,6 +25,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Nerdbank.Json.Analyzers/Nerdbank.Json.Analyzers.csproj" />
+    <Project Path="src/Nerdbank.Json.AspNetCoreMvcFormatter/Nerdbank.Json.AspNetCoreMvcFormatter.csproj" />
     <Project Path="src/Nerdbank.Json/Nerdbank.Json.csproj" />
   </Folder>
   <Folder Name="/test/">
@@ -32,6 +33,10 @@
     <Project Path="test/AotNativeConsole/AotNativeConsole.csproj" />
     <Project Path="test/Benchmarks/Benchmarks.csproj" />
     <Project Path="test/Nerdbank.Json.Analyzers.Tests/Nerdbank.Json.Analyzers.Tests.csproj" />
+    <Project Path="test/Nerdbank.Json.AspNetCoreMvcFormatter.Tests/Nerdbank.Json.AspNetCoreMvcFormatter.Tests.csproj" />
     <Project Path="test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/AspNetMvc/AspNetMvc.csproj" />
   </Folder>
 </Solution>

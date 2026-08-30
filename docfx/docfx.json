@@ -7,6 +7,12 @@
 					"files": [
 						"**/*.csproj"
 					]
+				},
+				{
+					"src": "../src/Nerdbank.Json.AspNetCoreMvcFormatter",
+					"files": [
+						"**/*.csproj"
+					]
 				}
 			],
 			"dest": "api"

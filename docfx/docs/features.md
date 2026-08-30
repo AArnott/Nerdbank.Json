@@ -122,6 +122,12 @@ Nerdbank.Json includes an opt-in, dependency-free untyped JSON document object m
 DOM types. The default serializer roots none of this and never uses reflection. See
 [Untyped JSON and DOM converters](untyped-json.md).
 
+## ASP.NET Core MVC
+
+The separate `Nerdbank.Json.AspNetCoreMvcFormatter` package provides MVC input and output formatters backed
+by Nerdbank.Json and an explicitly supplied, source-generated `ITypeShapeProvider`, for AOT-safe JSON in
+controller-based Web APIs. See [ASP.NET Core MVC formatters](aspnetcore-mvc.md).
+
 ## Behavioral Notes
 
 * `DateTime` and `DateTimeOffset` use round-trip `O` formatting.
