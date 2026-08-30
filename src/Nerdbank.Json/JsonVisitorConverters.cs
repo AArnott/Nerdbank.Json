@@ -267,6 +267,27 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		return value;
 	}
 
+	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	{
+		reader.ReadStartArray();
+		JsonConverter converter;
+		if (reader.TryReadNull())
+		{
+			converter = this.baseConverter;
+		}
+		else if (reader.PeekValueToken() == '"')
+		{
+			converter = this.ResolveStringAlias(reader.ReadRequiredString());
+		}
+		else
+		{
+			converter = this.ResolveIntegerAlias(int.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture));
+		}
+
+		reader.ReadValueSeparator();
+		return converter.TryNavigate(ref reader, in segment, options);
+	}
+
 	private bool TryGetSerializer(TUnion value, out JsonUnionCaseMetadata<TUnion> unionCase)
 	{
 		int index = this.getUnionCaseIndex(ref value);
@@ -317,6 +338,9 @@ internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter
 
 	public override TUnion? Read(ref JsonReader reader, SerializationContext context)
 		=> this.marshaler.Marshal(this.inner.Read(ref reader, context));
+
+	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+		=> this.inner.TryNavigate(ref reader, in segment, options);
 }
 
 internal sealed class JsonConstructorVisitorState<TDeclaring>

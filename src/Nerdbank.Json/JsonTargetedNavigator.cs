@@ -7,11 +7,13 @@ namespace Nerdbank.Json;
 
 /// <summary>
 /// Navigates a <see cref="JsonReader"/> through a <see cref="JsonPath"/>, skipping unrelated JSON and leaving the
-/// reader positioned at the selected value.
+/// reader positioned at the selected value. When a per-segment converter is available, its
+/// <see cref="JsonConverter.TryNavigate(ref JsonReader, in JsonNavigationSegment, JsonNavigationOptions)"/> hook is
+/// used so navigation can traverse through unions and custom representations.
 /// </summary>
 internal static class JsonTargetedNavigator
 {
-	internal static bool TryNavigate(ref JsonReader reader, JsonPath path, bool ignoreCase, StringComparer comparer, ref SerializationContext context)
+	internal static bool TryNavigate(ref JsonReader reader, JsonPath path, JsonConverter?[]? converters, JsonNavigationOptions options, ref SerializationContext context)
 	{
 		ReadOnlySpan<JsonPathSegment> segments = path.Segments;
 		for (int i = 0; i < segments.Length; i++)
@@ -22,10 +24,11 @@ internal static class JsonTargetedNavigator
 				return false;
 			}
 
-			JsonPathSegment segment = segments[i];
-			bool found = segment.Kind == JsonPathSegmentKind.Member
-				? TryNavigateMember(ref reader, segment, ignoreCase, comparer)
-				: TryNavigateIndex(ref reader, segment.Index);
+			JsonNavigationSegment segment = new(in segments[i]);
+			JsonConverter? converter = converters is not null ? converters[i] : null;
+			bool found = converter is not null
+				? converter.TryNavigate(ref reader, in segment, options)
+				: NavigateRawToken(ref reader, in segment, options);
 			if (!found)
 			{
 				return false;
@@ -35,8 +38,19 @@ internal static class JsonTargetedNavigator
 		return true;
 	}
 
-	private static bool TryNavigateMember(ref JsonReader reader, JsonPathSegment segment, bool ignoreCase, StringComparer comparer)
+	internal static bool NavigateRawToken(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+		=> segment.IsIndex
+			? NavigateIndex(ref reader, segment.Index)
+			: NavigateMember(ref reader, in segment, options);
+
+	private static bool NavigateMember(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
 	{
+		char token = reader.PeekValueToken();
+		if (token != '{')
+		{
+			throw new NotSupportedException($"Cannot navigate to member '{segment.Name}' because the value is not a plain JSON object (its first token is '{token}'). If the value uses a union envelope or a custom-converter representation, use the expression-based DeserializeAt overload, which supplies the converter metadata required to traverse it.");
+		}
+
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
 		{
@@ -45,7 +59,7 @@ internal static class JsonTargetedNavigator
 
 		while (true)
 		{
-			if (MatchName(ref reader, segment, ignoreCase, comparer))
+			if (MatchName(ref reader, in segment, options))
 			{
 				return true;
 			}
@@ -60,9 +74,9 @@ internal static class JsonTargetedNavigator
 		}
 	}
 
-	private static bool MatchName(ref JsonReader reader, JsonPathSegment segment, bool ignoreCase, StringComparer comparer)
+	private static bool MatchName(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
 	{
-		if (!ignoreCase && reader.TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> token))
+		if (!options.IgnoreCase && reader.TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> token))
 		{
 			reader.ReadNameSeparator();
 			return token.Length >= 2 && token[1..^1].SequenceEqual(segment.Utf8Name);
@@ -70,11 +84,17 @@ internal static class JsonTargetedNavigator
 
 		string name = reader.ReadRequiredString();
 		reader.ReadNameSeparator();
-		return comparer.Equals(name, segment.Name);
+		return options.NameComparer.Equals(name, segment.Name);
 	}
 
-	private static bool TryNavigateIndex(ref JsonReader reader, int index)
+	private static bool NavigateIndex(ref JsonReader reader, int index)
 	{
+		char token = reader.PeekValueToken();
+		if (token != '[')
+		{
+			throw new NotSupportedException($"Cannot navigate to index {index} because the value is not a plain JSON array (its first token is '{token}'). If the value uses a union envelope or a custom-converter representation, use the expression-based DeserializeAt overload, which supplies the converter metadata required to traverse it.");
+		}
+
 		reader.ReadStartArray();
 		if (reader.TryReadEndArray())
 		{

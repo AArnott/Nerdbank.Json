@@ -70,6 +70,9 @@ internal sealed class JsonRuntimeUnionCaseConverter<TBase, TCase> : JsonConverte
 
 	public override TBase? Read(ref JsonReader reader, SerializationContext context)
 		=> this.inner.Read(ref reader, context);
+
+	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+		=> this.inner.TryNavigate(ref reader, in segment, options);
 }
 
 internal readonly struct RuntimeUnionCaseEntry<TBase>
@@ -193,6 +196,32 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		TBase? value = converter.Read(ref reader, context);
 		reader.ReadEndArray();
 		return value;
+	}
+
+	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	{
+		reader.ReadStartArray();
+		JsonConverter<TBase>? converter;
+		if (reader.TryReadNull())
+		{
+			converter = this.baseConverter;
+		}
+		else if (reader.PeekValueToken() == '"')
+		{
+			converter = this.byName.TryGetValue(reader.ReadRequiredString(), out int index) ? this.cases[index].Converter : null;
+		}
+		else
+		{
+			converter = this.byTag.TryGetValue(int.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture), out int index) ? this.cases[index].Converter : null;
+		}
+
+		if (converter is null)
+		{
+			return false;
+		}
+
+		reader.ReadValueSeparator();
+		return converter.TryNavigate(ref reader, in segment, options);
 	}
 
 	private void WriteBase(ref JsonWriter writer, TBase? value, SerializationContext context)

@@ -3,6 +3,7 @@
 
 using System.Buffers;
 using System.Collections.Generic;
+using System.Globalization;
 using PolyType.Abstractions;
 
 public partial class JsonTargetedDeserializationTests : TestBase
@@ -163,6 +164,96 @@ public partial class JsonTargetedDeserializationTests : TestBase
 		Assert.Equal(0, value);
 	}
 
+	[Test]
+	public void Expression_ThroughGeneratedUnion()
+	{
+		string? name = this.Serializer.DeserializeAt<Root, string>(Document, x => x.Pet.Name, Shape<Root, Root>());
+		Assert.Equal("Milo", name);
+	}
+
+	[Test]
+	public void Expression_ThroughGeneratedUnion_MissingMember_ReturnsDefault()
+	{
+		string json = """{"inner":{"label":"hi","count":3},"numbers":[],"map":{},"name":"root","pet":["Cat",{"lives":9}]}""";
+		string? name = this.Serializer.DeserializeAt<Root, string>(json, x => x.Pet.Name, Shape<Root, Root>(), MissingPathBehavior.ReturnDefault);
+		Assert.Null(name);
+	}
+
+	[Test]
+	public void PreParsed_ThroughUnion_ThrowsClearError()
+	{
+		NotSupportedException ex = Assert.Throws<NotSupportedException>(
+			() => this.Serializer.DeserializeAt(Document, JsonPath.Root.Member("pet").Member("name"), Shape<string, Witness>()));
+		Assert.Contains("expression-based", ex.Message, StringComparison.Ordinal);
+	}
+
+	[Test]
+	public void Expression_ThroughRuntimeUnion()
+	{
+		JsonSerializer serializer = new()
+		{
+			Unions = JsonUnionConfiguration.Default.WithUnion(
+				JsonUnion<Shape2>.Create()
+					.AddCase("circle", Shape<Circle2, Circle2>())
+					.AddCase("square", Shape<Square2, Square2>())),
+		};
+
+		string json = """{"shape":["circle",{"kind":"c","radius":2.5}]}""";
+		string? kind = serializer.DeserializeAt<RuntimeHolder, string>(json, h => h.Shape.Kind, Shape<RuntimeHolder, RuntimeHolder>());
+		Assert.Equal("c", kind);
+	}
+
+	[Test]
+	public void Expression_ThroughDuckUnion()
+	{
+		JsonSerializer serializer = new()
+		{
+			Unions = JsonUnionConfiguration.Default.WithUnion(
+				JsonUnion<Shape2>.Create()
+					.AddCase("circle", Shape<Circle2, Circle2>())
+					.AddCase("square", Shape<Square2, Square2>())
+					.UseDuckTyping()),
+		};
+
+		string json = """{"shape":{"kind":"c","radius":2.5}}""";
+		string? kind = serializer.DeserializeAt<RuntimeHolder, string>(json, h => h.Shape.Kind, Shape<RuntimeHolder, RuntimeHolder>());
+		Assert.Equal("c", kind);
+	}
+
+	[Test]
+	public void Expression_ThroughCustomConverter_RemapsMember()
+	{
+		JsonNamingPolicy policy = JsonNamingPolicy.CamelCase;
+		JsonSerializer serializer = new()
+		{
+			Converters = new ConverterCollection([new Point3Converter(policy)]),
+			PropertyNamingPolicy = policy,
+		};
+
+		string json = serializer.Serialize(new CustomRoot(new Point3(3, 7)), Shape<CustomRoot, CustomRoot>());
+		Assert.Equal("""{"point":[3,7]}""", json);
+
+		int y = serializer.DeserializeAt<CustomRoot, int>(json, r => r.Point.Y, Shape<CustomRoot, CustomRoot>());
+		int x = serializer.DeserializeAt<CustomRoot, int>(json, r => r.Point.X, Shape<CustomRoot, CustomRoot>());
+		Assert.Equal(7, y);
+		Assert.Equal(3, x);
+	}
+
+	[Test]
+	public void Expression_ThroughCustomConverter_MissingElement_ReturnsDefault()
+	{
+		JsonNamingPolicy policy = JsonNamingPolicy.CamelCase;
+		JsonSerializer serializer = new()
+		{
+			Converters = new ConverterCollection([new Point3Converter(policy)]),
+			PropertyNamingPolicy = policy,
+		};
+
+		string json = """{"point":[]}""";
+		int y = serializer.DeserializeAt<CustomRoot, int>(json, r => r.Point.Y, Shape<CustomRoot, CustomRoot>(), MissingPathBehavior.ReturnDefault);
+		Assert.Equal(0, y);
+	}
+
 	private static ITypeShape<T> Shape<T, TProvider>()
 #if NET
 		where TProvider : IShapeable<T> => TProvider.GetTypeShape();
@@ -205,9 +296,84 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	[GenerateShape]
 	internal partial record Cat(string Name, int Lives) : Animal(Name);
 
+	[GenerateShape]
+	internal partial record RuntimeHolder(Shape2 Shape);
+
+	[GenerateShape]
+	internal abstract partial record Shape2(string Kind);
+
+	[GenerateShape]
+	internal partial record Circle2(string Kind, double Radius) : Shape2(Kind);
+
+	[GenerateShape]
+	internal partial record Square2(string Kind, double Side) : Shape2(Kind);
+
+	[GenerateShape]
+	internal partial record CustomRoot(Point3 Point);
+
+	[GenerateShape]
+	internal partial record Point3(int X, int Y);
+
 	[GenerateShapeFor<int>]
 	[GenerateShapeFor<string>]
 	internal partial class Witness;
+
+	private sealed class Point3Converter(JsonNamingPolicy policy) : JsonConverter<Point3>
+	{
+		public override void Write(ref JsonWriter writer, Point3? value, SerializationContext context)
+		{
+			writer.WriteStartArray();
+			writer.WriteNumberValue(value!.X);
+			writer.WriteValueSeparator();
+			writer.WriteNumberValue(value.Y);
+			writer.WriteEndArray();
+		}
+
+		public override Point3? Read(ref JsonReader reader, SerializationContext context)
+		{
+			reader.ReadStartArray();
+			int x = int.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
+			reader.ReadValueSeparator();
+			int y = int.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
+			reader.ReadEndArray();
+			return new Point3(x, y);
+		}
+
+		public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+		{
+			if (segment.IsIndex)
+			{
+				return false;
+			}
+
+			int target =
+				options.NameComparer.Equals(segment.Name, policy.ConvertName("X")) ? 0 :
+				options.NameComparer.Equals(segment.Name, policy.ConvertName("Y")) ? 1 : -1;
+			if (target < 0)
+			{
+				return false;
+			}
+
+			reader.ReadStartArray();
+			if (reader.TryReadEndArray())
+			{
+				return false;
+			}
+
+			for (int i = 0; i < target; i++)
+			{
+				reader.SkipValue();
+				if (reader.TryReadEndArray())
+				{
+					return false;
+				}
+
+				reader.ReadValueSeparator();
+			}
+
+			return true;
+		}
+	}
 
 	private sealed class Segment : ReadOnlySequenceSegment<byte>
 	{

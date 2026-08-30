@@ -30,7 +30,7 @@ public partial record JsonSerializer
 		Requires.NotNull(json);
 		byte[] utf8Json = Encoding.UTF8.GetBytes(json);
 		JsonReader reader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
-		return this.DeserializeAtCore(ref reader, path, targetShape, missingBehavior, cancellationToken);
+		return this.DeserializeAtCore(ref reader, path, null, targetShape, missingBehavior, cancellationToken);
 	}
 
 	/// <summary>
@@ -46,7 +46,7 @@ public partial record JsonSerializer
 	public TValue? DeserializeAt<TValue>(ReadOnlyMemory<byte> utf8Json, JsonPath path, ITypeShape<TValue> targetShape, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
 	{
 		JsonReader reader = new(utf8Json.Span, this.AllowTrailingCommas, this.ReadCommentHandling);
-		return this.DeserializeAtCore(ref reader, path, targetShape, missingBehavior, cancellationToken);
+		return this.DeserializeAtCore(ref reader, path, null, targetShape, missingBehavior, cancellationToken);
 	}
 
 	/// <summary>
@@ -62,7 +62,7 @@ public partial record JsonSerializer
 	public TValue? DeserializeAt<TValue>(scoped in ReadOnlySequence<byte> utf8Json, JsonPath path, ITypeShape<TValue> targetShape, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
 	{
 		JsonReader reader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
-		return this.DeserializeAtCore(ref reader, path, targetShape, missingBehavior, cancellationToken);
+		return this.DeserializeAtCore(ref reader, path, null, targetShape, missingBehavior, cancellationToken);
 	}
 
 	/// <summary>
@@ -86,10 +86,10 @@ public partial record JsonSerializer
 		Requires.NotNull(json);
 		Requires.NotNull(path);
 		Requires.NotNull(rootShape);
-		(JsonPath parsedPath, ITypeShape<TValue> targetShape) = JsonPathExpressionParser.Parse(path, rootShape, this.ConverterCache, this.DictionaryKeyNamingPolicy);
+		(JsonPath parsedPath, JsonConverter?[] converters, ITypeShape<TValue> targetShape) = JsonPathExpressionParser.Parse(path, rootShape, this.ConverterCache, this.DictionaryKeyNamingPolicy);
 		byte[] utf8Json = Encoding.UTF8.GetBytes(json);
 		JsonReader reader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
-		return this.DeserializeAtCore(ref reader, parsedPath, targetShape, missingBehavior, cancellationToken);
+		return this.DeserializeAtCore(ref reader, parsedPath, converters, targetShape, missingBehavior, cancellationToken);
 	}
 
 #if NET
@@ -132,7 +132,7 @@ public partial record JsonSerializer
 		where TRoot : IShapeable<TRoot> => this.DeserializeAt(json, path, TRoot.GetTypeShape(), missingBehavior, cancellationToken);
 #endif
 
-	private TValue? DeserializeAtCore<TValue>(ref JsonReader reader, JsonPath path, ITypeShape<TValue> targetShape, MissingPathBehavior missingBehavior, CancellationToken cancellationToken)
+	private TValue? DeserializeAtCore<TValue>(ref JsonReader reader, JsonPath path, JsonConverter?[]? converters, ITypeShape<TValue> targetShape, MissingPathBehavior missingBehavior, CancellationToken cancellationToken)
 	{
 		Requires.NotNull(path);
 		Requires.NotNull(targetShape);
@@ -144,8 +144,9 @@ public partial record JsonSerializer
 		SerializationContext context = this.CreateSerializationContext(cancellationToken);
 		bool ignoreCase = this.PropertyNameCaseInsensitive;
 		StringComparer comparer = ignoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+		JsonNavigationOptions options = new(comparer, ignoreCase);
 
-		if (!JsonTargetedNavigator.TryNavigate(ref reader, path, ignoreCase, comparer, ref context))
+		if (!JsonTargetedNavigator.TryNavigate(ref reader, path, converters, options, ref context))
 		{
 			return missingBehavior == MissingPathBehavior.Throw
 				? throw new JsonPathNotFoundException(path.ToString())

@@ -28,6 +28,25 @@ public abstract class JsonConverter
 	/// </returns>
 	public virtual JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => null;
 
+	/// <summary>
+	/// Advances the reader from this converter's value to the child value selected by a targeted-deserialization segment.
+	/// </summary>
+	/// <param name="reader">The reader positioned at this converter's JSON value.</param>
+	/// <param name="segment">The member or index to navigate into.</param>
+	/// <param name="options">The navigation options (name comparer and case sensitivity).</param>
+	/// <returns>
+	/// <see langword="true"/> with the reader positioned at the selected child value; otherwise <see langword="false"/>
+	/// when the child is absent (a missing path).
+	/// </returns>
+	/// <remarks>
+	/// The default implementation navigates a self-describing JSON object or array using raw token skipping. Converters
+	/// whose representation is not a plain object or array (such as unions that emit a <c>[discriminator, payload]</c>
+	/// envelope, or custom converters that remap members) should override this method to translate the segment into a
+	/// navigation over their representation, typically by delegating to the converter of the underlying value.
+	/// </remarks>
+	public virtual bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+		=> JsonTargetedNavigator.NavigateRawToken(ref reader, in segment, options);
+
 	internal abstract void WriteObject(ref JsonWriter writer, object? value, SerializationContext context);
 
 	internal abstract object? ReadObject(ref JsonReader reader, SerializationContext context);

@@ -39,6 +39,17 @@ internal static class ManyModels
 		{
 			throw new InvalidOperationException("Targeted deserialization did not select the expected values.");
 		}
+
+		JsonSerializer customSerializer = new()
+		{
+			Converters = new ConverterCollection([new CoordConverter()]),
+		};
+		string trackJson = customSerializer.Serialize(new Track(new Coord(3, 7)));
+		int y = customSerializer.DeserializeAt<Track, int>(trackJson, t => t.Position.Y);
+		if (y != 7)
+		{
+			throw new InvalidOperationException("Navigation through a custom converter did not select the expected value.");
+		}
 	}
 
 	private static void VerifySchema()
@@ -246,3 +257,61 @@ internal partial record NumberPayload(int Value) : Payload;
 
 [GenerateShapeFor<int>]
 internal partial class IntWitness;
+
+[GenerateShape]
+internal partial record Track(Coord Position);
+
+[GenerateShape]
+internal partial record Coord(int X, int Y);
+
+internal sealed class CoordConverter : JsonConverter<Coord>
+{
+	public override void Write(ref JsonWriter writer, Coord? value, SerializationContext context)
+	{
+		writer.WriteStartArray();
+		writer.WriteNumberValue(value!.X);
+		writer.WriteValueSeparator();
+		writer.WriteNumberValue(value.Y);
+		writer.WriteEndArray();
+	}
+
+	public override Coord? Read(ref JsonReader reader, SerializationContext context)
+	{
+		reader.ReadStartArray();
+		int x = int.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
+		reader.ReadValueSeparator();
+		int y = int.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
+		reader.ReadEndArray();
+		return new Coord(x, y);
+	}
+
+	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	{
+		int index =
+			options.NameComparer.Equals(segment.Name, "x") ? 0 :
+			options.NameComparer.Equals(segment.Name, "y") ? 1 : -1;
+		if (index < 0)
+		{
+			return false;
+		}
+
+		reader.ReadStartArray();
+		if (reader.TryReadEndArray())
+		{
+			return false;
+		}
+
+		for (int i = 0; i < index; i++)
+		{
+			reader.SkipValue();
+			if (reader.TryReadEndArray())
+			{
+				return false;
+			}
+
+			reader.ReadValueSeparator();
+		}
+
+		return true;
+	}
+}

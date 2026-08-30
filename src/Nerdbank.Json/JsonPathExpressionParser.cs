@@ -16,7 +16,7 @@ namespace Nerdbank.Json;
 /// </summary>
 internal static class JsonPathExpressionParser
 {
-	internal static (JsonPath Path, ITypeShape<TValue> TargetShape) Parse<TRoot, TValue>(
+	internal static (JsonPath Path, JsonConverter?[] Converters, ITypeShape<TValue> TargetShape) Parse<TRoot, TValue>(
 		Expression<Func<TRoot, TValue>> expression,
 		ITypeShape<TRoot> rootShape,
 		ConverterCache owner,
@@ -67,12 +67,16 @@ internal static class JsonPathExpressionParser
 		accesses.Reverse();
 
 		JsonPath path = JsonPath.Root;
+		List<JsonConverter?> converters = new(accesses.Count);
 		ITypeShape current = rootShape;
 		foreach (Access access in accesses)
 		{
+			converters.Add(owner.GetOrAddConverter(current));
 			if (access.Member is { } member)
 			{
-				if (current is not IObjectTypeShape objectShape)
+				IObjectTypeShape? objectShape = current as IObjectTypeShape
+					?? (current as IUnionTypeShape)?.BaseType as IObjectTypeShape;
+				if (objectShape is null)
 				{
 					throw new NotSupportedException($"The targeted-deserialization expression accesses member '{member.Name}' on non-object type '{current.Type.FullName}'.");
 				}
@@ -93,7 +97,7 @@ internal static class JsonPathExpressionParser
 			throw new NotSupportedException($"The targeted-deserialization expression resolves to '{current.Type.FullName}', which does not match the requested type '{typeof(TValue).FullName}'.");
 		}
 
-		return (path, (ITypeShape<TValue>)current);
+		return (path, [.. converters], (ITypeShape<TValue>)current);
 	}
 
 	private static (JsonPath Path, ITypeShape Current) ApplyIndexOrKey(JsonPath path, ITypeShape current, object? indexOrKey, JsonNamingPolicy? dictionaryKeyNamingPolicy)
