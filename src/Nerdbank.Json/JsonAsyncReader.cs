@@ -148,6 +148,11 @@ public sealed class JsonAsyncReader : IDisposable
 	public async ValueTask<int> PeekNextByteAsync()
 	{
 		this.ThrowIfReaderNotReturned();
+		if (!this.bomChecked)
+		{
+			await this.SkipByteOrderMarkAsync().ConfigureAwait(false);
+		}
+
 		while (true)
 		{
 			if (this.hasBufferedRead && this.TrySkipInsignificant(out byte significant))
@@ -213,18 +218,18 @@ public sealed class JsonAsyncReader : IDisposable
 	public ValueTask ReadNameSeparatorAsync(SerializationContext context) => this.ReadStructuralAsync((byte)':', context);
 
 	/// <summary>
-	/// Reads the end-of-array token if present.
+	/// Reads the end-of-array token if present. Honors trailing commas when enabled.
 	/// </summary>
 	/// <param name="context">The serialization context.</param>
 	/// <returns>A task whose result is <see langword="true"/> if the token was consumed.</returns>
-	public ValueTask<bool> TryReadEndArrayAsync(SerializationContext context) => this.TryReadStructuralAsync((byte)']', context);
+	public ValueTask<bool> TryReadEndArrayAsync(SerializationContext context) => this.TryReadEndTokenAsync((byte)']', context);
 
 	/// <summary>
-	/// Reads the end-of-object token if present.
+	/// Reads the end-of-object token if present. Honors trailing commas when enabled.
 	/// </summary>
 	/// <param name="context">The serialization context.</param>
 	/// <returns>A task whose result is <see langword="true"/> if the token was consumed.</returns>
-	public ValueTask<bool> TryReadEndObjectAsync(SerializationContext context) => this.TryReadStructuralAsync((byte)'}', context);
+	public ValueTask<bool> TryReadEndObjectAsync(SerializationContext context) => this.TryReadEndTokenAsync((byte)'}', context);
 
 	/// <summary>
 	/// Reads a JSON property name (a string) and the following name separator.
@@ -239,6 +244,72 @@ public sealed class JsonAsyncReader : IDisposable
 		this.ReturnReader(ref sync);
 		await this.ReadNameSeparatorAsync(context).ConfigureAwait(false);
 		return name;
+	}
+
+	/// <summary>
+	/// Reads the next JSON value and returns its raw JSON text. The value is buffered (bounded by its own size).
+	/// </summary>
+	/// <param name="context">The serialization context.</param>
+	/// <returns>A task whose result is the raw JSON text of the value.</returns>
+	public async ValueTask<string> ReadRawValueAsync(SerializationContext context)
+	{
+		await this.BufferNextValueAsync(context).ConfigureAwait(false);
+		JsonReader sync = this.CreateBufferedReader();
+		string raw = sync.ReadRawValue();
+		this.ReturnReader(ref sync);
+		return raw;
+	}
+
+	/// <summary>
+	/// Skips the next JSON value, discarding bytes as they are scanned so that a large skipped value does not need to
+	/// be buffered in its entirety.
+	/// </summary>
+	/// <param name="context">The serialization context.</param>
+	/// <returns>A task that completes when the value has been skipped.</returns>
+	public async ValueTask SkipValueAsync(SerializationContext context)
+	{
+		this.ThrowIfReaderNotReturned();
+		context.CancellationToken.ThrowIfCancellationRequested();
+		if (!this.bomChecked)
+		{
+			await this.SkipByteOrderMarkAsync().ConfigureAwait(false);
+		}
+
+		this.scanner.Reset();
+		while (true)
+		{
+			if (this.hasBufferedRead && !this.buffer.IsEmpty)
+			{
+				long consumedTotal = 0;
+				bool complete = false;
+				foreach (ReadOnlyMemory<byte> segment in this.buffer)
+				{
+					if (this.scanner.Scan(segment.Span, out int consumed))
+					{
+						consumedTotal += consumed;
+						complete = true;
+						break;
+					}
+
+					consumedTotal += segment.Length;
+				}
+
+				if (complete)
+				{
+					this.buffer = this.buffer.Slice(consumedTotal);
+					return;
+				}
+
+				this.buffer = this.buffer.Slice(this.buffer.Length);
+			}
+
+			if (this.isCompleted)
+			{
+				return;
+			}
+
+			await this.ReadMoreAsync().ConfigureAwait(false);
+		}
 	}
 
 	/// <summary>
@@ -292,6 +363,142 @@ public sealed class JsonAsyncReader : IDisposable
 
 		this.buffer = this.buffer.Slice(1);
 		return true;
+	}
+
+	private async ValueTask<bool> TryReadEndTokenAsync(byte endToken, SerializationContext context)
+	{
+		int first = await this.PeekNextByteAsync().ConfigureAwait(false);
+		if (first == endToken)
+		{
+			this.buffer = this.buffer.Slice(1);
+			return true;
+		}
+
+		if (!this.allowTrailingCommas || first != ',')
+		{
+			return false;
+		}
+
+		// A trailing comma is allowed only when the end token immediately follows it. Look ahead past the comma
+		// without consuming, so that a real value separator is left intact for the caller.
+		while (true)
+		{
+			if (this.hasBufferedRead && this.TryPeekAfterComma(endToken, out long consumedThrough, out bool decided, out bool matched))
+			{
+				if (decided)
+				{
+					if (matched)
+					{
+						this.buffer = this.buffer.Slice(consumedThrough);
+						return true;
+					}
+
+					return false;
+				}
+			}
+
+			if (this.isCompleted)
+			{
+				return false;
+			}
+
+			await this.ReadMoreAsync().ConfigureAwait(false);
+		}
+	}
+
+	private bool TryPeekAfterComma(byte endToken, out long consumedThrough, out bool decided, out bool matched)
+	{
+		bool skipComments = this.commentHandling == JsonCommentHandling.Skip;
+		SkipState state = SkipState.None;
+		long offset = 0;
+		foreach (ReadOnlyMemory<byte> memory in this.buffer)
+		{
+			ReadOnlySpan<byte> span = memory.Span;
+			for (int i = 0; i < span.Length; i++)
+			{
+				long pos = offset + i;
+				if (pos == 0)
+				{
+					// The comma at the front of the buffer.
+					continue;
+				}
+
+				byte b = span[i];
+				switch (state)
+				{
+					case SkipState.None:
+						if (b is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
+						{
+							continue;
+						}
+
+						if (skipComments && b == (byte)'/')
+						{
+							state = SkipState.Slash;
+							continue;
+						}
+
+						decided = true;
+						matched = b == endToken;
+						consumedThrough = pos + 1;
+						return true;
+
+					case SkipState.Slash:
+						if (b == (byte)'/')
+						{
+							state = SkipState.LineComment;
+						}
+						else if (b == (byte)'*')
+						{
+							state = SkipState.BlockComment;
+						}
+						else
+						{
+							decided = true;
+							matched = false;
+							consumedThrough = 0;
+							return true;
+						}
+
+						continue;
+
+					case SkipState.LineComment:
+						if (b is (byte)'\n' or (byte)'\r')
+						{
+							state = SkipState.None;
+						}
+
+						continue;
+
+					case SkipState.BlockComment:
+						if (b == (byte)'*')
+						{
+							state = SkipState.BlockCommentStar;
+						}
+
+						continue;
+
+					case SkipState.BlockCommentStar:
+						if (b == (byte)'/')
+						{
+							state = SkipState.None;
+						}
+						else if (b != (byte)'*')
+						{
+							state = SkipState.BlockComment;
+						}
+
+						continue;
+				}
+			}
+
+			offset += span.Length;
+		}
+
+		decided = false;
+		matched = false;
+		consumedThrough = 0;
+		return false;
 	}
 
 	private async ValueTask SkipByteOrderMarkAsync()

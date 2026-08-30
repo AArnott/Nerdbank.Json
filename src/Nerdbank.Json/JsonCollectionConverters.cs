@@ -10,6 +10,8 @@ namespace Nerdbank.Json;
 internal interface IJsonDeserializeInto<TCollection>
 {
 	void DeserializeInto(ref JsonReader reader, ref TCollection collection, SerializationContext context);
+
+	ValueTask DeserializeIntoAsync(JsonAsyncReader reader, TCollection collection, SerializationContext context);
 }
 
 internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonConverter<TEnumerable>
@@ -161,6 +163,16 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 	{
 		context.DepthStep();
 		this.DeserializeInto(ref reader, ref instance, context);
+	}
+
+	public async ValueTask DeserializeIntoAsync(JsonAsyncReader reader, TEnumerable collection, SerializationContext context)
+		=> await this.ReadArrayElementsAsync(reader, context, element => this.addElement(ref collection, element!)).ConfigureAwait(false);
+
+	public async ValueTask<TEnumerable> PopulateReferenceAsync(JsonAsyncReader reader, TEnumerable instance, SerializationContext context)
+	{
+		context.DepthStep();
+		await this.DeserializeIntoAsync(reader, instance, context).ConfigureAwait(false);
+		return instance;
 	}
 
 	public override TEnumerable? Read(ref JsonReader reader, SerializationContext context)
@@ -404,6 +416,16 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 	{
 		context.DepthStep();
 		this.DeserializeInto(ref reader, ref instance, context);
+	}
+
+	public async ValueTask DeserializeIntoAsync(JsonAsyncReader reader, TDictionary collection, SerializationContext context)
+		=> await this.ReadObjectEntriesAsync(reader, context, (key, entryValue) => this.addEntry(ref collection, JsonDictionaryKeyConverter.ParseKey<TKey>(key), entryValue!)).ConfigureAwait(false);
+
+	public async ValueTask<TDictionary> PopulateReferenceAsync(JsonAsyncReader reader, TDictionary instance, SerializationContext context)
+	{
+		context.DepthStep();
+		await this.DeserializeIntoAsync(reader, instance, context).ConfigureAwait(false);
+		return instance;
 	}
 
 	public override TDictionary? Read(ref JsonReader reader, SerializationContext context)

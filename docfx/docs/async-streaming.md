@@ -29,9 +29,12 @@ array or map is emitted in fragments rather than being fully materialized first.
 ## Streaming granularity
 
 Built-in collection, dictionary, and object converters override the asynchronous read/write hooks so
-that arrays and maps stream element-by-element with bounded memory. A top-level array of large
-elements, for example, is read one element at a time. Object values are read by buffering the object's
-own JSON; a member that is itself a large array is streamed on write.
+that arrays, maps, and objects stream member-by-member with bounded memory. A top-level array of large
+elements is read one element at a time; a large object is read one property at a time — including
+objects that are constructed from constructor parameters — so processing begins before the closing
+brace arrives. Only an individual value that a custom converter reads with the default buffering hook,
+a raw extension-data value, or a single constructor argument is materialized at a time — never the
+enclosing document.
 
 ## Behavior and ownership
 
@@ -42,8 +45,13 @@ own JSON; a member that is itself a large array is streamed on write.
 * **Trailing data** after the top-level value is rejected with a <xref:System.FormatException>, just
   like the synchronous API. Trailing whitespace (and comments, when
   <xref:Nerdbank.Json.JsonCommentHandling.Skip> is configured) is allowed.
-* **Reference preservation** is supported but buffers each preserved value, since reference metadata
-  wraps every value.
+* **Reference preservation** streams incrementally for built-in mutable objects, collections, and
+  dictionaries, so an optional `$id`/`$value` envelope does not reintroduce whole-document buffering.
+  Early registration still enables `AllowCycles` back-references. A custom converter that relies on the
+  default asynchronous read is a clear, bounded fallback: only that one preserved value is buffered.
+* **Exact synchronous semantics are preserved:** duplicate-property detection, required and
+  non-nullable validation, extension data, lifecycle callbacks (including early cycle registration
+  ordering), comments, and trailing commas all behave identically to the synchronous API.
 
 ## Writing a streaming custom converter
 

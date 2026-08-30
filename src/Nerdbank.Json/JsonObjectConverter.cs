@@ -190,6 +190,74 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 	}
+
+	public override async ValueTask<T?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		if (!typeof(T).IsValueType && await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			return default;
+		}
+
+		T result = this.factory();
+		return await this.PopulateAsyncCore(reader, result, context).ConfigureAwait(false);
+	}
+
+	public async ValueTask<T> PopulateReferenceAsync(JsonAsyncReader reader, T instance, SerializationContext context)
+		=> await this.PopulateAsyncCore(reader, instance, context).ConfigureAwait(false);
+
+	private async ValueTask<T> PopulateAsyncCore(JsonAsyncReader reader, T result, SerializationContext context)
+	{
+		context.DepthStep();
+
+		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
+		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
+		if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+		{
+			(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+			return result;
+		}
+
+		while (true)
+		{
+			string propertyName = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
+			JsonProperty<T>? property = this.propertiesByName.TryGetValue(propertyName, out JsonProperty<T>? matched) ? matched : null;
+			if (property is not null)
+			{
+				collisionDetection.MarkAsRead(property.Index, property.Name);
+			}
+			else
+			{
+				collisionDetection.MarkAsRead(propertyName);
+			}
+
+			if (property is not null && property.CanDeserialize)
+			{
+				result = await property.ReadValueIntoAsync(reader, result, context).ConfigureAwait(false);
+			}
+			else if (this.extensionData is not null)
+			{
+				await reader.BufferNextValueAsync(context).ConfigureAwait(false);
+				JsonReader syncReader = reader.CreateBufferedReader();
+				this.extensionData.Read(ref syncReader, ref result, propertyName);
+				reader.ReturnReader(ref syncReader);
+			}
+			else
+			{
+				await reader.SkipValueAsync(context).ConfigureAwait(false);
+			}
+
+			if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+			{
+				break;
+			}
+
+			await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+		}
+
+		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+		return result;
+	}
 }
 
 internal abstract class JsonExtensionData<TDeclaring>
@@ -334,6 +402,8 @@ internal abstract class JsonProperty<TDeclaring>
 	internal abstract ValueTask<bool> WriteAsync(JsonAsyncWriter writer, TDeclaring container, SerializationContext context, bool first);
 
 	internal abstract void Read(ref JsonReader reader, ref TDeclaring container, SerializationContext context);
+
+	internal abstract ValueTask<TDeclaring> ReadValueIntoAsync(JsonAsyncReader reader, TDeclaring container, SerializationContext context);
 }
 
 internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclaring>
@@ -444,6 +514,39 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 			reader.SkipValue();
 			return;
 		}
+	}
+
+	internal override async ValueTask<TDeclaring> ReadValueIntoAsync(JsonAsyncReader reader, TDeclaring container, SerializationContext context)
+	{
+		if (this.setter is not null)
+		{
+			TProperty? value = await reader.ReadValueAsync(this.converter, context).ConfigureAwait(false);
+			if (this.isNonNullableReferenceType
+				&& value is null
+				&& !typeof(TProperty).IsValueType
+				&& (context.DeserializeDefaultValues & DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties) != DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties)
+			{
+				throw new FormatException($"Property '{this.memberName}' does not allow null values.");
+			}
+
+			this.setter(ref container, value!);
+			return container;
+		}
+
+		if (this.deserializeIntoExistingInstance && this.getter is not null && this.converter is IJsonDeserializeInto<TProperty> deserializeInto)
+		{
+			if (!typeof(TProperty).IsValueType && await reader.TryReadNullAsync(context).ConfigureAwait(false))
+			{
+				return container;
+			}
+
+			TProperty collection = this.getter(ref container);
+			await deserializeInto.DeserializeIntoAsync(reader, collection, context).ConfigureAwait(false);
+			return container;
+		}
+
+		await reader.SkipValueAsync(context).ConfigureAwait(false);
+		return container;
 	}
 
 	private bool ShouldSerializeValue(TProperty? value, SerializeDefaultValuesPolicy policy)

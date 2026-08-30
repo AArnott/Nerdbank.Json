@@ -59,6 +59,18 @@ internal static class ManyModels
 		{
 			throw new InvalidOperationException("Asynchronous object round-trip failed.");
 		}
+
+		JsonSerializer cycleSerializer = new() { PreserveReferences = ReferencePreservationMode.AllowCycles };
+		using MemoryStream cycleStream = new();
+		LinkNode node = new() { Label = "async-self" };
+		node.Next = node;
+		await cycleSerializer.SerializeAsync(cycleStream, node);
+		cycleStream.Position = 0;
+		LinkNode cycled = (await cycleSerializer.DeserializeAsync<LinkNode>(cycleStream))!;
+		if (!ReferenceEquals(cycled, cycled.Next) || cycled.Label != "async-self")
+		{
+			throw new InvalidOperationException("Asynchronous reference-preserving cycle round-trip failed.");
+		}
 	}
 
 	private static void VerifyTargeted()
