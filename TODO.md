@@ -95,7 +95,7 @@ documentation, and samples where a runnable example adds value.
   MessagePack's concatenated-value mode, newline-delimited JSON requires explicit
   framing because adjacent top-level JSON values are otherwise ambiguous.
 
-- [ ] **Optional untyped JSON and DOM converters.**
+- [x] **Optional untyped JSON and DOM converters.**
   Provide opt-in converters for `object`, `ExpandoObject`, and common JSON DOM
   types so callers can process data without a static model. The default library
   must not root `System.Text.Json` or reflection-heavy dynamic support. Put these

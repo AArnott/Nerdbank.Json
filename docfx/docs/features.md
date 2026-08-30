@@ -115,6 +115,13 @@ pipe overloads (`SerializeAsync`/`DeserializeAsync`) built on `PipeReader`/`Pipe
 large object graphs without buffering the whole payload, apply backpressure, and honor cancellation
 and explicit stream ownership. See [Asynchronous streaming](async-streaming.md).
 
+## Untyped JSON
+
+Nerdbank.Json includes an opt-in, dependency-free untyped JSON document object model
+(`JsonValue`) plus opt-in converters for `object`, `ExpandoObject`, and the `System.Text.Json`
+DOM types. The default serializer roots none of this and never uses reflection. See
+[Untyped JSON and DOM converters](untyped-json.md).
+
 ## Behavioral Notes
 
 * `DateTime` and `DateTimeOffset` use round-trip `O` formatting.

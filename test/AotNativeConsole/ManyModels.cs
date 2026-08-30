@@ -22,6 +22,7 @@ internal static class ManyModels
 		VerifyRuntimeUnion();
 		VerifySchema();
 		VerifyTargeted();
+		VerifyUntyped();
 		VerifyAsync().GetAwaiter().GetResult();
 
 		Console.WriteLine("Success");
@@ -146,6 +147,37 @@ internal static class ManyModels
 		if (y != 7)
 		{
 			throw new InvalidOperationException("Navigation through a custom converter did not select the expected value.");
+		}
+	}
+
+	private static void VerifyUntyped()
+	{
+		JsonSerializer serializer = new();
+
+		JsonValue? value = serializer.DeserializeJsonValue("""{"a":1.5,"b":[true,null,"x"]}""");
+		JsonObject obj = (JsonObject)value!;
+		if (((JsonNumber)obj["a"]).RawToken != "1.5")
+		{
+			throw new InvalidOperationException("Untyped number fidelity failed.");
+		}
+
+		string json = serializer.SerializeJsonValue(value);
+		if (json != """{"a":1.5,"b":[true,null,"x"]}""")
+		{
+			throw new InvalidOperationException("Untyped DOM round-trip failed.");
+		}
+
+		JsonSerializer untyped = serializer.WithUntypedConverters();
+		object? boxed = untyped.Deserialize<object, UntypedWitness>("""[1,2,3]""");
+		if (((JsonArray)boxed!).Count != 3)
+		{
+			throw new InvalidOperationException("object opt-in round-trip failed.");
+		}
+
+		System.Dynamic.ExpandoObject expando = untyped.Deserialize<System.Dynamic.ExpandoObject, UntypedWitness>("""{"k":true}""")!;
+		if (((IDictionary<string, object?>)expando).Count != 1)
+		{
+			throw new InvalidOperationException("ExpandoObject opt-in round-trip failed.");
 		}
 	}
 
@@ -357,6 +389,10 @@ internal partial class IntWitness;
 
 [GenerateShapeFor<int[]>]
 internal partial class IntArrayWitness;
+
+[GenerateShapeFor<object>]
+[GenerateShapeFor<System.Dynamic.ExpandoObject>]
+internal partial class UntypedWitness;
 
 [GenerateShape]
 internal partial record Track(Coord Position);
