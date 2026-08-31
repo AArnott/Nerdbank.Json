@@ -91,7 +91,7 @@ internal struct JsonStructureScanner
 		for (int i = 0; i < chunk.Length; i++)
 		{
 			byte b = chunk[i];
-		reprocess:
+reprocess:
 			switch (this.mode)
 			{
 				case Mode.Value:
