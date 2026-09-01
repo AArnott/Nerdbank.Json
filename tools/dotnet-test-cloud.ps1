@@ -144,7 +144,7 @@ if ($isMTP) {
 
     if ($IncludeNativeAOT) {
         $TestExecutableName = 'Nerdbank.Json.Tests'
-        $NativeAOTArgs = $mtpArgs
+        $NativeAOTArgs = $mtpArgs | Where-Object { $_ -notlike '--coverage-settings=*' }
         if (!($IsMacOS -or $IsLinux)) {
             $TestExecutableName += '.exe'
             $NativeAOTArgs += $dumpSwitches
