@@ -4,6 +4,9 @@
 
 Consume Nerdbank.Json from its NuGet package.
 
+[![Nerdbank.Json NuGet package](https://img.shields.io/nuget/v/Nerdbank.Json.svg?label=Nerdbank.Json)](https://www.nuget.org/packages/Nerdbank.Json)<br />
+[![Nerdbank.Json.AspNetCoreMvcFormatter NuGet package](https://img.shields.io/nuget/v/Nerdbank.Json.AspNetCoreMvcFormatter.svg?label=Nerdbank.Json.AspNetCoreMvcFormatter)](https://www.nuget.org/packages/Nerdbank.Json.AspNetCoreMvcFormatter)<br />
+
 ## Usage
 
 Given a mutable type annotated with <xref:PolyType.GenerateShapeAttribute> like this:

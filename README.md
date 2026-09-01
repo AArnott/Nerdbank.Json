@@ -1,5 +1,8 @@
 # Nerdbank.Json
 
+[![Nerdbank.Json NuGet package](https://img.shields.io/nuget/v/Nerdbank.Json.svg?label=Nerdbank.Json)](https://www.nuget.org/packages/Nerdbank.Json)<br />
+[![Nerdbank.Json.AspNetCoreMvcFormatter NuGet package](https://img.shields.io/nuget/v/Nerdbank.Json.AspNetCoreMvcFormatter.svg?label=Nerdbank.Json.AspNetCoreMvcFormatter)](https://www.nuget.org/packages/Nerdbank.Json.AspNetCoreMvcFormatter)<br />
+
 Nerdbank.Json is a UTF-8 JSON serializer being built in the same general shape as Nerdbank.MessagePack, but without layering on top of System.Text.Json, Newtonsoft.Json, or any other serializer.
 
 The current implementation includes a low-level writer/reader pair, a built-in converter table for common .NET types, and an initial PolyType-backed object serializer for mutable object graphs. It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`, `net472`, and `netstandard2.0`.
