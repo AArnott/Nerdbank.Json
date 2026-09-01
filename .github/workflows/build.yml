@@ -69,15 +69,14 @@ jobs:
         $ActualSize = GetSizeInMB $Path
 
         if ($IsLinux) {
-          $ExpectedSize = 3.15
+          $ExpectedSize = 5.68
         } elseif ($IsMacOS) {
-          $ExpectedSize = 3.10
+          $ExpectedSize = 5.40
         } else {
-          $ExpectedSize = 3.02
+          $ExpectedSize = 5.57
         }
 
-        # Tighten these thresholds after the first full CI baseline on each OS.
-        $AllowedVariance = 1.0
+        $AllowedVariance = 0.2
         $Result = if ([math]::Abs($ActualSize - $ExpectedSize) -le $AllowedVariance) { 'PASS' } else { 'FAIL' }
 
         @{

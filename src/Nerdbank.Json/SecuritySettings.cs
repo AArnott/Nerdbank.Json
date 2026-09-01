@@ -36,4 +36,15 @@ public record SecuritySettings
 	public SecuritySettings()
 	{
 	}
+
+	/// <summary>
+	/// Gets the maximum number of members permitted in a single untyped JSON object (or dynamic object such as
+	/// <see cref="System.Dynamic.ExpandoObject"/>) when deserializing.
+	/// </summary>
+	/// <value>The default value is 1,000,000.</value>
+	/// <remarks>
+	/// This bounds memory and, for structures whose insertion cost grows with size, CPU when processing untrusted data.
+	/// It applies only to the optional untyped and dynamic converters; strongly typed objects have a fixed member set.
+	/// </remarks>
+	public int MaxObjectMemberCount { get; init; } = 1_000_000;
 }

@@ -129,6 +129,16 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
+	/// Gets the runtime union configuration that adds, replaces, extends, or disables shape-generated unions.
+	/// </summary>
+	/// <value>The default value is <see cref="JsonUnionConfiguration.Default"/>.</value>
+	public JsonUnionConfiguration Unions
+	{
+		get => this.configuration.UnionConfiguration;
+		init => this.configuration = this.configuration with { UnionConfiguration = value };
+	}
+
+	/// <summary>
 	/// Gets the converter cache derived from this serializer's immutable configuration.
 	/// </summary>
 	internal ConverterCache ConverterCache => this.configuration.ConverterCache;

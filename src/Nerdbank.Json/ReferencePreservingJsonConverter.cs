@@ -6,8 +6,41 @@
 
 namespace Nerdbank.Json;
 
+/// <summary>
+/// Implemented by converters that can materialize an empty instance and then populate it, enabling early
+/// registration for <see cref="ReferencePreservationMode.AllowCycles"/> so that back-references resolve.
+/// </summary>
+/// <typeparam name="T">The type produced by the converter.</typeparam>
+internal interface IJsonReferencePreservingConverter<T>
+{
+	/// <summary>
+	/// Creates an empty instance whose members have not yet been populated.
+	/// </summary>
+	/// <returns>The empty instance.</returns>
+	T CreateReferenceInstance();
+
+	/// <summary>
+	/// Populates a previously created instance from the reader.
+	/// </summary>
+	/// <param name="reader">The reader positioned at the value to read into <paramref name="instance"/>.</param>
+	/// <param name="instance">The instance to populate.</param>
+	/// <param name="context">The active deserialization context.</param>
+	void PopulateReference(ref JsonReader reader, ref T instance, SerializationContext context);
+
+	/// <summary>
+	/// Populates a previously created instance from an asynchronous reader, streaming members incrementally.
+	/// </summary>
+	/// <param name="reader">The asynchronous reader positioned at the value to read into <paramref name="instance"/>.</param>
+	/// <param name="instance">The instance to populate.</param>
+	/// <param name="context">The active deserialization context.</param>
+	/// <returns>A task whose result is the populated instance.</returns>
+	ValueTask<T> PopulateReferenceAsync(JsonAsyncReader reader, T instance, SerializationContext context);
+}
+
 internal sealed class ReferencePreservingJsonConverter<T>(JsonConverter<T> inner) : JsonConverter<T>
 {
+	public override bool PreferAsyncSerialization => inner.PreferAsyncSerialization;
+
 	public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
 	{
 		if (value is null)
@@ -29,5 +62,29 @@ internal sealed class ReferencePreservingJsonConverter<T>(JsonConverter<T> inner
 
 		Assumes.NotNull(context.ReferenceTracker);
 		return context.ReferenceTracker.ReadObject(ref reader, inner, context);
+	}
+
+	public override ValueTask WriteAsync(JsonAsyncWriter writer, T? value, SerializationContext context)
+	{
+		Requires.NotNull(writer);
+		if (value is null)
+		{
+			return writer.WriteNullAsync(context);
+		}
+
+		Assumes.NotNull(context.ReferenceTracker);
+		return context.ReferenceTracker.WriteObjectAsync(writer, value, inner, context);
+	}
+
+	public override async ValueTask<T?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			return default;
+		}
+
+		Assumes.NotNull(context.ReferenceTracker);
+		return await context.ReferenceTracker.ReadObjectAsync(reader, inner, context).ConfigureAwait(false);
 	}
 }

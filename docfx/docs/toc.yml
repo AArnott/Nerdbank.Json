@@ -5,6 +5,28 @@ items:
     href: getting-started.md
   - name: Unions
     href: unions.md
+  - name: Runtime Union Configuration
+    href: runtime-unions.md
   - name: Custom Converters
     href: custom-converters.md
+  - name: Serialization Callbacks
+    href: serialization-callbacks.md
+  - name: Collection Comparers
+    href: collection-comparers.md
+  - name: Multidimensional Arrays
+    href: multidimensional-arrays.md
+  - name: Reference Preservation
+    href: reference-preservation.md
+  - name: JSON Schema Export
+    href: json-schema.md
+  - name: Targeted Deserialization
+    href: targeted-deserialization.md
+  - name: Asynchronous Streaming
+    href: async-streaming.md
+  - name: Asynchronous Sequences
+    href: async-sequences.md
+  - name: Untyped JSON and DOM
+    href: untyped-json.md
+  - name: ASP.NET Core MVC Formatters
+    href: aspnetcore-mvc.md
   - href: security.md

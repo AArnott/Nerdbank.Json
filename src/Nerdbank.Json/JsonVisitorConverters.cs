@@ -267,6 +267,49 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		return value;
 	}
 
+	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	{
+		reader.ReadStartArray();
+		JsonConverter converter;
+		if (reader.TryReadNull())
+		{
+			converter = this.baseConverter;
+		}
+		else if (reader.PeekValueToken() == '"')
+		{
+			converter = this.ResolveStringAlias(reader.ReadRequiredString());
+		}
+		else
+		{
+			converter = this.ResolveIntegerAlias(int.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture));
+		}
+
+		reader.ReadValueSeparator();
+		return converter.TryNavigate(ref reader, in segment, options);
+	}
+
+	public override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+	{
+		await reader.ReadStartArrayAsync(context).ConfigureAwait(false);
+		JsonConverter converter;
+		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			converter = this.baseConverter;
+		}
+		else if (await reader.PeekNextByteAsync().ConfigureAwait(false) == '"')
+		{
+			converter = this.ResolveStringAlias(await reader.ReadStringValueAsync(context).ConfigureAwait(false));
+		}
+		else
+		{
+			converter = this.ResolveIntegerAlias(int.Parse(await reader.ReadNumberTokenAsync(context).ConfigureAwait(false), CultureInfo.InvariantCulture));
+		}
+
+		await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+		int inner = await converter.TryNavigateAsync(reader, segment, options, context).ConfigureAwait(false);
+		return inner < 0 ? -1 : inner + 1;
+	}
+
 	private bool TryGetSerializer(TUnion value, out JsonUnionCaseMetadata<TUnion> unionCase)
 	{
 		int index = this.getUnionCaseIndex(ref value);
@@ -317,6 +360,12 @@ internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter
 
 	public override TUnion? Read(ref JsonReader reader, SerializationContext context)
 		=> this.marshaler.Marshal(this.inner.Read(ref reader, context));
+
+	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+		=> this.inner.TryNavigate(ref reader, in segment, options);
+
+	public override ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> this.inner.TryNavigateAsync(reader, segment, options, context);
 }
 
 internal sealed class JsonConstructorVisitorState<TDeclaring>
@@ -364,6 +413,8 @@ internal abstract class JsonConstructorParameter<TArgumentState>
 	internal bool IsRequired { get; }
 
 	internal abstract void Read(ref JsonReader reader, ref TArgumentState argumentState, SerializationContext context);
+
+	internal abstract ValueTask<TArgumentState> ReadIntoAsync(JsonAsyncReader reader, TArgumentState argumentState, SerializationContext context);
 }
 
 internal sealed class JsonConstructorParameter<TArgumentState, TParameter> : JsonConstructorParameter<TArgumentState>
@@ -392,6 +443,20 @@ internal sealed class JsonConstructorParameter<TArgumentState, TParameter> : Jso
 
 		this.setter(ref argumentState, value!);
 	}
+
+	internal override async ValueTask<TArgumentState> ReadIntoAsync(JsonAsyncReader reader, TArgumentState argumentState, SerializationContext context)
+	{
+		TParameter? value = await reader.ReadValueAsync(this.converter, context).ConfigureAwait(false);
+		if (this.isNonNullableReferenceType
+			&& value is null
+			&& (context.DeserializeDefaultValues & DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties) != DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties)
+		{
+			throw new FormatException($"Constructor parameter '{this.ParameterName}' does not allow null values.");
+		}
+
+		this.setter(ref argumentState, value!);
+		return argumentState;
+	}
 }
 
 internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentState> : JsonConverter<TDeclaring>
@@ -415,6 +480,8 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		this.propertyNameComparer = propertyNameComparer;
 	}
 
+	public override bool PreferAsyncSerialization => true;
+
 	public override void Write(ref JsonWriter writer, TDeclaring? value, SerializationContext context)
 	{
 		if (value is null)
@@ -424,6 +491,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		}
 
 		context.DepthStep();
+		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
 
 		writer.WriteStartObject();
 		bool first = true;
@@ -444,6 +512,44 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		this.extensionData?.Write(ref writer, value, ref first);
 
 		writer.WriteEndObject();
+	}
+
+	public override async ValueTask WriteAsync(JsonAsyncWriter writer, TDeclaring? value, SerializationContext context)
+	{
+		Requires.NotNull(writer);
+		if (value is null)
+		{
+			await writer.WriteNullAsync(context).ConfigureAwait(false);
+			return;
+		}
+
+		context.DepthStep();
+		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
+
+		JsonWriter syncWriter = writer.CreateWriter();
+		syncWriter.WriteStartObject();
+		writer.ReturnWriter(ref syncWriter);
+
+		bool first = true;
+		for (int i = 0; i < this.properties.Length; i++)
+		{
+			JsonProperty<TDeclaring> property = this.properties[i];
+			if (!property.CanSerialize)
+			{
+				continue;
+			}
+
+			if (await property.WriteAsync(writer, value, context, first).ConfigureAwait(false))
+			{
+				first = false;
+			}
+		}
+
+		syncWriter = writer.CreateWriter();
+		this.extensionData?.Write(ref syncWriter, value, ref first);
+		syncWriter.WriteEndObject();
+		writer.ReturnWriter(ref syncWriter);
+		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
 	}
 
 	public override TDeclaring? Read(ref JsonReader reader, SerializationContext context)
@@ -498,6 +604,84 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 			}
 		}
 
+		this.ThrowIfMissingRequiredParameters(assignedParameters, context);
+
+		TDeclaring result = this.constructor(ref argumentState);
+		if (this.extensionData is not null && extensionData is not null)
+		{
+			this.extensionData.Apply(result, extensionData);
+		}
+
+		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+		return result;
+	}
+
+	public override async ValueTask<TDeclaring?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		if (!typeof(TDeclaring).IsValueType && await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			return default;
+		}
+
+		context.DepthStep();
+
+		TArgumentState argumentState = this.argumentStateFactory();
+		HashSet<string> assignedParameters = new(StringComparer.Ordinal);
+		Dictionary<string, string>? extensionData = null;
+		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
+		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
+		if (!await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+		{
+			while (true)
+			{
+				string propertyName = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
+				collisionDetection.MarkAsRead(propertyName);
+
+				if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
+				{
+					if (!assignedParameters.Add(parameter.SerializedPropertyName))
+					{
+						throw new JsonSerializationException($"The parameter '{parameter.ParameterName}' has already been assigned a value.")
+						{
+							Code = JsonSerializationException.ErrorCode.DoublePropertyAssignment,
+						};
+					}
+
+					argumentState = await parameter.ReadIntoAsync(reader, argumentState, context).ConfigureAwait(false);
+				}
+				else if (this.extensionData is not null)
+				{
+					(extensionData ??= new Dictionary<string, string>(StringComparer.Ordinal))[propertyName] = await reader.ReadRawValueAsync(context).ConfigureAwait(false);
+				}
+				else
+				{
+					await reader.SkipValueAsync(context).ConfigureAwait(false);
+				}
+
+				if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+				{
+					break;
+				}
+
+				await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+			}
+		}
+
+		this.ThrowIfMissingRequiredParameters(assignedParameters, context);
+
+		TDeclaring result = this.constructor(ref argumentState);
+		if (this.extensionData is not null && extensionData is not null)
+		{
+			this.extensionData.Apply(result, extensionData);
+		}
+
+		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+		return result;
+	}
+
+	private void ThrowIfMissingRequiredParameters(HashSet<string> assignedParameters, SerializationContext context)
+	{
 		if (assignedParameters.Count < this.parameters.Length
 			&& (context.DeserializeDefaultValues & DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties) != DeserializeDefaultValuesPolicy.AllowMissingValuesForRequiredProperties)
 		{
@@ -517,13 +701,5 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 				throw new FormatException($"Missing required constructor parameters: {string.Join(", ", missingRequiredParameters)}.");
 			}
 		}
-
-		TDeclaring result = this.constructor(ref argumentState);
-		if (this.extensionData is not null && extensionData is not null)
-		{
-			this.extensionData.Apply(result, extensionData);
-		}
-
-		return result;
 	}
 }

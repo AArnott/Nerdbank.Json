@@ -39,6 +39,7 @@ Current behavior:
 * Mutable `ICollection<T>` implementations with public parameterless constructors can be serialized and deserialized.
 * Mutable `IDictionary<TKey, TValue>` implementations with public parameterless constructors can be serialized and deserialized when `TKey` is a supported simple key type.
 * Getter-only mutable collection and dictionary properties are populated into their existing instances during deserialization.
+* Rectangular multidimensional arrays (rank 2 and higher) serialize to and from nested JSON arrays.
 * Unknown JSON properties are ignored during deserialization unless an extension-data property captures them.
 * Property names default to camelCase.
 * `JsonSerializer.PropertyNamingPolicy` can be set to `null` or another `JsonNamingPolicy` built-in.
@@ -52,6 +53,8 @@ Current behavior:
 * `JsonSerializer.ConverterFactories` can register runtime converter factories for type-driven interception.
 * `JsonConverterAttribute` can attach custom converters directly to types, properties, and constructor parameters.
 * `JsonExtensionDataAttribute` can capture unknown object members into a dictionary of raw JSON fragments for forward-compatible round-tripping.
+* Types implementing `IJsonSerializationCallbacks` can validate or prepare state before serialization and restore invariants after deserialization.
+* `JsonCollectionComparerAttribute` can select an `IEqualityComparer<T>` or `IComparer<T>` for a dictionary or set member so the deserializer preserves member-specific semantics such as case-insensitive keys.
 * `JsonSerializer.SerializeDefaultValues` can omit default-valued properties during serialization.
 * `JsonSerializer.SerializeEnumValuesByName` can serialize enums as strings when simple names exist.
 * `JsonSerializer.DeserializeDefaultValues` can relax required-member and non-nullable reference enforcement during deserialization.
@@ -59,6 +62,9 @@ Current behavior:
 * `JsonSerializer.AllowTrailingCommas` can accept trailing commas while reading arrays and objects.
 * `JsonSerializer.ReadCommentHandling` can skip `//` and `/* */` comments while deserializing.
 * Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
+* `JsonSerializer.Unions` can add, replace, extend, or disable unions at runtime using explicitly supplied type shapes, and can opt into an experimental discriminator-free duck-typing strategy.
+* `JsonSerializer.GetJsonSchema` can export a JSON Schema (draft 2020-12) document describing the effective representation of a type.
+* `JsonSerializer.DeserializeAt` can deserialize only a single value selected by a `JsonPath` or a member-access expression, skipping unrelated JSON.
 
 Converter registration notes:
 
@@ -92,7 +98,8 @@ Enum notes:
 Reference preservation notes:
 
 * When `JsonSerializer.PreserveReferences` is enabled, reference-typed values are wrapped in JSON metadata objects using `$id`, `$ref`, and `$value`.
-* Reference cycles are rejected.
+* `ReferencePreservationMode.RejectCycles` preserves repeated references and rejects reference cycles.
+* `ReferencePreservationMode.AllowCycles` additionally allows reference cycles by registering mutable objects and collections before their members are populated; immutable or constructor-bound objects cannot be back-referenced while under construction.
 
 Current limitations:
 
@@ -103,9 +110,23 @@ Current limitations:
 
 ## Stream APIs
 
-Nerdbank.Json now exposes synchronous and asynchronous stream overloads for serializer entry points.
+Nerdbank.Json exposes synchronous stream overloads plus **true asynchronous, incremental** stream and
+pipe overloads (`SerializeAsync`/`DeserializeAsync`) built on `PipeReader`/`PipeWriter`. These stream
+large object graphs without buffering the whole payload, apply backpressure, and honor cancellation
+and explicit stream ownership. See [Asynchronous streaming](async-streaming.md).
 
-The current implementation buffers the full JSON payload in memory before writing to or reading from the stream. This keeps the public surface moving forward while the lower-level incremental streaming model is still being built.
+## Untyped JSON
+
+Nerdbank.Json includes an opt-in, dependency-free untyped JSON document object model
+(`JsonValue`) plus opt-in converters for `object`, `ExpandoObject`, and the `System.Text.Json`
+DOM types. The default serializer roots none of this and never uses reflection. See
+[Untyped JSON and DOM converters](untyped-json.md).
+
+## ASP.NET Core MVC
+
+The separate `Nerdbank.Json.AspNetCoreMvcFormatter` package provides MVC input and output formatters backed
+by Nerdbank.Json and an explicitly supplied, source-generated `ITypeShapeProvider`, for AOT-safe JSON in
+controller-based Web APIs. See [ASP.NET Core MVC formatters](aspnetcore-mvc.md).
 
 ## Behavioral Notes
 

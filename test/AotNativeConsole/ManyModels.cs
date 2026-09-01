@@ -2,8 +2,10 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 #pragma warning disable SA1402 // File may contain closely related model types.
+#pragma warning disable SA1500 // Multidimensional array literals use a compact nested-brace layout.
 
 using System.Collections.Generic;
+using PolyType.Abstractions;
 
 internal static class ManyModels
 {
@@ -16,7 +18,216 @@ internal static class ManyModels
 		DeviceSnapshot roundTripped = serializer.Deserialize<DeviceSnapshot>(json)!;
 		Verify(snapshot, roundTripped);
 
+		VerifyCycle();
+		VerifyRuntimeUnion();
+		VerifySchema();
+		VerifyTargeted();
+		VerifyUntyped();
+		VerifyAsync().GetAwaiter().GetResult();
+
 		Console.WriteLine("Success");
+	}
+
+	private static async Task VerifyAsync()
+	{
+		JsonSerializer serializer = new()
+		{
+			StartingContext = new SerializationContext { UnflushedBytesThreshold = 512 },
+		};
+
+		int[] numbers = new int[5000];
+		for (int i = 0; i < numbers.Length; i++)
+		{
+			numbers[i] = i;
+		}
+
+		using MemoryStream stream = new();
+		await serializer.SerializeAsync<int[], IntArrayWitness>(stream, numbers);
+		stream.Position = 0;
+		int[]? roundTripped = await serializer.DeserializeAsync<int[], IntArrayWitness>(stream);
+
+		if (roundTripped is null || roundTripped.Length != numbers.Length || roundTripped[4999] != 4999)
+		{
+			throw new InvalidOperationException("Asynchronous streaming round-trip failed.");
+		}
+
+		using MemoryStream objStream = new();
+		DeviceSnapshot snapshot = CreateSnapshot();
+		await serializer.SerializeAsync(objStream, snapshot);
+		objStream.Position = 0;
+		DeviceSnapshot restored = (await serializer.DeserializeAsync<DeviceSnapshot>(objStream))!;
+		if (restored.Name != snapshot.Name || restored.Grid[1, 2] != 6)
+		{
+			throw new InvalidOperationException("Asynchronous object round-trip failed.");
+		}
+
+		JsonSerializer cycleSerializer = new() { PreserveReferences = ReferencePreservationMode.AllowCycles };
+		using MemoryStream cycleStream = new();
+		LinkNode node = new() { Label = "async-self" };
+		node.Next = node;
+		await cycleSerializer.SerializeAsync(cycleStream, node);
+		cycleStream.Position = 0;
+		LinkNode cycled = (await cycleSerializer.DeserializeAsync<LinkNode>(cycleStream))!;
+		if (!ReferenceEquals(cycled, cycled.Next) || cycled.Label != "async-self")
+		{
+			throw new InvalidOperationException("Asynchronous reference-preserving cycle round-trip failed.");
+		}
+
+		await VerifySequenceAsync();
+	}
+
+	private static async Task VerifySequenceAsync()
+	{
+		JsonSerializer serializer = new();
+
+		using MemoryStream arrayStream = new();
+		await serializer.SerializeArrayAsync(arrayStream, Source(1000), WitnessShape<int, IntWitness>());
+		arrayStream.Position = 0;
+
+		int expected = 0;
+		await foreach (int value in serializer.DeserializeArrayAsync(arrayStream, WitnessShape<int, IntWitness>()))
+		{
+			if (value != expected++)
+			{
+				throw new InvalidOperationException("Asynchronous array streaming produced an unexpected element.");
+			}
+		}
+
+		if (expected != 1000)
+		{
+			throw new InvalidOperationException("Asynchronous array streaming produced the wrong number of elements.");
+		}
+
+		byte[] envelope = Encoding.UTF8.GetBytes("{\"meta\":\"x\",\"items\":[3,5,7],\"count\":3}");
+		using MemoryStream pathStream = new(envelope);
+		int sum = 0;
+		await foreach (int value in serializer.DeserializeArrayAtAsync(pathStream, JsonPath.Root.Member("items"), WitnessShape<int, IntWitness>()))
+		{
+			sum += value;
+		}
+
+		if (sum != 15)
+		{
+			throw new InvalidOperationException("Asynchronous path-selected sequence streaming failed.");
+		}
+
+		static async IAsyncEnumerable<int> Source(int count)
+		{
+			for (int i = 0; i < count; i++)
+			{
+				await Task.Yield();
+				yield return i;
+			}
+		}
+	}
+
+	private static ITypeShape<T> WitnessShape<T, TProvider>()
+		where TProvider : IShapeable<T> => TProvider.GetTypeShape();
+
+	private static void VerifyTargeted()
+	{
+		JsonSerializer serializer = new();
+		DeviceSnapshot snapshot = CreateSnapshot();
+		string json = serializer.Serialize(snapshot);
+
+		string? name = serializer.DeserializeAt<DeviceSnapshot, string>(json, x => x.Name);
+		int cell = serializer.DeserializeAt<int, IntWitness>(json, JsonPath.Root.Member("grid").Index(1).Index(2));
+
+		if (name != "Weather station" || cell != 6)
+		{
+			throw new InvalidOperationException("Targeted deserialization did not select the expected values.");
+		}
+
+		JsonSerializer customSerializer = new()
+		{
+			Converters = new ConverterCollection([new CoordConverter()]),
+		};
+		string trackJson = customSerializer.Serialize(new Track(new Coord(3, 7)));
+		int y = customSerializer.DeserializeAt<Track, int>(trackJson, t => t.Position.Y);
+		if (y != 7)
+		{
+			throw new InvalidOperationException("Navigation through a custom converter did not select the expected value.");
+		}
+	}
+
+	private static void VerifyUntyped()
+	{
+		JsonSerializer serializer = new();
+
+		JsonValue? value = serializer.DeserializeJsonValue("""{"a":1.5,"b":[true,null,"x"]}""");
+		JsonObject obj = (JsonObject)value!;
+		if (((JsonNumber)obj["a"]).RawToken != "1.5")
+		{
+			throw new InvalidOperationException("Untyped number fidelity failed.");
+		}
+
+		string json = serializer.SerializeJsonValue(value);
+		if (json != """{"a":1.5,"b":[true,null,"x"]}""")
+		{
+			throw new InvalidOperationException("Untyped DOM round-trip failed.");
+		}
+
+		JsonSerializer untyped = serializer.WithUntypedConverters();
+		object? boxed = untyped.Deserialize<object, UntypedWitness>("""[1,2,3]""");
+		if (((JsonArray)boxed!).Count != 3)
+		{
+			throw new InvalidOperationException("object opt-in round-trip failed.");
+		}
+
+		System.Dynamic.ExpandoObject expando = untyped.Deserialize<System.Dynamic.ExpandoObject, UntypedWitness>("""{"k":true}""")!;
+		if (((IDictionary<string, object?>)expando).Count != 1)
+		{
+			throw new InvalidOperationException("ExpandoObject opt-in round-trip failed.");
+		}
+	}
+
+	private static void VerifySchema()
+	{
+		JsonSerializer serializer = new();
+		string schema = serializer.GetJsonSchema<DeviceSnapshot>();
+
+		if (!schema.Contains("\"$schema\"") || !schema.Contains("\"type\":\"object\"") || !schema.Contains("\"deviceId\""))
+		{
+			throw new InvalidOperationException("JSON schema export did not describe the model.");
+		}
+	}
+
+	private static void VerifyRuntimeUnion()
+	{
+		JsonSerializer serializer = new()
+		{
+			Unions = JsonUnionConfiguration.Default.WithUnion(
+				JsonUnion<Payload>.Create()
+					.AddCase<TextPayload>("text", ShapeOf<TextPayload>())
+					.AddCase<NumberPayload>("number", ShapeOf<NumberPayload>())),
+		};
+
+		Payload value = new TextPayload("hello");
+		string json = serializer.Serialize<Payload>(value);
+		Payload roundTripped = serializer.Deserialize<Payload>(json)!;
+
+		if (roundTripped is not TextPayload { Text: "hello" })
+		{
+			throw new InvalidOperationException("Runtime union configuration did not round-trip.");
+		}
+	}
+
+	private static ITypeShape<T> ShapeOf<T>()
+		where T : IShapeable<T> => T.GetTypeShape();
+
+	private static void VerifyCycle()
+	{
+		JsonSerializer serializer = new() { PreserveReferences = ReferencePreservationMode.AllowCycles };
+		LinkNode node = new() { Label = "self" };
+		node.Next = node;
+
+		string json = serializer.Serialize(node);
+		LinkNode roundTripped = serializer.Deserialize<LinkNode>(json)!;
+
+		if (!ReferenceEquals(roundTripped, roundTripped.Next) || roundTripped.Label != "self")
+		{
+			throw new InvalidOperationException("Reference cycle did not round-trip under AllowCycles.");
+		}
 	}
 
 	private static DeviceSnapshot CreateSnapshot()
@@ -38,11 +249,16 @@ internal static class ManyModels
 				[1] = "roof",
 				[2] = "outdoor",
 			},
+			Labels = new Dictionary<string, string>(StringComparer.Ordinal)
+			{
+				["Region"] = "north",
+			},
 			Readings =
 			[
 				new SensorReading { Name = "temperature", Value = 21.5m },
 				new SensorReading { Name = "humidity", Value = 0.42m },
 			],
+			Grid = new int[,] { { 1, 2, 3 }, { 4, 5, 6 } },
 		};
 
 	private static void Verify(DeviceSnapshot expected, DeviceSnapshot actual)
@@ -66,9 +282,19 @@ internal static class ManyModels
 			throw new InvalidOperationException("Payload round-trip mismatch.");
 		}
 
-		if (expected.Tags.Count != actual.Tags.Count || expected.Readings.Count != actual.Readings.Count)
+		if (expected.Tags.Count != actual.Tags.Count || expected.Readings.Count != actual.Readings.Count || !actual.CallbackObserved)
 		{
-			throw new InvalidOperationException("Collection counts changed during round-trip.");
+			throw new InvalidOperationException("Collection counts changed during round-trip or the deserialization callback did not run.");
+		}
+
+		if (actual.Labels.Count != 1 || !actual.Labels.TryGetValue("REGION", out string? region) || region != "north")
+		{
+			throw new InvalidOperationException("Member-specified collection comparer was not applied during deserialization.");
+		}
+
+		if (actual.Grid.Rank != 2 || actual.Grid.GetLength(0) != 2 || actual.Grid.GetLength(1) != 3 || actual.Grid[1, 2] != 6)
+		{
+			throw new InvalidOperationException("Rectangular multidimensional array did not round-trip.");
 		}
 
 		for (int i = 0; i < expected.Readings.Count; i++)
@@ -82,8 +308,10 @@ internal static class ManyModels
 }
 
 [GenerateShape]
-internal partial class DeviceSnapshot
+internal partial class DeviceSnapshot : IJsonSerializationCallbacks
 {
+	private bool callbackObserved;
+
 	public Guid DeviceId { get; set; }
 
 	public string Name { get; set; } = string.Empty;
@@ -108,7 +336,27 @@ internal partial class DeviceSnapshot
 
 	public Dictionary<int, string> Tags { get; set; } = [];
 
+	[JsonCollectionComparer(typeof(CaseInsensitiveStringComparer))]
+	public Dictionary<string, string> Labels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
 	public List<SensorReading> Readings { get; set; } = [];
+
+	public int[,] Grid { get; set; } = new int[0, 0];
+
+	internal bool CallbackObserved => this.callbackObserved;
+
+	public void OnBeforeSerialize()
+	{
+	}
+
+	public void OnAfterDeserialize() => this.callbackObserved = true;
+}
+
+internal sealed class CaseInsensitiveStringComparer : IEqualityComparer<string>
+{
+	public bool Equals(string? x, string? y) => StringComparer.OrdinalIgnoreCase.Equals(x, y);
+
+	public int GetHashCode(string obj) => StringComparer.OrdinalIgnoreCase.GetHashCode(obj);
 }
 
 [GenerateShape]
@@ -117,4 +365,89 @@ internal partial class SensorReading
 	public string Name { get; set; } = string.Empty;
 
 	public decimal Value { get; set; }
+}
+
+[GenerateShape]
+internal partial class LinkNode
+{
+	public string? Label { get; set; }
+
+	public LinkNode? Next { get; set; }
+}
+
+[GenerateShape]
+internal abstract partial record Payload;
+
+[GenerateShape]
+internal partial record TextPayload(string Text) : Payload;
+
+[GenerateShape]
+internal partial record NumberPayload(int Value) : Payload;
+
+[GenerateShapeFor<int>]
+internal partial class IntWitness;
+
+[GenerateShapeFor<int[]>]
+internal partial class IntArrayWitness;
+
+[GenerateShapeFor<object>]
+[GenerateShapeFor<System.Dynamic.ExpandoObject>]
+internal partial class UntypedWitness;
+
+[GenerateShape]
+internal partial record Track(Coord Position);
+
+[GenerateShape]
+internal partial record Coord(int X, int Y);
+
+internal sealed class CoordConverter : JsonConverter<Coord>
+{
+	public override void Write(ref JsonWriter writer, Coord? value, SerializationContext context)
+	{
+		writer.WriteStartArray();
+		writer.WriteNumberValue(value!.X);
+		writer.WriteValueSeparator();
+		writer.WriteNumberValue(value.Y);
+		writer.WriteEndArray();
+	}
+
+	public override Coord? Read(ref JsonReader reader, SerializationContext context)
+	{
+		reader.ReadStartArray();
+		int x = int.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
+		reader.ReadValueSeparator();
+		int y = int.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
+		reader.ReadEndArray();
+		return new Coord(x, y);
+	}
+
+	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	{
+		int index =
+			options.NameComparer.Equals(segment.Name, "x") ? 0 :
+			options.NameComparer.Equals(segment.Name, "y") ? 1 : -1;
+		if (index < 0)
+		{
+			return false;
+		}
+
+		reader.ReadStartArray();
+		if (reader.TryReadEndArray())
+		{
+			return false;
+		}
+
+		for (int i = 0; i < index; i++)
+		{
+			reader.SkipValue();
+			if (reader.TryReadEndArray())
+			{
+				return false;
+			}
+
+			reader.ReadValueSeparator();
+		}
+
+		return true;
+	}
 }

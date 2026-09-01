@@ -55,6 +55,11 @@ public ref struct JsonReader
 	}
 
 	/// <summary>
+	/// Gets the number of bytes consumed from the start of the input buffer.
+	/// </summary>
+	internal readonly int BytesConsumed => this.position;
+
+	/// <summary>
 	/// Attempts to read a JSON <see langword="null"/> literal.
 	/// </summary>
 	/// <returns><see langword="true"/> if a <see langword="null"/> literal was consumed; otherwise, <see langword="false"/>.</returns>
@@ -273,6 +278,26 @@ public ref struct JsonReader
 		int utf8Start = this.position;
 		this.SkipValue();
 		return Encoding.UTF8.GetString(this.utf8Json[utf8Start..this.position]);
+	}
+
+	/// <summary>
+	/// Gets a value indicating whether the next significant token opens a JSON array, without consuming it.
+	/// </summary>
+	/// <returns><see langword="true"/> if the next token is a JSON array start token; otherwise, <see langword="false"/>.</returns>
+	internal bool IsNextTokenStartArray()
+	{
+		this.SkipWhiteSpaceUtf8();
+		return this.position < this.utf8Json.Length && this.utf8Json[this.position] == (byte)'[';
+	}
+
+	/// <summary>
+	/// Gets a value indicating whether the next significant token is a JSON <see langword="null"/> literal, without consuming it.
+	/// </summary>
+	/// <returns><see langword="true"/> if the next token is a JSON null literal; otherwise, <see langword="false"/>.</returns>
+	internal bool IsNextTokenNull()
+	{
+		this.SkipWhiteSpaceUtf8();
+		return this.utf8Json.Length - this.position >= 4 && this.utf8Json.Slice(this.position, 4).SequenceEqual("null"u8);
 	}
 
 	internal byte ReadByteValue()

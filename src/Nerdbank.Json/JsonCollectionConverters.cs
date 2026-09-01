@@ -10,6 +10,8 @@ namespace Nerdbank.Json;
 internal interface IJsonDeserializeInto<TCollection>
 {
 	void DeserializeInto(ref JsonReader reader, ref TCollection collection, SerializationContext context);
+
+	ValueTask DeserializeIntoAsync(JsonAsyncReader reader, TCollection collection, SerializationContext context);
 }
 
 internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonConverter<TEnumerable>
@@ -22,6 +24,8 @@ internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonCon
 		this.getEnumerable = getEnumerable;
 		this.elementConverter = elementConverter;
 	}
+
+	public override bool PreferAsyncSerialization => true;
 
 	protected JsonConverter<TElement> ElementConverter => this.elementConverter;
 
@@ -50,6 +54,62 @@ internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonCon
 
 		writer.WriteEndArray();
 	}
+
+	public override async ValueTask WriteAsync(JsonAsyncWriter writer, TEnumerable? value, SerializationContext context)
+	{
+		Requires.NotNull(writer);
+		if (value is null)
+		{
+			await writer.WriteNullAsync(context).ConfigureAwait(false);
+			return;
+		}
+
+		context.DepthStep();
+
+		JsonWriter syncWriter = writer.CreateWriter();
+		syncWriter.WriteStartArray();
+		writer.ReturnWriter(ref syncWriter);
+
+		bool first = true;
+		foreach (TElement element in this.getEnumerable(value))
+		{
+			if (!first)
+			{
+				syncWriter = writer.CreateWriter();
+				syncWriter.WriteValueSeparator();
+				writer.ReturnWriter(ref syncWriter);
+			}
+
+			first = false;
+			await writer.WriteValueAsync(this.elementConverter, element, context).ConfigureAwait(false);
+		}
+
+		syncWriter = writer.CreateWriter();
+		syncWriter.WriteEndArray();
+		writer.ReturnWriter(ref syncWriter);
+		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
+	}
+
+	private protected async ValueTask ReadArrayElementsAsync(JsonAsyncReader reader, SerializationContext context, Action<TElement> add)
+	{
+		await reader.ReadStartArrayAsync(context).ConfigureAwait(false);
+		if (await reader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+		{
+			return;
+		}
+
+		while (true)
+		{
+			TElement element = (await reader.ReadValueAsync(this.elementConverter, context).ConfigureAwait(false))!;
+			add(element);
+			if (await reader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+			{
+				break;
+			}
+
+			await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+		}
+	}
 }
 
 internal sealed class JsonReadOnlyEnumerableConverter<TEnumerable, TElement> : JsonEnumerableConverter<TEnumerable, TElement>
@@ -63,7 +123,7 @@ internal sealed class JsonReadOnlyEnumerableConverter<TEnumerable, TElement> : J
 		=> throw new NotSupportedException($"JSON deserialization does not support read-only enumerable type {typeof(TEnumerable).FullName}.");
 }
 
-internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : JsonEnumerableConverter<TEnumerable, TElement>, IJsonDeserializeInto<TEnumerable>
+internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : JsonEnumerableConverter<TEnumerable, TElement>, IJsonDeserializeInto<TEnumerable>, IJsonReferencePreservingConverter<TEnumerable>
 {
 	private readonly EnumerableAppender<TEnumerable, TElement> addElement;
 	private readonly MutableCollectionConstructor<TElement, TEnumerable> constructor;
@@ -97,6 +157,24 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 		}
 	}
 
+	public TEnumerable CreateReferenceInstance() => this.constructor(this.constructionOptions);
+
+	public void PopulateReference(ref JsonReader reader, ref TEnumerable instance, SerializationContext context)
+	{
+		context.DepthStep();
+		this.DeserializeInto(ref reader, ref instance, context);
+	}
+
+	public async ValueTask DeserializeIntoAsync(JsonAsyncReader reader, TEnumerable collection, SerializationContext context)
+		=> await this.ReadArrayElementsAsync(reader, context, element => this.addElement(ref collection, element!)).ConfigureAwait(false);
+
+	public async ValueTask<TEnumerable> PopulateReferenceAsync(JsonAsyncReader reader, TEnumerable instance, SerializationContext context)
+	{
+		context.DepthStep();
+		await this.DeserializeIntoAsync(reader, instance, context).ConfigureAwait(false);
+		return instance;
+	}
+
 	public override TEnumerable? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (reader.TryReadNull())
@@ -104,11 +182,23 @@ internal sealed class JsonMutableEnumerableConverter<TEnumerable, TElement> : Js
 			return default;
 		}
 
-		context.DepthStep();
-
-		TEnumerable result = this.constructor(this.constructionOptions);
-		this.DeserializeInto(ref reader, ref result, context);
+		TEnumerable result = this.CreateReferenceInstance();
+		this.PopulateReference(ref reader, ref result, context);
 		return result;
+	}
+
+	public override async ValueTask<TEnumerable?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			return default;
+		}
+
+		context.DepthStep();
+		TEnumerable collection = this.CreateReferenceInstance();
+		await this.ReadArrayElementsAsync(reader, context, element => this.addElement(ref collection, element!)).ConfigureAwait(false);
+		return collection;
 	}
 }
 
@@ -151,6 +241,20 @@ internal sealed class JsonParameterizedEnumerableConverter<TEnumerable, TElement
 
 		return this.constructor(elements.ToArray(), this.constructionOptions);
 	}
+
+	public override async ValueTask<TEnumerable?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			return default;
+		}
+
+		context.DepthStep();
+		List<TElement> elements = [];
+		await this.ReadArrayElementsAsync(reader, context, element => elements.Add(element!)).ConfigureAwait(false);
+		return this.constructor(elements.ToArray(), this.constructionOptions);
+	}
 }
 
 internal abstract class JsonDictionaryConverter<TDictionary, TKey, TValue> : JsonConverter<TDictionary>
@@ -166,6 +270,8 @@ internal abstract class JsonDictionaryConverter<TDictionary, TKey, TValue> : Jso
 		this.valueConverter = valueConverter;
 		this.owner = owner;
 	}
+
+	public override bool PreferAsyncSerialization => true;
 
 	protected JsonConverter<TValue> ValueConverter => this.valueConverter;
 
@@ -195,6 +301,64 @@ internal abstract class JsonDictionaryConverter<TDictionary, TKey, TValue> : Jso
 
 		writer.WriteEndObject();
 	}
+
+	public override async ValueTask WriteAsync(JsonAsyncWriter writer, TDictionary? value, SerializationContext context)
+	{
+		Requires.NotNull(writer);
+		if (value is null)
+		{
+			await writer.WriteNullAsync(context).ConfigureAwait(false);
+			return;
+		}
+
+		context.DepthStep();
+
+		JsonWriter syncWriter = writer.CreateWriter();
+		syncWriter.WriteStartObject();
+		writer.ReturnWriter(ref syncWriter);
+
+		bool first = true;
+		foreach (KeyValuePair<TKey, TValue> entry in this.getReadable(value))
+		{
+			syncWriter = writer.CreateWriter();
+			if (!first)
+			{
+				syncWriter.WriteValueSeparator();
+			}
+
+			syncWriter.WritePropertyName(this.owner.GetSerializedDictionaryKey(JsonDictionaryKeyConverter.FormatKey(entry.Key)));
+			writer.ReturnWriter(ref syncWriter);
+			first = false;
+			await writer.WriteValueAsync(this.valueConverter, entry.Value, context).ConfigureAwait(false);
+		}
+
+		syncWriter = writer.CreateWriter();
+		syncWriter.WriteEndObject();
+		writer.ReturnWriter(ref syncWriter);
+		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
+	}
+
+	private protected async ValueTask ReadObjectEntriesAsync(JsonAsyncReader reader, SerializationContext context, Action<string, TValue> add)
+	{
+		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
+		if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+		{
+			return;
+		}
+
+		while (true)
+		{
+			string key = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
+			TValue entryValue = (await reader.ReadValueAsync(this.valueConverter, context).ConfigureAwait(false))!;
+			add(key, entryValue);
+			if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+			{
+				break;
+			}
+
+			await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+		}
+	}
 }
 
 internal sealed class JsonReadOnlyDictionaryConverter<TDictionary, TKey, TValue> : JsonDictionaryConverter<TDictionary, TKey, TValue>
@@ -209,7 +373,7 @@ internal sealed class JsonReadOnlyDictionaryConverter<TDictionary, TKey, TValue>
 		=> throw new NotSupportedException($"JSON deserialization does not support read-only dictionary type {typeof(TDictionary).FullName}.");
 }
 
-internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> : JsonDictionaryConverter<TDictionary, TKey, TValue>, IJsonDeserializeInto<TDictionary>
+internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> : JsonDictionaryConverter<TDictionary, TKey, TValue>, IJsonDeserializeInto<TDictionary>, IJsonReferencePreservingConverter<TDictionary>
 	where TKey : notnull
 {
 	private readonly DictionaryInserter<TDictionary, TKey, TValue> addEntry;
@@ -246,6 +410,24 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 		}
 	}
 
+	public TDictionary CreateReferenceInstance() => this.constructor(this.constructionOptions);
+
+	public void PopulateReference(ref JsonReader reader, ref TDictionary instance, SerializationContext context)
+	{
+		context.DepthStep();
+		this.DeserializeInto(ref reader, ref instance, context);
+	}
+
+	public async ValueTask DeserializeIntoAsync(JsonAsyncReader reader, TDictionary collection, SerializationContext context)
+		=> await this.ReadObjectEntriesAsync(reader, context, (key, entryValue) => this.addEntry(ref collection, JsonDictionaryKeyConverter.ParseKey<TKey>(key), entryValue!)).ConfigureAwait(false);
+
+	public async ValueTask<TDictionary> PopulateReferenceAsync(JsonAsyncReader reader, TDictionary instance, SerializationContext context)
+	{
+		context.DepthStep();
+		await this.DeserializeIntoAsync(reader, instance, context).ConfigureAwait(false);
+		return instance;
+	}
+
 	public override TDictionary? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (reader.TryReadNull())
@@ -253,11 +435,23 @@ internal sealed class JsonMutableDictionaryConverter<TDictionary, TKey, TValue> 
 			return default;
 		}
 
-		context.DepthStep();
-
-		TDictionary result = this.constructor(this.constructionOptions);
-		this.DeserializeInto(ref reader, ref result, context);
+		TDictionary result = this.CreateReferenceInstance();
+		this.PopulateReference(ref reader, ref result, context);
 		return result;
+	}
+
+	public override async ValueTask<TDictionary?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			return default;
+		}
+
+		context.DepthStep();
+		TDictionary collection = this.CreateReferenceInstance();
+		await this.ReadObjectEntriesAsync(reader, context, (key, entryValue) => this.addEntry(ref collection, JsonDictionaryKeyConverter.ParseKey<TKey>(key), entryValue!)).ConfigureAwait(false);
+		return collection;
 	}
 }
 
@@ -303,11 +497,27 @@ internal sealed class JsonParameterizedDictionaryConverter<TDictionary, TKey, TV
 
 		return this.constructor(entries.ToArray(), this.constructionOptions);
 	}
+
+	public override async ValueTask<TDictionary?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			return default;
+		}
+
+		context.DepthStep();
+		List<KeyValuePair<TKey, TValue>> entries = [];
+		await this.ReadObjectEntriesAsync(reader, context, (key, entryValue) => entries.Add(new(JsonDictionaryKeyConverter.ParseKey<TKey>(key), entryValue!))).ConfigureAwait(false);
+		return this.constructor(entries.ToArray(), this.constructionOptions);
+	}
 }
 
 internal sealed class JsonListConverter<TCollection, TElement>(JsonConverter<TElement> elementConverter, Func<TCollection> createCollection) : JsonConverter<TCollection>
 	where TCollection : IEnumerable<TElement>
 {
+	public override bool PreferAsyncSerialization => true;
+
 	public override void Write(ref JsonWriter writer, TCollection? value, SerializationContext context)
 	{
 		if (value is null)
@@ -367,12 +577,82 @@ internal sealed class JsonListConverter<TCollection, TElement>(JsonConverter<TEl
 
 		return (TCollection)collection;
 	}
+
+	public override async ValueTask WriteAsync(JsonAsyncWriter writer, TCollection? value, SerializationContext context)
+	{
+		Requires.NotNull(writer);
+		if (value is null)
+		{
+			await writer.WriteNullAsync(context).ConfigureAwait(false);
+			return;
+		}
+
+		context.DepthStep();
+
+		JsonWriter syncWriter = writer.CreateWriter();
+		syncWriter.WriteStartArray();
+		writer.ReturnWriter(ref syncWriter);
+
+		bool first = true;
+		foreach (TElement element in value)
+		{
+			if (!first)
+			{
+				syncWriter = writer.CreateWriter();
+				syncWriter.WriteValueSeparator();
+				writer.ReturnWriter(ref syncWriter);
+			}
+
+			first = false;
+			await writer.WriteValueAsync(elementConverter, element, context).ConfigureAwait(false);
+		}
+
+		syncWriter = writer.CreateWriter();
+		syncWriter.WriteEndArray();
+		writer.ReturnWriter(ref syncWriter);
+		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
+	}
+
+	public override async ValueTask<TCollection?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			return default;
+		}
+
+		context.DepthStep();
+
+		if (createCollection() is not ICollection<TElement> collection)
+		{
+			throw new NotSupportedException($"Collection type {typeof(TCollection).FullName} must implement ICollection<{typeof(TElement).Name}>.");
+		}
+
+		await reader.ReadStartArrayAsync(context).ConfigureAwait(false);
+		if (!await reader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+		{
+			while (true)
+			{
+				collection.Add((await reader.ReadValueAsync(elementConverter, context).ConfigureAwait(false))!);
+				if (await reader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+				{
+					break;
+				}
+
+				await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+			}
+		}
+
+		return (TCollection)collection;
+	}
 }
 
 internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValue>(ConverterCache owner, JsonConverter<TValue> valueConverter, Func<TDictionary> createDictionary) : JsonConverter<TDictionary>
 	where TDictionary : IEnumerable<KeyValuePair<TKey, TValue>>
 	where TKey : notnull
 {
+	public override bool PreferAsyncSerialization => true;
+
 	public override void Write(ref JsonWriter writer, TDictionary? value, SerializationContext context)
 	{
 		if (value is null)
@@ -431,6 +711,76 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 			}
 
 			reader.ReadValueSeparator();
+		}
+
+		return (TDictionary)dictionary;
+	}
+
+	public override async ValueTask WriteAsync(JsonAsyncWriter writer, TDictionary? value, SerializationContext context)
+	{
+		Requires.NotNull(writer);
+		if (value is null)
+		{
+			await writer.WriteNullAsync(context).ConfigureAwait(false);
+			return;
+		}
+
+		context.DepthStep();
+
+		JsonWriter syncWriter = writer.CreateWriter();
+		syncWriter.WriteStartObject();
+		writer.ReturnWriter(ref syncWriter);
+
+		bool first = true;
+		foreach (KeyValuePair<TKey, TValue> entry in value)
+		{
+			syncWriter = writer.CreateWriter();
+			if (!first)
+			{
+				syncWriter.WriteValueSeparator();
+			}
+
+			syncWriter.WritePropertyName(owner.GetSerializedDictionaryKey(JsonDictionaryKeyConverter.FormatKey(entry.Key)));
+			writer.ReturnWriter(ref syncWriter);
+			first = false;
+			await writer.WriteValueAsync(valueConverter, entry.Value, context).ConfigureAwait(false);
+		}
+
+		syncWriter = writer.CreateWriter();
+		syncWriter.WriteEndObject();
+		writer.ReturnWriter(ref syncWriter);
+		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
+	}
+
+	public override async ValueTask<TDictionary?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			return default;
+		}
+
+		context.DepthStep();
+
+		if (createDictionary() is not IDictionary<TKey, TValue> dictionary)
+		{
+			throw new NotSupportedException($"Dictionary type {typeof(TDictionary).FullName} must implement IDictionary<{typeof(TKey).Name}, {typeof(TValue).Name}>.");
+		}
+
+		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
+		if (!await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+		{
+			while (true)
+			{
+				string key = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
+				dictionary.Add(JsonDictionaryKeyConverter.ParseKey<TKey>(key), (await reader.ReadValueAsync(valueConverter, context).ConfigureAwait(false))!);
+				if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+				{
+					break;
+				}
+
+				await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+			}
 		}
 
 		return (TDictionary)dictionary;

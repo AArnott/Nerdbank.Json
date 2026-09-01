@@ -32,8 +32,14 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 	public override object? VisitEnumerable<TEnumerable, TElement>(IEnumerableTypeShape<TEnumerable, TElement> enumerableShape, object? state = null)
 	{
 		JsonConverter<TElement> elementConverter = this.GetConverter(enumerableShape.ElementType, attributeProvider: null);
+
+		if (enumerableShape.Type.IsArray && enumerableShape.Rank > 1)
+		{
+			return new JsonMultidimensionalArrayConverter<TEnumerable, TElement>(elementConverter, enumerableShape.Rank);
+		}
+
 		Func<TEnumerable, IEnumerable<TElement>> getEnumerable = enumerableShape.GetGetEnumerable();
-		CollectionConstructionOptions<TElement> constructionOptions = this.GetCollectionOptions(enumerableShape.ElementType, enumerableShape.SupportedComparer);
+		CollectionConstructionOptions<TElement> constructionOptions = this.GetCollectionOptions(enumerableShape, enumerableShape.ElementType, enumerableShape.SupportedComparer, state as MemberComparerInfluence);
 
 		return enumerableShape.ConstructionStrategy switch
 		{
@@ -53,7 +59,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 
 		JsonConverter<TValue> valueConverter = this.GetConverter(dictionaryShape.ValueType, attributeProvider: null);
 		Func<TDictionary, IReadOnlyDictionary<TKey, TValue>> getReadable = dictionaryShape.GetGetDictionary();
-		CollectionConstructionOptions<TKey> constructionOptions = this.GetCollectionOptions(dictionaryShape.KeyType, dictionaryShape.SupportedComparer);
+		CollectionConstructionOptions<TKey> constructionOptions = this.GetCollectionOptions(dictionaryShape, dictionaryShape.KeyType, dictionaryShape.SupportedComparer, state as MemberComparerInfluence);
 
 		return dictionaryShape.ConstructionStrategy switch
 		{
@@ -272,6 +278,27 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		return false;
 	}
 
+	private static bool TryGetCollectionComparerAttribute(IGenericCustomAttributeProvider? attributeProvider, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Type? comparerType)
+	{
+		if (attributeProvider is not null)
+		{
+			foreach (JsonCollectionComparerAttribute attribute in attributeProvider.GetCustomAttributes<JsonCollectionComparerAttribute>(inherit: false))
+			{
+				comparerType = attribute.ComparerType;
+				return true;
+			}
+		}
+
+		comparerType = null;
+		return false;
+	}
+
+	private static IComparer<TKey> AsComparer<TKey>(object comparer, ITypeShape collectionShape, Type comparerType)
+		=> comparer as IComparer<TKey> ?? throw new NotSupportedException($"The comparer type '{comparerType.FullName}' specified by {nameof(JsonCollectionComparerAttribute)} must implement IComparer<{typeof(TKey).FullName}> for collection type '{collectionShape.Type.FullName}'.");
+
+	private static IEqualityComparer<TKey> AsEqualityComparer<TKey>(object comparer, ITypeShape collectionShape, Type comparerType)
+		=> comparer as IEqualityComparer<TKey> ?? throw new NotSupportedException($"The comparer type '{comparerType.FullName}' specified by {nameof(JsonCollectionComparerAttribute)} must implement IEqualityComparer<{typeof(TKey).FullName}> for collection type '{collectionShape.Type.FullName}'.");
+
 	private JsonConverter<T> GetConverter<T>(ITypeShape<T> shape, IGenericCustomAttributeProvider? attributeProvider)
 	{
 		if (ConverterCache.TryGetConverterFromAttribute(shape.Type, shape, attributeProvider, out JsonConverter? converter) && converter is not null)
@@ -279,11 +306,39 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			return (JsonConverter<T>)converter;
 		}
 
+		if (TryGetCollectionComparerAttribute(attributeProvider, out Type? comparerType))
+		{
+			if (shape.Kind is not (TypeShapeKind.Enumerable or TypeShapeKind.Dictionary))
+			{
+				throw new NotSupportedException($"{nameof(JsonCollectionComparerAttribute)} can only be applied to dictionary or set members, but it was applied to a member of type '{shape.Type.FullName}'.");
+			}
+
+			// Member-specific comparers bypass the per-type converter cache so that two members of the same
+			// collection type can carry different comparers.
+			return (JsonConverter<T>)owner.CreateConverter(shape, this, new MemberComparerInfluence(comparerType));
+		}
+
 		return (JsonConverter<T>)context.GetOrAdd(shape)!;
 	}
 
-	private CollectionConstructionOptions<TKey> GetCollectionOptions<TKey>(ITypeShape<TKey> keyShape, CollectionComparerOptions requiredComparer)
+	private CollectionConstructionOptions<TKey> GetCollectionOptions<TKey>(ITypeShape collectionShape, ITypeShape<TKey> keyShape, CollectionComparerOptions requiredComparer, MemberComparerInfluence? memberInfluence)
 	{
+		if (memberInfluence is not null)
+		{
+			if (requiredComparer == CollectionComparerOptions.None)
+			{
+				throw new NotSupportedException($"The collection type '{collectionShape.Type.FullName}' does not accept a custom comparer, so {nameof(JsonCollectionComparerAttribute)} cannot be applied to a member of this type.");
+			}
+
+			object comparer = memberInfluence.ActivateComparer(collectionShape);
+			return requiredComparer switch
+			{
+				CollectionComparerOptions.Comparer => new CollectionConstructionOptions<TKey> { Comparer = AsComparer<TKey>(comparer, collectionShape, memberInfluence.ComparerType) },
+				CollectionComparerOptions.EqualityComparer => new CollectionConstructionOptions<TKey> { EqualityComparer = AsEqualityComparer<TKey>(comparer, collectionShape, memberInfluence.ComparerType) },
+				_ => throw new NotSupportedException($"JSON serialization does not recognize collection comparer option {requiredComparer}."),
+			};
+		}
+
 		if (owner.ComparerProvider is null)
 		{
 			return default;
@@ -296,5 +351,28 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			CollectionComparerOptions.EqualityComparer => new CollectionConstructionOptions<TKey> { EqualityComparer = owner.ComparerProvider.GetEqualityComparer(keyShape) },
 			_ => throw new NotSupportedException($"JSON serialization does not recognize collection comparer option {requiredComparer}."),
 		};
+	}
+
+	/// <summary>
+	/// Captures a member-specified comparer so a member-specific collection converter can be constructed.
+	/// </summary>
+	private sealed class MemberComparerInfluence(Type comparerType)
+	{
+		internal Type ComparerType => comparerType;
+
+		/// <summary>
+		/// Activates the member-specified comparer using the source-generated shape associated with the collection type.
+		/// </summary>
+		/// <param name="collectionShape">The shape of the collection type that declares the comparer as an associated type.</param>
+		/// <returns>The activated comparer instance.</returns>
+		internal object ActivateComparer(ITypeShape collectionShape)
+		{
+			if ((collectionShape.GetAssociatedTypeShape(comparerType) as IObjectTypeShape)?.GetDefaultConstructor() is Func<object> factory)
+			{
+				return factory() ?? throw new NotSupportedException($"The comparer type '{comparerType.FullName}' specified by {nameof(JsonCollectionComparerAttribute)} produced a null instance.");
+			}
+
+			throw new NotSupportedException($"The comparer type '{comparerType.FullName}' specified by {nameof(JsonCollectionComparerAttribute)} must declare a public parameterless constructor and have a source-generated shape associated with collection type '{collectionShape.Type.FullName}'.");
+		}
 	}
 }

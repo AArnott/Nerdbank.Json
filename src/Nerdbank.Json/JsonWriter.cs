@@ -48,6 +48,21 @@ public ref struct JsonWriter
 	internal JsonWriter(BufferWriter writer) => this.writer = writer;
 
 	/// <summary>
+	/// Initializes a new instance of the <see cref="JsonWriter"/> struct, restoring container-tracking state.
+	/// </summary>
+	/// <param name="writer">The buffer writer to use for output.</param>
+	/// <param name="stack">The saved container stack.</param>
+	/// <param name="depth">The saved container depth.</param>
+	/// <param name="pendingPropertyValue">The saved pending-property-value flag.</param>
+	internal JsonWriter(BufferWriter writer, ContainerState[] stack, int depth, bool pendingPropertyValue)
+	{
+		this.writer = writer;
+		this.stack = stack;
+		this.depth = depth;
+		this.pendingPropertyValue = pendingPropertyValue;
+	}
+
+	/// <summary>
 	/// Gets a value indicating whether line breaks and indentation should be written.
 	/// </summary>
 	public bool WriteIndented { get; init; }
@@ -56,6 +71,11 @@ public ref struct JsonWriter
 	/// Gets the number of bytes that have been written but not yet committed <see cref="Flush">flushed</see> to the underlying <see cref="IBufferWriter{T}"/>.
 	/// </summary>
 	public readonly int UnflushedBytes => this.writer.UncommittedBytes;
+
+	/// <summary>
+	/// Gets the underlying buffer writer. Used by <see cref="JsonAsyncWriter"/> to persist state across writers.
+	/// </summary>
+	internal readonly BufferWriter Writer => this.writer;
 
 	/// <summary>
 	/// Ensures everything previously written has been flushed to the underlying <see cref="IBufferWriter{T}"/>.
@@ -346,6 +366,13 @@ public ref struct JsonWriter
 	}
 
 	/// <summary>
+	/// Exports the container-tracking state so it can be restored on a subsequent writer.
+	/// </summary>
+	/// <returns>The container stack, depth, and pending-property-value flag.</returns>
+	internal readonly (ContainerState[] Stack, int Depth, bool PendingPropertyValue) ExportContainerState()
+		=> (this.stack, this.depth, this.pendingPropertyValue);
+
+	/// <summary>
 	/// Writes an already-escaped UTF-8 JSON property name, including its surrounding quotes.
 	/// </summary>
 	/// <param name="utf8EncodedName">The UTF-8 property name token to write.</param>
@@ -630,13 +657,15 @@ public ref struct JsonWriter
 		this.writer.Advance(value.Length);
 	}
 
-	private enum ContainerKind : byte
+#pragma warning disable SA1600 // Internal writer state types are self-explanatory.
+#pragma warning disable SA1602 // Internal writer state enum members are self-explanatory.
+	internal enum ContainerKind : byte
 	{
 		Object,
 		Array,
 	}
 
-	private struct ContainerState
+	internal struct ContainerState
 	{
 		internal ContainerKind Kind;
 		internal int Count;
@@ -647,4 +676,6 @@ public ref struct JsonWriter
 			this.Count = 0;
 		}
 	}
+#pragma warning restore SA1600
+#pragma warning restore SA1602
 }

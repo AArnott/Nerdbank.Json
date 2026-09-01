@@ -32,6 +32,14 @@ internal sealed class ConverterCache
 
 	internal StringComparer PropertyNameComparer => this.configuration.PropertyNameCaseInsensitive ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
+	internal bool AllowTrailingCommas => this.configuration.AllowTrailingCommas;
+
+	internal JsonCommentHandling ReadCommentHandling => this.configuration.ReadCommentHandling;
+
+	internal ReferencePreservationMode PreserveReferences => this.configuration.PreserveReferences;
+
+	internal JsonUnionConfiguration UnionConfiguration => this.configuration.UnionConfiguration;
+
 	private MultiProviderTypeCache CachedConverters
 	{
 		get
@@ -123,7 +131,7 @@ internal sealed class ConverterCache
 		return this.GetOrAddConverter(shape);
 	}
 
-	internal JsonConverter CreateConverter<T>(ITypeShape<T> shape, TypeShapeVisitor visitor)
+	internal JsonConverter CreateConverter<T>(ITypeShape<T> shape, TypeShapeVisitor visitor, object? state = null)
 	{
 		if (this.TryGetRuntimeProfferedConverter(shape.Type, shape, out JsonConverter? runtimeConverter) && runtimeConverter is not null)
 		{
@@ -140,7 +148,12 @@ internal sealed class ConverterCache
 			return this.WrapWithReferencePreservation(new BuiltInJsonConverter<T>());
 		}
 
-		object? converter = shape.Accept(visitor, null);
+		if (this.configuration.UnionConfiguration.TryGetEntry(shape.Type, out object? unionEntry) && unionEntry is not null)
+		{
+			return this.WrapWithReferencePreservation(RuntimeUnionBuilder.Build(this, shape, unionEntry, visitor));
+		}
+
+		object? converter = shape.Accept(visitor, state);
 		if (converter is JsonConverter jsonConverter)
 		{
 			return this.WrapWithReferencePreservation((JsonConverter<T>)jsonConverter);
@@ -174,6 +187,24 @@ internal sealed class ConverterCache
 
 		converter = ActivateAssociatedConverterType(type, attribute.ConverterType, typeShape);
 		return true;
+	}
+
+	internal bool ShouldPreserveReferences(Type type) => this.configuration.PreserveReferences != ReferencePreservationMode.Off && RequiresReferencePreservation(type);
+
+	internal bool TryGetCustomConverter(ITypeShape shape, out JsonConverter? converter)
+	{
+		if (this.TryGetRuntimeProfferedConverter(shape.Type, shape, out converter) && converter is not null)
+		{
+			return true;
+		}
+
+		if (TryGetConverterFromAttribute(shape.Type, shape, attributeProvider: null, out converter) && converter is not null)
+		{
+			return true;
+		}
+
+		converter = null;
+		return false;
 	}
 
 	private JsonConverter<T> WrapWithReferencePreservation<T>(JsonConverter<T> converter)

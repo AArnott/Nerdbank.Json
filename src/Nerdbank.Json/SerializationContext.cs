@@ -27,6 +27,13 @@ public record struct SerializationContext
 	}
 
 	/// <summary>
+	/// Gets or sets the number of uncommitted bytes that may accumulate in an asynchronous writer's buffer before a
+	/// flush to the underlying <see cref="System.IO.Pipelines.PipeWriter"/> is triggered.
+	/// </summary>
+	/// <value>The default value is 64KB.</value>
+	public int UnflushedBytesThreshold { get; set; } = 64 * 1024;
+
+	/// <summary>
 	/// Gets or sets the remaining depth of the object graph to serialize or deserialize.
 	/// </summary>
 	/// <value>The default value is 64.</value>
@@ -127,7 +134,7 @@ public record struct SerializationContext
 			CancellationToken = cancellationToken,
 			SerializeDefaultValues = owner.SerializeDefaultValues,
 			DeserializeDefaultValues = owner.DeserializeDefaultValues,
-			ReferenceTracker = owner.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker(),
+			ReferenceTracker = owner.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker(owner.PreserveReferences),
 		};
 	}
 }
