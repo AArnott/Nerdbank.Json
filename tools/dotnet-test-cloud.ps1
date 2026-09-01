@@ -15,6 +15,8 @@
     A switch to run the tests in an x86 process.
 .PARAMETER dotnet32
     The path to a 32-bit dotnet executable to use.
+.PARAMETER NoCoverage
+    A switch to skip code coverage collection.
 #>
 [CmdletBinding()]
 Param(
@@ -23,7 +25,8 @@ Param(
     [string]$Agent = 'Local',
     [switch]$PublishResults,
     [switch]$x86,
-    [string]$dotnet32
+    [string]$dotnet32,
+    [switch]$NoCoverage
 )
 
 $RepoRoot = (Resolve-Path "$PSScriptRoot/..").Path
@@ -45,13 +48,12 @@ if ($x86) {
         }
         else {
             Write-Error "Unable to find 32-bit dotnet.exe"
-            return 1
+            exit 1
         }
     }
 }
 
 $testBinLogXunit = Join-Path $ArtifactStagingFolder (Join-Path build_logs test-xunit.binlog)
-$testBinLogTUnit = Join-Path $ArtifactStagingFolder (Join-Path build_logs test-tunit.binlog)
 $testLogs = Join-Path $ArtifactStagingFolder test_logs
 
 $globalJson = Get-Content $PSScriptRoot/../global.json | ConvertFrom-Json
@@ -63,60 +65,86 @@ if ($isMTP) {
     if ($OnCI) { $extraArgs += '--no-progress' }
 
     $dumpSwitches = @(
-        , '--hangdump'
-        , '--hangdump-timeout', '120s'
-        , '--crashdump'
+        ,'--hangdump'
+        ,'--hangdump-timeout=5m'
+        ,'--crashdump'
+        ,'--crashdump-type=Heap'
+        # The native crash report accompanies the dump and is often the only way to identify the
+        # faulting thread and instruction when a test host dies of an access violation on Linux.
+        ,'--crash-report-if-supported'
     )
     $mtpArgs = @(
-        , '--coverage'
-        , '--coverage-output-format', 'cobertura'
-        , '--diagnostic'
-        , '--diagnostic-output-directory', $testLogs
-        , '--diagnostic-verbosity', 'Information'
-        , '--results-directory', $testLogs
-        , '--report-trx'
+        ,'--diagnostic'
+        ,"--diagnostic-output-directory=$testLogs"
+        ,'--diagnostic-verbosity=Information'
+        ,"--results-directory=$testLogs"
+        ,'--report-trx'
     )
 
-    & $dotnet test --project $RepoRoot/test/Nerdbank.Json.Analyzers.Tests/Nerdbank.Json.Analyzers.Tests.csproj `
+    if (-not $NoCoverage) {
+        $mtpArgs += @(
+            ,'--coverage'
+            ,'--coverage-output-format=cobertura'
+            ,"--coverage-settings=$PSScriptRoot/test.runsettings"
+        )
+    }
+
+    & $dotnet test --project "$RepoRoot/test/Nerdbank.Json.Analyzers.Tests/Nerdbank.Json.Analyzers.Tests.csproj" `
         --no-build `
         -c $Configuration `
         -bl:"$testBinLogXunit" `
-        --filter-not-trait 'TestCategory=FailsInCloudTest' `
-        --coverage-settings "$PSScriptRoot/test.runsettings" `
+        -- `
+        '--filter-not-trait=TestCategory=FailsInCloudTest' `
         @mtpArgs `
         @dumpSwitches `
         @extraArgs
     if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
 
-    $testFrameworks = @($null)
-    if ($IncludeNativeAOT) {
-        $testFrameworks = @('net8.0', 'net9.0')
-        if ($IsWindows) { $testFrameworks += 'net472' }
-    }
+    $tunitTestProjects = @(
+        @{
+            Name = 'Nerdbank.Json.Tests'
+            Path = "$RepoRoot/test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj"
+            NativeAOT = $true
+        },
+        @{
+            Name = 'Nerdbank.Json.AspNetCoreMvcFormatter.Tests'
+            Path = "$RepoRoot/test/Nerdbank.Json.AspNetCoreMvcFormatter.Tests/Nerdbank.Json.AspNetCoreMvcFormatter.Tests.csproj"
+            NativeAOT = $false
+        }
+    )
 
-    foreach ($testFramework in $testFrameworks) {
-        $frameworkArgs = @()
-        $testBinLog = $testBinLogTUnit
-        if ($testFramework) {
-            $frameworkArgs = @('--framework', $testFramework)
-            $testBinLog = Join-Path $ArtifactStagingFolder (Join-Path build_logs "test-tunit-$testFramework.binlog")
+    foreach ($testProject in $tunitTestProjects) {
+        $testFrameworks = @($null)
+        if ($testProject.NativeAOT) {
+            $testFrameworks = @('net8.0', 'net9.0')
+            if ($IsWindows) { $testFrameworks += 'net472' }
         }
 
-        & $dotnet test --project $RepoRoot/test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj `
-            --no-build `
-            -c $Configuration `
-            -bl:"$testBinLog" `
-            --treenode-filter '/*/*/*/*[TestCategory!=FailsInCloudTest]' `
-            @frameworkArgs `
-            @mtpArgs `
-            @dumpSwitches `
-            @extraArgs
-        if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
+        foreach ($testFramework in $testFrameworks) {
+            $frameworkArgs = @()
+            $testBinLog = Join-Path $ArtifactStagingFolder (Join-Path build_logs "test-$($testProject.Name).binlog")
+            if ($testFramework) {
+                $frameworkArgs = @('--framework', $testFramework)
+                $testBinLog = Join-Path $ArtifactStagingFolder (Join-Path build_logs "test-$($testProject.Name)-$testFramework.binlog")
+            }
+
+            & $dotnet test --project $($testProject.Path) `
+                --no-build `
+                -c $Configuration `
+                -bl:"$testBinLog" `
+                @frameworkArgs `
+                -- `
+                '--treenode-filter=/*/*/*/*[TestCategory!=FailsInCloudTest]' `
+                @mtpArgs `
+                @dumpSwitches `
+                @extraArgs
+            if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
+        }
     }
 
     if ($IncludeNativeAOT) {
         $TestExecutableName = 'Nerdbank.Json.Tests'
-        $NativeAOTArgs = $mtpArgs
+        $NativeAOTArgs = $mtpArgs | Where-Object { $_ -notlike '--coverage-settings=*' }
         if (!($IsMacOS -or $IsLinux)) {
             $TestExecutableName += '.exe'
             $NativeAOTArgs += $dumpSwitches
@@ -132,17 +160,24 @@ if ($isMTP) {
 }
 else {
     $testDiagLog = Join-Path $ArtifactStagingFolder (Join-Path test_logs diag.log)
+    $coverageArgs = @()
+    if (-not $NoCoverage) {
+        $coverageArgs = @(
+            ,'--collect','Code Coverage;Format=cobertura'
+            ,'--settings',"$PSScriptRoot/test.runsettings"
+        )
+    }
+
     & $dotnet test $RepoRoot `
         --no-build `
         -c $Configuration `
         --filter "TestCategory!=FailsInCloudTest" `
-        --collect "Code Coverage;Format=cobertura" `
-        --settings "$PSScriptRoot/test.runsettings" `
         --blame-hang-timeout 60s `
         --blame-crash `
         -bl:"$testBinLogXunit" `
         --diag "$testDiagLog;TraceLevel=info" `
         --logger trx `
+        @coverageArgs `
         @extraArgs
     if ($LASTEXITCODE -ne 0) { $failedTests += 1 }
 

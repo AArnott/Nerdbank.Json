@@ -1,6 +1,6 @@
 # Nerdbank.Json.AspNetCoreMvcFormatter
 
-ASP.NET Core MVC input and output formatters backed by [Nerdbank.Json](https://www.nuget.org/packages/Nerdbank.Json),
+ASP.NET Core MVC input and output formatters backed by [Nerdbank.Json](https://github.com/AArnott/Nerdbank.Json),
 enabling AOT-safe, source-generated JSON in MVC and minimal-hosting Web APIs.
 
 Unlike the built-in `System.Text.Json` formatters, these formatters:
