@@ -621,6 +621,20 @@ public ref struct JsonWriter
 
 	private void WriteUtf8(ReadOnlySpan<char> value)
 	{
+#if NET8_0_OR_GREATER
+		// Fast path: bulk-copy runs of 7-bit ASCII (the common case for property names and typical
+		// string content) using a vectorized narrowing conversion instead of writing one byte at a time.
+		// Any non-ASCII content (including surrogate pairs) falls through to the char-by-char path below,
+		// which preserves the exact surrogate-validation and multi-byte UTF-8 encoding behavior.
+		if (Ascii.IsValid(value))
+		{
+			Span<byte> buffer = this.writer.GetSpan(value.Length);
+			Ascii.FromUtf16(value, buffer, out int bytesWritten);
+			this.writer.Advance(bytesWritten);
+			return;
+		}
+#endif
+
 		for (int i = 0; i < value.Length; i++)
 		{
 			char ch = value[i];
