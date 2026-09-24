@@ -18,14 +18,11 @@ internal sealed class StringInterning
 	private readonly Dictionary<uint, List<string>> strings = [];
 
 	/// <summary>
-	/// Returns the canonical instance for the supplied string value.
-/// </summary>
-	/// <param name="value">The string to intern.</param>
+	/// Returns the canonical instance for the supplied characters, allocating a string only on a cache miss.
+	/// </summary>
+	/// <param name="value">The characters to intern.</param>
 	/// <returns>The canonical instance of <paramref name="value"/> for this operation.</returns>
-	internal string Intern(string value)
-	{
-		return this.GetOrAdd(value.AsSpan(), value);
-	}
+	internal string Intern(ReadOnlySpan<char> value) => this.GetOrAdd(value);
 
 	/// <summary>
 	/// Returns an interned string for the given UTF-8 encoded bytes without first materializing a string.
@@ -43,8 +40,8 @@ internal sealed class StringInterning
 		try
 		{
 			Span<char> characters = rented ?? stackalloc char[value.Length];
-			int characterCount = GetUtf8CharacterCount(value, characters);
-			return this.GetOrAdd(characters[..characterCount], candidateValue: null);
+			int characterCount = Encoding.UTF8.GetChars(value, characters);
+			return this.Intern(characters[..characterCount]);
 		}
 		finally
 		{
@@ -68,22 +65,7 @@ internal sealed class StringInterning
 		return hashCode;
 	}
 
-	private static unsafe int GetUtf8CharacterCount(ReadOnlySpan<byte> bytes, Span<char> characters)
-	{
-#if NET
-		return Encoding.UTF8.GetChars(bytes, characters);
-#else
-		fixed (byte* pBytes = bytes)
-		{
-			fixed (char* pCharacters = characters)
-			{
-				return Encoding.UTF8.GetChars(pBytes, bytes.Length, pCharacters, characters.Length);
-			}
-		}
-#endif
-	}
-
-	private string GetOrAdd(ReadOnlySpan<char> value, string? candidateValue)
+	private string GetOrAdd(ReadOnlySpan<char> value)
 	{
 		uint hashCode = CalculateHashCode(value);
 		if (this.strings.TryGetValue(hashCode, out List<string>? candidates))
@@ -102,7 +84,7 @@ internal sealed class StringInterning
 			this.strings.Add(hashCode, candidates);
 		}
 
-		string interned = candidateValue ?? value.ToString();
+		string interned = value.ToString();
 		candidates.Add(interned);
 		return interned;
 	}

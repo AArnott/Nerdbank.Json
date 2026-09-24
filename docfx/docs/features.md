@@ -102,6 +102,13 @@ Reference preservation notes:
 * `ReferencePreservationMode.RejectCycles` preserves repeated references and rejects reference cycles.
 * `ReferencePreservationMode.AllowCycles` additionally allows reference cycles by registering mutable objects and collections before their members are populated; immutable or constructor-bound objects cannot be back-referenced while under construction.
 
+String interning notes:
+
+* Enable with `new JsonSerializer { InternStrings = true }`; the default is `false`.
+* Built-in string conversion decodes into temporary stack or pooled character storage before looking up the value. Repeated values do not allocate candidate strings, even when JSON escape sequences are used.
+* Different spellings of the same value, such as `"hello"` and `"h\u0065llo"`, share a string instance within the operation.
+* The cache is operation-scoped, not the CLR's global intern pool. Strings are not retained for reuse across separate deserializations, and serialization output is unchanged.
+
 Current limitations:
 
 * Read-only scalar and immutable properties are not populated unless a future converter adds explicit support.
