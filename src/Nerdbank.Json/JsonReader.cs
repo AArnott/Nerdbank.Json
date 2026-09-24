@@ -103,19 +103,14 @@ public ref struct JsonReader
 	/// <returns>The decoded string value, or <see langword="null"/> when the next token is a JSON <see langword="null"/> literal.</returns>
 	public string? ReadString()
 	{
-		if (this.TryReadNull())
-		{
-			return null;
-		}
-
-		return this.ReadRequiredString();
+		return this.ReadString(stringInterning: null);
 	}
 
 	/// <summary>
 	/// Reads a required JSON string value.
 	/// </summary>
 	/// <returns>The decoded string value.</returns>
-	public string ReadRequiredString() => this.ReadRequiredUtf8String();
+	public string ReadRequiredString() => this.ReadRequiredString(stringInterning: null);
 
 	/// <summary>
 	/// Reads a JSON string that must contain exactly one character.
@@ -279,6 +274,18 @@ public ref struct JsonReader
 		this.SkipValue();
 		return Encoding.UTF8.GetString(this.utf8Json[utf8Start..this.position]);
 	}
+
+	internal string? ReadString(StringInterning? stringInterning)
+	{
+		if (this.TryReadNull())
+		{
+			return null;
+		}
+
+		return this.ReadRequiredString(stringInterning);
+	}
+
+	internal string ReadRequiredString(StringInterning? stringInterning) => this.ReadRequiredUtf8String(stringInterning);
 
 	/// <summary>
 	/// Gets a value indicating whether the next significant token opens a JSON array, without consuming it.
@@ -469,7 +476,7 @@ public ref struct JsonReader
 			_ => throw new FormatException("Invalid hex digit in JSON unicode escape sequence."),
 		};
 
-	private string ReadRequiredUtf8String()
+	private string ReadRequiredUtf8String(StringInterning? stringInterning)
 	{
 		this.SkipWhiteSpaceUtf8();
 		this.RequireCurrent((byte)'"');
@@ -483,11 +490,13 @@ public ref struct JsonReader
 			{
 				if (builder is null)
 				{
-					return Encoding.UTF8.GetString(this.utf8Json[segmentStart..(this.position - 1)]);
+					ReadOnlySpan<byte> rawValue = this.utf8Json[segmentStart..(this.position - 1)];
+					return stringInterning?.GetOrAddUtf8(rawValue) ?? Encoding.UTF8.GetString(rawValue);
 				}
 
 				builder.Append(Encoding.UTF8.GetString(this.utf8Json[segmentStart..(this.position - 1)]));
-				return builder.ToString();
+				string decodedValue = builder.ToString();
+				return stringInterning?.Intern(decodedValue) ?? decodedValue;
 			}
 
 			if (ch == (byte)'\\')

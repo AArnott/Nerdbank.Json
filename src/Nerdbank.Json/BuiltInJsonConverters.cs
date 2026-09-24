@@ -277,14 +277,14 @@ internal static class BuiltInJsonConverters
 		return false;
 	}
 
-	internal static bool TryDeserialize<T>(ref JsonReader reader, out T value)
+	internal static bool TryDeserialize<T>(ref JsonReader reader, SerializationContext context, out T value)
 	{
 		Type type = typeof(T);
 		object? result;
 
 		if (type == typeof(string))
 		{
-			result = reader.ReadString();
+			result = reader.ReadString(context.StringInterningCache);
 			value = (T?)result!;
 			return true;
 		}

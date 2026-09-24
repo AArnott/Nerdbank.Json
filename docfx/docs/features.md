@@ -58,6 +58,7 @@ Current behavior:
 * `JsonSerializer.SerializeDefaultValues` can omit default-valued properties during serialization.
 * `JsonSerializer.SerializeEnumValuesByName` can serialize enums as strings when simple names exist.
 * `JsonSerializer.DeserializeDefaultValues` can relax required-member and non-nullable reference enforcement during deserialization.
+* `JsonSerializer.InternStrings` can reuse equal string instances within one deserialization operation.
 * `JsonSerializer.PreserveReferences` can preserve repeated references in acyclic object graphs.
 * `JsonSerializer.AllowTrailingCommas` can accept trailing commas while reading arrays and objects.
 * `JsonSerializer.ReadCommentHandling` can skip `//` and `/* */` comments while deserializing.

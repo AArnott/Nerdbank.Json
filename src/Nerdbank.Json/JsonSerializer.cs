@@ -86,6 +86,26 @@ public partial record JsonSerializer
 		init => this.configuration = this.configuration with { ReadCommentHandling = value };
 	}
 
+	/// <summary>
+	/// Gets a value indicating whether equal strings should share an instance during deserialization.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// The default value is <see langword="false"/>. When enabled, strings with equal values within one
+	/// deserialization operation are represented by the same <see cref="string"/> instance.
+	/// </para>
+	/// <para>
+	/// Interned strings are retained only for the operation's lifetime, so this setting does not retain strings
+	/// across deserialization operations. It can reduce memory use when input repeats string values, at the cost of
+	/// looking up each deserialized string in the operation's cache.
+	/// </para>
+	/// </remarks>
+	public bool InternStrings
+	{
+		get => this.configuration.InternStrings;
+		init => this.configuration = this.configuration with { InternStrings = value };
+	}
+
 	/// <inheritdoc cref="JsonSerializerConfiguration.PropertyNameCaseInsensitive"/>
 	public bool PropertyNameCaseInsensitive
 	{
@@ -208,7 +228,7 @@ public partial record JsonSerializer
 		Requires.NotNull(shape);
 		SerializationContext context = this.CreateSerializationContext(cancellationToken);
 
-		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, out T value))
+		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, context, out T value))
 		{
 			context.CancellationToken.ThrowIfCancellationRequested();
 			return value;

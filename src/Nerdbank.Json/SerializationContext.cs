@@ -74,6 +74,11 @@ public record struct SerializationContext
 	internal JsonReferenceEqualityTracker? ReferenceTracker { get; private init; }
 
 	/// <summary>
+	/// Gets the string interning cache for the active deserialization operation.
+	/// </summary>
+	internal StringInterning? StringInterningCache { get; private init; }
+
+	/// <summary>
 	/// Gets a cancellation token that can be used to cancel the serialization operation.
 	/// </summary>
 	public CancellationToken CancellationToken { get; init; }
@@ -135,6 +140,7 @@ public record struct SerializationContext
 			SerializeDefaultValues = owner.SerializeDefaultValues,
 			DeserializeDefaultValues = owner.DeserializeDefaultValues,
 			ReferenceTracker = owner.PreserveReferences == ReferencePreservationMode.Off ? null : new JsonReferenceEqualityTracker(owner.PreserveReferences),
+			StringInterningCache = owner.InternStrings ? new StringInterning() : null,
 		};
 	}
 }
