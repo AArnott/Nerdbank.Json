@@ -20,10 +20,20 @@ public ref struct JsonWriter
 {
 	private const byte LineFeed = (byte)'\n';
 	private const byte Space = (byte)' ';
+	private const int InlineStackCapacity = 8;
 
 	private static readonly Encoding Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
-	private ContainerState[] stack = new ContainerState[8];
+#if NET8_0_OR_GREATER
+	// The common case is shallow nesting, so the first InlineStackCapacity levels are tracked in this
+	// inline (non-heap) buffer. `stack` remains null until nesting exceeds that capacity, or until this
+	// writer is constructed from previously-exported (necessarily heap-allocated) state.
+	private InlineContainerStack inlineStack;
+	private ContainerState[]? stack;
+#else
+	private ContainerState[] stack = new ContainerState[InlineStackCapacity];
+#endif
+
 	private BufferWriter writer;
 	private int depth;
 	private bool pendingPropertyValue;
@@ -413,8 +423,25 @@ public ref struct JsonWriter
 	/// Exports the container-tracking state so it can be restored on a subsequent writer.
 	/// </summary>
 	/// <returns>The container stack, depth, and pending-property-value flag.</returns>
-	internal readonly (ContainerState[] Stack, int Depth, bool PendingPropertyValue) ExportContainerState()
-		=> (this.stack, this.depth, this.pendingPropertyValue);
+	internal (ContainerState[] Stack, int Depth, bool PendingPropertyValue) ExportContainerState()
+	{
+#if NET8_0_OR_GREATER
+		if (this.stack is null)
+		{
+			// The nesting never exceeded the inline capacity, so no heap array exists yet. The caller
+			// requires a heap array it can hold onto as a field across writer instances, so materialize one now.
+			ContainerState[] materialized = new ContainerState[InlineStackCapacity];
+			for (int i = 0; i < InlineStackCapacity; i++)
+			{
+				materialized[i] = this.inlineStack[i];
+			}
+
+			this.stack = materialized;
+		}
+#endif
+
+		return (this.stack!, this.depth, this.pendingPropertyValue);
+	}
 
 	/// <summary>
 	/// Writes an already-escaped UTF-8 JSON property name, including its surrounding quotes.
@@ -456,7 +483,7 @@ public ref struct JsonWriter
 			return;
 		}
 
-		ContainerState state = this.stack[this.depth - 1];
+		ContainerState state = this.GetStack(this.depth - 1);
 		if (state.Kind != ContainerKind.Array)
 		{
 			return;
@@ -473,12 +500,33 @@ public ref struct JsonWriter
 		}
 
 		state.Count++;
-		this.stack[this.depth - 1] = state;
+		this.SetStack(this.depth - 1, state);
 	}
 
 	private void PushContainer(ContainerKind kind)
 	{
-		if (this.depth == this.stack.Length)
+#if NET8_0_OR_GREATER
+		if (this.stack is null)
+		{
+			if (this.depth < InlineStackCapacity)
+			{
+				this.inlineStack[this.depth++] = new ContainerState(kind);
+				return;
+			}
+
+			// The inline buffer is full. Deep nesting is uncommon, so fall back to a heap array from
+			// here on, seeded with the elements already tracked in the inline buffer.
+			ContainerState[] grown = new ContainerState[InlineStackCapacity * 2];
+			for (int i = 0; i < InlineStackCapacity; i++)
+			{
+				grown[i] = this.inlineStack[i];
+			}
+
+			this.stack = grown;
+		}
+#endif
+
+		if (this.depth == this.stack!.Length)
 		{
 			Array.Resize(ref this.stack, this.stack.Length * 2);
 		}
@@ -488,7 +536,7 @@ public ref struct JsonWriter
 
 	private ContainerState PopContainer(ContainerKind expectedKind)
 	{
-		ContainerState state = this.stack[--this.depth];
+		ContainerState state = this.GetStack(--this.depth);
 		if (state.Kind != expectedKind)
 		{
 			throw new InvalidOperationException("JSON container nesting is inconsistent.");
@@ -504,7 +552,7 @@ public ref struct JsonWriter
 			throw new InvalidOperationException("JSON property names may only appear within objects.");
 		}
 
-		ContainerState state = this.stack[this.depth - 1];
+		ContainerState state = this.GetStack(this.depth - 1);
 		if (state.Kind != expectedKind)
 		{
 			throw new InvalidOperationException("JSON property names may only appear within objects.");
@@ -513,7 +561,29 @@ public ref struct JsonWriter
 		return state;
 	}
 
-	private readonly void SetCurrentContainer(ContainerState state) => this.stack[this.depth - 1] = state;
+	private void SetCurrentContainer(ContainerState state) => this.SetStack(this.depth - 1, state);
+
+	private readonly ContainerState GetStack(int index)
+	{
+#if NET8_0_OR_GREATER
+		return this.stack is null ? this.inlineStack[index] : this.stack[index];
+#else
+		return this.stack[index];
+#endif
+	}
+
+	private void SetStack(int index, ContainerState value)
+	{
+#if NET8_0_OR_GREATER
+		if (this.stack is null)
+		{
+			this.inlineStack[index] = value;
+			return;
+		}
+#endif
+
+		this.stack[index] = value;
+	}
 
 	private ContainerState PreparePropertyName()
 	{
@@ -756,6 +826,14 @@ public ref struct JsonWriter
 			this.Count = 0;
 		}
 	}
+
+#if NET8_0_OR_GREATER
+	[System.Runtime.CompilerServices.InlineArray(InlineStackCapacity)]
+	private struct InlineContainerStack
+	{
+		private ContainerState element0;
+	}
+#endif
 #pragma warning restore SA1600
 #pragma warning restore SA1602
 }
