@@ -205,7 +205,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(byte value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 3);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -215,7 +219,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(sbyte value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 4);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -225,7 +233,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(short value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 6);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -235,7 +247,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(ushort value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 5);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -245,7 +261,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(int value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 11);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -255,7 +275,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(uint value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 10);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -265,7 +289,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(long value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 20);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -275,7 +303,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(ulong value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 20);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -285,7 +317,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(float value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 32, format: "R");
+#else
 		this.WriteUtf8(value.ToString("R", CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -295,7 +331,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(double value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 32, format: "R");
+#else
 		this.WriteUtf8(value.ToString("R", CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -305,7 +345,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(decimal value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 32);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -595,6 +639,28 @@ public ref struct JsonWriter
 			this.WriteScalar((uint)scalar);
 		}
 	}
+
+#if NET8_0_OR_GREATER
+	/// <summary>
+	/// Formats a numeric value directly into the destination UTF-8 buffer, avoiding the intermediate
+	/// <see cref="string"/> allocation that <see cref="object.ToString()"/>-based formatting would require.
+	/// </summary>
+	/// <typeparam name="T">The numeric type to format.</typeparam>
+	/// <param name="value">The value to format.</param>
+	/// <param name="maxLength">A buffer size, in bytes, guaranteed to be large enough for any value of <typeparamref name="T"/> formatted with <paramref name="format"/>.</param>
+	/// <param name="format">The standard numeric format string to use, or <see langword="null"/> for the default format.</param>
+	private void WriteUtf8Formattable<T>(T value, int maxLength, string? format = null)
+		where T : IUtf8SpanFormattable
+	{
+		Span<byte> buffer = this.writer.GetSpan(maxLength);
+		if (!value.TryFormat(buffer, out int bytesWritten, format, CultureInfo.InvariantCulture))
+		{
+			throw new InvalidOperationException("The buffer was too small to format the numeric value. This is a bug in " + nameof(JsonWriter) + ".");
+		}
+
+		this.writer.Advance(bytesWritten);
+	}
+#endif
 
 	private void WriteScalar(uint scalar)
 	{
