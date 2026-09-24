@@ -6,6 +6,7 @@
 using System.Drawing;
 using System.Globalization;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Nerdbank.Json;
@@ -60,174 +61,178 @@ internal static class BuiltInJsonConverters
 
 	internal static bool TrySerialize<T>(ref JsonWriter writer, T value)
 	{
-		Type type = typeof(T);
-		object? boxed = value;
-
-		if (type == typeof(string))
+		// Each branch below reinterprets `value` (of static type T) as the concrete runtime type
+		// via Unsafe.As, rather than boxing it to `object` and unboxing/casting it back down.
+		// This is safe because the runtime JIT-compiles a specialized instantiation of this method
+		// for every value-type T, so `typeof(T) == typeof(X)` is a compile-time-constant check within
+		// that instantiation: when it is true, T and X are the same type and share the same layout.
+		// Unlike a box-then-unbox pattern (which allocates on the heap for every call), this technique
+		// never allocates.
+		if (typeof(T) == typeof(string))
 		{
-			writer.WriteStringValue((string?)boxed);
+			writer.WriteStringValue((string?)(object?)value);
 			return true;
 		}
 
-		if (type == typeof(char))
+		if (typeof(T) == typeof(char))
 		{
-			writer.WriteStringValue(new string((char)boxed!, 1));
+			writer.WriteStringValue(new string(Unsafe.As<T, char>(ref value), 1));
 			return true;
 		}
 
-		if (type == typeof(bool))
+		if (typeof(T) == typeof(bool))
 		{
-			writer.WriteBooleanValue((bool)boxed!);
+			writer.WriteBooleanValue(Unsafe.As<T, bool>(ref value));
 			return true;
 		}
 
-		if (type == typeof(byte))
+		if (typeof(T) == typeof(byte))
 		{
-			writer.WriteNumberValue((byte)boxed!);
+			writer.WriteNumberValue(Unsafe.As<T, byte>(ref value));
 			return true;
 		}
 
-		if (type == typeof(sbyte))
+		if (typeof(T) == typeof(sbyte))
 		{
-			writer.WriteNumberValue((sbyte)boxed!);
+			writer.WriteNumberValue(Unsafe.As<T, sbyte>(ref value));
 			return true;
 		}
 
-		if (type == typeof(short))
+		if (typeof(T) == typeof(short))
 		{
-			writer.WriteNumberValue((short)boxed!);
+			writer.WriteNumberValue(Unsafe.As<T, short>(ref value));
 			return true;
 		}
 
-		if (type == typeof(ushort))
+		if (typeof(T) == typeof(ushort))
 		{
-			writer.WriteNumberValue((ushort)boxed!);
+			writer.WriteNumberValue(Unsafe.As<T, ushort>(ref value));
 			return true;
 		}
 
-		if (type == typeof(int))
+		if (typeof(T) == typeof(int))
 		{
-			writer.WriteNumberValue((int)boxed!);
+			writer.WriteNumberValue(Unsafe.As<T, int>(ref value));
 			return true;
 		}
 
-		if (type == typeof(uint))
+		if (typeof(T) == typeof(uint))
 		{
-			writer.WriteNumberValue((uint)boxed!);
+			writer.WriteNumberValue(Unsafe.As<T, uint>(ref value));
 			return true;
 		}
 
-		if (type == typeof(long))
+		if (typeof(T) == typeof(long))
 		{
-			writer.WriteNumberValue((long)boxed!);
+			writer.WriteNumberValue(Unsafe.As<T, long>(ref value));
 			return true;
 		}
 
-		if (type == typeof(ulong))
+		if (typeof(T) == typeof(ulong))
 		{
-			writer.WriteNumberValue((ulong)boxed!);
+			writer.WriteNumberValue(Unsafe.As<T, ulong>(ref value));
 			return true;
 		}
 
-		if (type == typeof(float))
+		if (typeof(T) == typeof(float))
 		{
-			writer.WriteNumberValue((float)boxed!);
+			writer.WriteNumberValue(Unsafe.As<T, float>(ref value));
 			return true;
 		}
 
-		if (type == typeof(double))
+		if (typeof(T) == typeof(double))
 		{
-			writer.WriteNumberValue((double)boxed!);
+			writer.WriteNumberValue(Unsafe.As<T, double>(ref value));
 			return true;
 		}
 
-		if (type == typeof(decimal))
+		if (typeof(T) == typeof(decimal))
 		{
-			writer.WriteNumberValue((decimal)boxed!);
+			writer.WriteNumberValue(Unsafe.As<T, decimal>(ref value));
 			return true;
 		}
 
-		if (type == typeof(BigInteger))
+		if (typeof(T) == typeof(BigInteger))
 		{
-			writer.WriteRawValue(((BigInteger)boxed!).ToString(CultureInfo.InvariantCulture));
+			writer.WriteRawValue(Unsafe.As<T, BigInteger>(ref value).ToString(CultureInfo.InvariantCulture));
 			return true;
 		}
 
-		if (type == typeof(DateTime))
+		if (typeof(T) == typeof(DateTime))
 		{
-			writer.WriteStringValue(((DateTime)boxed!).ToString("O", CultureInfo.InvariantCulture));
+			writer.WriteStringValue(Unsafe.As<T, DateTime>(ref value).ToString("O", CultureInfo.InvariantCulture));
 			return true;
 		}
 
-		if (type == typeof(DateTimeOffset))
+		if (typeof(T) == typeof(DateTimeOffset))
 		{
-			writer.WriteStringValue(((DateTimeOffset)boxed!).ToString("O", CultureInfo.InvariantCulture));
+			writer.WriteStringValue(Unsafe.As<T, DateTimeOffset>(ref value).ToString("O", CultureInfo.InvariantCulture));
 			return true;
 		}
 
-		if (type == typeof(TimeSpan))
+		if (typeof(T) == typeof(TimeSpan))
 		{
-			writer.WriteStringValue(((TimeSpan)boxed!).ToString("c", CultureInfo.InvariantCulture));
+			writer.WriteStringValue(Unsafe.As<T, TimeSpan>(ref value).ToString("c", CultureInfo.InvariantCulture));
 			return true;
 		}
 
-		if (type == typeof(Guid))
+		if (typeof(T) == typeof(Guid))
 		{
-			writer.WriteStringValue(((Guid)boxed!).ToString("D", CultureInfo.InvariantCulture));
+			writer.WriteStringValue(Unsafe.As<T, Guid>(ref value).ToString("D", CultureInfo.InvariantCulture));
 			return true;
 		}
 
-		if (type == typeof(Version))
+		if (typeof(T) == typeof(Version))
 		{
-			writer.WriteStringValue(((Version?)boxed)?.ToString());
+			writer.WriteStringValue(((Version?)(object?)value)?.ToString());
 			return true;
 		}
 
-		if (type == typeof(Uri))
+		if (typeof(T) == typeof(Uri))
 		{
-			writer.WriteStringValue(((Uri?)boxed)?.OriginalString);
+			writer.WriteStringValue(((Uri?)(object?)value)?.OriginalString);
 			return true;
 		}
 
-		if (type == typeof(CultureInfo))
+		if (typeof(T) == typeof(CultureInfo))
 		{
-			writer.WriteStringValue(((CultureInfo?)boxed)?.Name);
+			writer.WriteStringValue(((CultureInfo?)(object?)value)?.Name);
 			return true;
 		}
 
-		if (type == typeof(Encoding))
+		if (typeof(T) == typeof(Encoding))
 		{
-			writer.WriteStringValue(((Encoding?)boxed)?.WebName);
+			writer.WriteStringValue(((Encoding?)(object?)value)?.WebName);
 			return true;
 		}
 
-		if (type == typeof(byte[]))
+		if (typeof(T) == typeof(byte[]))
 		{
-			writer.WriteBase64StringValue((byte[]?)boxed);
+			writer.WriteBase64StringValue((byte[]?)(object?)value);
 			return true;
 		}
 
-		if (type == typeof(Memory<byte>))
+		if (typeof(T) == typeof(Memory<byte>))
 		{
-			writer.WriteBase64StringValue(((Memory<byte>)boxed!).Span);
+			writer.WriteBase64StringValue(Unsafe.As<T, Memory<byte>>(ref value).Span);
 			return true;
 		}
 
-		if (type == typeof(ReadOnlyMemory<byte>))
+		if (typeof(T) == typeof(ReadOnlyMemory<byte>))
 		{
-			writer.WriteBase64StringValue(((ReadOnlyMemory<byte>)boxed!).Span);
+			writer.WriteBase64StringValue(Unsafe.As<T, ReadOnlyMemory<byte>>(ref value).Span);
 			return true;
 		}
 
-		if (type == typeof(Color))
+		if (typeof(T) == typeof(Color))
 		{
-			writer.WriteNumberValue(((Color)boxed!).ToArgb());
+			writer.WriteNumberValue(Unsafe.As<T, Color>(ref value).ToArgb());
 			return true;
 		}
 
-		if (type == typeof(Point))
+		if (typeof(T) == typeof(Point))
 		{
-			var point = (Point)boxed!;
+			Point point = Unsafe.As<T, Point>(ref value);
 			writer.WriteStartArray();
 			writer.WriteNumberValue(point.X);
 			writer.WriteValueSeparator();
@@ -237,39 +242,39 @@ internal static class BuiltInJsonConverters
 		}
 
 #if NET8_0_OR_GREATER
-		if (type == typeof(Half))
+		if (typeof(T) == typeof(Half))
 		{
-			writer.WriteRawValue(((Half)boxed!).ToString(CultureInfo.InvariantCulture));
+			writer.WriteRawValue(Unsafe.As<T, Half>(ref value).ToString(CultureInfo.InvariantCulture));
 			return true;
 		}
 
-		if (type == typeof(Int128))
+		if (typeof(T) == typeof(Int128))
 		{
-			writer.WriteRawValue(((Int128)boxed!).ToString(CultureInfo.InvariantCulture));
+			writer.WriteRawValue(Unsafe.As<T, Int128>(ref value).ToString(CultureInfo.InvariantCulture));
 			return true;
 		}
 
-		if (type == typeof(UInt128))
+		if (typeof(T) == typeof(UInt128))
 		{
-			writer.WriteRawValue(((UInt128)boxed!).ToString(CultureInfo.InvariantCulture));
+			writer.WriteRawValue(Unsafe.As<T, UInt128>(ref value).ToString(CultureInfo.InvariantCulture));
 			return true;
 		}
 
-		if (type == typeof(DateOnly))
+		if (typeof(T) == typeof(DateOnly))
 		{
-			writer.WriteStringValue(((DateOnly)boxed!).ToString("O", CultureInfo.InvariantCulture));
+			writer.WriteStringValue(Unsafe.As<T, DateOnly>(ref value).ToString("O", CultureInfo.InvariantCulture));
 			return true;
 		}
 
-		if (type == typeof(TimeOnly))
+		if (typeof(T) == typeof(TimeOnly))
 		{
-			writer.WriteStringValue(((TimeOnly)boxed!).ToString("O", CultureInfo.InvariantCulture));
+			writer.WriteStringValue(Unsafe.As<T, TimeOnly>(ref value).ToString("O", CultureInfo.InvariantCulture));
 			return true;
 		}
 
-		if (type == typeof(Rune))
+		if (typeof(T) == typeof(Rune))
 		{
-			writer.WriteStringValue(((Rune)boxed!).ToString());
+			writer.WriteStringValue(Unsafe.As<T, Rune>(ref value).ToString());
 			return true;
 		}
 #endif
@@ -279,251 +284,225 @@ internal static class BuiltInJsonConverters
 
 	internal static bool TryDeserialize<T>(ref JsonReader reader, SerializationContext context, out T value)
 	{
-		Type type = typeof(T);
-		object? result;
+		// See the remarks on TrySerialize regarding the use of Unsafe.As instead of a box/unbox
+		// pattern to avoid a heap allocation for every value-type property read.
+		// `value` must be definitely assigned before its address can be taken below.
+		value = default!;
 
-		if (type == typeof(string))
+		if (typeof(T) == typeof(string))
 		{
-			result = reader.ReadString(context.StringInterningCache);
+			object? result = reader.ReadString(context.StringInterningCache);
 			value = (T?)result!;
 			return true;
 		}
 
-		if (type == typeof(char))
+		if (typeof(T) == typeof(char))
 		{
-			result = reader.ReadChar();
-			value = (T)result;
+			Unsafe.As<T, char>(ref value) = reader.ReadChar();
 			return true;
 		}
 
-		if (type == typeof(bool))
+		if (typeof(T) == typeof(bool))
 		{
-			result = reader.ReadBoolean();
-			value = (T)result;
+			Unsafe.As<T, bool>(ref value) = reader.ReadBoolean();
 			return true;
 		}
 
-		if (type == typeof(byte))
+		if (typeof(T) == typeof(byte))
 		{
-			result = reader.ReadByteValue();
-			value = (T)result;
+			Unsafe.As<T, byte>(ref value) = reader.ReadByteValue();
 			return true;
 		}
 
-		if (type == typeof(sbyte))
+		if (typeof(T) == typeof(sbyte))
 		{
-			result = reader.ReadSByteValue();
-			value = (T)result;
+			Unsafe.As<T, sbyte>(ref value) = reader.ReadSByteValue();
 			return true;
 		}
 
-		if (type == typeof(short))
+		if (typeof(T) == typeof(short))
 		{
-			result = reader.ReadInt16Value();
-			value = (T)result;
+			Unsafe.As<T, short>(ref value) = reader.ReadInt16Value();
 			return true;
 		}
 
-		if (type == typeof(ushort))
+		if (typeof(T) == typeof(ushort))
 		{
-			result = reader.ReadUInt16Value();
-			value = (T)result;
+			Unsafe.As<T, ushort>(ref value) = reader.ReadUInt16Value();
 			return true;
 		}
 
-		if (type == typeof(int))
+		if (typeof(T) == typeof(int))
 		{
-			result = reader.ReadInt32Value();
-			value = (T)result;
+			Unsafe.As<T, int>(ref value) = reader.ReadInt32Value();
 			return true;
 		}
 
-		if (type == typeof(uint))
+		if (typeof(T) == typeof(uint))
 		{
-			result = reader.ReadUInt32Value();
-			value = (T)result;
+			Unsafe.As<T, uint>(ref value) = reader.ReadUInt32Value();
 			return true;
 		}
 
-		if (type == typeof(long))
+		if (typeof(T) == typeof(long))
 		{
-			result = reader.ReadInt64Value();
-			value = (T)result;
+			Unsafe.As<T, long>(ref value) = reader.ReadInt64Value();
 			return true;
 		}
 
-		if (type == typeof(ulong))
+		if (typeof(T) == typeof(ulong))
 		{
-			result = reader.ReadUInt64Value();
-			value = (T)result;
+			Unsafe.As<T, ulong>(ref value) = reader.ReadUInt64Value();
 			return true;
 		}
 
-		if (type == typeof(float))
+		if (typeof(T) == typeof(float))
 		{
-			result = reader.ReadSingleValue();
-			value = (T)result;
+			Unsafe.As<T, float>(ref value) = reader.ReadSingleValue();
 			return true;
 		}
 
-		if (type == typeof(double))
+		if (typeof(T) == typeof(double))
 		{
-			result = reader.ReadDoubleValue();
-			value = (T)result;
+			Unsafe.As<T, double>(ref value) = reader.ReadDoubleValue();
 			return true;
 		}
 
-		if (type == typeof(decimal))
+		if (typeof(T) == typeof(decimal))
 		{
-			result = reader.ReadDecimalValue();
-			value = (T)result;
+			Unsafe.As<T, decimal>(ref value) = reader.ReadDecimalValue();
 			return true;
 		}
 
-		if (type == typeof(BigInteger))
+		if (typeof(T) == typeof(BigInteger))
 		{
-			result = BigInteger.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
-			value = (T)result;
+			Unsafe.As<T, BigInteger>(ref value) = BigInteger.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
 			return true;
 		}
 
-		if (type == typeof(DateTime))
+		if (typeof(T) == typeof(DateTime))
 		{
-			result = DateTime.ParseExact(reader.ReadRequiredString(), "O", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
-			value = (T)result;
+			Unsafe.As<T, DateTime>(ref value) = DateTime.ParseExact(reader.ReadRequiredString(), "O", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 			return true;
 		}
 
-		if (type == typeof(DateTimeOffset))
+		if (typeof(T) == typeof(DateTimeOffset))
 		{
-			result = DateTimeOffset.ParseExact(reader.ReadRequiredString(), "O", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
-			value = (T)result;
+			Unsafe.As<T, DateTimeOffset>(ref value) = DateTimeOffset.ParseExact(reader.ReadRequiredString(), "O", CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 			return true;
 		}
 
-		if (type == typeof(TimeSpan))
+		if (typeof(T) == typeof(TimeSpan))
 		{
-			result = TimeSpan.ParseExact(reader.ReadRequiredString(), "c", CultureInfo.InvariantCulture);
-			value = (T)result;
+			Unsafe.As<T, TimeSpan>(ref value) = TimeSpan.ParseExact(reader.ReadRequiredString(), "c", CultureInfo.InvariantCulture);
 			return true;
 		}
 
-		if (type == typeof(Guid))
+		if (typeof(T) == typeof(Guid))
 		{
-			result = Guid.ParseExact(reader.ReadRequiredString(), "D");
-			value = (T)result;
+			Unsafe.As<T, Guid>(ref value) = Guid.ParseExact(reader.ReadRequiredString(), "D");
 			return true;
 		}
 
-		if (type == typeof(Version))
+		if (typeof(T) == typeof(Version))
 		{
-			result = reader.TryReadNull() ? null : new Version(reader.ReadRequiredString());
+			object? result = reader.TryReadNull() ? null : new Version(reader.ReadRequiredString());
 			value = (T?)result!;
 			return true;
 		}
 
-		if (type == typeof(Uri))
+		if (typeof(T) == typeof(Uri))
 		{
-			result = reader.TryReadNull() ? null : new Uri(reader.ReadRequiredString(), UriKind.RelativeOrAbsolute);
+			object? result = reader.TryReadNull() ? null : new Uri(reader.ReadRequiredString(), UriKind.RelativeOrAbsolute);
 			value = (T?)result!;
 			return true;
 		}
 
-		if (type == typeof(CultureInfo))
+		if (typeof(T) == typeof(CultureInfo))
 		{
-			result = reader.TryReadNull() ? null : CultureInfo.GetCultureInfo(reader.ReadRequiredString());
+			object? result = reader.TryReadNull() ? null : CultureInfo.GetCultureInfo(reader.ReadRequiredString());
 			value = (T?)result!;
 			return true;
 		}
 
-		if (type == typeof(Encoding))
+		if (typeof(T) == typeof(Encoding))
 		{
-			result = reader.TryReadNull() ? null : Encoding.GetEncoding(reader.ReadRequiredString());
+			object? result = reader.TryReadNull() ? null : Encoding.GetEncoding(reader.ReadRequiredString());
 			value = (T?)result!;
 			return true;
 		}
 
-		if (type == typeof(byte[]))
+		if (typeof(T) == typeof(byte[]))
 		{
-			result = reader.ReadBase64Bytes();
+			object? result = reader.ReadBase64Bytes();
 			value = (T?)result!;
 			return true;
 		}
 
-		if (type == typeof(Memory<byte>))
+		if (typeof(T) == typeof(Memory<byte>))
 		{
-			result = new Memory<byte>(reader.ReadRequiredBase64Bytes());
-			value = (T)result;
+			Unsafe.As<T, Memory<byte>>(ref value) = new Memory<byte>(reader.ReadRequiredBase64Bytes());
 			return true;
 		}
 
-		if (type == typeof(ReadOnlyMemory<byte>))
+		if (typeof(T) == typeof(ReadOnlyMemory<byte>))
 		{
-			result = new ReadOnlyMemory<byte>(reader.ReadRequiredBase64Bytes());
-			value = (T)result;
+			Unsafe.As<T, ReadOnlyMemory<byte>>(ref value) = new ReadOnlyMemory<byte>(reader.ReadRequiredBase64Bytes());
 			return true;
 		}
 
-		if (type == typeof(Color))
+		if (typeof(T) == typeof(Color))
 		{
-			result = Color.FromArgb(reader.ReadInt32Value());
-			value = (T)result;
+			Unsafe.As<T, Color>(ref value) = Color.FromArgb(reader.ReadInt32Value());
 			return true;
 		}
 
-		if (type == typeof(Point))
+		if (typeof(T) == typeof(Point))
 		{
 			reader.ReadStartArray();
 			int x = reader.ReadInt32Value();
 			reader.ReadValueSeparator();
 			int y = reader.ReadInt32Value();
 			reader.ReadEndArray();
-			result = new Point(x, y);
-			value = (T)result;
+			Unsafe.As<T, Point>(ref value) = new Point(x, y);
 			return true;
 		}
 
 #if NET8_0_OR_GREATER
-		if (type == typeof(Half))
+		if (typeof(T) == typeof(Half))
 		{
-			result = Half.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
-			value = (T)result;
+			Unsafe.As<T, Half>(ref value) = Half.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
 			return true;
 		}
 
-		if (type == typeof(Int128))
+		if (typeof(T) == typeof(Int128))
 		{
-			result = Int128.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
-			value = (T)result;
+			Unsafe.As<T, Int128>(ref value) = Int128.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
 			return true;
 		}
 
-		if (type == typeof(UInt128))
+		if (typeof(T) == typeof(UInt128))
 		{
-			result = UInt128.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
-			value = (T)result;
+			Unsafe.As<T, UInt128>(ref value) = UInt128.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
 			return true;
 		}
 
-		if (type == typeof(DateOnly))
+		if (typeof(T) == typeof(DateOnly))
 		{
-			result = DateOnly.ParseExact(reader.ReadRequiredString(), "O", CultureInfo.InvariantCulture);
-			value = (T)result;
+			Unsafe.As<T, DateOnly>(ref value) = DateOnly.ParseExact(reader.ReadRequiredString(), "O", CultureInfo.InvariantCulture);
 			return true;
 		}
 
-		if (type == typeof(TimeOnly))
+		if (typeof(T) == typeof(TimeOnly))
 		{
-			result = TimeOnly.ParseExact(reader.ReadRequiredString(), "O", CultureInfo.InvariantCulture);
-			value = (T)result;
+			Unsafe.As<T, TimeOnly>(ref value) = TimeOnly.ParseExact(reader.ReadRequiredString(), "O", CultureInfo.InvariantCulture);
 			return true;
 		}
 
-		if (type == typeof(Rune))
+		if (typeof(T) == typeof(Rune))
 		{
 			string runeText = reader.ReadRequiredString();
-			result = Rune.GetRuneAt(runeText, 0);
-			value = (T)result;
+			Unsafe.As<T, Rune>(ref value) = Rune.GetRuneAt(runeText, 0);
 			return true;
 		}
 #endif
