@@ -20,6 +20,7 @@ internal record JsonSerializerConfiguration
 	private bool propertyNameCaseInsensitive;
 	private JsonNamingPolicy? propertyNamingPolicy = JsonNamingPolicy.CamelCase;
 	private JsonCommentHandling readCommentHandling;
+	private bool internStrings;
 	private ReferencePreservationMode preserveReferences;
 	private JsonUnionConfiguration unionConfiguration = JsonUnionConfiguration.Default;
 	private bool serializeEnumValuesByName;
@@ -247,5 +248,18 @@ internal record JsonSerializerConfiguration
 	{
 		get => this.readCommentHandling;
 		init => this.readCommentHandling = value;
+	}
+
+	/// <summary>
+	/// Gets a value indicating whether equal strings should share an instance during deserialization.
+	/// </summary>
+	/// <remarks>
+	/// The default value is <see langword="false"/>. When enabled, interned strings are retained only until the
+	/// current deserialization operation completes.
+	/// </remarks>
+	internal bool InternStrings
+	{
+		get => this.internStrings;
+		init => this.internStrings = value;
 	}
 }

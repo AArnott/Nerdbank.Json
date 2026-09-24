@@ -12,6 +12,29 @@ internal static class Polyfills
 {
 #if !NET
 	/// <summary>
+	/// Decodes bytes into a caller-provided character buffer.
+	/// </summary>
+	/// <param name="encoding">The encoding to use.</param>
+	/// <param name="bytes">The bytes to decode.</param>
+	/// <param name="characters">The destination for decoded characters.</param>
+	/// <returns>The number of characters written.</returns>
+	internal static unsafe int GetChars(this Encoding encoding, ReadOnlySpan<byte> bytes, Span<char> characters)
+	{
+		if (bytes.IsEmpty)
+		{
+			return 0;
+		}
+
+		fixed (byte* pBytes = bytes)
+		{
+			fixed (char* pCharacters = characters)
+			{
+				return encoding.GetChars(pBytes, bytes.Length, pCharacters, characters.Length);
+			}
+		}
+	}
+
+	/// <summary>
 	/// Gets a string from a span of bytes using the specified encoding.
 	/// </summary>
 	/// <param name="encoding">The encoding to use.</param>

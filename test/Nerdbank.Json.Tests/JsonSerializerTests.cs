@@ -34,6 +34,7 @@ using System.Text;
 [GenerateShapeFor<Memory<byte>>]
 [GenerateShapeFor<ReadOnlyMemory<byte>>]
 [GenerateShapeFor<string>]
+[GenerateShapeFor<string[]>]
 #if NET8_0_OR_GREATER
 [GenerateShapeFor<Half>]
 [GenerateShapeFor<Int128>]
@@ -44,6 +45,34 @@ using System.Text;
 #endif
 public partial class JsonSerializerTests : TestBase
 {
+	[Test]
+	public void InternStringsDefault() => Assert.False(new JsonSerializer().InternStrings);
+
+	[Test]
+	public void InternStrings()
+	{
+		this.Serializer = this.Serializer with { InternStrings = true };
+
+		string[]? deserialized = this.Roundtrip<string[], JsonSerializerTests>(["a", "a", "a\n", "a\n"]);
+		Assert.NotNull(deserialized);
+		Assert.Same(deserialized[0], deserialized[1]);
+		Assert.Same(deserialized[2], deserialized[3]);
+
+		string[]? deserializedAgain = this.Roundtrip<string[], JsonSerializerTests>(["a", "a", "a\n", "a\n"]);
+		Assert.NotNull(deserializedAgain);
+		Assert.NotSame(deserialized[0], deserializedAgain[0]);
+		Assert.NotSame(deserialized[2], deserializedAgain[2]);
+	}
+
+	[Test]
+	public void DoesNotInternStringsByDefault()
+	{
+		string[]? deserialized = this.Roundtrip<string[], JsonSerializerTests>(["a", "a"]);
+
+		Assert.NotNull(deserialized);
+		Assert.NotSame(deserialized[0], deserialized[1]);
+	}
+
 	[Test]
 	public void Serialize_StringUsesRfc8259EscapingRules()
 		=> this.AssertRoundtrip<string, JsonSerializerTests>(

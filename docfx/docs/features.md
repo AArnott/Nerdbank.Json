@@ -58,6 +58,7 @@ Current behavior:
 * `JsonSerializer.SerializeDefaultValues` can omit default-valued properties during serialization.
 * `JsonSerializer.SerializeEnumValuesByName` can serialize enums as strings when simple names exist.
 * `JsonSerializer.DeserializeDefaultValues` can relax required-member and non-nullable reference enforcement during deserialization.
+* `JsonSerializer.InternStrings` can reuse equal string instances within one deserialization operation.
 * `JsonSerializer.PreserveReferences` can preserve repeated references in acyclic object graphs.
 * `JsonSerializer.AllowTrailingCommas` can accept trailing commas while reading arrays and objects.
 * `JsonSerializer.ReadCommentHandling` can skip `//` and `/* */` comments while deserializing.
@@ -100,6 +101,13 @@ Reference preservation notes:
 * When `JsonSerializer.PreserveReferences` is enabled, reference-typed values are wrapped in JSON metadata objects using `$id`, `$ref`, and `$value`.
 * `ReferencePreservationMode.RejectCycles` preserves repeated references and rejects reference cycles.
 * `ReferencePreservationMode.AllowCycles` additionally allows reference cycles by registering mutable objects and collections before their members are populated; immutable or constructor-bound objects cannot be back-referenced while under construction.
+
+String interning notes:
+
+* Enable with `new JsonSerializer { InternStrings = true }`; the default is `false`.
+* Built-in string conversion decodes into temporary stack or pooled character storage before looking up the value. Repeated values do not allocate candidate strings, even when JSON escape sequences are used.
+* Different spellings of the same value, such as `"hello"` and `"h\u0065llo"`, share a string instance within the operation.
+* The cache is operation-scoped, not the CLR's global intern pool. Strings are not retained for reuse across separate deserializations, and serialization output is unchanged.
 
 Current limitations:
 

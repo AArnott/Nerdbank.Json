@@ -200,7 +200,7 @@ internal sealed class BuiltInJsonConverter<T> : JsonConverter<T>
 			context.CancellationToken.ThrowIfCancellationRequested();
 		}
 
-		if (!BuiltInJsonConverters.TryDeserialize(ref reader, out T value))
+		if (!BuiltInJsonConverters.TryDeserialize(ref reader, context, out T value))
 		{
 			throw new NotSupportedException($"The built-in JSON serializer does not yet support values of type {typeof(T).FullName}.");
 		}
