@@ -160,7 +160,11 @@ internal static class BuiltInJsonConverters
 
 		if (typeof(T) == typeof(DateTime))
 		{
+#if NET8_0_OR_GREATER
+			writer.WriteAsciiFormattedString(Unsafe.As<T, DateTime>(ref value), maxLength: 33, format: "O");
+#else
 			writer.WriteStringValue(Unsafe.As<T, DateTime>(ref value).ToString("O", CultureInfo.InvariantCulture));
+#endif
 			return true;
 		}
 

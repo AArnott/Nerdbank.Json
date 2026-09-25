@@ -168,6 +168,27 @@ public partial class JsonSerializerTests : TestBase
 	}
 
 	[Test]
+	public void Serialize_DateTime_MatchesRoundTripFormat()
+	{
+		DateTime[] values =
+		[
+			DateTime.MinValue,
+			DateTime.MaxValue,
+			new DateTime(2026, 6, 25, 18, 17, 16, DateTimeKind.Unspecified),
+			new DateTime(2026, 6, 25, 18, 17, 16, DateTimeKind.Utc).AddTicks(1234567),
+			new DateTime(2026, 6, 25, 18, 17, 16, DateTimeKind.Local).AddTicks(1),
+		];
+
+		foreach (DateTime value in values)
+		{
+			this.AssertRoundtrip<DateTime, JsonSerializerTests>(
+				value,
+				"\"" + value.ToString("O", CultureInfo.InvariantCulture) + "\"",
+				EqualityComparer<DateTime>.Default);
+		}
+	}
+
+	[Test]
 	public void Serialize_Guid_MatchesStandardFormat()
 	{
 		Guid[] values =
