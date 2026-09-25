@@ -189,6 +189,28 @@ public partial class JsonSerializerTests : TestBase
 	}
 
 	[Test]
+	public void Serialize_TimeSpan_MatchesConstantFormat()
+	{
+		TimeSpan[] values =
+		[
+			TimeSpan.MinValue,
+			TimeSpan.MaxValue,
+			TimeSpan.Zero,
+			TimeSpan.FromDays(-10),
+			TimeSpan.FromTicks(-123456789),
+			TimeSpan.FromTicks(1),
+		];
+
+		foreach (TimeSpan value in values)
+		{
+			this.AssertRoundtrip<TimeSpan, JsonSerializerTests>(
+				value,
+				"\"" + value.ToString("c", CultureInfo.InvariantCulture) + "\"",
+				EqualityComparer<TimeSpan>.Default);
+		}
+	}
+
+	[Test]
 	public void Serialize_Guid_MatchesStandardFormat()
 	{
 		Guid[] values =

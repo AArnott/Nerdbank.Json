@@ -180,7 +180,11 @@ internal static class BuiltInJsonConverters
 
 		if (typeof(T) == typeof(TimeSpan))
 		{
+#if NET8_0_OR_GREATER
+			writer.WriteAsciiFormattedString(Unsafe.As<T, TimeSpan>(ref value), maxLength: 26, format: "c");
+#else
 			writer.WriteStringValue(Unsafe.As<T, TimeSpan>(ref value).ToString("c", CultureInfo.InvariantCulture));
+#endif
 			return true;
 		}
 
