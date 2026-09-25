@@ -1,6 +1,8 @@
 items:
   - name: Features
     href: features.md
+  - name: Serialization Benchmarks
+    href: benchmarking.md
   - name: Getting Started
     href: getting-started.md
   - name: Unions

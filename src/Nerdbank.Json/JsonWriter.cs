@@ -20,10 +20,20 @@ public ref struct JsonWriter
 {
 	private const byte LineFeed = (byte)'\n';
 	private const byte Space = (byte)' ';
+	private const int InlineStackCapacity = 8;
 
 	private static readonly Encoding Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
-	private ContainerState[] stack = new ContainerState[8];
+#if NET8_0_OR_GREATER
+	// The common case is shallow nesting, so the first InlineStackCapacity levels are tracked in this
+	// inline (non-heap) buffer. `stack` remains null until nesting exceeds that capacity, or until this
+	// writer is constructed from previously-exported (necessarily heap-allocated) state.
+	private InlineContainerStack inlineStack;
+	private ContainerState[]? stack;
+#else
+	private ContainerState[] stack = new ContainerState[InlineStackCapacity];
+#endif
+
 	private BufferWriter writer;
 	private int depth;
 	private bool pendingPropertyValue;
@@ -205,7 +215,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(byte value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 3);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -215,7 +229,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(sbyte value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 4);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -225,7 +243,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(short value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 6);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -235,7 +257,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(ushort value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 5);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -245,7 +271,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(int value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 11);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -255,7 +285,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(uint value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 10);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -265,7 +299,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(long value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 20);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -275,7 +313,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(ulong value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 20);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -285,7 +327,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(float value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 32, format: "R");
+#else
 		this.WriteUtf8(value.ToString("R", CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -295,7 +341,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(double value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 32, format: "R");
+#else
 		this.WriteUtf8(value.ToString("R", CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -305,7 +355,11 @@ public ref struct JsonWriter
 	public void WriteNumberValue(decimal value)
 	{
 		this.BeforeValueToken();
+#if NET8_0_OR_GREATER
+		this.WriteUtf8Formattable(value, maxLength: 32);
+#else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
+#endif
 	}
 
 	/// <summary>
@@ -369,8 +423,49 @@ public ref struct JsonWriter
 	/// Exports the container-tracking state so it can be restored on a subsequent writer.
 	/// </summary>
 	/// <returns>The container stack, depth, and pending-property-value flag.</returns>
-	internal readonly (ContainerState[] Stack, int Depth, bool PendingPropertyValue) ExportContainerState()
-		=> (this.stack, this.depth, this.pendingPropertyValue);
+	internal (ContainerState[] Stack, int Depth, bool PendingPropertyValue) ExportContainerState()
+	{
+#if NET8_0_OR_GREATER
+		if (this.stack is null)
+		{
+			// The nesting never exceeded the inline capacity, so no heap array exists yet. The caller
+			// requires a heap array it can hold onto as a field across writer instances, so materialize one now.
+			ContainerState[] materialized = new ContainerState[InlineStackCapacity];
+			for (int i = 0; i < InlineStackCapacity; i++)
+			{
+				materialized[i] = this.inlineStack[i];
+			}
+
+			this.stack = materialized;
+		}
+#endif
+
+		return (this.stack!, this.depth, this.pendingPropertyValue);
+	}
+
+#if NET8_0_OR_GREATER
+	/// <summary>
+	/// Writes a known-ASCII, escape-free formatted value directly to the UTF-8 output buffer as a JSON string.
+	/// </summary>
+	/// <typeparam name="T">The type of value to format.</typeparam>
+	/// <param name="value">The value to format.</param>
+	/// <param name="maxLength">The maximum number of bytes produced by <paramref name="format"/>.</param>
+	/// <param name="format">The invariant format that guarantees only ASCII characters requiring no JSON escaping.</param>
+	internal void WriteAsciiFormattedString<T>(T value, int maxLength, string format)
+		where T : IUtf8SpanFormattable
+	{
+		this.BeforeValueToken();
+		Span<byte> buffer = this.writer.GetSpan(maxLength + 2);
+		if (!value.TryFormat(buffer.Slice(1, maxLength), out int bytesWritten, format, CultureInfo.InvariantCulture))
+		{
+			throw new InvalidOperationException("The buffer was too small to format the value. This is a bug in " + nameof(JsonWriter) + ".");
+		}
+
+		buffer[0] = (byte)'"';
+		buffer[bytesWritten + 1] = (byte)'"';
+		this.writer.Advance(bytesWritten + 2);
+	}
+#endif
 
 	/// <summary>
 	/// Writes an already-escaped UTF-8 JSON property name, including its surrounding quotes.
@@ -412,7 +507,7 @@ public ref struct JsonWriter
 			return;
 		}
 
-		ContainerState state = this.stack[this.depth - 1];
+		ContainerState state = this.GetStack(this.depth - 1);
 		if (state.Kind != ContainerKind.Array)
 		{
 			return;
@@ -429,12 +524,33 @@ public ref struct JsonWriter
 		}
 
 		state.Count++;
-		this.stack[this.depth - 1] = state;
+		this.SetStack(this.depth - 1, state);
 	}
 
 	private void PushContainer(ContainerKind kind)
 	{
-		if (this.depth == this.stack.Length)
+#if NET8_0_OR_GREATER
+		if (this.stack is null)
+		{
+			if (this.depth < InlineStackCapacity)
+			{
+				this.inlineStack[this.depth++] = new ContainerState(kind);
+				return;
+			}
+
+			// The inline buffer is full. Deep nesting is uncommon, so fall back to a heap array from
+			// here on, seeded with the elements already tracked in the inline buffer.
+			ContainerState[] grown = new ContainerState[InlineStackCapacity * 2];
+			for (int i = 0; i < InlineStackCapacity; i++)
+			{
+				grown[i] = this.inlineStack[i];
+			}
+
+			this.stack = grown;
+		}
+#endif
+
+		if (this.depth == this.stack!.Length)
 		{
 			Array.Resize(ref this.stack, this.stack.Length * 2);
 		}
@@ -444,7 +560,7 @@ public ref struct JsonWriter
 
 	private ContainerState PopContainer(ContainerKind expectedKind)
 	{
-		ContainerState state = this.stack[--this.depth];
+		ContainerState state = this.GetStack(--this.depth);
 		if (state.Kind != expectedKind)
 		{
 			throw new InvalidOperationException("JSON container nesting is inconsistent.");
@@ -460,7 +576,7 @@ public ref struct JsonWriter
 			throw new InvalidOperationException("JSON property names may only appear within objects.");
 		}
 
-		ContainerState state = this.stack[this.depth - 1];
+		ContainerState state = this.GetStack(this.depth - 1);
 		if (state.Kind != expectedKind)
 		{
 			throw new InvalidOperationException("JSON property names may only appear within objects.");
@@ -469,7 +585,29 @@ public ref struct JsonWriter
 		return state;
 	}
 
-	private readonly void SetCurrentContainer(ContainerState state) => this.stack[this.depth - 1] = state;
+	private void SetCurrentContainer(ContainerState state) => this.SetStack(this.depth - 1, state);
+
+	private readonly ContainerState GetStack(int index)
+	{
+#if NET8_0_OR_GREATER
+		return this.stack is null ? this.inlineStack[index] : this.stack[index];
+#else
+		return this.stack[index];
+#endif
+	}
+
+	private void SetStack(int index, ContainerState value)
+	{
+#if NET8_0_OR_GREATER
+		if (this.stack is null)
+		{
+			this.inlineStack[index] = value;
+			return;
+		}
+#endif
+
+		this.stack[index] = value;
+	}
 
 	private ContainerState PreparePropertyName()
 	{
@@ -577,6 +715,20 @@ public ref struct JsonWriter
 
 	private void WriteUtf8(ReadOnlySpan<char> value)
 	{
+#if NET8_0_OR_GREATER
+		// Fast path: bulk-copy runs of 7-bit ASCII (the common case for property names and typical
+		// string content) using a vectorized narrowing conversion instead of writing one byte at a time.
+		// Any non-ASCII content (including surrogate pairs) falls through to the char-by-char path below,
+		// which preserves the exact surrogate-validation and multi-byte UTF-8 encoding behavior.
+		if (Ascii.IsValid(value))
+		{
+			Span<byte> buffer = this.writer.GetSpan(value.Length);
+			Ascii.FromUtf16(value, buffer, out int bytesWritten);
+			this.writer.Advance(bytesWritten);
+			return;
+		}
+#endif
+
 		for (int i = 0; i < value.Length; i++)
 		{
 			char ch = value[i];
@@ -595,6 +747,28 @@ public ref struct JsonWriter
 			this.WriteScalar((uint)scalar);
 		}
 	}
+
+#if NET8_0_OR_GREATER
+	/// <summary>
+	/// Formats a numeric value directly into the destination UTF-8 buffer, avoiding the intermediate
+	/// <see cref="string"/> allocation that <see cref="object.ToString()"/>-based formatting would require.
+	/// </summary>
+	/// <typeparam name="T">The numeric type to format.</typeparam>
+	/// <param name="value">The value to format.</param>
+	/// <param name="maxLength">A buffer size, in bytes, guaranteed to be large enough for any value of <typeparamref name="T"/> formatted with <paramref name="format"/>.</param>
+	/// <param name="format">The standard numeric format string to use, or <see langword="null"/> for the default format.</param>
+	private void WriteUtf8Formattable<T>(T value, int maxLength, string? format = null)
+		where T : IUtf8SpanFormattable
+	{
+		Span<byte> buffer = this.writer.GetSpan(maxLength);
+		if (!value.TryFormat(buffer, out int bytesWritten, format, CultureInfo.InvariantCulture))
+		{
+			throw new InvalidOperationException("The buffer was too small to format the numeric value. This is a bug in " + nameof(JsonWriter) + ".");
+		}
+
+		this.writer.Advance(bytesWritten);
+	}
+#endif
 
 	private void WriteScalar(uint scalar)
 	{
@@ -676,6 +850,14 @@ public ref struct JsonWriter
 			this.Count = 0;
 		}
 	}
+
+#if NET8_0_OR_GREATER
+	[System.Runtime.CompilerServices.InlineArray(InlineStackCapacity)]
+	private struct InlineContainerStack
+	{
+		private ContainerState element0;
+	}
+#endif
 #pragma warning restore SA1600
 #pragma warning restore SA1602
 }

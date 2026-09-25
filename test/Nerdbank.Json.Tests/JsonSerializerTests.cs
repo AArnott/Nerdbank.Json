@@ -146,6 +146,90 @@ public partial class JsonSerializerTests : TestBase
 	}
 
 	[Test]
+	public void Serialize_DateTimeOffset_MatchesRoundTripFormat()
+	{
+		DateTimeOffset[] values =
+		[
+			DateTimeOffset.MinValue,
+			DateTimeOffset.MaxValue,
+			new DateTimeOffset(2026, 6, 25, 18, 17, 16, TimeSpan.Zero),
+			new DateTimeOffset(2026, 6, 25, 18, 17, 16, TimeSpan.FromHours(14)).AddTicks(1234567),
+			new DateTimeOffset(2026, 6, 25, 18, 17, 16, TimeSpan.FromHours(-14)).AddTicks(1),
+			new DateTimeOffset(2026, 6, 25, 18, 17, 16, TimeSpan.FromMinutes(345)).AddTicks(9999999),
+		];
+
+		foreach (DateTimeOffset value in values)
+		{
+			this.AssertRoundtrip<DateTimeOffset, JsonSerializerTests>(
+				value,
+				"\"" + value.ToString("O", CultureInfo.InvariantCulture) + "\"",
+				EqualityComparer<DateTimeOffset>.Default);
+		}
+	}
+
+	[Test]
+	public void Serialize_DateTime_MatchesRoundTripFormat()
+	{
+		DateTime[] values =
+		[
+			DateTime.MinValue,
+			DateTime.MaxValue,
+			new DateTime(2026, 6, 25, 18, 17, 16, DateTimeKind.Unspecified),
+			new DateTime(2026, 6, 25, 18, 17, 16, DateTimeKind.Utc).AddTicks(1234567),
+			new DateTime(2026, 6, 25, 18, 17, 16, DateTimeKind.Local).AddTicks(1),
+		];
+
+		foreach (DateTime value in values)
+		{
+			this.AssertRoundtrip<DateTime, JsonSerializerTests>(
+				value,
+				"\"" + value.ToString("O", CultureInfo.InvariantCulture) + "\"",
+				EqualityComparer<DateTime>.Default);
+		}
+	}
+
+	[Test]
+	public void Serialize_TimeSpan_MatchesConstantFormat()
+	{
+		TimeSpan[] values =
+		[
+			TimeSpan.MinValue,
+			TimeSpan.MaxValue,
+			TimeSpan.Zero,
+			TimeSpan.FromDays(-10),
+			TimeSpan.FromTicks(-123456789),
+			TimeSpan.FromTicks(1),
+		];
+
+		foreach (TimeSpan value in values)
+		{
+			this.AssertRoundtrip<TimeSpan, JsonSerializerTests>(
+				value,
+				"\"" + value.ToString("c", CultureInfo.InvariantCulture) + "\"",
+				EqualityComparer<TimeSpan>.Default);
+		}
+	}
+
+	[Test]
+	public void Serialize_Guid_MatchesStandardFormat()
+	{
+		Guid[] values =
+		[
+			Guid.Empty,
+			Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+			Guid.Parse("01234567-89ab-cdef-0123-456789abcdef"),
+		];
+
+		foreach (Guid value in values)
+		{
+			this.AssertRoundtrip<Guid, JsonSerializerTests>(
+				value,
+				"\"" + value.ToString("D", CultureInfo.InvariantCulture) + "\"",
+				EqualityComparer<Guid>.Default);
+		}
+	}
+
+	[Test]
 	public void SerializeDeserialize_ByteBuffers()
 	{
 		this.AssertRoundtrip<byte[], JsonSerializerTests>(new byte[] { 1, 2, 3, 4 }, "\"AQIDBA==\"");
