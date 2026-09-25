@@ -25,6 +25,7 @@ public partial class SerializationWorkloadBenchmarks
 	private readonly ArrayBufferWriter<byte> buffer = new();
 	private readonly ITypeShape<Order> orderShape = PolyType.SourceGenerator.TypeShapeProvider_Benchmarks.Default.GetTypeShape<Order>() ?? throw new InvalidOperationException("No generated shape for Order.");
 	private readonly ITypeShape<SensorBatch> batchShape = PolyType.SourceGenerator.TypeShapeProvider_Benchmarks.Default.GetTypeShape<SensorBatch>() ?? throw new InvalidOperationException("No generated shape for SensorBatch.");
+	private readonly ITypeShape<LogBatch> logBatchShape = PolyType.SourceGenerator.TypeShapeProvider_Benchmarks.Default.GetTypeShape<LogBatch>() ?? throw new InvalidOperationException("No generated shape for LogBatch.");
 	private readonly ITypeShape<TextDocument> documentShape = PolyType.SourceGenerator.TypeShapeProvider_Benchmarks.Default.GetTypeShape<TextDocument>() ?? throw new InvalidOperationException("No generated shape for TextDocument.");
 	private readonly ITypeShape<ChainNode> chainShape = PolyType.SourceGenerator.TypeShapeProvider_Benchmarks.Default.GetTypeShape<ChainNode>() ?? throw new InvalidOperationException("No generated shape for ChainNode.");
 	private readonly Order order = new()
@@ -60,6 +61,18 @@ public partial class SerializationWorkloadBenchmarks
 		}).ToArray(),
 	};
 
+	private readonly LogBatch logBatch = new()
+	{
+		Service = "payments",
+		Entries = Enumerable.Range(0, 128).Select(i => new LogEntry
+		{
+			Sequence = i,
+			OccurredAt = new DateTime(2025, 5, 6, 12, 30, 0, DateTimeKind.Utc).AddTicks((i * TimeSpan.TicksPerSecond) + 1234567),
+			Duration = TimeSpan.FromTicks((i + 1) * 1234567),
+			Message = i % 11 == 0 ? "Retry succeeded" : "Request completed",
+		}).ToArray(),
+	};
+
 	private readonly TextDocument document = new()
 	{
 		Id = 42,
@@ -86,6 +99,7 @@ public partial class SerializationWorkloadBenchmarks
 	{
 		this.Validate(this.order, this.orderShape, SerializationWorkloadJsonContext.Default.Order);
 		this.Validate(this.batch, this.batchShape, SerializationWorkloadJsonContext.Default.SensorBatch);
+		this.Validate(this.logBatch, this.logBatchShape, SerializationWorkloadJsonContext.Default.LogBatch);
 		this.Validate(this.document, this.documentShape, SerializationWorkloadJsonContext.Default.TextDocument);
 		this.Validate(this.unicodeDocument, this.documentShape, SerializationWorkloadJsonContext.Default.TextDocument);
 		this.Validate(this.chain, this.chainShape, SerializationWorkloadJsonContext.Default.ChainNode);
@@ -114,6 +128,18 @@ public partial class SerializationWorkloadBenchmarks
 	[Benchmark(Baseline = true)]
 	[BenchmarkCategory("SensorBatch")]
 	public int SensorBatch_SystemTextJson() => this.SerializeWithSystemTextJson(this.batch, SerializationWorkloadJsonContext.Default.SensorBatch);
+
+	/// <summary>Serializes 128 log entries with UTC timestamps, variable durations, and messages.</summary>
+	/// <returns>The number of UTF-8 bytes written.</returns>
+	[Benchmark]
+	[BenchmarkCategory("LogBatch")]
+	public int LogBatch_NerdbankJson() => this.SerializeWithNerdbank(this.logBatch, this.logBatchShape);
+
+	/// <summary>Serializes the same log entries with System.Text.Json.</summary>
+	/// <returns>The number of UTF-8 bytes written.</returns>
+	[Benchmark(Baseline = true)]
+	[BenchmarkCategory("LogBatch")]
+	public int LogBatch_SystemTextJson() => this.SerializeWithSystemTextJson(this.logBatch, SerializationWorkloadJsonContext.Default.LogBatch);
 
 	/// <summary>Serializes a multi-kilobyte ASCII document with quotes, slashes, and control characters.</summary>
 	/// <returns>The number of UTF-8 bytes written.</returns>
@@ -271,6 +297,25 @@ public partial class SerializationWorkloadBenchmarks
 	}
 
 	[GenerateShape]
+	public sealed partial class LogBatch
+	{
+		public string Service { get; set; } = string.Empty;
+
+		public LogEntry[] Entries { get; set; } = [];
+	}
+
+	public sealed class LogEntry
+	{
+		public int Sequence { get; set; }
+
+		public DateTime OccurredAt { get; set; }
+
+		public TimeSpan Duration { get; set; }
+
+		public string Message { get; set; } = string.Empty;
+	}
+
+	[GenerateShape]
 	public sealed partial class TextDocument
 	{
 		public int Id { get; set; }
@@ -294,6 +339,7 @@ public partial class SerializationWorkloadBenchmarks
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(SerializationWorkloadBenchmarks.Order))]
 [JsonSerializable(typeof(SerializationWorkloadBenchmarks.SensorBatch))]
+[JsonSerializable(typeof(SerializationWorkloadBenchmarks.LogBatch))]
 [JsonSerializable(typeof(SerializationWorkloadBenchmarks.TextDocument))]
 [JsonSerializable(typeof(SerializationWorkloadBenchmarks.ChainNode))]
 internal sealed partial class SerializationWorkloadJsonContext : JsonSerializerContext
