@@ -443,6 +443,30 @@ public ref struct JsonWriter
 		return (this.stack!, this.depth, this.pendingPropertyValue);
 	}
 
+#if NET8_0_OR_GREATER
+	/// <summary>
+	/// Writes a known-ASCII, escape-free formatted value directly to the UTF-8 output buffer as a JSON string.
+	/// </summary>
+	/// <typeparam name="T">The type of value to format.</typeparam>
+	/// <param name="value">The value to format.</param>
+	/// <param name="maxLength">The maximum number of bytes produced by <paramref name="format"/>.</param>
+	/// <param name="format">The invariant format that guarantees only ASCII characters requiring no JSON escaping.</param>
+	internal void WriteAsciiFormattedString<T>(T value, int maxLength, string format)
+		where T : IUtf8SpanFormattable
+	{
+		this.BeforeValueToken();
+		Span<byte> buffer = this.writer.GetSpan(maxLength + 2);
+		if (!value.TryFormat(buffer.Slice(1, maxLength), out int bytesWritten, format, CultureInfo.InvariantCulture))
+		{
+			throw new InvalidOperationException("The buffer was too small to format the value. This is a bug in " + nameof(JsonWriter) + ".");
+		}
+
+		buffer[0] = (byte)'"';
+		buffer[bytesWritten + 1] = (byte)'"';
+		this.writer.Advance(bytesWritten + 2);
+	}
+#endif
+
 	/// <summary>
 	/// Writes an already-escaped UTF-8 JSON property name, including its surrounding quotes.
 	/// </summary>

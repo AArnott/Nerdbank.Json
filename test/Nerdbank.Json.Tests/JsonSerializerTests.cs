@@ -146,6 +146,28 @@ public partial class JsonSerializerTests : TestBase
 	}
 
 	[Test]
+	public void Serialize_DateTimeOffset_MatchesRoundTripFormat()
+	{
+		DateTimeOffset[] values =
+		[
+			DateTimeOffset.MinValue,
+			DateTimeOffset.MaxValue,
+			new DateTimeOffset(2026, 6, 25, 18, 17, 16, TimeSpan.Zero),
+			new DateTimeOffset(2026, 6, 25, 18, 17, 16, TimeSpan.FromHours(14)).AddTicks(1234567),
+			new DateTimeOffset(2026, 6, 25, 18, 17, 16, TimeSpan.FromHours(-14)).AddTicks(1),
+			new DateTimeOffset(2026, 6, 25, 18, 17, 16, TimeSpan.FromMinutes(345)).AddTicks(9999999),
+		];
+
+		foreach (DateTimeOffset value in values)
+		{
+			this.AssertRoundtrip<DateTimeOffset, JsonSerializerTests>(
+				value,
+				"\"" + value.ToString("O", CultureInfo.InvariantCulture) + "\"",
+				EqualityComparer<DateTimeOffset>.Default);
+		}
+	}
+
+	[Test]
 	public void SerializeDeserialize_ByteBuffers()
 	{
 		this.AssertRoundtrip<byte[], JsonSerializerTests>(new byte[] { 1, 2, 3, 4 }, "\"AQIDBA==\"");
