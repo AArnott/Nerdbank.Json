@@ -168,6 +168,25 @@ public partial class JsonSerializerTests : TestBase
 	}
 
 	[Test]
+	public void Serialize_Guid_MatchesStandardFormat()
+	{
+		Guid[] values =
+		[
+			Guid.Empty,
+			Guid.Parse("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+			Guid.Parse("01234567-89ab-cdef-0123-456789abcdef"),
+		];
+
+		foreach (Guid value in values)
+		{
+			this.AssertRoundtrip<Guid, JsonSerializerTests>(
+				value,
+				"\"" + value.ToString("D", CultureInfo.InvariantCulture) + "\"",
+				EqualityComparer<Guid>.Default);
+		}
+	}
+
+	[Test]
 	public void SerializeDeserialize_ByteBuffers()
 	{
 		this.AssertRoundtrip<byte[], JsonSerializerTests>(new byte[] { 1, 2, 3, 4 }, "\"AQIDBA==\"");

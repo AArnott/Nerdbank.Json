@@ -182,7 +182,11 @@ internal static class BuiltInJsonConverters
 
 		if (typeof(T) == typeof(Guid))
 		{
+#if NET8_0_OR_GREATER
+			writer.WriteAsciiFormattedString(Unsafe.As<T, Guid>(ref value), maxLength: 36, format: "D");
+#else
 			writer.WriteStringValue(Unsafe.As<T, Guid>(ref value).ToString("D", CultureInfo.InvariantCulture));
+#endif
 			return true;
 		}
 
