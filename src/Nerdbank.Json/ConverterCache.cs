@@ -6,6 +6,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using PolyType.Utilities;
 
 namespace Nerdbank.Json;
@@ -16,6 +17,7 @@ internal sealed class ConverterCache
 	private readonly JsonSerializerConfiguration configuration;
 	private object? lastConverter;
 	private MultiProviderTypeCache? cachedConverters;
+	private MultiProviderTypeCache? nativeAotCachedConverters;
 
 	internal ConverterCache(JsonSerializerConfiguration configuration)
 	{
@@ -47,10 +49,24 @@ internal sealed class ConverterCache
 			this.cachedConverters ??= new()
 			{
 				DelayedValueFactory = new DelayedJsonConverterFactory(),
-				ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx),
+				ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: false),
 			};
 
 			return this.cachedConverters;
+		}
+	}
+
+	private MultiProviderTypeCache NativeAotCachedConverters
+	{
+		get
+		{
+			this.nativeAotCachedConverters ??= new()
+			{
+				DelayedValueFactory = new DelayedJsonConverterFactory(),
+				ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: true),
+			};
+
+			return this.nativeAotCachedConverters;
 		}
 	}
 
@@ -63,7 +79,24 @@ internal sealed class ConverterCache
 #endif
 
 	internal JsonConverter<T> GetOrAddConverter<T>(ITypeShape<T> shape)
-		=> (JsonConverter<T>)(this.lastConverter is JsonConverter<T> lastConverter ? lastConverter : (this.lastConverter = this.CachedConverters.GetOrAdd(shape)!));
+	{
+#if NET
+		if (!RuntimeFeature.IsDynamicCodeSupported)
+		{
+			if (this.lastConverter is JsonConverter<T> lastConverter)
+			{
+				return lastConverter;
+			}
+
+			JsonConverter<T> converter = this.TryGetProfferedConverter(shape, visitor: null, out JsonConverter<T>? profferedConverter)
+				? profferedConverter
+				: (JsonConverter<T>)this.NativeAotCachedConverters.GetOrAdd(shape)!;
+			return (JsonConverter<T>)(this.lastConverter = this.WrapWithReferencePreservation(converter));
+		}
+#endif
+
+		return (JsonConverter<T>)(this.lastConverter is JsonConverter<T> cachedConverter ? cachedConverter : (this.lastConverter = this.CachedConverters.GetOrAdd(shape)!));
+	}
 
 	internal JsonConverter GetOrAddConverter(ITypeShape shape)
 		=> (JsonConverter)this.CachedConverters.GetOrAdd(shape)!;
@@ -133,24 +166,9 @@ internal sealed class ConverterCache
 
 	internal JsonConverter CreateConverter<T>(ITypeShape<T> shape, TypeShapeVisitor visitor, object? state = null)
 	{
-		if (this.TryGetRuntimeProfferedConverter(shape.Type, shape, out JsonConverter? runtimeConverter) && runtimeConverter is not null)
+		if (this.TryGetProfferedConverter(shape, visitor, out JsonConverter<T>? profferedConverter))
 		{
-			return this.WrapWithReferencePreservation((JsonConverter<T>)runtimeConverter);
-		}
-
-		if (TryGetConverterFromAttribute(shape.Type, shape, attributeProvider: null, out JsonConverter? attributedConverter) && attributedConverter is not null)
-		{
-			return this.WrapWithReferencePreservation((JsonConverter<T>)attributedConverter);
-		}
-
-		if (BuiltInJsonConverters.IsSupported(shape.Type))
-		{
-			return this.WrapWithReferencePreservation(new BuiltInJsonConverter<T>());
-		}
-
-		if (this.configuration.UnionConfiguration.TryGetEntry(shape.Type, out object? unionEntry) && unionEntry is not null)
-		{
-			return this.WrapWithReferencePreservation(RuntimeUnionBuilder.Build(this, shape, unionEntry, visitor));
+			return this.WrapWithReferencePreservation(profferedConverter);
 		}
 
 		object? converter = shape.Accept(visitor, state);
@@ -189,6 +207,37 @@ internal sealed class ConverterCache
 		return true;
 	}
 
+	internal bool TryGetProfferedConverter<T>(ITypeShape<T> shape, TypeShapeVisitor? visitor, [NotNullWhen(true)] out JsonConverter<T>? converter)
+	{
+		if (this.TryGetRuntimeProfferedConverter(shape.Type, shape, out JsonConverter? runtimeConverter) && runtimeConverter is not null)
+		{
+			converter = (JsonConverter<T>)runtimeConverter;
+			return true;
+		}
+
+		if (TryGetConverterFromAttribute(shape.Type, shape, attributeProvider: null, out JsonConverter? attributedConverter) && attributedConverter is not null)
+		{
+			converter = (JsonConverter<T>)attributedConverter;
+			return true;
+		}
+
+		if (BuiltInJsonConverters.IsSupported(shape.Type))
+		{
+			converter = new BuiltInJsonConverter<T>();
+			return true;
+		}
+
+		if (this.configuration.UnionConfiguration.TryGetEntry(shape.Type, out object? unionEntry) && unionEntry is not null)
+		{
+			visitor ??= new JsonStandardVisitor(this, this.NativeAotCachedConverters.GetScopedCache(shape).CreateGenerationContext(), directShapeDispatch: true);
+			converter = RuntimeUnionBuilder.Build(this, shape, unionEntry, visitor);
+			return true;
+		}
+
+		converter = null;
+		return false;
+	}
+
 	internal bool ShouldPreserveReferences(Type type) => this.configuration.PreserveReferences != ReferencePreservationMode.Off && RequiresReferencePreservation(type);
 
 	internal bool TryGetCustomConverter(ITypeShape shape, out JsonConverter? converter)
@@ -207,7 +256,7 @@ internal sealed class ConverterCache
 		return false;
 	}
 
-	private JsonConverter<T> WrapWithReferencePreservation<T>(JsonConverter<T> converter)
+	internal JsonConverter<T> WrapWithReferencePreservation<T>(JsonConverter<T> converter)
 	{
 		if (this.configuration.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(typeof(T)))
 		{
