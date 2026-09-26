@@ -9,12 +9,15 @@ using PolyType.Utilities;
 
 namespace Nerdbank.Json;
 
-internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationContext context) : TypeShapeVisitor, ITypeShapeFunc
+internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationContext context, bool directShapeDispatch) : TypeShapeVisitor, ITypeShapeFunc
 {
 	private static readonly object ExtensionDataSentinel = new();
 
 	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state)
-		=> owner.CreateConverter(typeShape, this);
+	{
+		// Work around https://github.com/dotnet/runtime/issues/134698 by keeping the NativeAOT dispatch direct.
+		return directShapeDispatch ? typeShape.Accept(this, state) : owner.CreateConverter(typeShape, this);
+	}
 
 	public override object? VisitEnum<TEnum, TUnderlying>(IEnumTypeShape<TEnum, TUnderlying> enumShape, object? state = null)
 		where TEnum : struct
@@ -316,6 +319,14 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			// Member-specific comparers bypass the per-type converter cache so that two members of the same
 			// collection type can carry different comparers.
 			return (JsonConverter<T>)owner.CreateConverter(shape, this, new MemberComparerInfluence(comparerType));
+		}
+
+		if (directShapeDispatch)
+		{
+			JsonConverter<T> result = owner.TryGetProfferedConverter(shape, this, out JsonConverter<T>? profferedConverter)
+				? profferedConverter
+				: (JsonConverter<T>)context.GetOrAdd(shape)!;
+			return owner.WrapWithReferencePreservation(result);
 		}
 
 		return (JsonConverter<T>)context.GetOrAdd(shape)!;
