@@ -6,6 +6,7 @@
 
         <MultiRIDProjectReference Include="AotCompatibilityTest\AotCompatibilityTest.csproj" />
         <MultiRIDProjectReference Include="AotNativeConsole\AotNativeConsole.csproj" />
+        <MultiRIDProjectReference Include="AotRuntimeCompatibilityTest\AotRuntimeCompatibilityTest.csproj" />
 
         <!-- Build all target frameworks of the main test project, and also publish its NativeAOT-capable target framework. -->
         <MultiRIDProjectReference Include="Nerdbank.Json.Tests\Nerdbank.Json.Tests.csproj" Publish="false" />

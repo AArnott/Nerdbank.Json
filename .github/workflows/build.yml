@@ -53,6 +53,10 @@ jobs:
       run: |
         dotnet publish test/AotCompatibilityTest/AotCompatibilityTest.csproj -c ${{ env.BUILDCONFIGURATION }}
         dotnet publish test/AotNativeConsole/AotNativeConsole.csproj -c ${{ env.BUILDCONFIGURATION }}
+        dotnet publish test/AotRuntimeCompatibilityTest/AotRuntimeCompatibilityTest.csproj -c ${{ env.BUILDCONFIGURATION }}
+        $extension = if ($IsWindows) { '.exe' } else { '' }
+        & "./bin/AotRuntimeCompatibilityTest/${{ env.BUILDCONFIGURATION }}/net10.0/${{ matrix.rid }}/publish/AotRuntimeCompatibilityTest$extension"
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         dotnet publish test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj -c ${{ env.BUILDCONFIGURATION }} -f net10.0
       shell: pwsh
     - name: 🧪 test
