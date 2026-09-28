@@ -3,6 +3,8 @@
 
 #pragma warning disable SA1202 // Keep internal operation-state members near the top of this context type.
 
+using System.Collections.Immutable;
+
 namespace Nerdbank.Json;
 
 /// <summary>
@@ -17,6 +19,7 @@ namespace Nerdbank.Json;
 /// </example>
 public record struct SerializationContext
 {
+	private ImmutableDictionary<object, object?>? specialState = ImmutableDictionary<object, object?>.Empty;
 	private ConverterCache? cache;
 
 	/// <summary>
@@ -82,6 +85,31 @@ public record struct SerializationContext
 	/// Gets a cancellation token that can be used to cancel the serialization operation.
 	/// </summary>
 	public CancellationToken CancellationToken { get; init; }
+
+	/// <summary>
+	/// Gets or sets special state to be exposed to converters during serialization.
+	/// </summary>
+	/// <param name="key">Any object that can act as a key in a dictionary.</param>
+	/// <returns>The value stored under the specified key, or <see langword="null" /> if no value has been stored under that key.</returns>
+	/// <remarks>
+	/// <para>A key-value pair is removed from the underlying dictionary by assigning a value of <see langword="null" /> for a given key.</para>
+	/// <para>
+	/// Strings can serve as convenient keys, but may collide with the same string used by another part of the data model for another purpose.
+	/// Make your strings sufficiently unique to avoid collisions, or use a <c>static readonly object MyKey = new object()</c> field that you expose
+	/// such that all interested parties can access the object for a key that is guaranteed to be unique.
+	/// </para>
+	/// </remarks>
+	/// <example>
+	/// To add, modify or remove a key in this state as applied to a <see cref="JsonSerializer.StartingContext"/>,
+	/// capture and change the <see cref="SerializationContext"/> as a local variable, then reassign it to the serializer.
+	/// </example>
+	public object? this[object key]
+	{
+		get => this.specialState!.TryGetValue(key, out object? value) ? value : null;
+		set => this.specialState = value is not null
+			? this.specialState!.SetItem(key, value)
+			: this.specialState!.Remove(key);
+	}
 
 	/// <summary>
 	/// Decrements the depth remaining and checks the cancellation token.
