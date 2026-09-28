@@ -34,6 +34,20 @@ The <xref:Nerdbank.Json.SerializationContext.GetConverter*> methods may be used 
 
 If the nested type does not have a directly generated shape, you can use a witness type decorated with <xref:PolyType.GenerateShapeForAttribute`1> and request the converter using that shape.
 
+## Sharing state with converters
+
+The indexer on <xref:Nerdbank.Json.SerializationContext?displayProperty=nameWithType> lets applications pass custom state to converters. Configure it on the serializer's starting context:
+
+```csharp
+private static readonly object TenantKey = new();
+
+SerializationContext context = serializer.StartingContext;
+context[TenantKey] = tenant;
+serializer = serializer with { StartingContext = context };
+```
+
+A converter can retrieve the value with `context[TenantKey]`. Use a unique `static readonly object` key to avoid collisions with other state; assigning `null` removes the key. The context stores this state immutably, so changing a copied context does not mutate the original.
+
 ## Register your custom converter
 
 There are three main ways to get Nerdbank.Json to use your converter.
