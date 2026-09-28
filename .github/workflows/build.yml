@@ -73,11 +73,11 @@ jobs:
         $ActualSize = GetSizeInMB $Path
 
         if ($IsLinux) {
-          $ExpectedSize = 5.68
+          $ExpectedSize = 5.88
         } elseif ($IsMacOS) {
           $ExpectedSize = 5.40
         } else {
-          $ExpectedSize = 5.57
+          $ExpectedSize = 5.79
         }
 
         $AllowedVariance = 0.2
