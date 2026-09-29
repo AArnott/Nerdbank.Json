@@ -12,8 +12,8 @@ using PolyType.Abstractions;
 public partial class JsonSerializerContextOverloadTests : TestBase
 {
 	private static readonly object StateKey = new();
-	private static readonly ITypeShape<string> StringShape = Shape<string>();
-	private static readonly ITypeShape<int> IntShape = Shape<int>();
+	private static readonly ITypeShape<string> StringShape = Shape<string, JsonSerializerContextOverloadTests>();
+	private static readonly ITypeShape<int> IntShape = Shape<int, JsonSerializerContextOverloadTests>();
 
 	private readonly JsonSerializer serializer = new()
 	{
@@ -159,7 +159,12 @@ public partial class JsonSerializerContextOverloadTests : TestBase
 		return context;
 	}
 
-	private static ITypeShape<T> Shape<T>() => TypeShapeResolver.ResolveDynamicOrThrow<T, JsonSerializerContextOverloadTests>();
+	private static ITypeShape<T> Shape<T, TProvider>()
+#if NET
+		where TProvider : IShapeable<T> => TProvider.GetTypeShape();
+#else
+		=> TypeShapeResolver.ResolveDynamicOrThrow<T, TProvider>();
+#endif
 
 	private static string SerializeWithContext(JsonSerializer serializer, SerializationContext context)
 	{
