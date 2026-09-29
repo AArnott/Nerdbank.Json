@@ -17,6 +17,9 @@ namespace Nerdbank.Json;
 /// <example>
 /// <para>To modify the starting context on an existing serializer, you can use the with keyword to create a new serializer with the updated context.</para>
 /// </example>
+/// <example>
+/// <para>To use a context for just one operation, pass it to a (de)serialization overload that accepts a <see cref="SerializationContext"/>.</para>
+/// </example>
 public record struct SerializationContext
 {
 	private ImmutableDictionary<object, object?>? specialState = ImmutableDictionary<object, object?>.Empty;
@@ -82,6 +85,11 @@ public record struct SerializationContext
 	internal StringInterning? StringInterningCache { get; private init; }
 
 	/// <summary>
+	/// Gets a value indicating whether this context belongs to a serialization operation that is already in progress.
+	/// </summary>
+	internal bool IsOperationInProgress => this.cache is not null;
+
+	/// <summary>
 	/// Gets a cancellation token that can be used to cancel the serialization operation.
 	/// </summary>
 	public CancellationToken CancellationToken { get; init; }
@@ -100,15 +108,21 @@ public record struct SerializationContext
 	/// </para>
 	/// </remarks>
 	/// <example>
+	/// <para>
 	/// To add, modify or remove a key in this state as applied to a <see cref="JsonSerializer.StartingContext"/>,
 	/// capture and change the <see cref="SerializationContext"/> as a local variable, then reassign it to the serializer.
+	/// </para>
+	/// <para>
+	/// To supply state for just one operation, capture and change the <see cref="SerializationContext"/> as a local variable,
+	/// then pass it to an overload such as <see cref="JsonSerializer.Serialize{T}(ref JsonWriter, in T, ITypeShape{T}, SerializationContext)"/>.
+	/// </para>
 	/// </example>
 	public object? this[object key]
 	{
-		get => this.specialState!.TryGetValue(key, out object? value) ? value : null;
+		get => this.specialState is not null && this.specialState.TryGetValue(key, out object? value) ? value : null;
 		set => this.specialState = value is not null
-			? this.specialState!.SetItem(key, value)
-			: this.specialState!.Remove(key);
+			? (this.specialState ?? ImmutableDictionary<object, object?>.Empty).SetItem(key, value)
+			: this.specialState?.Remove(key);
 	}
 
 	/// <summary>

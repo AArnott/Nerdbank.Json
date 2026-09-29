@@ -48,6 +48,22 @@ serializer = serializer with { StartingContext = context };
 
 A converter can retrieve the value with `context[TenantKey]`. Use a unique `static readonly object` key to avoid collisions with other state; assigning `null` removes the key. The context stores this state immutably, so changing a copied context does not mutate the original.
 
+### Per-call state
+
+When the state varies from one call to the next (for example, per request or per tenant), pass a <xref:Nerdbank.Json.SerializationContext> directly to an overload that accepts one instead of creating a new serializer for each call:
+
+[!code-csharp[](../../samples/cs/PerCallState.cs#PerCallState)]
+
+The converter reads the state from the context it is given:
+
+[!code-csharp[](../../samples/cs/PerCallState.cs#PerCallStateConverter)]
+
+Overloads that accept a <xref:Nerdbank.Json.SerializationContext> are available for `Serialize`, `Deserialize`, `SerializeObject`, and `DeserializeObject` on <xref:Nerdbank.Json.JsonWriter> and <xref:Nerdbank.Json.JsonReader>, and for `SerializeAsync` and `DeserializeAsync` on <xref:System.IO.Pipelines.PipeWriter> and <xref:System.IO.Pipelines.PipeReader>. Keep these points in mind:
+
+- The supplied context is used *instead of* <xref:Nerdbank.Json.JsonSerializer.StartingContext?displayProperty=nameWithType>. Its state is not merged with the serializer's, so start from `serializer.StartingContext` (as the sample does) when you want to keep the serializer's settings and state.
+- The operation is canceled by the context's <xref:Nerdbank.Json.SerializationContext.CancellationToken?displayProperty=nameWithType>, so these overloads take no separate `CancellationToken` parameter.
+- Never pass the context a converter receives to a top-level serializer method. Doing so throws an <xref:System.ArgumentException>. Use <xref:Nerdbank.Json.SerializationContext.GetConverter*> to (de)serialize nested values instead.
+
 ## Register your custom converter
 
 There are three main ways to get Nerdbank.Json to use your converter.
