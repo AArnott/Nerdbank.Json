@@ -3,6 +3,8 @@
 
 #pragma warning disable SA1600 // Internal helper members added for overload forwarding are intentionally undocumented.
 
+using System.Runtime.CompilerServices;
+
 namespace Nerdbank.Json;
 
 /// <summary>
@@ -179,6 +181,26 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
+	/// Serializes an untyped value to JSON using the specified type shape and a caller-supplied starting context.
+	/// </summary>
+	/// <param name="writer">The writer to serialize the value into.</param>
+	/// <param name="value">The value to serialize.</param>
+	/// <param name="shape">The type shape describing the structure of <paramref name="value"/>.</param>
+	/// <param name="startingContext">
+	/// The context to start this operation with, used instead of <see cref="StartingContext"/>.
+	/// Its <see cref="SerializationContext.CancellationToken"/> cancels the operation.
+	/// </param>
+	/// <exception cref="ArgumentException">Thrown if <paramref name="startingContext"/> belongs to an operation already in progress.</exception>
+	[OverloadResolutionPriority(-1)]
+	public void SerializeObject(ref JsonWriter writer, object? value, ITypeShape shape, SerializationContext startingContext)
+	{
+		Requires.NotNull(shape);
+
+		SerializationContext context = this.CreateSerializationContext(startingContext);
+		this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, context);
+	}
+
+	/// <summary>
 	/// Serializes a value to JSON using the specified type shape.
 	/// </summary>
 	/// <typeparam name="T">The type of value to serialize.</typeparam>
@@ -189,15 +211,29 @@ public partial record JsonSerializer
 	public void Serialize<T>(ref JsonWriter writer, in T? value, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(shape);
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		this.SerializeCore(ref writer, value, shape, this.CreateSerializationContext(cancellationToken));
+	}
 
-		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TrySerialize(ref writer, value))
-		{
-			context.CancellationToken.ThrowIfCancellationRequested();
-			return;
-		}
-
-		this.ConverterCache.GetOrAddConverter(shape).Write(ref writer, value, context);
+	/// <summary>
+	/// Serializes a value to JSON using the specified type shape and a caller-supplied starting context.
+	/// </summary>
+	/// <typeparam name="T">The type of value to serialize.</typeparam>
+	/// <param name="writer">The writer to serialize the value into.</param>
+	/// <param name="value">The value to serialize.</param>
+	/// <param name="shape">The type shape describing the structure of <typeparamref name="T"/>.</param>
+	/// <param name="startingContext">
+	/// The context to start this operation with, used instead of <see cref="StartingContext"/>.
+	/// Its <see cref="SerializationContext.CancellationToken"/> cancels the operation.
+	/// </param>
+	/// <exception cref="ArgumentException">Thrown if <paramref name="startingContext"/> belongs to an operation already in progress.</exception>
+	/// <remarks>
+	/// Use this overload to supply per-call state to converters via <see cref="SerializationContext.this[object]"/>.
+	/// </remarks>
+	[OverloadResolutionPriority(-1)]
+	public void Serialize<T>(ref JsonWriter writer, in T? value, ITypeShape<T> shape, SerializationContext startingContext)
+	{
+		Requires.NotNull(shape);
+		this.SerializeCore(ref writer, value, shape, this.CreateSerializationContext(startingContext));
 	}
 
 	/// <summary>
@@ -216,6 +252,26 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
+	/// Deserializes an untyped value from JSON using the specified type shape and a caller-supplied starting context.
+	/// </summary>
+	/// <param name="reader">The reader to deserialize the value from.</param>
+	/// <param name="shape">The type shape describing the structure of the value to deserialize.</param>
+	/// <param name="startingContext">
+	/// The context to start this operation with, used instead of <see cref="StartingContext"/>.
+	/// Its <see cref="SerializationContext.CancellationToken"/> cancels the operation.
+	/// </param>
+	/// <returns>The deserialized value, or <see langword="null"/> if the JSON represents a null value.</returns>
+	/// <exception cref="ArgumentException">Thrown if <paramref name="startingContext"/> belongs to an operation already in progress.</exception>
+	[OverloadResolutionPriority(-1)]
+	public object? DeserializeObject(ref JsonReader reader, ITypeShape shape, SerializationContext startingContext)
+	{
+		Requires.NotNull(shape);
+
+		SerializationContext context = this.CreateSerializationContext(startingContext);
+		return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, context);
+	}
+
+	/// <summary>
 	/// Deserializes a value from JSON using the specified type shape.
 	/// </summary>
 	/// <typeparam name="T">The type of value to deserialize.</typeparam>
@@ -226,8 +282,56 @@ public partial record JsonSerializer
 	public T? Deserialize<T>(ref JsonReader reader, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(shape);
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		return this.DeserializeCore(ref reader, shape, this.CreateSerializationContext(cancellationToken));
+	}
 
+	/// <summary>
+	/// Deserializes a value from JSON using the specified type shape and a caller-supplied starting context.
+	/// </summary>
+	/// <typeparam name="T">The type of value to deserialize.</typeparam>
+	/// <param name="reader">The reader to deserialize the value from.</param>
+	/// <param name="shape">The type shape describing the structure of <typeparamref name="T"/>.</param>
+	/// <param name="startingContext">
+	/// The context to start this operation with, used instead of <see cref="StartingContext"/>.
+	/// Its <see cref="SerializationContext.CancellationToken"/> cancels the operation.
+	/// </param>
+	/// <returns>The deserialized value, or <see langword="null"/> if the JSON represents a null value.</returns>
+	/// <exception cref="ArgumentException">Thrown if <paramref name="startingContext"/> belongs to an operation already in progress.</exception>
+	/// <remarks>
+	/// Use this overload to supply per-call state to converters via <see cref="SerializationContext.this[object]"/>.
+	/// </remarks>
+	[OverloadResolutionPriority(-1)]
+	public T? Deserialize<T>(ref JsonReader reader, ITypeShape<T> shape, SerializationContext startingContext)
+	{
+		Requires.NotNull(shape);
+		return this.DeserializeCore(ref reader, shape, this.CreateSerializationContext(startingContext));
+	}
+
+	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
+
+	private static void ThrowIfOperationInProgress(in SerializationContext startingContext)
+	{
+		if (startingContext.IsOperationInProgress)
+		{
+			throw new ArgumentException(
+				"This context belongs to a serialization operation that is already in progress. Converters must not pass their context to top-level JsonSerializer methods; use SerializationContext.GetConverter to (de)serialize nested values instead.",
+				nameof(startingContext));
+		}
+	}
+
+	private void SerializeCore<T>(ref JsonWriter writer, in T? value, ITypeShape<T> shape, SerializationContext context)
+	{
+		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TrySerialize(ref writer, value))
+		{
+			context.CancellationToken.ThrowIfCancellationRequested();
+			return;
+		}
+
+		this.ConverterCache.GetOrAddConverter(shape).Write(ref writer, value, context);
+	}
+
+	private T? DeserializeCore<T>(ref JsonReader reader, ITypeShape<T> shape, SerializationContext context)
+	{
 		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, context, out T value))
 		{
 			context.CancellationToken.ThrowIfCancellationRequested();
@@ -239,11 +343,15 @@ public partial record JsonSerializer
 
 	private bool CanUseBuiltInFastPath(Type type) => !this.ConverterCache.HasRuntimeConverters && (this.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(type));
 
-	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
-
 	private SerializationContext CreateSerializationContext(CancellationToken cancellationToken)
 	{
 		CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken;
 		return this.StartingContext.Start(this, this.ConverterCache, effectiveCancellationToken);
+	}
+
+	private SerializationContext CreateSerializationContext(in SerializationContext startingContext)
+	{
+		ThrowIfOperationInProgress(startingContext);
+		return startingContext.Start(this, this.ConverterCache, startingContext.CancellationToken);
 	}
 }
