@@ -76,9 +76,9 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
-	public void Deserialize_UnionInterfaceBaseValue_ThrowsFormatException()
+	public void Deserialize_UnionInterfaceBaseValue_ThrowsJsonSerializationException()
 	{
-		FormatException exception = Assert.Throws<FormatException>(() => this.Serializer.Deserialize("""[null,{"name":"Milo"}]""", PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<IAnimal>()!));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize("""[null,{"name":"Milo"}]""", PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<IAnimal>()!));
 		Assert.Contains("no constructible base type", exception.Message);
 	}
 
