@@ -15,8 +15,8 @@ namespace Nerdbank.Json;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Deserialization always produces a <see cref="JsonValue"/> (boxed as <see cref="object"/>), giving exact JSON fidelity
-/// with no runtime type discovery.
+/// Deserialization produces a <see cref="JsonValue"/> (boxed as <see cref="object"/>) for non-null JSON values, giving
+/// exact JSON fidelity with no runtime type discovery. A JSON <see langword="null"/> produces a C# <see langword="null"/>.
 /// </para>
 /// <para>
 /// Serialization accepts a <see cref="JsonValue"/> or a boxed JSON primitive (<see cref="bool"/>, <see cref="string"/>,
@@ -31,7 +31,7 @@ internal sealed class ObjectConverter : JsonConverter<object>
 	public override bool PreferAsyncSerialization => true;
 
 	public override object? Read(ref JsonReader reader, SerializationContext context)
-		=> JsonValueConverter.Instance.Read(ref reader, context);
+		=> reader.TryReadNull() ? null : JsonValueConverter.Instance.Read(ref reader, context);
 
 	public override void Write(ref JsonWriter writer, object? value, SerializationContext context)
 	{
@@ -51,7 +51,9 @@ internal sealed class ObjectConverter : JsonConverter<object>
 	}
 
 	public override async ValueTask<object?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
-		=> await JsonValueConverter.Instance.ReadAsync(reader, context).ConfigureAwait(false);
+		=> await reader.TryReadNullAsync(context).ConfigureAwait(false)
+			? null
+			: await JsonValueConverter.Instance.ReadAsync(reader, context).ConfigureAwait(false);
 
 	public override async ValueTask WriteAsync(JsonAsyncWriter writer, object? value, SerializationContext context)
 	{
