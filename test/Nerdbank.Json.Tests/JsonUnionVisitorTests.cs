@@ -3,6 +3,13 @@
 
 public partial class JsonObjectSerializerTests
 {
+	[GenerateShape]
+	[DerivedTypeShape(typeof(CatWithParameterizedConstructor))]
+	internal partial interface IAnimal
+	{
+		string Name { get; }
+	}
+
 	[Test]
 	public void SerializeDeserialize_UnionBaseType_UsesNullAlias()
 	{
@@ -59,6 +66,24 @@ public partial class JsonObjectSerializerTests
 		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Deserialize<Animal>("""["Cat",{"lives":9,"name":"Milo"}]"""));
 		Assert.Contains("Exceeded maximum depth", exception.Message);
 	}
+
+	[Test]
+	public void SerializeDeserialize_UnionInterfaceWithParameterizedDerivedType()
+	{
+		IAnimal value = new CatWithParameterizedConstructor("Milo", 9);
+
+		this.AssertRoundtrip(value, PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<IAnimal>()!, """["CatWithParameterizedConstructor",{"name":"Milo","lives":9}]""");
+	}
+
+	[Test]
+	public void Deserialize_UnionInterfaceBaseValue_ThrowsFormatException()
+	{
+		FormatException exception = Assert.Throws<FormatException>(() => this.Serializer.Deserialize("""[null,{"name":"Milo"}]""", PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<IAnimal>()!));
+		Assert.Contains("no constructible base type", exception.Message);
+	}
+
+	[GenerateShape]
+	internal partial record CatWithParameterizedConstructor(string Name, int Lives) : IAnimal;
 
 	[GenerateShape]
 	[DerivedTypeShape(typeof(Cat))]
