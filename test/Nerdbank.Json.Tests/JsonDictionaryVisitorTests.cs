@@ -48,7 +48,7 @@ public partial class JsonObjectSerializerTests
 	{
 		JsonSerializer serializer = new() { ComparerProvider = CaseInsensitiveStringComparerProvider.Instance };
 
-		Assert.Throws<ArgumentException>(() => serializer.Deserialize<Dictionary<string, int>, JsonObjectSerializerTests>("""{"Key":1,"key":2}"""));
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<Dictionary<string, int>, JsonObjectSerializerTests>("""{"Key":1,"key":2}"""));
 	}
 
 	[Test]
@@ -120,14 +120,14 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
-	public void Serialize_Dictionary_WithComplexKeys_ThrowsNotSupportedException()
+	public void Serialize_Dictionary_WithComplexKeys_ThrowsJsonSerializationException()
 	{
 		Dictionary<ComplexKey, int> value = new()
 		{
 			[new ComplexKey { Name = "alpha" }] = 1,
 		};
 
-		NotSupportedException exception = Assert.Throws<NotSupportedException>(() => this.Serializer.Serialize<Dictionary<ComplexKey, int>, JsonObjectSerializerTests>(value));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize<Dictionary<ComplexKey, int>, JsonObjectSerializerTests>(value));
 		Assert.Contains(typeof(ComplexKey).FullName ?? nameof(ComplexKey), exception.Message, StringComparison.Ordinal);
 	}
 

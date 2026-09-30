@@ -18,7 +18,7 @@ public partial class JsonCollectionComparerTests : TestBase
 	[Test]
 	public void Dictionary_MemberComparer_TreatsCaseInsensitiveDuplicatesAsCollision()
 	{
-		Assert.Throws<ArgumentException>(() => this.Serializer.Deserialize<HeaderBag>("""{"headers":{"Accept":"a","ACCEPT":"b"}}"""));
+		Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<HeaderBag>("""{"headers":{"Accept":"a","ACCEPT":"b"}}"""));
 	}
 
 	[Test]
@@ -87,14 +87,14 @@ public partial class JsonCollectionComparerTests : TestBase
 	[Test]
 	public void Attribute_OnNonCollectionMember_Throws()
 	{
-		NotSupportedException exception = Assert.Throws<NotSupportedException>(() => this.Serializer.Deserialize<InvalidScalarModel>("""{"name":"Ada"}"""));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<InvalidScalarModel>("""{"name":"Ada"}"""));
 		Assert.Contains(nameof(JsonCollectionComparerAttribute), exception.Message, StringComparison.Ordinal);
 	}
 
 	[Test]
 	public void Attribute_WithIncompatibleComparer_Throws()
 	{
-		NotSupportedException exception = Assert.Throws<NotSupportedException>(() => this.Serializer.Deserialize<IncompatibleComparerModel>("""{"headers":{"a":"b"}}"""));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<IncompatibleComparerModel>("""{"headers":{"a":"b"}}"""));
 		Assert.Contains("IEqualityComparer", exception.Message, StringComparison.Ordinal);
 	}
 

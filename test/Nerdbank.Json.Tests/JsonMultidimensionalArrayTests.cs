@@ -166,7 +166,7 @@ public partial class JsonMultidimensionalArrayTests : TestBase
 	{
 		JsonSerializer shallow = new() { StartingContext = new SerializationContext { MaxDepth = 2 } };
 
-		Assert.Throws<InvalidOperationException>(
+		Assert.Throws<JsonSerializationException>(
 			() => shallow.Deserialize("[[[1,2],[3,4]],[[5,6],[7,8]]]", Shape<int[,,], JsonMultidimensionalArrayTests>()));
 	}
 

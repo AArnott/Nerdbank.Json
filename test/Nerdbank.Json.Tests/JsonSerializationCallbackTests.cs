@@ -60,9 +60,9 @@ public partial class JsonSerializationCallbackTests : TestBase
 		CallbackException expected = new();
 		ThrowingCallbackObject value = new(expected);
 
-		CallbackException actual = Assert.Throws<CallbackException>(() => this.Serializer.Serialize(value));
+		JsonSerializationException actual = Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize(value));
 
-		Assert.Same(expected, actual);
+		Assert.Same(expected, actual.InnerException);
 	}
 
 	[GenerateShape]

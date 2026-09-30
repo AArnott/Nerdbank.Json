@@ -40,7 +40,7 @@ public partial class JsonUntypedConvertersTests : TestBase
 	[Test]
 	public void Object_SerializeArbitraryType_Throws()
 	{
-		Assert.Throws<NotSupportedException>(() => this.untyped.Serialize<object, Witness>(new Random()));
+		Assert.Throws<JsonSerializationException>(() => this.untyped.Serialize<object, Witness>(new Random()));
 	}
 
 	[Test]
@@ -72,7 +72,7 @@ public partial class JsonUntypedConvertersTests : TestBase
 	public void Object_WithoutOptIn_CannotSerializeArbitraryObject()
 	{
 		JsonSerializer plain = new();
-		Assert.Throws<NotSupportedException>(() => plain.Serialize<object, Witness>(JsonValue.Create(true)));
+		Assert.Throws<JsonSerializationException>(() => plain.Serialize<object, Witness>(JsonValue.Create(true)));
 	}
 
 	[Test]
@@ -96,7 +96,7 @@ public partial class JsonUntypedConvertersTests : TestBase
 		{
 			StartingContext = new SerializationContext { Security = new SecuritySettings { MaxObjectMemberCount = 1 } },
 		}.WithUntypedConverters();
-		Assert.Throws<FormatException>(() => limited.Deserialize<ExpandoObject, Witness>("""{"a":1,"b":2}"""));
+		Assert.Throws<JsonSerializationException>(() => limited.Deserialize<ExpandoObject, Witness>("""{"a":1,"b":2}"""));
 	}
 
 	[Test]
