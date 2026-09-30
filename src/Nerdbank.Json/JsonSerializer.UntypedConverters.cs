@@ -34,9 +34,10 @@ public partial record JsonSerializer
 	/// types.
 	/// </para>
 	/// <para>
-	/// A member typed as <see cref="object"/> deserializes to a boxed <see cref="JsonValue"/>. Serializing an
-	/// <see cref="object"/> requires a <see cref="JsonValue"/> or a boxed JSON primitive; any other CLR type throws a
-	/// <see cref="NotSupportedException"/> that guides you to use a generated type shape instead.
+	/// A non-null value typed as <see cref="object"/> deserializes to a boxed <see cref="JsonValue"/>, while a JSON
+	/// <see langword="null"/> deserializes to C# <see langword="null"/>. Serializing an <see cref="object"/> requires a
+	/// <see cref="JsonValue"/> or a boxed JSON primitive; any other CLR type throws a <see cref="NotSupportedException"/>
+	/// that guides you to use a generated type shape instead.
 	/// </para>
 	/// </remarks>
 	public JsonSerializer WithUntypedConverters()

@@ -4,6 +4,7 @@
 using System.Dynamic;
 using System.Text.Json;
 using PolyType;
+using PolyType.Abstractions;
 using JsonSerializer = Nerdbank.Json.JsonSerializer;
 using StjNode = System.Text.Json.Nodes.JsonNode;
 
@@ -17,6 +18,27 @@ public partial class JsonUntypedConvertersTests : TestBase
 		object? value = this.untyped.Deserialize<object, Witness>("""{"a":1,"b":[true,null]}""");
 		JsonValue jsonValue = Assert.IsType<JsonObject>(value);
 		Assert.Equal(2, ((JsonObject)jsonValue).Count);
+	}
+
+	[Test]
+	public void Object_Null_DeserializesToClrNull()
+	{
+		Assert.Null(this.untyped.Deserialize<object, Witness>("null"));
+	}
+
+	[Test]
+	public async Task Object_Null_DeserializesToClrNull_Async()
+	{
+		using MemoryStream stream = new("null"u8.ToArray());
+		Assert.Null(await this.untyped.DeserializeAsync(stream, Shape<object, Witness>()));
+	}
+
+	[Test]
+	public void Object_MemberNull_DeserializesToClrNull()
+	{
+		Holder? holder = this.untyped.Deserialize<Holder>("""{"value":null}""");
+		Assert.NotNull(holder);
+		Assert.Null(holder.Value);
 	}
 
 	[Test]
@@ -136,6 +158,13 @@ public partial class JsonUntypedConvertersTests : TestBase
 	{
 		Assert.Throws<JsonSerializationException>(() => this.untyped.Deserialize<object, Witness>("""{"a":1,"a":2}"""));
 	}
+
+	private static ITypeShape<T> Shape<T, TProvider>()
+#if NET
+		where TProvider : IShapeable<T> => TProvider.GetTypeShape();
+#else
+		=> TypeShapeResolver.ResolveDynamicOrThrow<T, TProvider>();
+#endif
 
 	[GenerateShape]
 	public partial class Holder
