@@ -434,7 +434,10 @@ internal static class RuntimeUnionBuilder
 			: new JsonRuntimeUnionConverter<TBase>(baseConverter, [.. caseEntries], nameComparer);
 	}
 
-	private static bool IsConstructible(IObjectTypeShape? objectShape)
+	/// <summary>Determines whether an object shape can be deserialized directly.</summary>
+	/// <param name="objectShape">The object shape to inspect.</param>
+	/// <returns><see langword="true"/> if the type has a parameterized or default constructor; otherwise, <see langword="false"/>.</returns>
+	internal static bool IsConstructible(IObjectTypeShape? objectShape)
 	{
 		if (objectShape is null)
 		{

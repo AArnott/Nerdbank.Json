@@ -197,13 +197,13 @@ internal sealed class JsonSurrogateConverter<T, TSurrogate> : JsonConverter<T>
 
 internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 {
-	private readonly JsonConverter<TUnion> baseConverter;
+	private readonly JsonConverter<TUnion>? baseConverter;
 	private readonly Getter<TUnion, int> getUnionCaseIndex;
 	private readonly JsonUnionCaseMetadata<TUnion>[] serializers;
 	private readonly IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias;
 	private readonly IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias;
 
-	internal JsonUnionConverter(JsonConverter<TUnion> baseConverter, Getter<TUnion, int> getUnionCaseIndex, JsonUnionCaseMetadata<TUnion>[] serializers, IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias, IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias)
+	internal JsonUnionConverter(JsonConverter<TUnion>? baseConverter, Getter<TUnion, int> getUnionCaseIndex, JsonUnionCaseMetadata<TUnion>[] serializers, IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias, IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias)
 	{
 		this.baseConverter = baseConverter;
 		this.getUnionCaseIndex = getUnionCaseIndex;
@@ -223,7 +223,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		context.DepthStep();
 
 		writer.WriteStartArray();
-		JsonConverter converter = this.baseConverter;
+		JsonConverter converter;
 		if (value is not null && this.TryGetSerializer(value, out JsonUnionCaseMetadata<TUnion> unionCase))
 		{
 			unionCase.WriteAlias(ref writer);
@@ -232,6 +232,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		else
 		{
 			writer.WriteNullValue();
+			converter = this.baseConverter ?? throw new NotSupportedException($"No union case is registered for type '{value?.GetType().FullName}', and the base type '{typeof(TUnion).FullName}' cannot be serialized directly.");
 		}
 
 		writer.WriteValueSeparator();
@@ -252,7 +253,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		JsonConverter converter;
 		if (reader.TryReadNull())
 		{
-			converter = this.baseConverter;
+			converter = this.baseConverter ?? throw new FormatException($"The JSON specified a base '{typeof(TUnion).FullName}' value, but the union has no constructible base type.");
 		}
 		else
 		{
@@ -270,10 +271,14 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
 	{
 		reader.ReadStartArray();
-		JsonConverter converter;
+		JsonConverter? converter;
 		if (reader.TryReadNull())
 		{
 			converter = this.baseConverter;
+			if (converter is null)
+			{
+				return false;
+			}
 		}
 		else if (reader.PeekValueToken() == '"')
 		{
@@ -291,10 +296,14 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 	public override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
 		await reader.ReadStartArrayAsync(context).ConfigureAwait(false);
-		JsonConverter converter;
+		JsonConverter? converter;
 		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
 		{
 			converter = this.baseConverter;
+			if (converter is null)
+			{
+				return -1;
+			}
 		}
 		else if (await reader.PeekNextByteAsync().ConfigureAwait(false) == '"')
 		{

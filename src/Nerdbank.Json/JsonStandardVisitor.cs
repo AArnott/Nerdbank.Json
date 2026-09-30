@@ -218,7 +218,10 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 
 	public override object? VisitUnion<TUnion>(IUnionTypeShape<TUnion> unionShape, object? state = null)
 	{
-		var baseConverter = (JsonConverter<TUnion>)unionShape.BaseType.Accept(this)!;
+		ITypeShape baseType = unionShape.BaseType;
+		JsonConverter<TUnion>? baseConverter = RuntimeUnionBuilder.IsConstructible(baseType as IObjectTypeShape)
+			? (JsonConverter<TUnion>)baseType.Accept(this)!
+			: null;
 		Getter<TUnion, int> getUnionCaseIndex = unionShape.GetGetUnionCaseIndex();
 		Dictionary<int, JsonConverter> deserializersByIntAlias = new(unionShape.UnionCases.Count);
 		Dictionary<string, JsonConverter> deserializersByStringAlias = new(unionShape.UnionCases.Count, StringComparer.Ordinal);
