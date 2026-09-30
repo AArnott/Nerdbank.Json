@@ -107,7 +107,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 				JsonUnion<Shape2>.Create().AddCase("circle", Shape<Circle, Circle>())),
 		};
 
-		Assert.Throws<FormatException>(() => serializer.Deserialize("""["square",{"side":4}]""", Shape<Shape2, Shape2>()));
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""["square",{"side":4}]""", Shape<Shape2, Shape2>()));
 	}
 
 	[Test]
@@ -160,7 +160,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 					.UseDuckTyping()),
 		};
 
-		FormatException ex = Assert.Throws<FormatException>(() => serializer.Deserialize("""{"shared":1,"a":2,"b":3}""", Shape<Overlap, Overlap>()));
+		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"shared":1,"a":2,"b":3}""", Shape<Overlap, Overlap>()));
 		Assert.Contains("ambiguous", ex.Message, StringComparison.OrdinalIgnoreCase);
 	}
 
@@ -176,7 +176,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 					.UseDuckTyping()),
 		};
 
-		FormatException ex = Assert.Throws<FormatException>(() => serializer.Deserialize("""{"unrelated":1}""", Shape<Shape2, Shape2>()));
+		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"unrelated":1}""", Shape<Shape2, Shape2>()));
 		Assert.Contains("insufficient", ex.Message, StringComparison.OrdinalIgnoreCase);
 	}
 
@@ -191,7 +191,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 					.UseDuckTyping()),
 		};
 
-		Assert.Throws<NotSupportedException>(() => serializer.Deserialize("""{}""", Shape<Shape2, Shape2>()));
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{}""", Shape<Shape2, Shape2>()));
 	}
 
 	[Test]
@@ -240,7 +240,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = DuckSerializer();
 
-		Assert.Throws<FormatException>(() => serializer.Deserialize("""{"radius":2.5,}""", Shape<Shape2, Shape2>()));
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"radius":2.5,}""", Shape<Shape2, Shape2>()));
 	}
 
 	[Test]
@@ -263,7 +263,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = DuckSerializer();
 
-		Assert.Throws<FormatException>(() => serializer.Deserialize("""{/* c */"radius":2.5}""", Shape<Shape2, Shape2>()));
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{/* c */"radius":2.5}""", Shape<Shape2, Shape2>()));
 	}
 
 	private static JsonSerializer DuckSerializer() => new()

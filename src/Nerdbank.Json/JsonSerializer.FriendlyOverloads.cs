@@ -147,7 +147,7 @@ public partial record JsonSerializer
 		byte[] utf8Json = Encoding.UTF8.GetBytes(json);
 		JsonReader reader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
 		T? value = this.Deserialize(ref reader, shape, cancellationToken);
-		reader.EnsureFullyConsumed();
+		EnsureFullyConsumed(ref reader);
 		return value;
 	}
 
@@ -160,7 +160,7 @@ public partial record JsonSerializer
 		byte[] utf8Json = Encoding.UTF8.GetBytes(json);
 		JsonReader reader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
 		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
-		reader.EnsureFullyConsumed();
+		EnsureFullyConsumed(ref reader);
 		return value;
 	}
 
@@ -180,7 +180,7 @@ public partial record JsonSerializer
 		stream.CopyTo(buffer);
 		JsonReader reader = new(buffer.GetBuffer().AsSpan(0, checked((int)buffer.Length)), this.AllowTrailingCommas, this.ReadCommentHandling);
 		T? value = this.Deserialize(ref reader, shape, cancellationToken);
-		reader.EnsureFullyConsumed();
+		EnsureFullyConsumed(ref reader);
 		return value;
 	}
 
@@ -196,7 +196,7 @@ public partial record JsonSerializer
 		stream.CopyTo(buffer);
 		JsonReader reader = new(buffer.GetBuffer().AsSpan(0, checked((int)buffer.Length)), this.AllowTrailingCommas, this.ReadCommentHandling);
 		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
-		reader.EnsureFullyConsumed();
+		EnsureFullyConsumed(ref reader);
 		return value;
 	}
 
@@ -205,7 +205,7 @@ public partial record JsonSerializer
 	{
 		JsonReader reader = new(buffer.Span, this.AllowTrailingCommas, this.ReadCommentHandling);
 		T? value = this.Deserialize(ref reader, shape, cancellationToken);
-		reader.EnsureFullyConsumed();
+		EnsureFullyConsumed(ref reader);
 		return value;
 	}
 
@@ -214,7 +214,7 @@ public partial record JsonSerializer
 	{
 		JsonReader reader = new(buffer.Span, this.AllowTrailingCommas, this.ReadCommentHandling);
 		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
-		reader.EnsureFullyConsumed();
+		EnsureFullyConsumed(ref reader);
 		return value;
 	}
 
@@ -226,7 +226,7 @@ public partial record JsonSerializer
 	{
 		JsonReader reader = new(buffer, this.AllowTrailingCommas, this.ReadCommentHandling);
 		T? value = this.Deserialize(ref reader, shape, cancellationToken);
-		reader.EnsureFullyConsumed();
+		EnsureFullyConsumed(ref reader);
 		return value;
 	}
 
@@ -238,7 +238,7 @@ public partial record JsonSerializer
 	{
 		JsonReader reader = new(buffer, this.AllowTrailingCommas, this.ReadCommentHandling);
 		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
-		reader.EnsureFullyConsumed();
+		EnsureFullyConsumed(ref reader);
 		return value;
 	}
 }

@@ -143,13 +143,13 @@ public partial class JsonSerializerContextOverloadTests : TestBase
 	{
 		JsonSerializer serializer = new() { Converters = new ConverterCollection([new ReentrantConverter()]) };
 
-		ArgumentException ex = Assert.Throws<ArgumentException>(() =>
+		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() =>
 		{
 			Pipe buffer = new();
 			JsonWriter writer = new(buffer.Writer);
 			serializer.Serialize(ref writer, 5, IntShape, CancellationToken.None);
 		});
-		Assert.Equal("startingContext", ex.ParamName);
+		Assert.Equal("startingContext", Assert.IsType<ArgumentException>(ex.InnerException).ParamName);
 	}
 
 	private static SerializationContext CreateContext(string state)

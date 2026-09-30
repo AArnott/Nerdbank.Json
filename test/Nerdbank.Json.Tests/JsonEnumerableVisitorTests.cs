@@ -102,7 +102,7 @@ public partial class JsonObjectSerializerTests
 
 		List<List<List<int>>> value = [[[1]]];
 
-		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Serialize<List<List<List<int>>>, JsonObjectSerializerTests>(value));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize<List<List<List<int>>>, JsonObjectSerializerTests>(value));
 		Assert.Contains("Exceeded maximum depth", exception.Message);
 	}
 
@@ -114,7 +114,7 @@ public partial class JsonObjectSerializerTests
 			StartingContext = this.Serializer.StartingContext with { MaxDepth = 2 },
 		};
 
-		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Deserialize<List<List<List<int>>>, JsonObjectSerializerTests>("[[[1]]]"));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<List<List<List<int>>>, JsonObjectSerializerTests>("[[[1]]]"));
 		Assert.Contains("Exceeded maximum depth", exception.Message);
 	}
 

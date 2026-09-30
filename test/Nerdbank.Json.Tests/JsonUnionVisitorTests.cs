@@ -51,7 +51,7 @@ public partial class JsonObjectSerializerTests
 
 		Animal value = new Cat("Milo", 9);
 
-		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Serialize(value));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize(value));
 		Assert.Contains("Exceeded maximum depth", exception.Message);
 	}
 
@@ -63,7 +63,7 @@ public partial class JsonObjectSerializerTests
 			StartingContext = this.Serializer.StartingContext with { MaxDepth = 1 },
 		};
 
-		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Deserialize<Animal>("""["Cat",{"lives":9,"name":"Milo"}]"""));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<Animal>("""["Cat",{"lives":9,"name":"Milo"}]"""));
 		Assert.Contains("Exceeded maximum depth", exception.Message);
 	}
 

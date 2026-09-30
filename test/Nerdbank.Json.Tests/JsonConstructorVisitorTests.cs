@@ -55,11 +55,11 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
-	public void Deserialize_RecordWithParameterizedConstructor_MissingRequiredParameter_ThrowsFormatException()
+	public void Deserialize_RecordWithParameterizedConstructor_MissingRequiredParameter_ThrowsJsonSerializationException()
 	{
 		JsonSerializer serializer = new();
 
-		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<ParameterizedRecord>("""{"age":37}"""));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<ParameterizedRecord>("""{"age":37}"""));
 		Assert.Contains("Name", exception.Message);
 	}
 
@@ -106,11 +106,11 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
-	public void Deserialize_RecordWithParameterizedConstructor_NullForNonNullableParameter_ThrowsFormatException()
+	public void Deserialize_RecordWithParameterizedConstructor_NullForNonNullableParameter_ThrowsJsonSerializationException()
 	{
 		JsonSerializer serializer = new();
 
-		FormatException exception = Assert.Throws<FormatException>(() => serializer.Deserialize<ParameterizedRecord>("""{"name":null,"age":37}"""));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<ParameterizedRecord>("""{"name":null,"age":37}"""));
 		Assert.Contains("Name", exception.Message);
 	}
 

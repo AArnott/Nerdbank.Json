@@ -282,7 +282,7 @@ public partial class JsonSerializerTests : TestBase
 	{
 		JsonSerializer serializer = new();
 
-		Assert.Throws<FormatException>(() => serializer.Deserialize<Point, JsonSerializerTests>("""[12,-34,]"""));
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<Point, JsonSerializerTests>("""[12,-34,]"""));
 	}
 
 	[Test]
@@ -304,15 +304,15 @@ public partial class JsonSerializerTests : TestBase
 	{
 		JsonSerializer serializer = new();
 
-		Assert.Throws<FormatException>(() => serializer.Deserialize<Point, JsonSerializerTests>("""[/* x */12,-34]"""));
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<Point, JsonSerializerTests>("""[/* x */12,-34]"""));
 	}
 
 	[Test]
-	public void Deserialize_Point_Int32Overflow_ThrowsOverflowException()
+	public void Deserialize_Point_Int32Overflow_ThrowsJsonSerializationException()
 	{
 		JsonSerializer serializer = new();
 
-		Assert.Throws<OverflowException>(() => serializer.Deserialize<Point, JsonSerializerTests>("""[2147483648,1]"""));
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<Point, JsonSerializerTests>("""[2147483648,1]"""));
 	}
 
 	[Test]
@@ -325,7 +325,7 @@ public partial class JsonSerializerTests : TestBase
 
 		PointContainer value = new() { Location = new Point(12, -34) };
 
-		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Serialize(value));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize(value));
 		Assert.Contains("Exceeded maximum depth", exception.Message);
 	}
 
@@ -337,7 +337,7 @@ public partial class JsonSerializerTests : TestBase
 			StartingContext = this.Serializer.StartingContext with { MaxDepth = 1 },
 		};
 
-		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Deserialize<PointContainer>("""{"location":[12,-34]}"""));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<PointContainer>("""{"location":[12,-34]}"""));
 		Assert.Contains("Exceeded maximum depth", exception.Message);
 	}
 

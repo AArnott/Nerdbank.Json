@@ -64,7 +64,7 @@ public partial class JsonStringInterningTests
 		foreach (bool intern in new[] { false, true })
 		{
 			JsonSerializer serializer = new() { InternStrings = intern };
-			Assert.Throws<FormatException>(() => serializer.Deserialize<string, JsonStringInterningTests>(json));
+			Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<string, JsonStringInterningTests>(json));
 		}
 	}
 
@@ -73,7 +73,7 @@ public partial class JsonStringInterningTests
 	{
 		JsonSerializer serializer = new() { InternStrings = true };
 		string prefix = new('a', 8192);
-		Assert.Throws<FormatException>(() => serializer.Deserialize<string, JsonStringInterningTests>("\"" + prefix + "\\q\""));
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<string, JsonStringInterningTests>("\"" + prefix + "\\q\""));
 		Assert.Equal(prefix + "\n", serializer.Deserialize<string, JsonStringInterningTests>("\"" + prefix + "\\n\""));
 	}
 

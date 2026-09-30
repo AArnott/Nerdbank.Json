@@ -15,6 +15,10 @@ namespace Nerdbank.Json;
 /// This type is immutable and thread-safe.
 /// </para>
 /// <para>
+/// Synchronous serialization and deserialization failures are reported as <see cref="JsonSerializationException"/>.
+/// The original exception is available as the inner exception; cancellation and argument validation errors are not wrapped.
+/// </para>
+/// <para>
 /// When targeting .NET Standard 2.0 or .NET Framework, some important methods are available only as extension methods,
 /// so make sure to have a <c><![CDATA[using Nerdbank.Json;]]></c> directive in your code file to see these.
 /// </para>
@@ -177,7 +181,14 @@ public partial record JsonSerializer
 		Requires.NotNull(shape);
 
 		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, context);
+		try
+		{
+			this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, context);
+		}
+		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		{
+			throw new JsonSerializationException(ex.Message, ex);
+		}
 	}
 
 	/// <summary>
@@ -197,7 +208,14 @@ public partial record JsonSerializer
 		Requires.NotNull(shape);
 
 		SerializationContext context = this.CreateSerializationContext(startingContext);
-		this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, context);
+		try
+		{
+			this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, context);
+		}
+		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		{
+			throw new JsonSerializationException(ex.Message, ex);
+		}
 	}
 
 	/// <summary>
@@ -248,7 +266,14 @@ public partial record JsonSerializer
 		Requires.NotNull(shape);
 
 		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, context);
+		try
+		{
+			return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, context);
+		}
+		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		{
+			throw new JsonSerializationException(ex.Message, ex);
+		}
 	}
 
 	/// <summary>
@@ -268,7 +293,14 @@ public partial record JsonSerializer
 		Requires.NotNull(shape);
 
 		SerializationContext context = this.CreateSerializationContext(startingContext);
-		return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, context);
+		try
+		{
+			return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, context);
+		}
+		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		{
+			throw new JsonSerializationException(ex.Message, ex);
+		}
 	}
 
 	/// <summary>
@@ -321,24 +353,50 @@ public partial record JsonSerializer
 
 	private void SerializeCore<T>(ref JsonWriter writer, in T? value, ITypeShape<T> shape, SerializationContext context)
 	{
-		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TrySerialize(ref writer, value))
+		try
 		{
-			context.CancellationToken.ThrowIfCancellationRequested();
-			return;
-		}
+			if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TrySerialize(ref writer, value))
+			{
+				context.CancellationToken.ThrowIfCancellationRequested();
+				return;
+			}
 
-		this.ConverterCache.GetOrAddConverter(shape).Write(ref writer, value, context);
+			this.ConverterCache.GetOrAddConverter(shape).Write(ref writer, value, context);
+		}
+		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		{
+			throw new JsonSerializationException(ex.Message, ex);
+		}
 	}
 
 	private T? DeserializeCore<T>(ref JsonReader reader, ITypeShape<T> shape, SerializationContext context)
 	{
-		if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, context, out T value))
+		try
 		{
-			context.CancellationToken.ThrowIfCancellationRequested();
-			return value;
-		}
+			if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, context, out T value))
+			{
+				context.CancellationToken.ThrowIfCancellationRequested();
+				return value;
+			}
 
-		return this.ConverterCache.GetOrAddConverter(shape).Read(ref reader, context);
+			return this.ConverterCache.GetOrAddConverter(shape).Read(ref reader, context);
+		}
+		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		{
+			throw new JsonSerializationException(ex.Message, ex);
+		}
+	}
+
+	private static void EnsureFullyConsumed(ref JsonReader reader)
+	{
+		try
+		{
+			reader.EnsureFullyConsumed();
+		}
+		catch (FormatException ex)
+		{
+			throw new JsonSerializationException(ex.Message, ex);
+		}
 	}
 
 	private bool CanUseBuiltInFastPath(Type type) => !this.ConverterCache.HasRuntimeConverters && (this.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(type));

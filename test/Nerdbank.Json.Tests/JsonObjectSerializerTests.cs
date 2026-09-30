@@ -304,16 +304,16 @@ public partial class JsonObjectSerializerTests : TestBase
 	}
 
 	[Test]
-	public void Deserialize_ObjectGraph_MissingRequiredProperty_ThrowsFormatException()
+	public void Deserialize_ObjectGraph_MissingRequiredProperty_ThrowsJsonSerializationException()
 	{
-		FormatException exception = Assert.Throws<FormatException>(() => this.Serializer.Deserialize<RequiredPropertyContainer>("""{}"""));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<RequiredPropertyContainer>("""{}"""));
 		Assert.Contains("Name", exception.Message);
 	}
 
 	[Test]
-	public void Deserialize_ObjectGraph_NullForNonNullableProperty_ThrowsFormatException()
+	public void Deserialize_ObjectGraph_NullForNonNullableProperty_ThrowsJsonSerializationException()
 	{
-		FormatException exception = Assert.Throws<FormatException>(() => this.Serializer.Deserialize<NonNullablePropertyContainer>("""{"name":null}"""));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<NonNullablePropertyContainer>("""{"name":null}"""));
 		Assert.Contains("Name", exception.Message);
 	}
 
@@ -362,7 +362,7 @@ public partial class JsonObjectSerializerTests : TestBase
 		CyclicNode node = new();
 		node.Next = node;
 
-		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Serialize(node));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize(node));
 		Assert.Contains("Reference cycles", exception.Message);
 	}
 
@@ -376,7 +376,7 @@ public partial class JsonObjectSerializerTests : TestBase
 
 		DeepNode value = CreateDeepNode(3);
 
-		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Serialize(value));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize(value));
 		Assert.Contains("Exceeded maximum depth", exception.Message);
 	}
 
@@ -388,7 +388,7 @@ public partial class JsonObjectSerializerTests : TestBase
 			StartingContext = this.Serializer.StartingContext with { MaxDepth = 2 },
 		};
 
-		InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() => this.Serializer.Deserialize<DeepNode>("""{"next":{"next":{"next":null}}}"""));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<DeepNode>("""{"next":{"next":{"next":null}}}"""));
 		Assert.Contains("Exceeded maximum depth", exception.Message);
 	}
 

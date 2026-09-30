@@ -59,7 +59,7 @@ public partial class JsonReferenceCycleTests : TestBase
 		SelfNode node = new();
 		node.Next = node;
 
-		InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() => this.rejectCycles.Serialize(node, Shape<SelfNode, SelfNode>()));
+		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() => this.rejectCycles.Serialize(node, Shape<SelfNode, SelfNode>()));
 		Assert.Contains("Reference cycles", ex.Message, StringComparison.Ordinal);
 	}
 
@@ -126,7 +126,7 @@ public partial class JsonReferenceCycleTests : TestBase
 	{
 		string json = """{"$id":1,"$value":{"name":"x","next":{"$ref":1}}}""";
 
-		FormatException ex = Assert.Throws<FormatException>(() => this.allowCycles.Deserialize(json, Shape<ImmutableCycleNode, ImmutableCycleNode>()));
+		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() => this.allowCycles.Deserialize(json, Shape<ImmutableCycleNode, ImmutableCycleNode>()));
 		Assert.Contains("immutable or constructor-bound", ex.Message, StringComparison.Ordinal);
 	}
 
@@ -160,7 +160,7 @@ public partial class JsonReferenceCycleTests : TestBase
 	{
 		string json = """{"$id":1,"$value":{"next":{"$ref":2}}}""";
 
-		FormatException ex = Assert.Throws<FormatException>(() => this.allowCycles.Deserialize(json, Shape<SelfNode, SelfNode>()));
+		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() => this.allowCycles.Deserialize(json, Shape<SelfNode, SelfNode>()));
 		Assert.Contains("not previously defined", ex.Message, StringComparison.Ordinal);
 	}
 
@@ -169,7 +169,7 @@ public partial class JsonReferenceCycleTests : TestBase
 	{
 		string json = """{"$id":1,"$value":{"next":{"$id":1,"$value":{"next":null}}}}""";
 
-		FormatException ex = Assert.Throws<FormatException>(() => this.allowCycles.Deserialize(json, Shape<SelfNode, SelfNode>()));
+		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() => this.allowCycles.Deserialize(json, Shape<SelfNode, SelfNode>()));
 		Assert.Contains("assigned more than once", ex.Message, StringComparison.Ordinal);
 	}
 
@@ -178,7 +178,7 @@ public partial class JsonReferenceCycleTests : TestBase
 	{
 		string json = """{"$id":1,"$value":{"next":{"$ref":1,"extra":2}}}""";
 
-		Assert.Throws<FormatException>(() => this.allowCycles.Deserialize(json, Shape<SelfNode, SelfNode>()));
+		Assert.Throws<JsonSerializationException>(() => this.allowCycles.Deserialize(json, Shape<SelfNode, SelfNode>()));
 	}
 
 	[Test]
@@ -186,7 +186,7 @@ public partial class JsonReferenceCycleTests : TestBase
 	{
 		string json = """{"$id":1,"$value":{"next":{"$ref":0}}}""";
 
-		Assert.Throws<FormatException>(() => this.allowCycles.Deserialize(json, Shape<SelfNode, SelfNode>()));
+		Assert.Throws<JsonSerializationException>(() => this.allowCycles.Deserialize(json, Shape<SelfNode, SelfNode>()));
 	}
 
 	[Test]
