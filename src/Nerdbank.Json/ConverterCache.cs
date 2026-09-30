@@ -192,10 +192,22 @@ internal sealed class ConverterCache
 			}
 		}
 
+#if NETWASM
+		// NetWasm: no runtime reflection metadata; use the source-generated attributes captured on the type shape.
+		if (attribute is null)
+		{
+			foreach (JsonConverterAttribute candidate in typeShape.AttributeProvider.GetCustomAttributes<JsonConverterAttribute>(inherit: false))
+			{
+				attribute = candidate;
+				break;
+			}
+		}
+#else
 		if (attribute is null && type.GetCustomAttributes(typeof(JsonConverterAttribute), inherit: false) is object[] typeAttributes && typeAttributes.Length > 0)
 		{
 			attribute = (JsonConverterAttribute)typeAttributes[0];
 		}
+#endif
 
 		if (attribute is null)
 		{
