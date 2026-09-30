@@ -222,6 +222,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 
 	private static string SanitizeName(Type type)
 	{
+#if !NETWASM // NetWasm: no array/generic type inspection; only the simple name is used.
 		if (type.IsArray)
 		{
 			return SanitizeName(type.GetElementType()!) + "Array";
@@ -238,6 +239,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 
 			return name + "Of" + string.Join("And", type.GetGenericArguments().Select(SanitizeName));
 		}
+#endif
 
 		StringBuilder builder = new(type.Name.Length);
 		foreach (char c in type.Name)

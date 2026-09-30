@@ -143,7 +143,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 
 	public override void Write(ref JsonWriter writer, TBase? value, SerializationContext context)
 	{
-		if (!typeof(TBase).IsValueType && value is null)
+		if (!TypeTraits.IsValueType<TBase>() && value is null)
 		{
 			writer.WriteNullValue();
 			return;
@@ -171,7 +171,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 
 	public override TBase? Read(ref JsonReader reader, SerializationContext context)
 	{
-		if (!typeof(TBase).IsValueType && reader.TryReadNull())
+		if (!TypeTraits.IsValueType<TBase>() && reader.TryReadNull())
 		{
 			return default;
 		}
@@ -292,7 +292,7 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 
 	public override void Write(ref JsonWriter writer, TBase? value, SerializationContext context)
 	{
-		if (!typeof(TBase).IsValueType && value is null)
+		if (!TypeTraits.IsValueType<TBase>() && value is null)
 		{
 			writer.WriteNullValue();
 			return;
@@ -309,7 +309,7 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 
 	public override TBase? Read(ref JsonReader reader, SerializationContext context)
 	{
-		if (!typeof(TBase).IsValueType && reader.TryReadNull())
+		if (!TypeTraits.IsValueType<TBase>() && reader.TryReadNull())
 		{
 			return default;
 		}
@@ -503,6 +503,7 @@ internal static class RuntimeUnionHelpers
 			return false;
 		}
 
+#if !NETWASM // NetWasm: no CustomAttributeData (and MemberInfo is never supplied).
 		foreach (CustomAttributeData attribute in memberInfo.CustomAttributes)
 		{
 			if (attribute.AttributeType.FullName == "System.Runtime.CompilerServices.RequiredMemberAttribute")
@@ -510,6 +511,7 @@ internal static class RuntimeUnionHelpers
 				return true;
 			}
 		}
+#endif
 
 		return false;
 	}

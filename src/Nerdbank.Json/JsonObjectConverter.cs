@@ -111,7 +111,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	public override T? Read(ref JsonReader reader, SerializationContext context)
 	{
-		if (!typeof(T).IsValueType && reader.TryReadNull())
+		if (!TypeTraits.IsValueType<T>() && reader.TryReadNull())
 		{
 			return default;
 		}
@@ -194,7 +194,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 	public override async ValueTask<T?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
 	{
 		Requires.NotNull(reader);
-		if (!typeof(T).IsValueType && await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		if (!TypeTraits.IsValueType<T>() && await reader.TryReadNullAsync(context).ConfigureAwait(false))
 		{
 			return default;
 		}
@@ -487,7 +487,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 			TProperty? value = this.converter.Read(ref reader, context);
 			if (this.isNonNullableReferenceType
 				&& value is null
-				&& !typeof(TProperty).IsValueType
+				&& !TypeTraits.IsValueType<TProperty>()
 				&& (context.DeserializeDefaultValues & DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties) != DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties)
 			{
 				throw new FormatException($"Property '{this.memberName}' does not allow null values.");
@@ -499,7 +499,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 
 		if (this.deserializeIntoExistingInstance && this.getter is not null && this.converter is IJsonDeserializeInto<TProperty> deserializeInto)
 		{
-			if (!typeof(TProperty).IsValueType && reader.TryReadNull())
+			if (!TypeTraits.IsValueType<TProperty>() && reader.TryReadNull())
 			{
 				return;
 			}
@@ -523,7 +523,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 			TProperty? value = await reader.ReadValueAsync(this.converter, context).ConfigureAwait(false);
 			if (this.isNonNullableReferenceType
 				&& value is null
-				&& !typeof(TProperty).IsValueType
+				&& !TypeTraits.IsValueType<TProperty>()
 				&& (context.DeserializeDefaultValues & DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties) != DeserializeDefaultValuesPolicy.AllowNullValuesForNonNullableProperties)
 			{
 				throw new FormatException($"Property '{this.memberName}' does not allow null values.");
@@ -535,7 +535,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 
 		if (this.deserializeIntoExistingInstance && this.getter is not null && this.converter is IJsonDeserializeInto<TProperty> deserializeInto)
 		{
-			if (!typeof(TProperty).IsValueType && await reader.TryReadNullAsync(context).ConfigureAwait(false))
+			if (!TypeTraits.IsValueType<TProperty>() && await reader.TryReadNullAsync(context).ConfigureAwait(false))
 			{
 				return container;
 			}
@@ -571,7 +571,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 			return (policy & SerializeDefaultValuesPolicy.ReferenceTypes) == SerializeDefaultValuesPolicy.ReferenceTypes;
 		}
 
-		if (typeof(TProperty).IsValueType)
+		if (TypeTraits.IsValueType<TProperty>())
 		{
 			return (policy & SerializeDefaultValuesPolicy.ValueTypes) == SerializeDefaultValuesPolicy.ValueTypes;
 		}

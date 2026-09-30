@@ -1,6 +1,6 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="NetWasm.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net472;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks>net8.0;net9.0;net472;netstandard2.0;netwasm0.1</TargetFrameworks>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
     <IsAotCompatible Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)','net8.0'))">true</IsAotCompatible>
@@ -9,11 +9,30 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.VisualStudio.Validation" />
-    <PackageReference Include="Nerdbank.MessagePack" />
     <PackageReference Include="PolyType" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)'!='netwasm0.1'">
+    <PackageReference Include="Nerdbank.MessagePack" />
     <PackageReference Include="System.Buffers" />
     <PackageReference Include="System.IO.Pipelines" />
     <PackageReference Include="System.Memory" />
+  </ItemGroup>
+
+  <!-- NetWasm (netwasm0.1) proof of concept. -->
+  <PropertyGroup Condition="'$(TargetFramework)'=='netwasm0.1'">
+    <EnablePackageValidation>false</EnablePackageValidation>
+    <IsAotCompatible>false</IsAotCompatible>
+    <!-- NetWasm reference assemblies are not strong-named (CS8002). -->
+    <SignAssembly>false</SignAssembly>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TargetFramework)'=='netwasm0.1'">
+    <PackageReference Include="NetWasm.System.IO.Pipelines" />
+    <PackageReference Include="NetWasm.System.Linq" />
+    <PackageReference Include="NetWasm.System.Memory" />
+    <PackageReference Include="NetWasm.System.Text.Json" />
+    <Using Remove="System.Net.Http" />
+    <Compile Remove="JsonPathExpressionParser.cs" />
+    <Compile Remove="JsonMultidimensionalArrayConverter`2.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Update="JsonSerializer.AutomatedFriendlyOverloads.tt">
@@ -35,6 +54,8 @@
     <AnalyzerProjectReference Include="..\Nerdbank.Json.Analyzers\Nerdbank.Json.Analyzers.csproj" />
     <ProjectReference Include="@(AnalyzerProjectReference)">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <SetTargetFramework>TargetFramework=netstandard2.0</SetTargetFramework>
+      <SkipGetTargetFrameworkProperties>true</SkipGetTargetFrameworkProperties>
       <OutputItemType>AnalyzerAssembly</OutputItemType>
       <PrivateAssets>all</PrivateAssets>
     </ProjectReference>
@@ -48,7 +69,22 @@
 
   <Target Name="PackAnalyzers" DependsOnTargets="ResolveProjectReferences;DebugSymbolsProjectOutputGroup" Condition="'$(TargetFramework)'=='netstandard2.0'">
     <ItemGroup>
-      <TfmSpecificPackageFile Include="%(AnalyzerAssembly.Identity)" PackagePath="analyzers\cs\" />
+      <TfmSpecificPackageFile Include="%(AnalyzerAssembly.Identity)" PackagePath="analyzers/cs/%(AnalyzerAssembly.Filename)%(AnalyzerAssembly.Extension)" />
+    </ItemGroup>
+  </Target>
+  <!--
+    NetWasm proof of concept workaround: NetWasm.Sdk 0.5.0's pack reads %(PackageReference.Version) directly,
+    which is empty under Central Package Management (NWPK006). Copy the central versions onto the references.
+  -->
+  <Target Name="NetWasmPocApplyCentralPackageVersions" BeforeTargets="NetWasmSdkCollectInnerPackageReferences" Condition="'$(ManagePackageVersionsCentrally)'=='true'">
+    <ItemGroup>
+      <_NetWasmPocPackageReferenceCross Include="@(PackageReference)">
+        <CentralId>%(PackageVersion.Identity)</CentralId>
+        <CentralVersion>%(PackageVersion.Version)</CentralVersion>
+      </_NetWasmPocPackageReferenceCross>
+      <_NetWasmPocPackageReferenceCross Remove="@(_NetWasmPocPackageReferenceCross)" Condition="'%(_NetWasmPocPackageReferenceCross.Identity)'!='%(_NetWasmPocPackageReferenceCross.CentralId)' or '%(_NetWasmPocPackageReferenceCross.Version)'!=''" />
+      <PackageReference Remove="@(_NetWasmPocPackageReferenceCross)" />
+      <PackageReference Include="@(_NetWasmPocPackageReferenceCross)" Version="%(_NetWasmPocPackageReferenceCross.CentralVersion)" />
     </ItemGroup>
   </Target>
 </Project>

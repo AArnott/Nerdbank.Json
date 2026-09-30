@@ -59,6 +59,9 @@ public class JsonConverterTypeCollection : IReadOnlyCollection<Type>
 
 	private static Type GetDataType(Type converterType)
 	{
+#if NETWASM
+		throw new NotSupportedException("Inferring the data type of a converter type requires reflection, which NetWasm does not support.");
+#else
 		Type? baseType = converterType;
 		while (baseType is not null)
 		{
@@ -72,5 +75,6 @@ public class JsonConverterTypeCollection : IReadOnlyCollection<Type>
 		}
 
 		throw new ArgumentException($"Type must derive from {typeof(JsonConverter<>).Name}.", nameof(converterType));
+#endif
 	}
 }

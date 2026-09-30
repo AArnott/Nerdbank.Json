@@ -2,7 +2,9 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.IO.Pipelines;
+#if !NETWASM
 using System.Linq.Expressions;
+#endif
 using System.Runtime.CompilerServices;
 
 namespace Nerdbank.Json;
@@ -192,6 +194,7 @@ public partial record JsonSerializer
 		}
 	}
 
+#if !NETWASM
 	/// <summary>
 	/// Asynchronously streams the elements of a JSON array selected by a member-access expression inside an object or
 	/// array envelope. The expression is parsed but never compiled, so this overload is NativeAOT-safe and can traverse
@@ -244,6 +247,7 @@ public partial record JsonSerializer
 			await reader.CompleteAsync().ConfigureAwait(false);
 		}
 	}
+#endif
 
 	/// <summary>
 	/// Asynchronously serializes an <see cref="IAsyncEnumerable{T}"/> as a top-level JSON array, writing elements as they
@@ -427,6 +431,7 @@ public partial record JsonSerializer
 	public IAsyncEnumerable<T?> DeserializeNewlineDelimitedAsync<T>(Stream stream, CancellationToken cancellationToken = default)
 		where T : IShapeable<T> => this.DeserializeNewlineDelimitedAsync(stream, T.GetTypeShape(), cancellationToken);
 
+#if !NETWASM
 	/// <inheritdoc cref="DeserializeArrayAtAsync{TRoot, TElement}(PipeReader, Expression{Func{TRoot, IEnumerable{TElement}}}, ITypeShape{TRoot}, MissingPathBehavior, CancellationToken)"/>
 	public IAsyncEnumerable<TElement?> DeserializeArrayAtAsync<TRoot, TElement>(PipeReader reader, Expression<Func<TRoot, IEnumerable<TElement>>> path, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
 		where TRoot : IShapeable<TRoot> => this.DeserializeArrayAtAsync(reader, path, TRoot.GetTypeShape(), missingBehavior, cancellationToken);
@@ -434,6 +439,7 @@ public partial record JsonSerializer
 	/// <inheritdoc cref="DeserializeArrayAtAsync{TRoot, TElement}(Stream, Expression{Func{TRoot, IEnumerable{TElement}}}, ITypeShape{TRoot}, MissingPathBehavior, CancellationToken)"/>
 	public IAsyncEnumerable<TElement?> DeserializeArrayAtAsync<TRoot, TElement>(Stream stream, Expression<Func<TRoot, IEnumerable<TElement>>> path, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
 		where TRoot : IShapeable<TRoot> => this.DeserializeArrayAtAsync(stream, path, TRoot.GetTypeShape(), missingBehavior, cancellationToken);
+#endif
 
 	/// <inheritdoc cref="SerializeArrayAsync{T}(PipeWriter, IAsyncEnumerable{T}, ITypeShape{T}, CancellationToken)"/>
 	public ValueTask SerializeArrayAsync<T>(PipeWriter writer, IAsyncEnumerable<T> values, CancellationToken cancellationToken = default)

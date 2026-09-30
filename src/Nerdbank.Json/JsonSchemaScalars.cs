@@ -3,7 +3,9 @@
 
 #pragma warning disable SA1600 // Internal schema helpers are intentionally undocumented in this file.
 
+#if !NETWASM
 using System.Drawing;
+#endif
 using System.Globalization;
 using System.Numerics;
 using System.Text;
@@ -86,7 +88,11 @@ internal static class JsonSchemaScalars
 		{
 			IntegerSchema(schema, uint.MinValue, uint.MaxValue);
 		}
-		else if (type == typeof(long) || type == typeof(ulong) || type == typeof(BigInteger) || type == typeof(Color))
+		else if (type == typeof(long) || type == typeof(ulong) || type == typeof(BigInteger)
+#if !NETWASM
+			|| type == typeof(Color)
+#endif
+			)
 		{
 			schema.Set("type", "integer");
 		}
@@ -114,6 +120,7 @@ internal static class JsonSchemaScalars
 		{
 			schema.Set("type", "string").Set("contentEncoding", "base64");
 		}
+#if !NETWASM
 		else if (type == typeof(Point))
 		{
 			schema.Set("type", "array")
@@ -122,6 +129,7 @@ internal static class JsonSchemaScalars
 				.Set("maxItems", 2L)
 				.Set("items", new JsonSchema().Set("type", "integer"));
 		}
+#endif
 		else
 		{
 			return false;

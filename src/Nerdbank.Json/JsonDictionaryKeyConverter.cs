@@ -32,7 +32,7 @@ internal static class JsonDictionaryKeyConverter
 			|| type == typeof(DateTimeOffset)
 			|| type == typeof(TimeSpan)
 			|| type == typeof(Guid)
-			|| type.IsEnum
+			|| TypeTraits.IsEnum(type)
 #if NET8_0_OR_GREATER
 			|| type == typeof(Half)
 			|| type == typeof(Int128)
@@ -149,7 +149,7 @@ internal static class JsonDictionaryKeyConverter
 			return ((Guid)boxed).ToString("D");
 		}
 
-		if (type.IsEnum)
+		if (TypeTraits.IsEnum(type))
 		{
 			return boxed.ToString()!;
 		}
@@ -313,7 +313,7 @@ internal static class JsonDictionaryKeyConverter
 			return (TKey)result;
 		}
 
-		if (type.IsEnum)
+		if (TypeTraits.IsEnum(type))
 		{
 			return (TKey)Enum.Parse(type, key, ignoreCase: true);
 		}

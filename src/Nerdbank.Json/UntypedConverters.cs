@@ -5,7 +5,9 @@
 #pragma warning disable SA1600 // Internal converter members are intentionally undocumented in this file.
 #pragma warning disable SA1649 // File name should match first type name
 
+#if !NETWASM
 using System.Dynamic;
+#endif
 
 namespace Nerdbank.Json;
 
@@ -128,6 +130,7 @@ internal sealed class ObjectConverter : JsonConverter<object>
 	}
 }
 
+#if !NETWASM // NetWasm: no System.Dynamic.ExpandoObject
 /// <summary>
 /// Reads and writes <see cref="ExpandoObject"/> instances as JSON objects whose member values are represented with the
 /// native <see cref="JsonValue"/> model.
@@ -209,3 +212,4 @@ internal sealed class ExpandoObjectConverter : JsonConverter<ExpandoObject>
 
 	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 }
+#endif

@@ -214,7 +214,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 
 	public override void Write(ref JsonWriter writer, TUnion? value, SerializationContext context)
 	{
-		if (!typeof(TUnion).IsValueType && value is null)
+		if (!TypeTraits.IsValueType<TUnion>() && value is null)
 		{
 			writer.WriteNullValue();
 			return;
@@ -241,7 +241,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 
 	public override TUnion? Read(ref JsonReader reader, SerializationContext context)
 	{
-		if (!typeof(TUnion).IsValueType && reader.TryReadNull())
+		if (!TypeTraits.IsValueType<TUnion>() && reader.TryReadNull())
 		{
 			return default;
 		}
@@ -554,7 +554,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 	public override TDeclaring? Read(ref JsonReader reader, SerializationContext context)
 	{
-		if (!typeof(TDeclaring).IsValueType && reader.TryReadNull())
+		if (!TypeTraits.IsValueType<TDeclaring>() && reader.TryReadNull())
 		{
 			return default;
 		}
@@ -619,7 +619,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 	public override async ValueTask<TDeclaring?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
 	{
 		Requires.NotNull(reader);
-		if (!typeof(TDeclaring).IsValueType && await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		if (!TypeTraits.IsValueType<TDeclaring>() && await reader.TryReadNullAsync(context).ConfigureAwait(false))
 		{
 			return default;
 		}

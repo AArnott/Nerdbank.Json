@@ -14,7 +14,11 @@ internal record JsonSerializerConfiguration
 	private IReadOnlyList<IJsonConverterFactory> converterFactories = [];
 	private JsonConverterTypeCollection converterTypes = new();
 	private bool allowTrailingCommas;
+#if NETWASM
+	private MessagePack.IComparerProvider? comparerProvider;
+#else
 	private MessagePack.IComparerProvider? comparerProvider = MessagePack.SecureComparerProvider.Default;
+#endif
 	private DeserializeDefaultValuesPolicy deserializeDefaultValues;
 	private JsonNamingPolicy? dictionaryKeyNamingPolicy;
 	private bool propertyNameCaseInsensitive;

@@ -46,12 +46,14 @@ public partial record JsonSerializer
 		init => this.configuration = this.configuration with { DictionaryKeyNamingPolicy = value };
 	}
 
+#if !NETWASM
 	/// <inheritdoc cref="JsonSerializerConfiguration.ComparerProvider"/>
 	public MessagePack.IComparerProvider? ComparerProvider
 	{
 		get => this.configuration.ComparerProvider;
 		init => this.configuration = this.configuration with { ComparerProvider = value };
 	}
+#endif
 
 	/// <inheritdoc cref="JsonSerializerConfiguration.Converters"/>
 	public ConverterCollection Converters
@@ -307,7 +309,13 @@ public partial record JsonSerializer
 		return this.DeserializeCore(ref reader, shape, this.CreateSerializationContext(startingContext));
 	}
 
-	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
+	private static bool RequiresReferencePreservation(Type type) =>
+#if NETWASM
+		// NetWasm: System.Type.IsValueType is unavailable; reference preservation is not supported.
+		false;
+#else
+		!type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
+#endif
 
 	private static void ThrowIfOperationInProgress(in SerializationContext startingContext)
 	{

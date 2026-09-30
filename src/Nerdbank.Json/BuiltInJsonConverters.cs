@@ -3,7 +3,9 @@
 
 #pragma warning disable SA1600 // Elements should be documented
 
+#if !NETWASM
 using System.Drawing;
+#endif
 using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -15,7 +17,11 @@ internal static class BuiltInJsonConverters
 {
 	internal static bool RequiresNestedContext(Type type)
 	{
+#if NETWASM
+		return false;
+#else
 		return type == typeof(Point);
+#endif
 	}
 
 	internal static bool IsSupported(Type type)
@@ -46,8 +52,12 @@ internal static class BuiltInJsonConverters
 			|| type == typeof(byte[])
 			|| type == typeof(Memory<byte>)
 			|| type == typeof(ReadOnlyMemory<byte>)
+#if !NETWASM
 			|| type == typeof(Color)
+#endif
+#if !NETWASM
 			|| type == typeof(Point)
+#endif
 #if NET8_0_OR_GREATER
 			|| type == typeof(Half)
 			|| type == typeof(Int128)
@@ -240,12 +250,15 @@ internal static class BuiltInJsonConverters
 			return true;
 		}
 
+#if !NETWASM
 		if (typeof(T) == typeof(Color))
 		{
 			writer.WriteNumberValue(Unsafe.As<T, Color>(ref value).ToArgb());
 			return true;
 		}
+#endif
 
+#if !NETWASM
 		if (typeof(T) == typeof(Point))
 		{
 			Point point = Unsafe.As<T, Point>(ref value);
@@ -256,6 +269,7 @@ internal static class BuiltInJsonConverters
 			writer.WriteEndArray();
 			return true;
 		}
+#endif
 
 #if NET8_0_OR_GREATER
 		if (typeof(T) == typeof(Half))
@@ -436,7 +450,11 @@ internal static class BuiltInJsonConverters
 
 		if (typeof(T) == typeof(CultureInfo))
 		{
+#if NETWASM
+			object? result = reader.TryReadNull() ? null : new CultureInfo(reader.ReadRequiredString());
+#else
 			object? result = reader.TryReadNull() ? null : CultureInfo.GetCultureInfo(reader.ReadRequiredString());
+#endif
 			value = (T?)result!;
 			return true;
 		}
@@ -467,12 +485,15 @@ internal static class BuiltInJsonConverters
 			return true;
 		}
 
+#if !NETWASM
 		if (typeof(T) == typeof(Color))
 		{
 			Unsafe.As<T, Color>(ref value) = Color.FromArgb(reader.ReadInt32Value());
 			return true;
 		}
+#endif
 
+#if !NETWASM
 		if (typeof(T) == typeof(Point))
 		{
 			reader.ReadStartArray();
@@ -483,6 +504,7 @@ internal static class BuiltInJsonConverters
 			Unsafe.As<T, Point>(ref value) = new Point(x, y);
 			return true;
 		}
+#endif
 
 #if NET8_0_OR_GREATER
 		if (typeof(T) == typeof(Half))

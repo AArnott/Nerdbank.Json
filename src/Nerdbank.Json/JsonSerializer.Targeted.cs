@@ -3,7 +3,9 @@
 
 #pragma warning disable SA1601 // Partial elements are documented on their primary declaration.
 
+#if !NETWASM
 using System.Linq.Expressions;
+#endif
 using System.Text;
 
 namespace Nerdbank.Json;
@@ -65,6 +67,7 @@ public partial record JsonSerializer
 		return this.DeserializeAtCore(ref reader, path, null, targetShape, missingBehavior, cancellationToken);
 	}
 
+#if !NETWASM
 	/// <summary>
 	/// Deserializes only the value selected by a member-access expression, skipping unrelated JSON.
 	/// </summary>
@@ -91,6 +94,7 @@ public partial record JsonSerializer
 		JsonReader reader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
 		return this.DeserializeAtCore(ref reader, parsedPath, converters, targetShape, missingBehavior, cancellationToken);
 	}
+#endif
 
 #if NET
 	/// <summary>
@@ -118,6 +122,7 @@ public partial record JsonSerializer
 	public TValue? DeserializeAt<TValue, TProvider>(string json, JsonPath path, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
 		where TProvider : IShapeable<TValue> => this.DeserializeAt(json, path, TProvider.GetTypeShape(), missingBehavior, cancellationToken);
 
+#if !NETWASM
 	/// <summary>
 	/// Deserializes only the value selected by a member-access expression, using the root type's own shape.
 	/// </summary>
@@ -130,6 +135,7 @@ public partial record JsonSerializer
 	/// <returns>The deserialized value.</returns>
 	public TValue? DeserializeAt<TRoot, TValue>(string json, Expression<Func<TRoot, TValue>> path, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
 		where TRoot : IShapeable<TRoot> => this.DeserializeAt(json, path, TRoot.GetTypeShape(), missingBehavior, cancellationToken);
+#endif
 #endif
 
 	private TValue? DeserializeAtCore<TValue>(ref JsonReader reader, JsonPath path, JsonConverter?[]? converters, ITypeShape<TValue> targetShape, MissingPathBehavior missingBehavior, CancellationToken cancellationToken)

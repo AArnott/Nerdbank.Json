@@ -61,7 +61,7 @@ public static partial class JsonSerializerExtensions
 		{
 			return cache is null ? TypeShapeResolver.ResolveDynamicOrThrow<T>() : cache.ResolveDynamicTypeShapeOrThrow<T>();
 		}
-		catch (NotSupportedException ex) when (typeof(T).IsArray)
+		catch (NotSupportedException ex) when (IsArray<T>())
 		{
 			throw new NotSupportedException(
 				$"The type '{typeof(T).FullName}' does not have a generated shape. " +
@@ -83,7 +83,7 @@ public static partial class JsonSerializerExtensions
 		{
 			return cache.ResolveDynamicTypeShapeOrThrow<T, TProvider>();
 		}
-		catch (NotSupportedException ex) when (typeof(T).IsArray)
+		catch (NotSupportedException ex) when (IsArray<T>())
 		{
 			throw new NotSupportedException(
 				$"The type '{typeof(T).FullName}' does not have a generated shape on the witness type '{typeof(TProvider).FullName}'. " +
@@ -96,4 +96,11 @@ public static partial class JsonSerializerExtensions
 				ex);
 		}
 	}
+
+	private static bool IsArray<T>() =>
+#if NETWASM
+		false; // NetWasm: no Type.IsArray. This only affects the exception message.
+#else
+		typeof(T).IsArray;
+#endif
 }

@@ -14,6 +14,19 @@ namespace Nerdbank.Json;
 /// </summary>
 internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 {
+	/// <summary>
+	/// Determines whether an enumerable shape describes a multidimensional array.
+	/// </summary>
+	/// <param name="enumerableShape">The shape.</param>
+	/// <returns><see langword="true"/> for multidimensional arrays.</returns>
+	internal static bool IsMultidimensionalArray(IEnumerableTypeShape enumerableShape) =>
+#if NETWASM
+		// NetWasm: no Type.IsArray; only arrays report a rank above one.
+		enumerableShape.Rank > 1;
+#else
+		enumerableShape.Type.IsArray && enumerableShape.Rank > 1;
+#endif
+
 	private readonly ConverterCache owner;
 	private readonly JsonSchemaContext context;
 
@@ -87,7 +100,7 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 	public override object? VisitEnumerable<TEnumerable, TElement>(IEnumerableTypeShape<TEnumerable, TElement> enumerableShape, object? state = null)
 	{
 		JsonSchema element = this.context.GetSchema(enumerableShape.ElementType);
-		if (enumerableShape.Type.IsArray && enumerableShape.Rank > 1)
+		if (IsMultidimensionalArray(enumerableShape))
 		{
 			JsonSchema nested = element;
 			for (int i = 0; i < enumerableShape.Rank; i++)
@@ -148,10 +161,12 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 			return true;
 		}
 
+#if !NETWASM // NetWasm: no Type.IsValueType; rely on the nullability annotations below.
 		if (propertyType.IsValueType)
 		{
 			return false;
 		}
+#endif
 
 		bool isNonNullableReference = property.HasSetter ? property.IsSetterNonNullable : property.IsGetterNonNullable;
 		return !isNonNullableReference;
@@ -170,6 +185,7 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 			return false;
 		}
 
+#if !NETWASM // NetWasm: no CustomAttributeData (and MemberInfo is never supplied).
 		foreach (CustomAttributeData attribute in memberInfo.CustomAttributes)
 		{
 			if (attribute.AttributeType.FullName == "System.Runtime.CompilerServices.RequiredMemberAttribute")
@@ -177,6 +193,7 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 				return true;
 			}
 		}
+#endif
 
 		return false;
 	}

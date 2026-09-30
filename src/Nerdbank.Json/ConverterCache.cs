@@ -266,7 +266,13 @@ internal sealed class ConverterCache
 		return new ReferencePreservingJsonConverter<T>(converter);
 	}
 
-	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
+	private static bool RequiresReferencePreservation(Type type) =>
+#if NETWASM
+		// NetWasm: System.Type.IsValueType is unavailable; reference preservation is not supported.
+		false;
+#else
+		!type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
+#endif
 
 	private bool TryGetRuntimeProfferedConverter(Type type, ITypeShape shape, out JsonConverter? converter)
 	{
@@ -275,8 +281,11 @@ internal sealed class ConverterCache
 			return true;
 		}
 
-		if (this.configuration.ConverterTypes.TryGetConverterType(type, out Type? converterType) ||
-			(type.IsGenericType && this.configuration.ConverterTypes.TryGetConverterType(type.GetGenericTypeDefinition(), out converterType)))
+		if (this.configuration.ConverterTypes.TryGetConverterType(type, out Type? converterType)
+#if !NETWASM // NetWasm: no generic type definitions at runtime.
+			|| (type.IsGenericType && this.configuration.ConverterTypes.TryGetConverterType(type.GetGenericTypeDefinition(), out converterType))
+#endif
+			)
 		{
 			converter = ActivateAssociatedConverterType(type, converterType, shape);
 			return true;

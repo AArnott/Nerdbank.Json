@@ -36,9 +36,13 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 	{
 		JsonConverter<TElement> elementConverter = this.GetConverter(enumerableShape.ElementType, attributeProvider: null);
 
-		if (enumerableShape.Type.IsArray && enumerableShape.Rank > 1)
+		if (JsonSchemaVisitor.IsMultidimensionalArray(enumerableShape))
 		{
+#if NETWASM
+			throw new NotSupportedException("Multidimensional arrays are not supported on NetWasm (no Array.CreateInstance).");
+#else
 			return new JsonMultidimensionalArrayConverter<TEnumerable, TElement>(elementConverter, enumerableShape.Rank);
+#endif
 		}
 
 		Func<TEnumerable, IEnumerable<TElement>> getEnumerable = enumerableShape.GetGetEnumerable();
@@ -157,7 +161,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 	{
 		var visitorState = (JsonParameterVisitorState)(state ?? throw new ArgumentNullException(nameof(state)));
 		JsonConverter<TParameterType> converter = this.GetConverter(parameterShape.ParameterType, parameterShape.AttributeProvider);
-		bool isNonNullableReferenceType = parameterShape.IsNonNullable && !typeof(TParameterType).IsValueType;
+		bool isNonNullableReferenceType = parameterShape.IsNonNullable && !TypeTraits.IsValueType<TParameterType>();
 		return new JsonConstructorParameter<TArgumentState, TParameterType>(parameterShape.Name, visitorState.SerializedPropertyName, parameterShape.IsRequired, parameterShape.GetSetter(), converter, isNonNullableReferenceType);
 	}
 
@@ -165,10 +169,12 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 	{
 		if (ReferenceEquals(state, ExtensionDataSentinel))
 		{
+#if !NETWASM // NetWasm: System.Type cannot validate these shape requirements; invalid members fail at runtime instead.
 			if (!typeof(TPropertyType).IsClass)
 			{
 				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must be a reference-typed dictionary property.");
 			}
+#endif
 
 			Getter<TDeclaringType, TPropertyType>? extensionGetter = propertyShape.HasGetter ? propertyShape.GetGetter() : null;
 			Setter<TDeclaringType, TPropertyType>? extensionSetter = propertyShape.HasSetter ? propertyShape.GetSetter() : null;
@@ -177,6 +183,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must be readable or writable.");
 			}
 
+#if !NETWASM
 			if (!typeof(IEnumerable<KeyValuePair<string, string>>).IsAssignableFrom(typeof(TPropertyType)))
 			{
 				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must implement IEnumerable<KeyValuePair<string, string>>.");
@@ -191,6 +198,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			{
 				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must be assignable from Dictionary<string, string>.");
 			}
+#endif
 
 			return new JsonExtensionData<TDeclaringType, TPropertyType>(extensionGetter, extensionSetter);
 		}
@@ -206,7 +214,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		}
 
 		string propertyName = owner.GetSerializedPropertyName(propertyShape.Name, propertyShape.AttributeProvider);
-		bool isNonNullableReferenceType = !typeof(TPropertyType).IsValueType && (propertyShape.IsSetterNonNullable || (!propertyShape.HasSetter && propertyShape.IsGetterNonNullable));
+		bool isNonNullableReferenceType = !TypeTraits.IsValueType<TPropertyType>() && (propertyShape.IsSetterNonNullable || (!propertyShape.HasSetter && propertyShape.IsGetterNonNullable));
 		return new JsonProperty<TDeclaringType, TPropertyType>(propertyName, propertyShape.Name, getter, setter, converter, deserializeIntoExistingInstance, isRequired, isNonNullableReferenceType);
 	}
 
@@ -270,6 +278,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			return false;
 		}
 
+#if !NETWASM // NetWasm: no CustomAttributeData (and MemberInfo is never supplied).
 		foreach (CustomAttributeData attribute in memberInfo.CustomAttributes)
 		{
 			if (attribute.AttributeType.FullName == "System.Runtime.CompilerServices.RequiredMemberAttribute")
@@ -277,6 +286,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 				return true;
 			}
 		}
+#endif
 
 		return false;
 	}
