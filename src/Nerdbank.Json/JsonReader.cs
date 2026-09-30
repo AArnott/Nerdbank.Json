@@ -60,6 +60,13 @@ public ref struct JsonReader
 	internal readonly int BytesConsumed => this.position;
 
 	/// <summary>
+	/// Creates an independent copy of this reader at the current position.
+	/// </summary>
+	/// <returns>A copy of this reader positioned at the same location.</returns>
+	/// <remarks>Advancing the returned reader does not affect this instance.</remarks>
+	public readonly JsonReader CreatePeekReader() => this;
+
+	/// <summary>
 	/// Attempts to read a JSON <see langword="null"/> literal.
 	/// </summary>
 	/// <returns><see langword="true"/> if a <see langword="null"/> literal was consumed; otherwise, <see langword="false"/>.</returns>
