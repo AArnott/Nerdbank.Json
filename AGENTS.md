@@ -2,42 +2,74 @@
 
 ## High level guidance
 
-- Review `CONTRIBUTING.md` before building or testing.
-- Run `.github/Prime-ForCopilot.ps1` once before any `dotnet` or `msbuild` command.
-  Run it again if a build reports missing git objects or problems caused by a shallow clone.
+* Review the `CONTRIBUTING.md` file for instructions to build and test the software.
+* Run the `.github/Prime-ForCopilot.ps1` script (once) before running any `dotnet` or `msbuild` commands.
+  If you see any build errors about not finding git objects or a shallow clone, it may be time to run this script again.
 
-## Software design
+## Software Design
 
-- Design APIs to be highly testable, and thoroughly test all functionality.
-- Practice TDD for new serializer functionality whenever practical: add focused failing tests first, or at minimum include focused tests in the same change that introduces the behavior.
-- Treat performance as a first-class engineering principle. Prefer allocation-conscious low-level reader and writer paths, and justify complex optimizations with targeted measurements.
-- Keep low-level serialization APIs streaming-friendly and independent from other serializer engines.
-- Prefer immutable, instance-scoped configuration. Do not introduce mutable global serializer defaults.
-- All shipping libraries and default code paths must be trimming-safe and NativeAOT-ready.
-- Any useful feature that cannot be NativeAOT-safe must be disabled by default and activated only by an explicit method call. Not calling that method must leave the application NativeAOT-safe.
-- Do not use `InternalsVisibleTo`. Test through public APIs or move reusable test support into an appropriate public test-support package.
-- Optimize public APIs for clarity, performance, maintainability, and long-term compatibility.
-- Avoid binary breaking changes in public APIs of projects under `src` unless their project files set `IsPackable` to `false`.
-- New features require thorough tests, docfx documentation, and samples where a runnable example improves understanding.
+* Design APIs to be highly testable, and all functionality should be tested.
+* Avoid introducing binary breaking changes in public APIs of projects under `src` unless their project files have `IsPackable` set to `false`.
 
 ## Testing
 
-This repository uses TUnit with Microsoft.Testing.Platform (MTP v2). Traditional VSTest `--filter` expressions do not work.
+**IMPORTANT**: This repository uses TUnit with Microsoft.Testing.Platform (MTP v2). Traditional `--filter` syntax does NOT work. Use the options below instead.
 
-- Build with `dotnet build -c Release`.
-- Run all tests with `dotnet test --no-build -c Release`.
-- Run one project with `dotnet test --project test/Library.Tests/Library.Tests.csproj --no-build -c Release`.
-- Put runner options after `--`. Use `--treenode-filter` for targeted test selection and `--list-tests` to inspect available test node paths.
-- Skip unstable tests with an appropriate `--treenode-filter` expression when applicable.
+* There should generally be one test project (under the `test` directory) per shipping project (under the `src` directory). Test projects are named after the project being tested with a `.Tests` suffix.
+* Tests use TUnit with Microsoft.Testing.Platform (MTP v2), while retaining xUnit assertions. Traditional VSTest `--filter` syntax does NOT work.
 
-## Documentation
+### Running Tests
 
-- Put API and conceptual documentation under `docfx/`.
-- Put runnable examples under `samples/` and link to them from docfx when they improve understanding.
-- Build documentation with `dotnet docfx docfx/docfx.json --warningsAsErrors --disableGitFeatures`.
+**Run all tests**:
+```bash
+dotnet test --no-build -c Release
+```
+
+**Run tests for a specific test project**:
+```bash
+dotnet test --project test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj --no-build -c Release
+```
+
+**Run a single test method**:
+```bash
+dotnet test --project test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj --no-build -c Release -- --treenode-filter "/*/*/ClassName/MethodName"
+```
+
+**Run all tests in a test class**:
+```bash
+dotnet test --project test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj --no-build -c Release -- --treenode-filter "/*/*/ClassName/*"
+```
+
+**Run tests with wildcard matching** (supports wildcards at beginning and/or end):
+```bash
+dotnet test --project test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj --no-build -c Release -- --treenode-filter "/*/*/*/*Pattern*"
+```
+
+**Run tests with a specific property**:
+```bash
+dotnet test --project test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj --no-build -c Release -- --treenode-filter "/*/*/*/*[PropertyName=value]"
+```
+
+**Run tests for a specific framework only**:
+```bash
+dotnet test --project test/Nerdbank.Json.Tests/Nerdbank.Json.Tests.csproj --no-build -c Release --framework net8.0
+```
+
+**List all available tests without running them**:
+```bash
+cd test/Nerdbank.Json.Tests
+dotnet run --no-build -c Release --framework net8.0 -- --list-tests
+```
+
+**Key points about test filtering with TUnit / MTP v2**:
+- Options after `--` are passed to the test runner, not to `dotnet test`
+- Use `--treenode-filter` to select tests by assembly, namespace, class, method, or property
+- Traditional VSTest `--filter` expressions do NOT work
+- Wildcards `*` are supported in tree node segments
+- See `--help` for query filter language for advanced scenarios
 
 ## Coding style
 
-- Honor StyleCop rules and fix build warnings after tests pass.
-- Use namespace statements instead of namespace blocks in new C# files.
-- Add API documentation comments to all new public and internal members.
+* Honor StyleCop rules and fix any reported build warnings *after* getting tests to pass.
+* In C# files, use namespace *statements* instead of namespace *blocks* for all new files.
+* Add API doc comments to all new public and internal members in shipping code under `src`. Tests and samples do not require XML API documentation; do not add XML docs to test or sample members solely to satisfy this rule.

@@ -1,3 +1,4 @@
+using TUnit;
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
@@ -6,7 +7,7 @@ using VerifyCS = Nerdbank.Json.Analyzers.Tests.Verifier.AnalyzerVerifier<Nerdban
 
 public class JsonShapeUsageAnalyzerTests
 {
-	[Fact]
+	[Test]
 	public async Task NoIssuesForSupportedShapes()
 	{
 		string source = /* lang=c#-test */ """
@@ -27,7 +28,7 @@ public class JsonShapeUsageAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task NoIssuesForDelegateMemberOnGenerateShapeType()
 	{
 		string source = /* lang=c#-test */ """
@@ -46,7 +47,7 @@ public class JsonShapeUsageAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task NoIssuesForUnsupportedDictionaryKeyMemberOnGenerateShapeType()
 	{
 		string source = /* lang=c#-test */ """
@@ -71,7 +72,7 @@ public class JsonShapeUsageAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task NoIssuesForUnsupportedDictionaryKeyWitnessTarget()
 	{
 		string source = /* lang=c#-test */ """

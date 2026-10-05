@@ -1,3 +1,4 @@
+using TUnit;
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
@@ -6,7 +7,7 @@ using VerifyCS = Nerdbank.Json.Analyzers.Tests.Verifier.AnalyzerVerifier<Nerdban
 
 public class RefParametersForRefStructsAnalyzerTests
 {
-	[Fact]
+	[Test]
 	public async Task MethodWithRefJsonWriterParameter()
 	{
 		string source = /* lang=c#-test */ """
@@ -23,7 +24,7 @@ public class RefParametersForRefStructsAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task MethodWithJsonWriterParameterMissingRef()
 	{
 		string source = /* lang=c#-test */ """

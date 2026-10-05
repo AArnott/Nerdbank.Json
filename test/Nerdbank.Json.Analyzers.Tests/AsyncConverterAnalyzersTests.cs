@@ -1,3 +1,4 @@
+using TUnit;
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
@@ -5,7 +6,7 @@ using VerifyCS = Nerdbank.Json.Analyzers.Tests.Verifier.AnalyzerVerifier<Nerdban
 
 public class AsyncConverterAnalyzersTests
 {
-	[Fact]
+	[Test]
 	public async Task PreferAsyncSerialization_NotOverridden_Reports()
 	{
 		string source = /* lang=c#-test */ """
@@ -23,7 +24,7 @@ public class AsyncConverterAnalyzersTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task PreferAsyncSerialization_Overridden_NoDiagnostic()
 	{
 		string source = /* lang=c#-test */ """
@@ -42,7 +43,7 @@ public class AsyncConverterAnalyzersTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task SyncOnlyConverter_NoDiagnostic()
 	{
 		string source = /* lang=c#-test */ """
@@ -58,7 +59,7 @@ public class AsyncConverterAnalyzersTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task AbstractAsyncConverter_NoPreferDiagnostic()
 	{
 		string source = /* lang=c#-test */ """
@@ -76,7 +77,7 @@ public class AsyncConverterAnalyzersTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task NonConverter_Ignored()
 	{
 		string source = /* lang=c#-test */ """
@@ -92,7 +93,7 @@ public class AsyncConverterAnalyzersTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task Writer_NotReturnedBeforeExit_Reports()
 	{
 		string source = /* lang=c#-test */ """
@@ -116,7 +117,7 @@ public class AsyncConverterAnalyzersTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task Writer_ReturnedBeforeExit_NoDiagnostic()
 	{
 		string source = /* lang=c#-test */ """
@@ -141,7 +142,7 @@ public class AsyncConverterAnalyzersTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task Writer_AwaitWhileHeld_Reports()
 	{
 		string source = /* lang=c#-test */ """
@@ -168,7 +169,7 @@ public class AsyncConverterAnalyzersTests
 			VerifyCS.Diagnostic("NBJson033").WithSpan(14, 2, 14, 3));
 	}
 
-	[Fact]
+	[Test]
 	public async Task Writer_ReusedAfterReturn_Reports()
 	{
 		string source = /* lang=c#-test */ """
@@ -193,7 +194,7 @@ public class AsyncConverterAnalyzersTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task Reader_NotReturnedBeforeExit_Reports()
 	{
 		string source = /* lang=c#-test */ """
@@ -217,7 +218,7 @@ public class AsyncConverterAnalyzersTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task Reader_ReturnedBeforeExit_NoDiagnostic()
 	{
 		string source = /* lang=c#-test */ """
@@ -243,7 +244,7 @@ public class AsyncConverterAnalyzersTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task Reader_ReusedAfterReturn_Reports()
 	{
 		string source = /* lang=c#-test */ """
@@ -267,7 +268,7 @@ public class AsyncConverterAnalyzersTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task Reader_OtherMethodWhileHeld_Reports()
 	{
 		string source = /* lang=c#-test */ """

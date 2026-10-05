@@ -1,3 +1,4 @@
+using TUnit;
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
@@ -6,7 +7,7 @@ using VerifyCS = Nerdbank.Json.Analyzers.Tests.Verifier.AnalyzerVerifier<Nerdban
 
 public class JsonCollectionComparerAnalyzerTests
 {
-	[Fact]
+	[Test]
 	public async Task Dictionary_WithCompatibleEqualityComparer_NoDiagnostic()
 	{
 		string source = /* lang=c#-test */ """
@@ -34,7 +35,7 @@ public class JsonCollectionComparerAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task HashSet_WithCompatibleEqualityComparer_NoDiagnostic()
 	{
 		string source = /* lang=c#-test */ """
@@ -62,7 +63,7 @@ public class JsonCollectionComparerAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task SortedDictionary_WithCompatibleOrderComparer_NoDiagnostic()
 	{
 		string source = /* lang=c#-test */ """
@@ -89,7 +90,7 @@ public class JsonCollectionComparerAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task ConstructorParameter_WithCompatibleComparer_NoDiagnostic()
 	{
 		string source = /* lang=c#-test */ """
@@ -116,7 +117,7 @@ public class JsonCollectionComparerAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task Attribute_OnNonCollectionMember_ReportsDiagnostic()
 	{
 		string source = /* lang=c#-test */ """
@@ -144,7 +145,7 @@ public class JsonCollectionComparerAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task Comparer_ForWrongElementType_ReportsDiagnostic()
 	{
 		string source = /* lang=c#-test */ """
@@ -172,7 +173,7 @@ public class JsonCollectionComparerAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task Comparer_WithoutParameterlessConstructor_ReportsDiagnostic()
 	{
 		string source = /* lang=c#-test */ """
