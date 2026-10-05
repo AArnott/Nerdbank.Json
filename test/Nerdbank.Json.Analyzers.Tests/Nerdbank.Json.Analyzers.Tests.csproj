@@ -2,6 +2,7 @@
     <PropertyGroup>
         <TargetFrameworks>net8.0</TargetFrameworks>
         <OutputType>Exe</OutputType>
+        <PublishNativeAOTTests>false</PublishNativeAOTTests>
     </PropertyGroup>
 
     <ItemGroup>
