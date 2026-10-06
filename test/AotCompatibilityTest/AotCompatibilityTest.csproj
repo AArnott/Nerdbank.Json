@@ -11,9 +11,11 @@
 
   <ItemGroup>
     <TrimmerRootAssembly Include="Nerdbank.Json" />
+    <TrimmerRootAssembly Include="Nerdbank.Json.AspNetCoreMvcFormatter" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nerdbank.Json\Nerdbank.Json.csproj" />
+    <ProjectReference Include="..\..\src\Nerdbank.Json.AspNetCoreMvcFormatter\Nerdbank.Json.AspNetCoreMvcFormatter.csproj" />
   </ItemGroup>
 </Project>
