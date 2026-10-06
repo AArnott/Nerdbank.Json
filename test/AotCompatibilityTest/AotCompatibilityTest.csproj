@@ -1,15 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
-    <Import Project="..\AOT.props" />
-    <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
-        <IsTestProject>false</IsTestProject>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>false</IsTestProject>
+    <RuntimeIdentifier>$(DefaultRuntimeIdentifier)</RuntimeIdentifier>
+    <UseAppHost>true</UseAppHost>
+  </PropertyGroup>
 
-    <ItemGroup>
-        <TrimmerRootAssembly Include="Nerdbank.Json" />
-    </ItemGroup>
+  <Import Project="..\AOT.props" />
 
-    <ItemGroup>
-        <ProjectReference Include="..\..\src\Nerdbank.Json\Nerdbank.Json.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <TrimmerRootAssembly Include="Nerdbank.Json" />
+    <TrimmerRootAssembly Include="Nerdbank.Json.AspNetCoreMvcFormatter" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Nerdbank.Json\Nerdbank.Json.csproj" />
+    <ProjectReference Include="..\..\src\Nerdbank.Json.AspNetCoreMvcFormatter\Nerdbank.Json.AspNetCoreMvcFormatter.csproj" />
+  </ItemGroup>
 </Project>

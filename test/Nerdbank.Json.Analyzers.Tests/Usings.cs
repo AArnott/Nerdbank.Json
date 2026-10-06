@@ -7,4 +7,7 @@ global using Microsoft.CodeAnalysis.CSharp;
 global using Microsoft.CodeAnalysis.Diagnostics;
 global using Microsoft.CodeAnalysis.Testing;
 global using Nerdbank.Json;
+global using TUnit;
+global using TUnit.Core.Logging;
 global using Xunit;
+global using Assembly = System.Reflection.Assembly;

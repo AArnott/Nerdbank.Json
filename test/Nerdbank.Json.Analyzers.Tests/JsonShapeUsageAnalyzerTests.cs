@@ -6,7 +6,7 @@ using VerifyCS = Nerdbank.Json.Analyzers.Tests.Verifier.AnalyzerVerifier<Nerdban
 
 public class JsonShapeUsageAnalyzerTests
 {
-	[Fact]
+	[Test]
 	public async Task NoIssuesForSupportedShapes()
 	{
 		string source = /* lang=c#-test */ """
@@ -27,7 +27,7 @@ public class JsonShapeUsageAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task NoIssuesForDelegateMemberOnGenerateShapeType()
 	{
 		string source = /* lang=c#-test */ """
@@ -46,7 +46,7 @@ public class JsonShapeUsageAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task NoIssuesForUnsupportedDictionaryKeyMemberOnGenerateShapeType()
 	{
 		string source = /* lang=c#-test */ """
@@ -71,7 +71,7 @@ public class JsonShapeUsageAnalyzerTests
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
 
-	[Fact]
+	[Test]
 	public async Task NoIssuesForUnsupportedDictionaryKeyWitnessTarget()
 	{
 		string source = /* lang=c#-test */ """

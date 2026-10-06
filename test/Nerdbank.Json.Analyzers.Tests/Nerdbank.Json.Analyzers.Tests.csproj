@@ -2,12 +2,15 @@
     <PropertyGroup>
         <TargetFrameworks>net8.0</TargetFrameworks>
         <OutputType>Exe</OutputType>
+        <PublishNativeAOTTests>false</PublishNativeAOTTests>
     </PropertyGroup>
 
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing" />
         <PackageReference Include="PolyType" />
-        <PackageReference Include="xunit.v3.mtp-v2" />
+        <PackageReference Include="TUnit.Engine" />
+        <PackageReference Include="xunit.v3.assert.aot" Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)','net9.0'))" />
+        <PackageReference Include="xunit.v3.assert" Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)','net9.0'))" />
     </ItemGroup>
 
     <ItemGroup>
