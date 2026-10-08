@@ -7,7 +7,7 @@ public partial class JsonSchemaTests
 	public void Draft4_UsesDraft4DefinitionsAndReferences()
 	{
 		JsonSchemaOptions options = new() { Dialect = JsonSchemaDialect.Draft4 };
-		string schema = this.Serializer.GetJsonSchema<TreeNode>(options);
+		string schema = this.Serializer.GetJsonSchema(Shape<TreeNode, TreeNode>(), options);
 
 		Assert.Contains("\"$schema\":\"http://json-schema.org/draft-04/schema#\"", schema, StringComparison.Ordinal);
 		Assert.Contains("\"definitions\":", schema, StringComparison.Ordinal);

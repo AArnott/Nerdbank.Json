@@ -38,8 +38,14 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	/// </summary>
 	public JsonSchemaDialect Dialect { get; }
 
+	/// <summary>
+	/// Gets the converter cache that owns the schema generation operation.
+	/// </summary>
 	internal ConverterCache Owner => this.owner;
 
+	/// <summary>
+	/// Gets the keyword used for reusable schema definitions in the selected dialect.
+	/// </summary>
 	internal string DefinitionsKeyword => this.Dialect switch
 	{
 		JsonSchemaDialect.Draft4 => "definitions",
@@ -47,6 +53,9 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		_ => throw new NotSupportedException($"Unsupported JSON Schema dialect: {this.Dialect}."),
 	};
 
+	/// <summary>
+	/// Gets the meta-schema URI for the selected dialect.
+	/// </summary>
 	internal string SchemaUri => this.Dialect switch
 	{
 		JsonSchemaDialect.Draft4 => "http://json-schema.org/draft-04/schema#",
