@@ -15,7 +15,7 @@ namespace Nerdbank.Json;
 /// </summary>
 internal static class JsonSchemaScalars
 {
-	internal static bool TryGetScalarSchema(Type type, out JsonSchema schema)
+	internal static bool TryGetScalarSchema(Type type, JsonSchemaContext context, out JsonSchema schema)
 	{
 		schema = new JsonSchema();
 #if NET8_0_OR_GREATER
@@ -116,11 +116,11 @@ internal static class JsonSchemaScalars
 		}
 		else if (type == typeof(Point))
 		{
-			schema.Set("type", "array")
-				.SetSchemas("prefixItems", [new JsonSchema().Set("type", "integer"), new JsonSchema().Set("type", "integer")])
+			schema = context.CreateTupleSchema(
+				[new JsonSchema().Set("type", "integer"), new JsonSchema().Set("type", "integer")],
+				new JsonSchema().Set("type", "integer"))
 				.Set("minItems", 2L)
-				.Set("maxItems", 2L)
-				.Set("items", new JsonSchema().Set("type", "integer"));
+				.Set("maxItems", 2L);
 		}
 		else
 		{
