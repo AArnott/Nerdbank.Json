@@ -69,6 +69,12 @@ public sealed class JsonSchema
 	/// <returns>This instance.</returns>
 	public JsonSchema SetStrings(string keyword, IReadOnlyList<string> value) => this.Add(keyword, value);
 
+	/// <summary>Sets a keyword whose value is an array of integers (for example <c>enum</c>).</summary>
+	/// <param name="keyword">The keyword name.</param>
+	/// <param name="value">The integer array.</param>
+	/// <returns>This instance.</returns>
+	public JsonSchema SetIntegers(string keyword, IReadOnlyList<long> value) => this.Add(keyword, value);
+
 	/// <summary>Sets a keyword whose value is an ordered map of names to schemas (for example <c>properties</c>).</summary>
 	/// <param name="keyword">The keyword name.</param>
 	/// <param name="value">The ordered map.</param>
@@ -202,6 +208,9 @@ public sealed class JsonSchema
 			case IReadOnlyList<string> strings:
 				WriteStringArray(ref writer, strings);
 				break;
+			case IReadOnlyList<long> integers:
+				WriteIntegerArray(ref writer, integers);
+				break;
 			case IReadOnlyList<KeyValuePair<string, JsonSchema>> map:
 				WriteMap(ref writer, map);
 				break;
@@ -237,6 +246,22 @@ public sealed class JsonSchema
 			}
 
 			writer.WriteStringValue(strings[i]);
+		}
+
+		writer.WriteEndArray();
+	}
+
+	private static void WriteIntegerArray(ref JsonWriter writer, IReadOnlyList<long> integers)
+	{
+		writer.WriteStartArray();
+		for (int i = 0; i < integers.Count; i++)
+		{
+			if (i > 0)
+			{
+				writer.WriteValueSeparator();
+			}
+
+			writer.WriteNumberValue(integers[i]);
 		}
 
 		writer.WriteEndArray();

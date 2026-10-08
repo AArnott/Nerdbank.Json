@@ -244,5 +244,6 @@ public partial class JsonSchemaTests : TestBase
 	[GenerateShapeFor<int[,]>]
 	[GenerateShapeFor<Fruit>]
 	[GenerateShapeFor<Dictionary<string, int>>]
+	[GenerateShapeFor<System.Drawing.Point>]
 	internal partial class Witness;
 }
