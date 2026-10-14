@@ -13,7 +13,7 @@ user-invocable: false
 
 There *may* be unstable tests that are attributed as such.
 Running the [dotnet-test-cloud.ps1](../../../tools/dotnet-test-cloud.ps1) script will execute all previously built tests except the unstable ones.
-The commands below will *not* automatically exclude unstable tests, but you may do so by adding a parameter to filter out those that set their `TestCategory` property to `FailsInCloudTest`.
+The commands below will *not* automatically exclude unstable tests, but you may do so by adding a parameter to filter out those that set their `Category` property to `FailsInCloudTest`.
 
 **Run all tests** (from the root of the repository):
 ```bash
