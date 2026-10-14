@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 #pragma warning disable SA1204 // Static ordering relaxed for this schema orchestration type.
+#pragma warning disable SA1202 // Public converter APIs precede internal schema orchestration details.
 #pragma warning disable SA1600 // Internal schema orchestration members are intentionally undocumented in this file.
 
 using System.Collections.Generic;
@@ -11,14 +12,12 @@ using System.Text;
 namespace Nerdbank.Json;
 
 /// <summary>
-/// Drives generation of a JSON Schema document, resolving nested schemas, shared <c>$defs</c> definitions, and
+/// Drives generation of a JSON Schema document, resolving nested schemas, shared definitions, and
 /// recursive types. Provided to <see cref="JsonConverter.GetJsonSchema(JsonSchemaContext, ITypeShape)"/> so custom
 /// converters can describe nested types consistently.
 /// </summary>
 public sealed class JsonSchemaContext : ITypeShapeFunc
 {
-	internal const string Dialect = "https://json-schema.org/draft/2020-12/schema";
-
 	private readonly ConverterCache owner;
 	private readonly JsonSchemaVisitor visitor;
 	private readonly Dictionary<Type, string> references = new();
@@ -27,13 +26,42 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	private readonly HashSet<string> usedNames = new(StringComparer.Ordinal);
 	private readonly HashSet<Type> recursionGuard = new();
 
-	internal JsonSchemaContext(ConverterCache owner)
+	internal JsonSchemaContext(ConverterCache owner, JsonSchemaDialect dialect)
 	{
 		this.owner = owner;
+		this.Dialect = dialect;
 		this.visitor = new JsonSchemaVisitor(owner, this);
 	}
 
+	/// <summary>
+	/// Gets the dialect that converter-generated schema fragments must conform to.
+	/// </summary>
+	public JsonSchemaDialect Dialect { get; }
+
+	/// <summary>
+	/// Gets the converter cache that owns the schema generation operation.
+	/// </summary>
 	internal ConverterCache Owner => this.owner;
+
+	/// <summary>
+	/// Gets the keyword used for reusable schema definitions in the selected dialect.
+	/// </summary>
+	internal string DefinitionsKeyword => this.Dialect switch
+	{
+		JsonSchemaDialect.Draft4 => "definitions",
+		JsonSchemaDialect.Draft2020_12 => "$defs",
+		_ => throw new NotSupportedException($"Unsupported JSON Schema dialect: {this.Dialect}."),
+	};
+
+	/// <summary>
+	/// Gets the meta-schema URI for the selected dialect.
+	/// </summary>
+	internal string SchemaUri => this.Dialect switch
+	{
+		JsonSchemaDialect.Draft4 => "http://json-schema.org/draft-04/schema#",
+		JsonSchemaDialect.Draft2020_12 => "https://json-schema.org/draft/2020-12/schema",
+		_ => throw new NotSupportedException($"Unsupported JSON Schema dialect: {this.Dialect}."),
+	};
 
 	/// <summary>
 	/// Gets the schema for a type shape, resolving shared definitions and recursion.
@@ -50,13 +78,13 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			return Reference(existing);
 		}
 
-		if (JsonSchemaScalars.TryGetScalarSchema(type, out JsonSchema scalar))
+		if (JsonSchemaScalars.TryGetScalarSchema(type, this, out JsonSchema scalar))
 		{
 			return scalar;
 		}
 
 		string defName = this.GetDefinitionName(type);
-		string refPath = "#/$defs/" + defName;
+		string refPath = "#/" + this.DefinitionsKeyword + "/" + defName;
 		if (!this.recursionGuard.Add(type))
 		{
 			this.references[type] = refPath;
@@ -74,6 +102,55 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		}
 
 		return schema;
+	}
+
+	/// <summary>
+	/// Creates an array schema with positional constraints using the selected dialect.
+	/// </summary>
+	/// <param name="items">The schema for each successive array position.</param>
+	/// <param name="additionalItemsSchema">The schema for positions after those in <paramref name="items"/>, if permitted.</param>
+	/// <returns>An array schema with the specified positional constraints.</returns>
+	/// <exception cref="ArgumentException"><paramref name="items"/> is empty.</exception>
+	public JsonSchema CreateTupleSchema(IReadOnlyList<JsonSchema> items, JsonSchema? additionalItemsSchema = null)
+	{
+		JsonSchema schema = new JsonSchema().Set("type", "array");
+		this.ApplyTupleSchema(schema, items, additionalItemsSchema);
+		return schema;
+	}
+
+	/// <summary>
+	/// Adds positional array constraints to an existing schema using the selected dialect.
+	/// </summary>
+	/// <param name="schema">The schema to modify.</param>
+	/// <param name="items">The schema for each successive array position.</param>
+	/// <param name="additionalItemsSchema">The schema for positions after those in <paramref name="items"/>, if permitted.</param>
+	/// <exception cref="ArgumentException"><paramref name="items"/> is empty.</exception>
+	public void ApplyTupleSchema(JsonSchema schema, IReadOnlyList<JsonSchema> items, JsonSchema? additionalItemsSchema = null)
+	{
+		Requires.NotNull(schema);
+		Requires.NotNull(items);
+		Requires.Argument(items.Count > 0, nameof(items), "At least one positional schema is required.");
+
+		if (this.Dialect == JsonSchemaDialect.Draft4)
+		{
+			schema.SetSchemas("items", items);
+			if (additionalItemsSchema is not null)
+			{
+				schema.Set("additionalItems", additionalItemsSchema);
+			}
+		}
+		else if (this.Dialect == JsonSchemaDialect.Draft2020_12)
+		{
+			schema.SetSchemas("prefixItems", items);
+			if (additionalItemsSchema is not null)
+			{
+				schema.Set("items", additionalItemsSchema);
+			}
+		}
+		else
+		{
+			throw new NotSupportedException($"Unsupported JSON Schema dialect: {this.Dialect}.");
+		}
 	}
 
 	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state)
@@ -96,7 +173,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	internal JsonSchema GenerateDocument(ITypeShape rootShape)
 	{
 		JsonSchema body = this.GetSchema(rootShape);
-		JsonSchema document = new JsonSchema().Set("$schema", Dialect);
+		JsonSchema document = new JsonSchema().Set("$schema", this.SchemaUri);
 		document.Append(body);
 
 		if (this.definitions.Count > 0)
@@ -104,7 +181,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			List<KeyValuePair<string, JsonSchema>> sorted = this.definitions
 				.OrderBy(pair => pair.Key, StringComparer.Ordinal)
 				.ToList();
-			document.SetMap("$defs", sorted);
+			document.SetMap(this.DefinitionsKeyword, sorted);
 		}
 
 		return document;
@@ -118,28 +195,37 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			JsonSchema discriminator = new();
 			if (alias is int tag)
 			{
-				discriminator.Set("const", tag);
+				if (this.Dialect == JsonSchemaDialect.Draft4)
+				{
+					discriminator.SetIntegers("enum", [(long)tag]);
+				}
+				else
+				{
+					discriminator.Set("const", tag);
+				}
 			}
 			else
 			{
-				discriminator.Set("const", (string)alias!);
+				string name = (string)alias!;
+				if (this.Dialect == JsonSchemaDialect.Draft4)
+				{
+					discriminator.SetStrings("enum", [name]);
+				}
+				else
+				{
+					discriminator.Set("const", name);
+				}
 			}
 
-			options.Add(Tuple(discriminator, caseSchema));
+			options.Add(this.CreateTupleSchema([discriminator, caseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
 		}
 
 		if (baseSchema is not null)
 		{
-			options.Add(Tuple(new JsonSchema().Set("type", "null"), baseSchema));
+			options.Add(this.CreateTupleSchema([new JsonSchema().Set("type", "null"), baseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
 		}
 
 		return new JsonSchema().SetSchemas("oneOf", options);
-
-		static JsonSchema Tuple(JsonSchema first, JsonSchema second) => new JsonSchema()
-			.Set("type", "array")
-			.SetSchemas("prefixItems", [first, second])
-			.Set("minItems", 2L)
-			.Set("maxItems", 2L);
 	}
 
 	private static JsonSchema CreateUndocumented(JsonConverter converter) => new JsonSchema()
