@@ -56,3 +56,7 @@ dotnet_diagnostic.SA1133.severity = silent
 
 # TUXU0001: xUnit code can be converted to TUnit code
 dotnet_diagnostic.TUXU0001.severity = none
+
+# NBMsgPack110: Add DefaultValueAttribute when using non-default initializers
+# Test models here are not MessagePack round-trip contracts.
+dotnet_diagnostic.NBMsgPack110.severity = none
