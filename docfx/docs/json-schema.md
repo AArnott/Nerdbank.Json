@@ -7,14 +7,14 @@ and NativeAOT-safe, and it reflects the serializer's configuration.
 
 [!code-csharp[](../../samples/cs/JsonSchemaExport.cs#JsonSchemaExport)]
 
-Pass `JsonSchemaOptions` to select JSON Schema Draft 4 when integrating with validators that do not support
-2020-12. The dialect applies to the entire document, including recursive definitions, union discriminators, and
-tuple arrays. The default remains Draft 2020-12.
+Pass <xref:Nerdbank.Json.JsonSchemaOptions> to select JSON Schema Draft 7 for use in OpenRPC documents, or Draft 4 for older validators.
+The dialect applies to the entire document, including recursive definitions, union discriminators, and tuple arrays.
+The default remains Draft 2020-12.
 
-```csharp
-string draft4Schema = serializer.GetJsonSchema<Product>(
-    new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft4 });
-```
+[!code-csharp[](../../samples/cs/JsonSchemaExport.cs#JsonSchemaDraft7)]
+
+Use <xref:Nerdbank.Json.JsonSchemaDialect.Draft4> instead to select Draft 4.
+Draft 4 and Draft 7 use an array-valued `items` keyword for tuples and `additionalItems` for any trailing item schema; Draft 2020-12 uses `prefixItems` and `items`, respectively.
 
 ## What the schema describes
 
@@ -30,11 +30,11 @@ string draft4Schema = serializer.GetJsonSchema<Product>(
 * **Arrays** — `type: array` with `items`; rectangular multidimensional arrays nest `items` per rank.
 * **Dictionaries** — `type: object` with `additionalProperties` describing the value type.
 * **Unions** — generated and runtime envelope unions produce a `oneOf` of two-element `[discriminator, payload]`
-  tuples (using `const` in Draft 2020-12 and single-value `enum` in Draft 4); duck-typing unions produce a `oneOf`
+  tuples (using `const` in Draft 7 and Draft 2020-12 and single-value `enum` in Draft 4); duck-typing unions produce a `oneOf`
   of the bare case objects.
 * **Reference preservation** — when enabled, a reference-typed schema becomes a `oneOf` of the `{"$ref": N}` and
   `{"$id": N, "$value": ...}` envelope forms.
-* **Recursive types** — described once under `$defs` (Draft 2020-12) or `definitions` (Draft 4) and referenced with
+* **Recursive types** — described once under `$defs` (Draft 2020-12) or `definitions` (Draft 4 and Draft 7) and referenced with
   `$ref` for a compact, deterministic document.
 
 ## Custom converters

@@ -4,12 +4,14 @@
 public partial class JsonSchemaTests
 {
 	[Test]
-	public void Draft4_UsesDraft4DefinitionsAndReferences()
+	[Arguments(JsonSchemaDialect.Draft4, "http://json-schema.org/draft-04/schema#")]
+	[Arguments(JsonSchemaDialect.Draft7, "http://json-schema.org/draft-07/schema#")]
+	public void LegacyDraft_UsesDefinitionsAndReferences(JsonSchemaDialect dialect, string schemaUri)
 	{
-		JsonSchemaOptions options = new() { Dialect = JsonSchemaDialect.Draft4 };
+		JsonSchemaOptions options = new() { Dialect = dialect };
 		string schema = this.Serializer.GetJsonSchema(Shape<TreeNode, TreeNode>(), options);
 
-		Assert.Contains("\"$schema\":\"http://json-schema.org/draft-04/schema#\"", schema, StringComparison.Ordinal);
+		Assert.Contains($"\"$schema\":\"{schemaUri}\"", schema, StringComparison.Ordinal);
 		Assert.Contains("\"definitions\":", schema, StringComparison.Ordinal);
 		Assert.Contains("#/definitions/TreeNode", schema, StringComparison.Ordinal);
 		Assert.DoesNotContain("\"$defs\":", schema, StringComparison.Ordinal);
@@ -42,12 +44,59 @@ public partial class JsonSchemaTests
 	}
 
 	[Test]
-	public void Draft4_PointUsesAdditionalItems()
+	[Arguments(JsonSchemaDialect.Draft4)]
+	[Arguments(JsonSchemaDialect.Draft7)]
+	public void LegacyDraft_PointUsesAdditionalItems(JsonSchemaDialect dialect)
 	{
-		string schema = this.Serializer.GetJsonSchema(Shape<System.Drawing.Point, Witness>(), new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft4 });
+		string schema = this.Serializer.GetJsonSchema(Shape<System.Drawing.Point, Witness>(), new JsonSchemaOptions { Dialect = dialect });
 
 		Assert.Contains("\"items\":[{\"type\":\"integer\"},{\"type\":\"integer\"}]", schema, StringComparison.Ordinal);
 		Assert.Contains("\"additionalItems\":{\"type\":\"integer\"}", schema, StringComparison.Ordinal);
+		Assert.DoesNotContain("\"prefixItems\":", schema, StringComparison.Ordinal);
+	}
+
+	[Test]
+	public void Draft7_UsesConstDiscriminatorsAndTupleItems()
+	{
+		string schema = this.Serializer.GetJsonSchema(Shape<Animal, Animal>(), new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 });
+
+		Assert.Contains("\"items\":[{\"const\":\"Cat\"},", schema, StringComparison.Ordinal);
+		Assert.Contains("\"minItems\":2,\"maxItems\":2", schema, StringComparison.Ordinal);
+		Assert.DoesNotContain("\"enum\":", schema, StringComparison.Ordinal);
+		Assert.DoesNotContain("\"prefixItems\":", schema, StringComparison.Ordinal);
+	}
+
+	[Test]
+	public void Draft7_RuntimeUnionSupportsIntegerDiscriminators()
+	{
+		JsonSerializer serializer = new()
+		{
+			Unions = JsonUnionConfiguration.Default.WithUnion(
+				JsonUnion<Animal>.Create().AddCase(7, Shape<Cat, Cat>())),
+		};
+
+		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>(), new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 });
+
+		Assert.Contains("\"items\":[{\"const\":7},", schema, StringComparison.Ordinal);
+		Assert.DoesNotContain("\"enum\":", schema, StringComparison.Ordinal);
+		Assert.DoesNotContain("\"prefixItems\":", schema, StringComparison.Ordinal);
+	}
+
+	[Test]
+	public void Draft7_ObjectPreservesRequiredAndNullableMembers()
+	{
+		string schema = this.Serializer.GetJsonSchema(Shape<Person, Person>(), new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 });
+
+		Assert.Equal("""{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":-2147483648,"maximum":2147483647},"nickname":{"type":["string","null"]}},"required":["name","age"],"additionalProperties":false}""", schema);
+	}
+
+	[Test]
+	public void Draft7_UntypedShapeIsSupported()
+	{
+		ITypeShape shape = Shape<int, Witness>();
+		string schema = this.Serializer.GetJsonSchema(shape, new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 });
+
+		Assert.Equal("""{"$schema":"http://json-schema.org/draft-07/schema#","type":"integer","minimum":-2147483648,"maximum":2147483647}""", schema);
 	}
 
 	[Test]
