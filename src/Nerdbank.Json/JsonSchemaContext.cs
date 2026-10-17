@@ -48,7 +48,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	/// </summary>
 	internal string DefinitionsKeyword => this.Dialect switch
 	{
-		JsonSchemaDialect.Draft4 => "definitions",
+		JsonSchemaDialect.Draft4 or JsonSchemaDialect.Draft7 => "definitions",
 		JsonSchemaDialect.Draft2020_12 => "$defs",
 		_ => throw new NotSupportedException($"Unsupported JSON Schema dialect: {this.Dialect}."),
 	};
@@ -59,6 +59,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	internal string SchemaUri => this.Dialect switch
 	{
 		JsonSchemaDialect.Draft4 => "http://json-schema.org/draft-04/schema#",
+		JsonSchemaDialect.Draft7 => "http://json-schema.org/draft-07/schema#",
 		JsonSchemaDialect.Draft2020_12 => "https://json-schema.org/draft/2020-12/schema",
 		_ => throw new NotSupportedException($"Unsupported JSON Schema dialect: {this.Dialect}."),
 	};
@@ -131,7 +132,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		Requires.NotNull(items);
 		Requires.Argument(items.Count > 0, nameof(items), "At least one positional schema is required.");
 
-		if (this.Dialect == JsonSchemaDialect.Draft4)
+		if (this.Dialect is JsonSchemaDialect.Draft4 or JsonSchemaDialect.Draft7)
 		{
 			schema.SetSchemas("items", items);
 			if (additionalItemsSchema is not null)

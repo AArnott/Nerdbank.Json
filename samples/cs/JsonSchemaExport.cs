@@ -15,6 +15,11 @@ JsonSerializer serializer = new();
 string schema = serializer.GetJsonSchema<Product>();
 // </JsonSchemaExport>
 
+// <JsonSchemaDraft7>
+string draft7Schema = serializer.GetJsonSchema<Product>(
+	new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 });
+// </JsonSchemaDraft7>
+
 // <JsonSchemaCustomConverter>
 // A custom converter can describe its own representation by overriding GetJsonSchema.
 public sealed class TemperatureConverter : JsonConverter<Temperature>

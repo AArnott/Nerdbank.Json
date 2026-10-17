@@ -91,7 +91,7 @@ public partial record JsonSerializer
 
 	private static void ValidateDialect(JsonSchemaOptions options)
 	{
-		if (options.Dialect is not (JsonSchemaDialect.Draft4 or JsonSchemaDialect.Draft2020_12))
+		if (options.Dialect is not (JsonSchemaDialect.Draft4 or JsonSchemaDialect.Draft7 or JsonSchemaDialect.Draft2020_12))
 		{
 			throw new ArgumentOutOfRangeException(nameof(options), options.Dialect, "Unsupported JSON Schema dialect.");
 		}
