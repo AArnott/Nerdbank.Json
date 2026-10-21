@@ -62,9 +62,11 @@ public partial class SecuritySettingsTests
 		else
 		{
 			Assert.Throws<JsonSerializationException>(() => untrusted.Deserialize(json, shape));
-			await Assert.ThrowsAsync<FormatException>(async () => await untrusted.DeserializeAsync(input, shape));
+			JsonSerializationException readError = await Assert.ThrowsAsync<JsonSerializationException>(async () => await untrusted.DeserializeAsync(input, shape));
+			Assert.IsType<FormatException>(readError.InnerException);
 			Assert.Throws<JsonSerializationException>(() => untrusted.Serialize(value, shape));
-			await Assert.ThrowsAsync<FormatException>(async () => await untrusted.SerializeAsync(output, value, shape));
+			JsonSerializationException writeError = await Assert.ThrowsAsync<JsonSerializationException>(async () => await untrusted.SerializeAsync(output, value, shape));
+			Assert.IsType<FormatException>(writeError.InnerException);
 		}
 	}
 
@@ -100,9 +102,11 @@ public partial class SecuritySettingsTests
 		else
 		{
 			Assert.Throws<JsonSerializationException>(() => serializer.Deserialize(json, shape));
-			await Assert.ThrowsAsync<FormatException>(async () => await serializer.DeserializeAsync(input, shape));
+			JsonSerializationException readError = await Assert.ThrowsAsync<JsonSerializationException>(async () => await serializer.DeserializeAsync(input, shape));
+			Assert.IsType<FormatException>(readError.InnerException);
 			Assert.Throws<JsonSerializationException>(() => serializer.Serialize(value, shape));
-			await Assert.ThrowsAsync<FormatException>(async () => await serializer.SerializeAsync(output, value, shape));
+			JsonSerializationException writeError = await Assert.ThrowsAsync<JsonSerializationException>(async () => await serializer.SerializeAsync(output, value, shape));
+			Assert.IsType<FormatException>(writeError.InnerException);
 		}
 	}
 

@@ -322,6 +322,7 @@ public partial record JsonSerializer
 		Requires.NotNull(stream);
 		Requires.NotNull(values);
 		Requires.NotNull(shape);
+		ValidateSequenceOptions(options);
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
 		CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken;
 		await CompleteStreamSerializationAsync(writer, this.SerializeEnumerableAsync(writer, values, shape, options, cancellationToken), effectiveCancellationToken).ConfigureAwait(false);

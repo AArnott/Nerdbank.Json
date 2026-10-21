@@ -46,7 +46,8 @@ public partial class AsyncEnumerableContractTests : TestBase
 		using MemoryStream nullStream = new("null"u8.ToArray());
 		Assert.Null(await this.Serializer.DeserializeAsync(nullStream, shape));
 		using MemoryStream arrayStream = new("[1]"u8.ToArray());
-		await Assert.ThrowsAsync<NotSupportedException>(async () => await this.Serializer.DeserializeAsync(arrayStream, shape));
+		JsonSerializationException error = await Assert.ThrowsAsync<JsonSerializationException>(async () => await this.Serializer.DeserializeAsync(arrayStream, shape));
+		Assert.IsType<NotSupportedException>(error.InnerException);
 		Assert.Null(this.Serializer.Deserialize<Model>("""{"values":null}""")!.Values);
 	}
 

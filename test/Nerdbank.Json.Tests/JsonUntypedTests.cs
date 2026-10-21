@@ -85,7 +85,9 @@ public class JsonUntypedTests : TestBase
 	{
 		JsonSerializer serializer = new() { StartingContext = new SerializationContext { MaxDepth = 4 } };
 		string json = "[[[[[1]]]]]";
-		Assert.Throws<InvalidOperationException>(() => serializer.DeserializeJsonValue(json));
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.DeserializeJsonValue(json));
+		Assert.IsType<InvalidOperationException>(error.InnerException);
+		Assert.Contains("maximum depth", error.InnerException.Message, StringComparison.Ordinal);
 	}
 
 	[Test]

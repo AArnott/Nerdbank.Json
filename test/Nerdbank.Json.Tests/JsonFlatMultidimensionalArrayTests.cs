@@ -176,10 +176,10 @@ public partial class JsonMultidimensionalArrayTests
 		await this.AssertFlatRoundtrip(value, Shape<int[,,], JsonMultidimensionalArrayTests>(), "[[1,1,1],[0]]", async);
 
 		this.Serializer = this.Serializer with { StartingContext = new SerializationContext { MaxDepth = 0 } };
-		Exception readError = await Assert.ThrowsAnyAsync<Exception>(async () => await this.ReadFlat("[[1,1,1],[0]]", Shape<int[,,], JsonMultidimensionalArrayTests>(), async));
-		Assert.Contains("maximum depth", readError.Message, StringComparison.Ordinal);
-		Exception writeError = await Assert.ThrowsAnyAsync<Exception>(async () => await this.WriteFlat(value, Shape<int[,,], JsonMultidimensionalArrayTests>(), async));
-		Assert.Contains("maximum depth", writeError.Message, StringComparison.Ordinal);
+		JsonSerializationException readError = await Assert.ThrowsAsync<JsonSerializationException>(async () => await this.ReadFlat("[[1,1,1],[0]]", Shape<int[,,], JsonMultidimensionalArrayTests>(), async));
+		Assert.Contains("maximum depth", Assert.IsType<InvalidOperationException>(readError.InnerException).Message, StringComparison.Ordinal);
+		JsonSerializationException writeError = await Assert.ThrowsAsync<JsonSerializationException>(async () => await this.WriteFlat(value, Shape<int[,,], JsonMultidimensionalArrayTests>(), async));
+		Assert.Contains("maximum depth", Assert.IsType<InvalidOperationException>(writeError.InnerException).Message, StringComparison.Ordinal);
 	}
 
 	[Test]
@@ -190,8 +190,8 @@ public partial class JsonMultidimensionalArrayTests
 		this.UseFlatFormat();
 		this.Serializer = this.Serializer with { StartingContext = new SerializationContext { MaxDepth = 1 } };
 		Cell[,] value = { { new() { Value = 1 } } };
-		Exception error = await Assert.ThrowsAnyAsync<Exception>(async () => await this.WriteFlat(value, Shape<Cell[,], CellWitness>(), async));
-		Assert.Contains("maximum depth", error.Message, StringComparison.Ordinal);
+		JsonSerializationException error = await Assert.ThrowsAsync<JsonSerializationException>(async () => await this.WriteFlat(value, Shape<Cell[,], CellWitness>(), async));
+		Assert.Contains("maximum depth", Assert.IsType<InvalidOperationException>(error.InnerException).Message, StringComparison.Ordinal);
 	}
 
 	[Test]

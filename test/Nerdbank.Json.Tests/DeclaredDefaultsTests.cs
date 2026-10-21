@@ -79,7 +79,8 @@ public partial class DeclaredDefaultsTests : TestBase
 	{
 		Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<NonNullable>("""{"text":null}"""));
 		using MemoryStream stream = new(Encoding.UTF8.GetBytes("""{"text":null}"""));
-		await Assert.ThrowsAsync<FormatException>(async () => await this.Serializer.DeserializeAsync(stream, TypeShapeResolver.ResolveDynamicOrThrow<NonNullable>()));
+		JsonSerializationException error = await Assert.ThrowsAsync<JsonSerializationException>(async () => await this.Serializer.DeserializeAsync(stream, TypeShapeResolver.ResolveDynamicOrThrow<NonNullable>()));
+		Assert.IsType<FormatException>(error.InnerException);
 	}
 
 	[GenerateShape]

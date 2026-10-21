@@ -90,7 +90,8 @@ public partial class JsonAsyncSequenceTests : TestBase
 		using ChunkedStream stream = new(Encoding.UTF8.GetBytes("// head\n1\n/* between */2\n"), 1);
 		Assert.Equal([1, 2], await CollectAsync(serializer.DeserializeEnumerableAsync<int, Witness>(stream, options)));
 		using ChunkedStream invalid = new(Encoding.UTF8.GetBytes("1/* no newline */2"), 1);
-		await Assert.ThrowsAsync<FormatException>(async () => await CollectAsync(serializer.DeserializeEnumerableAsync<int, Witness>(invalid, options)));
+		JsonSerializationException error = await Assert.ThrowsAsync<JsonSerializationException>(async () => await CollectAsync(serializer.DeserializeEnumerableAsync<int, Witness>(invalid, options)));
+		Assert.IsType<FormatException>(error.InnerException);
 	}
 
 	[Test]
