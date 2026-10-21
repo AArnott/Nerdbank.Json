@@ -11,6 +11,10 @@ Declare a class that derives from <xref:Nerdbank.Json.JsonConverter`1>:
 
 [!code-csharp[](../../samples/cs/CustomConverters.cs#YourOwnConverter)]
 
+Use the scalar <xref:Nerdbank.Json.JsonWriter.Write*> overloads to write strings, numbers, and booleans, and <xref:Nerdbank.Json.JsonWriter.WriteRaw*> for already encoded JSON.
+JSON container methods such as <xref:Nerdbank.Json.JsonWriter.WriteStartObject> remain explicit.
+<xref:Nerdbank.Json.JsonReader> exposes typed scalar methods such as <xref:Nerdbank.Json.JsonReader.ReadInt32> as well as structural and raw-token methods.
+
 > [!CAUTION]
 > It is imperative that each `Write` and `Read` method write and read exactly one JSON value.
 
@@ -88,6 +92,8 @@ For precise runtime control, register a converter instance with <xref:Nerdbank.J
 Open generic converter types may be registered with <xref:Nerdbank.Json.JsonSerializer.ConverterTypes?displayProperty=nameWithType>:
 
 [!code-csharp[](../../samples/cs/CustomConverters.cs#CustomOpenGenericConverterRegisteredAtRuntime)]
+
+<xref:Nerdbank.Json.ConverterTypeCollection> is immutable and supports collection expressions through its collection builder, as well as explicit calls to <xref:Nerdbank.Json.ConverterTypeCollection.Create*>.
 
 ### Converter factories
 

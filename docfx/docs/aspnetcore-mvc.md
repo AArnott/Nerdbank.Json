@@ -17,6 +17,11 @@ is available on both `IMvcBuilder` (from `AddControllers`) and `IMvcCoreBuilder`
 supply the <xref:Nerdbank.Json.JsonSerializer> and the source-generated `ITypeShapeProvider` that describes
 every model type the API reads or writes.
 
+For direct registration in MVC's formatter collections, use <xref:Nerdbank.Json.AspNetCoreMvcFormatter.JsonInputFormatter> and <xref:Nerdbank.Json.AspNetCoreMvcFormatter.JsonOutputFormatter>.
+Their constructors take the <xref:PolyType.ITypeShapeProvider> first, followed by an optional serializer supplied through the two-argument overload.
+The provider-only overload uses a default serializer.
+These types and their registration options are in the `Nerdbank.Json.AspNetCoreMvcFormatter` namespace.
+
 ## Coexistence with the built-in formatters
 
 By default the Nerdbank.Json formatters are **inserted first** so they win content negotiation for
@@ -27,9 +32,9 @@ formatters. This is important because the automatic `400` validation response pr
 `[ApiController]` serializes a `ValidationProblemDetails` that is typically not in your shape provider.
 
 To make Nerdbank.Json the *only* JSON formatter, set
-<xref:Nerdbank.Json.AspNetCore.NerdbankJsonFormatterOptions.ReplaceSystemTextJsonFormatters> to `true`. Do
+<xref:Nerdbank.Json.AspNetCoreMvcFormatter.NerdbankJsonFormatterOptions.ReplaceSystemTextJsonFormatters> to `true`. Do
 this only when every serialized type — including any error/response types you return — is in your provider.
-Use <xref:Nerdbank.Json.AspNetCore.NerdbankJsonFormatterOptions.InsertFirst> to control ordering.
+Use <xref:Nerdbank.Json.AspNetCoreMvcFormatter.NerdbankJsonFormatterOptions.InsertFirst> to control ordering.
 
 ## Behavior
 
@@ -46,7 +51,7 @@ Use <xref:Nerdbank.Json.AspNetCore.NerdbankJsonFormatterOptions.InsertFirst> to 
   than a `500`.
 * **Null output.** A `null` model is written as the JSON `null` literal.
 * **Provider misses.** If the formatter is ever invoked for a type the provider cannot describe, it throws a
-  <xref:Nerdbank.Json.AspNetCore.MissingTypeShapeException> that explains how to add the type to the
+  <xref:Nerdbank.Json.AspNetCoreMvcFormatter.MissingTypeShapeException> that explains how to add the type to the
   provider — misconfiguration fails loudly instead of silently falling back to reflection.
 
 ## NativeAOT and trimming

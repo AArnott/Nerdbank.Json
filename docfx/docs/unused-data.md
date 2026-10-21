@@ -3,6 +3,7 @@
 Declare a field or property of type <xref:Nerdbank.Json.UnusedDataPacket> to retain unknown JSON object members when reading data from a newer version of a contract.
 The serializer recognizes the member by its type, not its name or a JSON-specific attribute.
 Use <xref:PolyType.PropertyShapeAttribute> to include a private field or property in the type shape.
+For example, a shaped contract can declare `[PropertyShape] private UnusedDataPacket? unusedData;` to retain data without exposing it as part of the public model.
 Only one packet member is allowed on a type.
 
 The packet starts out null and is assigned once, after all object members have been read, only if unknown members were encountered.

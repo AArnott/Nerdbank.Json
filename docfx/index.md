@@ -6,6 +6,7 @@ _layout: landing
 
 Nerdbank.Json is a JSON serializer designed along the same architectural direction as Nerdbank.MessagePack while remaining fully independent from System.Text.Json and Newtonsoft.Json.
 
-The current implementation provides a low-level UTF-8 writer and reader, built-in converters for a broad set of primitive and BCL types, and an initial PolyType-backed object serializer for mutable object graphs.
+The implementation provides low-level UTF-8 readers and writers, built-in primitive and BCL converters, and PolyType-backed contracts for mutable and constructor-bound object graphs.
+It supports incremental streaming, runtime unions, reference preservation, targeted deserialization, and JSON Schema export.
 
 Use the Docs section for supported types, usage guidance, and current scope.

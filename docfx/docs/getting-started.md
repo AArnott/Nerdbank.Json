@@ -63,4 +63,6 @@ Strings are escaped according to RFC 8259 requirements. Characters that do not r
 
 ## Current Limitations
 
-The current implementation still does not provide immutable collection breadth, delegate serialization, arbitrary complex-object dictionary keys, read-only scalar property population, or the broader contract customization system planned for the library.
+Delegate serialization and arbitrary complex-object dictionary keys are not supported.
+Read-only scalar properties require constructor binding for deserialization.
+Read-only and immutable collections are supported when their PolyType shapes supply a construction strategy; parameterized collection construction buffers elements before constructing the collection.
