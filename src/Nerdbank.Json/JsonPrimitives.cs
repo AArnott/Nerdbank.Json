@@ -14,6 +14,9 @@ namespace Nerdbank.Json;
 /// its lexeme, and a delimiter or final-block indication is still required. Size hints are capped at
 /// <see cref="int.MaxValue"/>, the maximum span length.
 /// Writers leave the destination unchanged on failure and report the exact required size, or zero for invalid input.
+/// Floating-point reads follow the target framework's numeric parsing behavior, including legacy rounding limitations.
+/// Legacy floating-point writers use exponential notation with nine significant digits for Single and seventeen for Double
+/// rather than the legacy formatter's lossy default precision. Negative zero is preserved.
 /// Scalar reads and writes use overloads for boolean values and each numeric type from byte through decimal.
 /// Floating-point values must be finite; single-precision values are parsed and formatted without widening to double precision.
 /// </remarks>
@@ -254,6 +257,11 @@ public static class JsonPrimitives
 			return DecodeResult.TokenMismatch;
 		}
 
+		if (result == DecodeResult.Success && value == 0 && token[0] == (byte)'-')
+		{
+			value = -0.0f;
+		}
+
 		return result;
 	}
 
@@ -273,6 +281,11 @@ public static class JsonPrimitives
 			value = default;
 			tokenSize = 0;
 			return DecodeResult.TokenMismatch;
+		}
+
+		if (result == DecodeResult.Success && value == 0 && token[0] == (byte)'-')
+		{
+			value = -0.0d;
 		}
 
 		return result;
@@ -390,8 +403,17 @@ public static class JsonPrimitives
 			return false;
 		}
 
+		if (value == 0 && 1 / value < 0)
+		{
+			return TryCopy("-0"u8, destination, out tokenSize);
+		}
+
 		Span<byte> scratch = stackalloc byte[32];
+#if NET8_0_OR_GREATER
 		Assumes.True(Utf8Formatter.TryFormat(value, scratch, out int written));
+#else
+		Assumes.True(Utf8Formatter.TryFormat(value, scratch, out int written, new StandardFormat('E', 8)));
+#endif
 		return TryCopy(scratch[..written], destination, out tokenSize);
 	}
 
@@ -408,8 +430,17 @@ public static class JsonPrimitives
 			return false;
 		}
 
+		if (value == 0 && 1 / value < 0)
+		{
+			return TryCopy("-0"u8, destination, out tokenSize);
+		}
+
 		Span<byte> scratch = stackalloc byte[32];
+#if NET8_0_OR_GREATER
 		Assumes.True(Utf8Formatter.TryFormat(value, scratch, out int written));
+#else
+		Assumes.True(Utf8Formatter.TryFormat(value, scratch, out int written, new StandardFormat('E', 16)));
+#endif
 		return TryCopy(scratch[..written], destination, out tokenSize);
 	}
 

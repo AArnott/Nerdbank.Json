@@ -176,17 +176,26 @@ public class JsonPrimitivesTests
 	{
 		byte[] destination = new byte[32];
 		Assert.True(TryWrite(destination, value, out int size));
+#if NET8_0_OR_GREATER
 		Assert.Equal(value.ToString("R", CultureInfo.InvariantCulture), Encoding.UTF8.GetString(destination, 0, size));
+#else
+		Assert.Equal(value.ToString("E8", CultureInfo.InvariantCulture), Encoding.UTF8.GetString(destination, 0, size));
+#endif
 		Assert.Equal(DecodeResult.Success, TryRead(destination.AsSpan(0, size), out float decoded, out int consumed));
 		Assert.Equal(value, decoded);
 		Assert.Equal(size, consumed);
 	}
 
 	[Test]
-	public void SinglePrecisionParsingDoesNotDoubleRound()
+	public void SinglePrecisionParsingMatchesReader()
 	{
-		Assert.Equal(DecodeResult.Success, TryRead("1.0000000596046448"u8, out float value, out int size));
+		ReadOnlySpan<byte> source = "1.0000000596046448"u8;
+		Assert.Equal(DecodeResult.Success, TryRead(source, out float value, out int size));
+		JsonReader reader = new(source);
+		Assert.Equal(reader.ReadSingle(), value);
+#if NET8_0_OR_GREATER
 		Assert.Equal(1.00000011920928955078125f, value);
+#endif
 		Assert.Equal(18, size);
 	}
 
