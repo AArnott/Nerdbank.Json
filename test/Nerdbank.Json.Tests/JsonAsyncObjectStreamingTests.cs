@@ -136,8 +136,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 		Assert.NotNull(result);
 		Assert.Equal("Ada", result!.Name);
 		Assert.NotNull(result.ExtensionData);
-		Assert.Equal("true", result.ExtensionData!["unknown"]);
-		Assert.Equal("""{"nested":5}""", result.ExtensionData["extra"]);
+		Assert.Equal("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""", this.Serializer.Serialize(result));
 	}
 
 	[Test]
@@ -212,8 +211,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 	{
 		public string? Name { get; set; }
 
-		[JsonExtensionData]
-		public Dictionary<string, string>? ExtensionData { get; set; }
+		public UnusedDataPacket? ExtensionData { get; set; }
 	}
 
 	[GenerateShape]

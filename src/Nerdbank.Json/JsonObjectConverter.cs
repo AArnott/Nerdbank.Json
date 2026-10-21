@@ -128,6 +128,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		context.DepthStep();
 
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
+		UnusedDataPacket.Map? unused = null;
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
 		{
@@ -170,10 +171,10 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 			{
 				property.Read(ref reader, ref result, context);
 			}
-			else if (this.extensionData is not null)
+			else if (this.extensionData?.CanRead is true)
 			{
 				propertyName ??= property?.Name ?? throw new InvalidOperationException("The property name should be available for extension data.");
-				this.extensionData.Read(ref reader, ref result, propertyName);
+				(unused ??= new()).Add(propertyName, reader.ReadRawValue());
 			}
 			else
 			{
@@ -188,6 +189,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 			reader.ReadValueSeparator();
 		}
 
+		this.extensionData?.Apply(ref result, unused);
 		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 	}
 
@@ -211,6 +213,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		context.DepthStep();
 
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
+		UnusedDataPacket.Map? unused = null;
 		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
 		if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
 		{
@@ -235,12 +238,9 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 			{
 				result = await property.ReadValueIntoAsync(reader, result, context).ConfigureAwait(false);
 			}
-			else if (this.extensionData is not null)
+			else if (this.extensionData?.CanRead is true)
 			{
-				await reader.BufferNextValueAsync(context).ConfigureAwait(false);
-				JsonReader syncReader = reader.CreateBufferedReader();
-				this.extensionData.Read(ref syncReader, ref result, propertyName);
-				reader.ReturnReader(ref syncReader);
+				(unused ??= new()).Add(propertyName, await reader.ReadRawValueAsync(context).ConfigureAwait(false));
 			}
 			else
 			{
@@ -255,125 +255,39 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 			await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
 		}
 
+		this.extensionData?.Apply(ref result, unused);
 		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 		return result;
 	}
 }
 
-internal abstract class JsonExtensionData<TDeclaring>
+internal sealed class JsonExtensionData<TDeclaring>
 {
-	internal abstract void Write(ref JsonWriter writer, TDeclaring value, ref bool first);
+	private readonly Getter<TDeclaring, UnusedDataPacket>? getter;
+	private readonly Setter<TDeclaring, UnusedDataPacket>? setter;
 
-	internal abstract void Read(ref JsonReader reader, ref TDeclaring value, string propertyName);
-
-	internal abstract Dictionary<string, string>? Read(ref JsonReader reader, string propertyName);
-
-	internal abstract void Apply(TDeclaring value, Dictionary<string, string> extensionData);
-}
-
-internal sealed class JsonExtensionData<TDeclaring, TProperty> : JsonExtensionData<TDeclaring>
-{
-	private readonly Getter<TDeclaring, TProperty>? getter;
-	private readonly Setter<TDeclaring, TProperty>? setter;
-
-	internal JsonExtensionData(Getter<TDeclaring, TProperty>? getter, Setter<TDeclaring, TProperty>? setter)
+	internal JsonExtensionData(Getter<TDeclaring, UnusedDataPacket>? getter, Setter<TDeclaring, UnusedDataPacket>? setter)
 	{
 		this.getter = getter;
 		this.setter = setter;
 	}
 
-	internal override void Write(ref JsonWriter writer, TDeclaring value, ref bool first)
+	internal bool CanRead => this.setter is not null;
+
+	internal void Write(ref JsonWriter writer, TDeclaring value, ref bool first)
 	{
-		if (this.getter is null)
+		if (this.getter?.Invoke(ref value) is UnusedDataPacket.Map packet)
 		{
-			return;
-		}
-
-		if (this.getter(ref value) is not IEnumerable<KeyValuePair<string, string>> entries)
-		{
-			return;
-		}
-
-		foreach (KeyValuePair<string, string> entry in entries)
-		{
-			if (!first)
-			{
-				writer.WriteValueSeparator();
-			}
-
-			writer.WritePropertyName(entry.Key);
-			writer.WriteRaw(entry.Value);
-			first = false;
+			packet.WriteTo(ref writer, ref first);
 		}
 	}
 
-	internal override void Read(ref JsonReader reader, ref TDeclaring value, string propertyName)
+	internal void Apply(ref TDeclaring value, UnusedDataPacket.Map? packet)
 	{
-		IDictionary<string, string> dictionary = this.GetOrCreateWritableDictionary(ref value);
-		dictionary[propertyName] = reader.ReadRawValue();
-	}
-
-	internal override Dictionary<string, string>? Read(ref JsonReader reader, string propertyName)
-		=> new(StringComparer.Ordinal) { [propertyName] = reader.ReadRawValue() };
-
-	internal override void Apply(TDeclaring value, Dictionary<string, string> extensionData)
-	{
-		if (extensionData.Count == 0)
+		if (packet is not null && value is not null)
 		{
-			return;
+			this.setter?.Invoke(ref value, packet);
 		}
-
-		if (this.TryGetWritableDictionary(value, out IDictionary<string, string>? writable))
-		{
-			foreach (KeyValuePair<string, string> entry in extensionData)
-			{
-				writable![entry.Key] = entry.Value;
-			}
-
-			return;
-		}
-
-		if (this.setter is null)
-		{
-			throw new NotSupportedException($"Extension data property on '{typeof(TDeclaring).FullName}' cannot be assigned.");
-		}
-
-		var assigned = (TProperty)(object)extensionData;
-		this.setter!(ref value, assigned);
-	}
-
-	private IDictionary<string, string> GetOrCreateWritableDictionary(ref TDeclaring value)
-	{
-		if (this.TryGetWritableDictionary(value, out IDictionary<string, string>? existing))
-		{
-			return existing!;
-		}
-
-		if (this.setter is null)
-		{
-			throw new NotSupportedException($"Extension data property on '{typeof(TDeclaring).FullName}' must have a setter or return a writable dictionary instance.");
-		}
-
-		Dictionary<string, string> created = new(StringComparer.Ordinal);
-		this.setter!(ref value, (TProperty)(object)created);
-		return created;
-	}
-
-	private bool TryGetWritableDictionary(TDeclaring value, out IDictionary<string, string>? dictionary)
-	{
-		dictionary = null;
-		if (this.getter is null)
-		{
-			return false;
-		}
-
-		if (this.getter!(ref value) is IDictionary<string, string> writable)
-		{
-			dictionary = writable;
-			return true;
-		}
-
-		return false;
 	}
 }
 

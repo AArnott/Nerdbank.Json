@@ -623,7 +623,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 		TArgumentState argumentState = this.argumentStateFactory();
 		HashSet<string> assignedParameters = new(StringComparer.Ordinal);
-		Dictionary<string, string>? extensionData = null;
+		UnusedDataPacket.Map? extensionData = null;
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
 		reader.ReadStartObject();
 		if (!reader.TryReadEndObject())
@@ -646,9 +646,9 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 					parameter.Read(ref reader, ref argumentState, context);
 				}
-				else if (this.extensionData is not null)
+				else if (this.extensionData?.CanRead is true)
 				{
-					(extensionData ??= new Dictionary<string, string>(StringComparer.Ordinal))[propertyName] = reader.ReadRawValue();
+					(extensionData ??= new()).Add(propertyName, reader.ReadRawValue());
 				}
 				else
 				{
@@ -669,7 +669,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		TDeclaring result = this.constructor(ref argumentState);
 		if (this.extensionData is not null && extensionData is not null)
 		{
-			this.extensionData.Apply(result, extensionData);
+			this.extensionData.Apply(ref result, extensionData);
 		}
 
 		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
@@ -688,7 +688,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 		TArgumentState argumentState = this.argumentStateFactory();
 		HashSet<string> assignedParameters = new(StringComparer.Ordinal);
-		Dictionary<string, string>? extensionData = null;
+		UnusedDataPacket.Map? extensionData = null;
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
 		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
 		if (!await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
@@ -710,9 +710,9 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 					argumentState = await parameter.ReadIntoAsync(reader, argumentState, context).ConfigureAwait(false);
 				}
-				else if (this.extensionData is not null)
+				else if (this.extensionData?.CanRead is true)
 				{
-					(extensionData ??= new Dictionary<string, string>(StringComparer.Ordinal))[propertyName] = await reader.ReadRawValueAsync(context).ConfigureAwait(false);
+					(extensionData ??= new()).Add(propertyName, await reader.ReadRawValueAsync(context).ConfigureAwait(false));
 				}
 				else
 				{
@@ -733,7 +733,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		TDeclaring result = this.constructor(ref argumentState);
 		if (this.extensionData is not null && extensionData is not null)
 		{
-			this.extensionData.Apply(result, extensionData);
+			this.extensionData.Apply(ref result, extensionData);
 		}
 
 		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();

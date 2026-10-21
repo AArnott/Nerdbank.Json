@@ -12,8 +12,6 @@ namespace Nerdbank.Json;
 
 internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationContext context, bool directShapeDispatch) : TypeShapeVisitor, ITypeShapeFunc
 {
-	private static readonly object ExtensionDataSentinel = new();
-
 	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state)
 	{
 		// Work around https://github.com/dotnet/runtime/issues/134698 by keeping the NativeAOT dispatch direct.
@@ -87,15 +85,16 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		Dictionary<string, string> serializedPropertyNamesByClrName = new(StringComparer.OrdinalIgnoreCase);
 		foreach (IPropertyShape property in objectShape.Properties)
 		{
-			if (HasExtensionDataAttribute(property.AttributeProvider))
+			if (property is IPropertyShape<T, UnusedDataPacket> unusedDataProperty)
 			{
 				if (extensionData is not null)
 				{
-					throw new NotSupportedException($"Type '{typeof(T).FullName}' declares more than one extension data property.");
+					throw new JsonSerializationException($"Type '{typeof(T).FullName}' declares more than one member of type '{typeof(UnusedDataPacket).FullName}'.");
 				}
 
-				extensionData = (JsonExtensionData<T>?)property.Accept(this, ExtensionDataSentinel)
-					?? throw new NotSupportedException($"Extension data member '{typeof(T).FullName}.{property.Name}' could not be analyzed.");
+				extensionData = new JsonExtensionData<T>(
+					unusedDataProperty.HasGetter ? unusedDataProperty.GetGetter() : null,
+					unusedDataProperty.HasSetter ? unusedDataProperty.GetSetter() : null);
 				continue;
 			}
 
@@ -167,38 +166,6 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 
 	public override object? VisitProperty<TDeclaringType, TPropertyType>(IPropertyShape<TDeclaringType, TPropertyType> propertyShape, object? state = null)
 	{
-		if (ReferenceEquals(state, ExtensionDataSentinel))
-		{
-			if (!typeof(TPropertyType).IsClass)
-			{
-				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must be a reference-typed dictionary property.");
-			}
-
-			Getter<TDeclaringType, TPropertyType>? extensionGetter = propertyShape.HasGetter ? propertyShape.GetGetter() : null;
-			Setter<TDeclaringType, TPropertyType>? extensionSetter = propertyShape.HasSetter ? propertyShape.GetSetter() : null;
-			if (extensionGetter is null && extensionSetter is null)
-			{
-				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must be readable or writable.");
-			}
-
-			if (!typeof(IEnumerable<KeyValuePair<string, string>>).IsAssignableFrom(typeof(TPropertyType)))
-			{
-				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must implement IEnumerable<KeyValuePair<string, string>>.");
-			}
-
-			if (extensionSetter is null && !typeof(IDictionary<string, string>).IsAssignableFrom(typeof(TPropertyType)))
-			{
-				throw new NotSupportedException($"Getter-only extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must implement IDictionary<string, string>.");
-			}
-
-			if (extensionSetter is not null && !typeof(TPropertyType).IsAssignableFrom(typeof(Dictionary<string, string>)))
-			{
-				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must be assignable from Dictionary<string, string>.");
-			}
-
-			return new JsonExtensionData<TDeclaringType, TPropertyType>(extensionGetter, extensionSetter);
-		}
-
 		IParameterShape? constructorParameter = state as IParameterShape;
 		bool isRequired = constructorParameter?.IsRequired
 			?? propertyShape.AttributeProvider?.GetCustomAttributes<PropertyShapeAttribute>(inherit: true).FirstOrDefault()?.IsRequired
@@ -271,17 +238,6 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 
 	public override object? VisitFunction<TFunction, TArgumentState, TResult>(IFunctionTypeShape<TFunction, TArgumentState, TResult> functionShape, object? state = null)
 		=> throw new NotSupportedException($"JSON serialization does not support delegate types such as {functionShape.Type.FullName}.");
-
-	private static bool HasExtensionDataAttribute(IGenericCustomAttributeProvider attributeProvider)
-	{
-		using IEnumerator<JsonExtensionDataAttribute> attributes = attributeProvider.GetCustomAttributes<JsonExtensionDataAttribute>(inherit: false).GetEnumerator();
-		if (!attributes.MoveNext())
-		{
-			return false;
-		}
-
-		return true;
-	}
 
 	private static bool HasRequiredMemberAttribute(MemberInfo? memberInfo)
 	{

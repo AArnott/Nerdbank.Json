@@ -50,7 +50,7 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 
 		foreach (IPropertyShape property in objectShape.Properties)
 		{
-			if (HasExtensionDataAttribute(property.AttributeProvider))
+			if (property.PropertyType.Type == typeof(UnusedDataPacket))
 			{
 				hasExtensionData = true;
 				continue;
@@ -191,12 +191,6 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 
 		bool isNonNullableReference = property.HasSetter ? property.IsSetterNonNullable : property.IsGetterNonNullable;
 		return !isNonNullableReference;
-	}
-
-	private static bool HasExtensionDataAttribute(IGenericCustomAttributeProvider attributeProvider)
-	{
-		using IEnumerator<JsonExtensionDataAttribute> attributes = attributeProvider.GetCustomAttributes<JsonExtensionDataAttribute>(inherit: false).GetEnumerator();
-		return attributes.MoveNext();
 	}
 
 	private static bool HasRequiredMemberAttribute(MemberInfo? memberInfo)

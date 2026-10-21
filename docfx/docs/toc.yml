@@ -15,6 +15,8 @@ items:
     href: serialization-callbacks.md
   - name: Collection Comparers
     href: collection-comparers.md
+  - name: Retaining Unknown Members
+    href: unused-data.md
   - name: Multidimensional Arrays
     href: multidimensional-arrays.md
   - name: Reference Preservation

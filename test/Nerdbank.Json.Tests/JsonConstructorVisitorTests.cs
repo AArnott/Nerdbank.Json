@@ -50,8 +50,7 @@ public partial class JsonObjectSerializerTests
 		Assert.NotNull(value);
 		Assert.Equal("Ada", value.Name);
 		Assert.NotNull(value.ExtensionData);
-		Assert.Equal("true", value.ExtensionData!["unknown"]);
-		Assert.Equal("""{"nested":5}""", value.ExtensionData["extra"]);
+		Assert.Equal("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""", serializer.Serialize(value));
 	}
 
 	[Test]
@@ -155,7 +154,6 @@ public partial class JsonObjectSerializerTests
 
 		public string Name { get; }
 
-		[JsonExtensionData]
-		public Dictionary<string, string>? ExtensionData { get; set; }
+		public UnusedDataPacket? ExtensionData { get; set; }
 	}
 }

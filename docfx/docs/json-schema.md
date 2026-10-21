@@ -29,7 +29,7 @@ Draft 4 and Draft 7 use an array-valued `items` keyword for tuples and `addition
   `date-time`, `date`, `time`) or `contentEncoding` (base64) where reasonable.
 * **Enums** — serialized by name when <xref:Nerdbank.Json.JsonSerializer.SerializeEnumValuesByName> is enabled
   (a string `enum` honoring the naming policy), otherwise an integer.
-* **Objects** — `properties` and `additionalProperties: false`. A type with a `JsonExtensionData` member instead
+* **Objects** — `properties` and `additionalProperties: false`. A type with an <xref:Nerdbank.Json.UnusedDataPacket> member instead
   reports `additionalProperties: true`.
 * **Arrays** — `type: array` with `items`; rectangular multidimensional arrays nest `items` per rank.
 * **Dictionaries** — `type: object` with `additionalProperties` describing the value type.

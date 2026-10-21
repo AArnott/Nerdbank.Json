@@ -122,8 +122,7 @@ public partial class JsonObjectSerializerTests : TestBase
 		Assert.NotNull(value);
 		Assert.Equal("Ada", value.Name);
 		Assert.NotNull(value.ExtensionData);
-		Assert.Equal("true", value.ExtensionData!["unknown"]);
-		Assert.Equal("""{"nested":5}""", value.ExtensionData["extra"]);
+		Assert.Equal("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""", this.Serializer.Serialize(value));
 	}
 
 	[Test]
@@ -161,15 +160,7 @@ public partial class JsonObjectSerializerTests : TestBase
 	[Test]
 	public void Serialize_ObjectGraph_WritesExtensionDataMembers()
 	{
-		ExtensionDataPerson value = new()
-		{
-			Name = "Ada",
-			ExtensionData = new Dictionary<string, string>
-			{
-				["unknown"] = "true",
-				["extra"] = """{"nested":5}""",
-			},
-		};
+		ExtensionDataPerson value = this.Serializer.Deserialize<ExtensionDataPerson>("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""")!;
 
 		string json = this.Serializer.Serialize(value);
 
@@ -455,8 +446,7 @@ public partial class JsonObjectSerializerTests : TestBase
 	{
 		public string? Name { get; set; }
 
-		[JsonExtensionData]
-		public Dictionary<string, string>? ExtensionData { get; set; }
+		public UnusedDataPacket? ExtensionData { get; set; }
 	}
 
 	[GenerateShape]

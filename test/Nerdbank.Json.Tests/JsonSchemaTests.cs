@@ -201,8 +201,7 @@ public partial class JsonSchemaTests : TestBase
 	{
 		public string? Name { get; set; }
 
-		[JsonExtensionData]
-		public Dictionary<string, string>? Extra { get; set; }
+		public UnusedDataPacket? Extra { get; set; }
 	}
 
 	[GenerateShape]

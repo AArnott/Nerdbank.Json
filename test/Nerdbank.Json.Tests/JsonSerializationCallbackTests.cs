@@ -32,7 +32,8 @@ public partial class JsonSerializationCallbackTests : TestBase
 	{
 		ConstructorCallbackObject value = this.Serializer.Deserialize<ConstructorCallbackObject>("""{"name":"Ada","future":42}""")!;
 
-		Assert.Equal("Ada:future", value.ObservedState);
+		Assert.Equal("Ada:True", value.ObservedState);
+		Assert.Equal("""{"name":"Ada","future":42}""", this.Serializer.Serialize(value));
 	}
 
 	[Test]
@@ -104,8 +105,7 @@ public partial class JsonSerializationCallbackTests : TestBase
 	{
 		public string Name { get; } = name;
 
-		[JsonExtensionData]
-		public Dictionary<string, string>? ExtensionData { get; set; }
+		public UnusedDataPacket? ExtensionData { get; set; }
 
 		internal string? ObservedState { get; private set; }
 
@@ -114,7 +114,7 @@ public partial class JsonSerializationCallbackTests : TestBase
 		}
 
 		public void OnAfterDeserialize()
-			=> this.ObservedState = $"{this.Name}:{(this.ExtensionData is { } extensionData ? string.Join(",", extensionData.Keys) : string.Empty)}";
+			=> this.ObservedState = $"{this.Name}:{this.ExtensionData is not null}";
 	}
 
 	[GenerateShape]
