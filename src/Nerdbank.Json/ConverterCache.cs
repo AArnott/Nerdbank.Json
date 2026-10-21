@@ -101,6 +101,9 @@ internal sealed class ConverterCache
 	internal JsonConverter GetOrAddConverter(ITypeShape shape)
 		=> (JsonConverter)this.CachedConverters.GetOrAdd(shape)!;
 
+	internal JsonConverter GetOrAddConverter(Type type, ITypeShapeProvider provider)
+		=> this.GetOrAddConverter(provider.GetTypeShape(type) ?? throw new NotSupportedException($"The type shape provider '{provider.GetType().FullName}' does not provide a shape for '{type.FullName}'."));
+
 #if NET8_0
 	[RequiresDynamicCode("Dynamic shape resolution may require runtime-generated code.")]
 #endif
@@ -282,7 +285,7 @@ internal sealed class ConverterCache
 			return true;
 		}
 
-		JsonConverterFactoryContext context = new(this);
+		ConverterContext context = new(this, shape.Provider);
 		foreach (IJsonConverterFactory factory in this.configuration.ConverterFactories)
 		{
 			if ((converter = factory.CreateConverter(type, shape, context)) is not null)

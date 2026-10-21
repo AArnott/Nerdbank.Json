@@ -179,7 +179,7 @@ public partial record JsonSerializer
 
 	private async ValueTask SerializeAsyncCore<T>(PipeWriter writer, T? value, ITypeShape<T> shape, SerializationContext startingContext, CancellationToken cancellationToken)
 	{
-		SerializationContext context = startingContext.Start(this, this.ConverterCache, cancellationToken);
+		SerializationContext context = startingContext.Start(this, this.ConverterCache, cancellationToken) with { TypeShapeProvider = shape.Provider };
 		JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
 		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
 		await converter.WriteAsync(asyncWriter, value, context).ConfigureAwait(false);
@@ -188,7 +188,7 @@ public partial record JsonSerializer
 
 	private async ValueTask<T?> DeserializeAsyncCore<T>(PipeReader reader, ITypeShape<T> shape, SerializationContext startingContext, CancellationToken cancellationToken)
 	{
-		SerializationContext context = startingContext.Start(this, this.ConverterCache, cancellationToken);
+		SerializationContext context = startingContext.Start(this, this.ConverterCache, cancellationToken) with { TypeShapeProvider = shape.Provider };
 		using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
 		{
 			CancellationToken = context.CancellationToken,

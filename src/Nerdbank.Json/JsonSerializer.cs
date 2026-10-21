@@ -180,7 +180,7 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(shape);
 
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		SerializationContext context = this.CreateSerializationContext(shape.Provider, cancellationToken);
 		try
 		{
 			this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, context);
@@ -207,7 +207,7 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(shape);
 
-		SerializationContext context = this.CreateSerializationContext(startingContext);
+		SerializationContext context = this.CreateSerializationContext(startingContext) with { TypeShapeProvider = shape.Provider };
 		try
 		{
 			this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, context);
@@ -265,7 +265,7 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(shape);
 
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		SerializationContext context = this.CreateSerializationContext(shape.Provider, cancellationToken);
 		try
 		{
 			return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, context);
@@ -292,7 +292,7 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(shape);
 
-		SerializationContext context = this.CreateSerializationContext(startingContext);
+		SerializationContext context = this.CreateSerializationContext(startingContext) with { TypeShapeProvider = shape.Provider };
 		try
 		{
 			return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, context);
@@ -339,6 +339,16 @@ public partial record JsonSerializer
 		return this.DeserializeCore(ref reader, shape, this.CreateSerializationContext(startingContext));
 	}
 
+	/// <summary>Creates an operation context for use by derived serializers.</summary>
+	/// <param name="provider">The shape provider for the operation.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <returns>The initialized context.</returns>
+	protected SerializationContext CreateSerializationContext(ITypeShapeProvider provider, CancellationToken cancellationToken = default)
+	{
+		Requires.NotNull(provider);
+		return this.CreateSerializationContext(cancellationToken) with { TypeShapeProvider = provider };
+	}
+
 	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
 
 	private static void ThrowIfOperationInProgress(in SerializationContext startingContext)
@@ -353,6 +363,7 @@ public partial record JsonSerializer
 
 	private void SerializeCore<T>(ref JsonWriter writer, in T? value, ITypeShape<T> shape, SerializationContext context)
 	{
+		context = context with { TypeShapeProvider = shape.Provider };
 		try
 		{
 			if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TrySerialize(ref writer, value))
@@ -371,6 +382,7 @@ public partial record JsonSerializer
 
 	private T? DeserializeCore<T>(ref JsonReader reader, ITypeShape<T> shape, SerializationContext context)
 	{
+		context = context with { TypeShapeProvider = shape.Provider };
 		try
 		{
 			if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, context, out T value))

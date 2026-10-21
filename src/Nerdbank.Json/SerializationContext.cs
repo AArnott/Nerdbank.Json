@@ -24,6 +24,7 @@ public record struct SerializationContext
 {
 	private ImmutableDictionary<object, object?>? specialState = ImmutableDictionary<object, object?>.Empty;
 	private ConverterCache? cache;
+	private ITypeShapeProvider? typeShapeProvider;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="SerializationContext"/> struct.
@@ -94,6 +95,13 @@ public record struct SerializationContext
 	/// </summary>
 	public CancellationToken CancellationToken { get; init; }
 
+	/// <summary>Gets the shape provider used by the active operation.</summary>
+	public ITypeShapeProvider TypeShapeProvider
+	{
+		get => this.typeShapeProvider ?? throw new InvalidOperationException("No shaped serialization operation is in progress.");
+		internal init => this.typeShapeProvider = value;
+	}
+
 	/// <summary>
 	/// Gets or sets special state to be exposed to converters during serialization.
 	/// </summary>
@@ -163,6 +171,39 @@ public record struct SerializationContext
 	{
 		Requires.NotNull(shape);
 		return this.Cache.GetOrAddConverter(shape);
+	}
+
+#if NET
+	/// <summary>Gets a converter using a generated shape.</summary>
+	/// <typeparam name="T">The type to convert.</typeparam>
+	/// <returns>The converter.</returns>
+	public JsonConverter<T> GetConverter<T>()
+		where T : IShapeable<T> => this.GetConverter(T.GetTypeShape());
+
+	/// <summary>Gets a converter using a witness type.</summary>
+	/// <typeparam name="T">The type to convert.</typeparam>
+	/// <typeparam name="TProvider">The shape witness.</typeparam>
+	/// <returns>The converter.</returns>
+	public JsonConverter<T> GetConverter<T, TProvider>()
+		where TProvider : IShapeable<T> => this.GetConverter(TProvider.GetTypeShape());
+#endif
+
+	/// <summary>Gets a converter using an explicit or contextual shape provider.</summary>
+	/// <typeparam name="T">The type to convert.</typeparam>
+	/// <param name="provider">The provider, or null to use <see cref="TypeShapeProvider"/>.</param>
+	/// <returns>The converter.</returns>
+	[System.Runtime.CompilerServices.OverloadResolutionPriority(1)]
+	public JsonConverter<T> GetConverter<T>(ITypeShapeProvider? provider)
+		=> (JsonConverter<T>)this.GetConverter(typeof(T), provider);
+
+	/// <summary>Gets a converter for a runtime type.</summary>
+	/// <param name="type">The type to convert.</param>
+	/// <param name="provider">The provider, or null to use <see cref="TypeShapeProvider"/>.</param>
+	/// <returns>The converter.</returns>
+	public JsonConverter GetConverter(Type type, ITypeShapeProvider? provider = null)
+	{
+		Requires.NotNull(type);
+		return this.Cache.GetOrAddConverter(type, provider ?? this.TypeShapeProvider);
 	}
 
 	/// <summary>

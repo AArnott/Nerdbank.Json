@@ -215,7 +215,7 @@ public partial class JsonObjectSerializerTests
 
 	private sealed class CharListWrapperFactory : IJsonConverterFactory
 	{
-		public JsonConverter? CreateConverter(Type type, ITypeShape? shape, in JsonConverterFactoryContext context)
+		public JsonConverter? CreateConverter(Type type, ITypeShape? shape, in ConverterContext context)
 			=> type == typeof(List<char>) ? new CharListWrapperConverter(context.GetConverter(PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<char>() ?? throw new InvalidOperationException("No generated type shape found for System.Char."))) : null;
 	}
 
