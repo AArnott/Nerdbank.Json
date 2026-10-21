@@ -21,7 +21,7 @@ It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`,
 * Optional indented output for human-readable JSON.
 * Optional case-insensitive property-name matching during deserialization.
 * Optional enum-name serialization with numeric fallback for unnamed values.
-* Runtime custom converter registration with converter instances, converter types, or converter factories.
+* Runtime custom converter registration with immutable converter instance/type collections or converter factories using `ConverterContext`.
 * Attribute-driven custom converter registration on types, properties, and constructor parameters.
 * Optional unknown-member retention through `JsonExtensionDataAttribute`.
 * Built-in byte buffer handling using Base64 JSON strings.
@@ -31,10 +31,12 @@ It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`,
 * Synchronous stream APIs and incremental asynchronous stream/pipe serialization with cancellation and backpressure.
 * Asynchronous sequence reading and writing for JSON arrays and NDJSON, plus streaming arrays selected inside an envelope.
 * Targeted deserialization by JSON path or member-access expression.
-* Shape-declared and runtime-configured unions, plus JSON Schema draft 2020-12 export.
+* Shape-declared unions and runtime `DerivedTypeUnions` mappings, with array or single-property discriminator envelopes.
+* JSON Schema draft 4, draft 7, and draft 2020-12 export as `System.Text.Json.Nodes.JsonObject`, separate from the native JSON DOM.
 * Serialization callbacks, operation-scoped string interning, collection comparers, and configurable security limits.
 * Opt-in native JSON DOM, untyped object, `ExpandoObject`, and System.Text.Json DOM converters.
 * A separate ASP.NET Core MVC formatter package using explicitly supplied type shapes.
+* A self-checking F# sample covering records, options, and discriminated unions.
 * Multi-targeting across modern .NET and .NET Framework.
 * Test-driven development with focused round-trip coverage for the current built-in type surface.
 
@@ -112,9 +114,9 @@ To override built-in or shape-based handling for specific types at runtime:
 ```csharp
 JsonSerializer serializer = new()
 {
-	Converters = new ConverterCollection(new JsonConverter[] { new MyCustomConverter() }),
-	ConverterTypes = new JsonConverterTypeCollection(new[] { typeof(MyOpenGenericConverter<>) }),
-	ConverterFactories = new IJsonConverterFactory[] { new MyFactory() },
+	Converters = [new MyCustomConverter()],
+	ConverterTypes = [typeof(MyOpenGenericConverter<>)],
+	ConverterFactories = [new MyFactory()],
 };
 ```
 
@@ -159,6 +161,7 @@ public partial class Person
 * The object-graph layer supports settable properties and mapped constructor parameters, uses camelCase property names by default, and can either ignore unknown JSON properties or retain them in an extension-data dictionary.
 * Collection and dictionary construction follows the supplied PolyType shape: mutable collections are populated directly, while parameterized collections are constructed from buffered elements.
 * Runtime-registered converters are consulted before built-in and PolyType-generated converters.
+* Synchronous custom converters override `Write(ref JsonWriter writer, in T? value, SerializationContext context)`; public non-generic invocation APIs support runtime-shaped values.
 * `JsonConverterAttribute` can override converter selection for a type, property, or constructor parameter.
 * `JsonExtensionDataAttribute` can capture unknown JSON members as raw JSON text for forward-compatible round-tripping.
 * Deserialization can optionally skip comments and accept trailing commas.

@@ -19,25 +19,26 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 
 ## Converter infrastructure
 
-- [ ] Align converter and serialization contexts.
-- [ ] Add collection-expression builder support and verify converter collection APIs.
-- [ ] Align object-based async serialization and deserialization.
-- [ ] Align early object registration for reference preservation.
-- [ ] Align public non-generic converter APIs.
-- [ ] Align converter lookup helpers.
-- [ ] Align optional converter placement and selection.
+- [x] Align converter and serialization contexts.
+- [x] Add collection-expression builder support and verify converter collection APIs.
+- [x] Align object-based async serialization and deserialization.
+- [x] Align early object registration for reference preservation.
+- [x] Align public non-generic converter APIs.
+- [x] Align converter lookup helpers.
+- [x] Align optional converter placement and selection.
 
 ## Contract semantics
 
-- [ ] Align declared-default handling.
-- [ ] Align comparer attributes and precedence.
-- [ ] Align security settings and enforcement, retaining the approved comparer dependency.
-- [ ] Align async-enumerable type shapes.
+- [x] Align declared-default handling.
+- [x] Align comparer attributes and precedence.
+- [x] Align security settings and enforcement, retaining the approved comparer dependency.
+- [x] Align async-enumerable type shapes.
+- [ ] Integrate the pending contracts followup for `UnusedDataPacket` retention and flat-array contracts.
 
 ## Unions and schema
 
-- [ ] Align MessagePack-style union configuration and contracts.
-- [ ] Align schema public types and helpers while preserving JSON schema behavior.
+- [x] Align MessagePack-style union configuration and contracts.
+- [x] Align schema public types and helpers while preserving JSON schema behavior.
 
 ## Navigation and streaming
 
@@ -49,10 +50,11 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 
 ## Platform
 
-- [ ] Align MVC integration APIs.
-- [ ] Add a NativeAOT code-size testing project and workflow.
-- [ ] Add an F# sample.
-- [ ] Add equivalent non-format-specific analyzers and code fixes.
+- [x] Align MVC integration APIs.
+- [x] Add a NativeAOT code-size reporting project and workflow.
+- [x] Add an F# sample.
+- [x] Integrate non-format-specific converter/default/ref-parameter analyzers and default-initializer code fixes.
+- [ ] Restore an equivalent executable native-size regression guard after measuring/calibrating image sizes; report-only minimal fixtures do not replace the removed existing broad-image threshold check.
 
 ## Integration QA
 
@@ -61,6 +63,28 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 - [ ] Verify Release build, all configured test frameworks, and NativeAOT compatibility.
 - [ ] Compare performance and allocations with the baseline.
 - [ ] Explain approved differences and authorized breaking/no-obsolete-alias policy in the final PR.
+- [ ] Audit asynchronous error wrapping against synchronous `JsonSerializationException` behavior; current async converter format failures remain unwrapped.
+- [ ] Audit trailing-data rejection consistently across generic, object-based, native DOM, stream, and pipe entry points.
+- [ ] Complete the documentation/API audit after navigation and retention followups are integrated; the root README converter snippets are migrated, but retention snippets await their final API.
+
+## Fixed-snapshot integration checkpoint
+
+The coordinator branch remains `aarnott-miniature-engine`; no branch was created or renamed, and nothing was pushed.
+Contracts through `6014701`, platform through original `135e9bf` (integrated `f744a3f`), the seven foundations commits in `9cd49c2..05ec767` (integrated through `04df7ba`), and the five unions/schema commits in `9cd49c2..78c1a8f` (integrated through `477c28d`) are integrated as individual logical commits.
+No later foundations commits or active navigation/contracts-followup snapshots have been integrated.
+
+Integration fixes in `1664183` migrate new converter overrides, registrations, analyzer fixtures, and native fixture usage to the combined API, and dispose the custom-converter test reader before completing its pipe.
+Conflict resolutions retain `UseComparer` NBJson003 and every added analyzer rule, both expando limits and duplicate detection, dynamic nested-object semantics, early custom reference registration, and JSON-specific reference envelopes.
+Boundary coverage includes 128/129 expando properties and a lower general member limit on synchronous/asynchronous reads and writes.
+
+Repeated integration testing exposed concurrent lazy cache replacement through the new converter lookup API.
+Commit `e8140f6` atomically publishes serializer and shape caches and adds repeated parallel converter-identity coverage, retaining the initialized allocation-free lookup path.
+The Release solution builds all configured targets with zero warnings/errors, and all 2,137 managed tests pass with no skips: core tests on net8.0/net9.0/net10.0/net472 (net48 runtime), MVC tests on net8.0/net9.0/net10.0, and analyzer tests on net8.0.
+The self-checking F# sample also executes successfully after integration.
+
+Native publishing and native-size calibration have not been performed at this checkpoint.
+For the later native run, the installed `C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe` locates VS 18 Enterprise; import its `vcvars64.bat` in the same `cmd.exe` process as `dotnet publish`, without system-wide installation or PATH changes.
+Performance comparison, native validation, async failure/trailing-data QA, navigation/retention integration, and the final docs audit remain open.
 
 ## Coordinator-provided baseline
 

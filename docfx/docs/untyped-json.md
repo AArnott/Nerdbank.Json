@@ -51,7 +51,8 @@ Both registrations target the same `object` type and cannot be combined on one s
 Call <xref:Nerdbank.Json.OptionalConverters.WithExpandoObjectConverter*> separately to enable <xref:System.Dynamic.ExpandoObject>.
 Its member values use the same primitives and arrays, with nested objects represented by read-only dynamic dictionaries.
 Reconstructing an expando is **O(n²)** because each insertion scans its existing members.
-The <xref:Nerdbank.Json.SecuritySettings.MaxObjectMemberCount> limit bounds the property count on both reads and writes.
+Both <xref:Nerdbank.Json.SecuritySettings.ExpandoObjectMaxPropertyCount> and <xref:Nerdbank.Json.SecuritySettings.MaxObjectMemberCount> bound the property count on reads and writes; the lower limit applies.
+The default expando-specific limit is 128 properties, while <xref:Nerdbank.Json.SecuritySettings.TrustedData> removes that limit for trusted input.
 
 Call <xref:Nerdbank.Json.OptionalConverters.WithJsonValueConverter*> to register converters for shaped members declared as <xref:Nerdbank.Json.JsonValue> or any of its concrete subclasses.
 This preserves the native hierarchy and exact number tokens independently of the object and expando opt-ins.
