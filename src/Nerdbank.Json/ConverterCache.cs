@@ -47,33 +47,17 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 	internal bool UseDiscriminatorObjects => this.configuration.UseDiscriminatorObjects;
 
-	private MultiProviderTypeCache CachedConverters
+	private MultiProviderTypeCache CachedConverters => Volatile.Read(ref this.cachedConverters) ?? LazyInitializer.EnsureInitialized(ref this.cachedConverters, () => new()
 	{
-		get
-		{
-			this.cachedConverters ??= new()
-			{
-				DelayedValueFactory = new DelayedJsonConverterFactory(),
-				ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: false),
-			};
+		DelayedValueFactory = new DelayedJsonConverterFactory(),
+		ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: false),
+	})!;
 
-			return this.cachedConverters;
-		}
-	}
-
-	private MultiProviderTypeCache NativeAotCachedConverters
+	private MultiProviderTypeCache NativeAotCachedConverters => Volatile.Read(ref this.nativeAotCachedConverters) ?? LazyInitializer.EnsureInitialized(ref this.nativeAotCachedConverters, () => new()
 	{
-		get
-		{
-			this.nativeAotCachedConverters ??= new()
-			{
-				DelayedValueFactory = new DelayedJsonConverterFactory(),
-				ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: true),
-			};
-
-			return this.nativeAotCachedConverters;
-		}
-	}
+		DelayedValueFactory = new DelayedJsonConverterFactory(),
+		ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: true),
+	})!;
 
 	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state) => this.GetOrAddConverter(typeShape);
 

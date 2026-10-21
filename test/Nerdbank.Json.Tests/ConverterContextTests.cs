@@ -26,6 +26,29 @@ public partial class ConverterContextTests
 	}
 
 	[Test]
+	public void ConcurrentLookupPreservesConverterIdentity()
+	{
+		ITypeShape<string> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<string>()!;
+		for (int attempt = 0; attempt < 100; attempt++)
+		{
+			ContextSerializer serializer = new() { PropertyNamingPolicy = null };
+			JsonConverter<string>[] converters = new JsonConverter<string>[16];
+			Parallel.For(0, converters.Length, i =>
+			{
+				SerializationContext context = serializer.CreateContext(shape.Provider);
+				converters[i] = context.GetConverter(shape);
+				Assert.Same(converters[i], context.GetConverter((ITypeShape)shape));
+				Assert.Same(converters[i], context.GetConverter<string>(shape.Provider));
+			});
+
+			foreach (JsonConverter<string> converter in converters)
+			{
+				Assert.Same(converters[0], converter);
+			}
+		}
+	}
+
+	[Test]
 	public void FactoryInvokeAndLookup()
 	{
 		LookupFactory factory = new();

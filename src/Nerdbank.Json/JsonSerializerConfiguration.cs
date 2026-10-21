@@ -30,7 +30,7 @@ internal record JsonSerializerConfiguration
 	private bool writeIndented;
 	private bool useDiscriminatorObjects;
 
-	internal ConverterCache ConverterCache => this.converterCache ??= new(this);
+	internal ConverterCache ConverterCache => Volatile.Read(ref this.converterCache) ?? LazyInitializer.EnsureInitialized(ref this.converterCache, () => new(this))!;
 
 	/// <summary>
 	/// Gets the runtime-registered converters that take precedence over built-in and shape-based converters.
