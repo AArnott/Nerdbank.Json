@@ -53,7 +53,9 @@ public class JsonWriterTests
 		writer.WriteStartArray();
 		writer.WriteRaw("""{"a":1}"""u8);
 		writer.WriteValueSeparator();
-		ReadOnlySequence<byte> sequence = new("[2,3]"u8.ToArray());
+		Segment first = new("[2,"u8.ToArray());
+		Segment last = first.Append("3]"u8.ToArray());
+		ReadOnlySequence<byte> sequence = new(first, 0, last, last.Memory.Length);
 		writer.WriteRaw(sequence);
 		writer.WriteEndArray();
 		writer.Flush();
@@ -89,7 +91,7 @@ public class JsonWriterTests
 	}
 
 	[Test]
-	public void WriteStringValue_EscapesOnlyRfc8259RequiredCharacters()
+	public void WriteString_EscapesOnlyRfc8259RequiredCharacters()
 	{
 		TestBufferWriter buffer = new();
 		JsonWriter writer = new(buffer);
@@ -101,7 +103,7 @@ public class JsonWriterTests
 	}
 
 	[Test]
-	public void WriteStringValue_EscapesControlCharactersAsUnicodeWhenNoShortEscapeExists()
+	public void WriteString_EscapesControlCharactersAsUnicodeWhenNoShortEscapeExists()
 	{
 		TestBufferWriter buffer = new();
 		JsonWriter writer = new(buffer);
@@ -113,7 +115,7 @@ public class JsonWriterTests
 	}
 
 	[Test]
-	public void WriteStringValue_WritesNullLiteralForNullString()
+	public void WriteString_WritesNullLiteralForNullString()
 	{
 		TestBufferWriter buffer = new();
 		JsonWriter writer = new(buffer);
@@ -125,7 +127,7 @@ public class JsonWriterTests
 	}
 
 	[Test]
-	public void WriteStringValue_ThrowsOnUnmatchedSurrogate()
+	public void WriteString_ThrowsOnUnmatchedSurrogate()
 	{
 		TestBufferWriter buffer = new();
 		JsonWriter writer = new(buffer);
@@ -137,6 +139,18 @@ public class JsonWriterTests
 		}
 		catch (ArgumentException)
 		{
+		}
+	}
+
+	private sealed class Segment : ReadOnlySequenceSegment<byte>
+	{
+		internal Segment(ReadOnlyMemory<byte> memory) => this.Memory = memory;
+
+		internal Segment Append(ReadOnlyMemory<byte> memory)
+		{
+			Segment next = new(memory) { RunningIndex = this.RunningIndex + this.Memory.Length };
+			this.Next = next;
+			return next;
 		}
 	}
 

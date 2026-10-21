@@ -66,6 +66,12 @@ public partial class JsonAsyncSequenceTests : TestBase
 		stream.Position = 0;
 		Assert.Equal([1, 2, 3], await CollectAsync(this.Serializer.DeserializeEnumerableAsync<int, Witness>(stream, options)));
 		Assert.True(stream.CanRead);
+		Pipe pipe = new();
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+		await this.Serializer.SerializeEnumerableAsync<int, Witness>(pipe.Writer, Produce(), options, timeout.Token);
+		await pipe.Writer.CompleteAsync();
+		Assert.Equal([1, 2, 3], await CollectAsync(this.Serializer.DeserializeEnumerableAsync<int, Witness>(pipe.Reader, options, timeout.Token)));
+		await pipe.Reader.CompleteAsync();
 
 		static async IAsyncEnumerable<int> Produce()
 		{
@@ -73,6 +79,41 @@ public partial class JsonAsyncSequenceTests : TestBase
 			yield return 1;
 			yield return 2;
 			yield return 3;
+		}
+	}
+
+	[Test]
+	public async Task Enumerable_NDJson_CommentsRespectFraming()
+	{
+		JsonSerializer serializer = new() { ReadCommentHandling = JsonCommentHandling.Skip };
+		JsonSerializer.SequenceOptions options = new() { Format = JsonSequenceFormat.NDJson };
+		using ChunkedStream stream = new(Encoding.UTF8.GetBytes("// head\n1\n/* between */2\n"), 1);
+		Assert.Equal([1, 2], await CollectAsync(serializer.DeserializeEnumerableAsync<int, Witness>(stream, options)));
+		using ChunkedStream invalid = new(Encoding.UTF8.GetBytes("1/* no newline */2"), 1);
+		await Assert.ThrowsAsync<FormatException>(async () => await CollectAsync(serializer.DeserializeEnumerableAsync<int, Witness>(invalid, options)));
+	}
+
+	[Test]
+	[Arguments(JsonSequenceFormat.NDJson, "1\n")]
+	[Arguments(JsonSequenceFormat.JsonArray, "[1,")]
+	public async Task Enumerable_CancellationAndNoReadAhead(JsonSequenceFormat format, string preamble)
+	{
+		Pipe pipe = new();
+		using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+		await WriteAsync(pipe.Writer, preamble);
+		IAsyncEnumerator<int> enumerator = this.Serializer.DeserializeEnumerableAsync<int, Witness>(pipe.Reader, new() { Format = format }, cts.Token).GetAsyncEnumerator();
+		try
+		{
+			Assert.True(await enumerator.MoveNextAsync());
+			Assert.Equal(1, enumerator.Current);
+			cts.Cancel();
+			await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await enumerator.MoveNextAsync());
+		}
+		finally
+		{
+			await enumerator.DisposeAsync();
+			await pipe.Writer.CompleteAsync();
+			await pipe.Reader.CompleteAsync();
 		}
 	}
 

@@ -58,6 +58,8 @@ public partial class JsonReaderTests
 		Assert.Throws<FormatException>(() => ReadNumber(type, "01"));
 		Assert.Throws<FormatException>(() => ReadNumber(type, "1e"));
 		Assert.Throws<FormatException>(() => ReadNumber(type, "NaN"));
+		Assert.Throws<FormatException>(() => ReadNumber(type, "1e+-2"));
+		Assert.Throws<FormatException>(() => ReadNumber(type, "1true"));
 	}
 
 	[Test]

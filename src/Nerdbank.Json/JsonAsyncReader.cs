@@ -739,23 +739,38 @@ public sealed class JsonAsyncReader : IDisposable
 	private async ValueTask SkipByteOrderMarkAsync()
 	{
 		this.bomChecked = true;
-		while (this.buffer.Length < 3 && !this.isCompleted)
+		while (!this.TryCheckByteOrderMark() && !this.isCompleted)
 		{
 			if (!await this.ReadMoreAsync().ConfigureAwait(false))
 			{
 				break;
 			}
 		}
+	}
 
-		if (this.buffer.Length >= 3)
+	private bool TryCheckByteOrderMark()
+	{
+		int length = (int)Math.Min(this.buffer.Length, 3);
+		if (length == 0)
 		{
-			Span<byte> first3 = stackalloc byte[3];
-			this.buffer.Slice(0, 3).CopyTo(first3);
-			if (first3[0] == 0xEF && first3[1] == 0xBB && first3[2] == 0xBF)
-			{
-				this.buffer = this.buffer.Slice(3);
-			}
+			return false;
 		}
+
+		Span<byte> prefix = stackalloc byte[3];
+		this.buffer.Slice(0, length).CopyTo(prefix);
+		ReadOnlySpan<byte> bom = [0xEF, 0xBB, 0xBF];
+		if (!prefix[..length].SequenceEqual(bom[..length]))
+		{
+			return true;
+		}
+
+		if (length < 3)
+		{
+			return false;
+		}
+
+		this.buffer = this.buffer.Slice(3);
+		return true;
 	}
 
 	private bool TryScan(ref long scanned, out long endOffset)
