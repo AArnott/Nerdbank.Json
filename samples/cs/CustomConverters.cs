@@ -12,17 +12,8 @@ public partial class CustomConvertersSamples
 	{
 		JsonSerializer serializer = new();
 		RawEnvelope envelope = serializer.Deserialize<RawEnvelope>(json)!;
-		RawJson payload = envelope.Payload;
 		// Deserialization owns these bytes, so they can be retained after the source is released.
 		return serializer.Serialize(envelope);
-	}
-
-	[GenerateShape]
-	public partial class RawEnvelope
-	{
-		public string? Method { get; set; }
-
-		public RawJson Payload { get; set; }
 	}
 
 	// </DeferredRawJson>
@@ -59,6 +50,17 @@ public partial class CustomConvertersSamples
 	}
 
 	// </CustomConverterFactory>
+
+	// <RawEnvelopeModel>
+	[GenerateShape]
+	public partial class RawEnvelope
+	{
+		public string? Method { get; set; }
+
+		public RawJson Payload { get; set; }
+	}
+
+	// </RawEnvelopeModel>
 }
 
 // <YourOwnConverter>

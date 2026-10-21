@@ -6,6 +6,13 @@
 public partial class CustomConverterSamplesTests
 {
 	[Test]
+	public void RawEnvelopeSampleRetainsExactPayload()
+	{
+		const string Json = """{"method":"call","payload":{"n":1.2300e+02}}""";
+		Assert.Equal(Json, CustomConvertersSamples.RoundTripRawEnvelope(Json));
+	}
+
+	[Test]
 	public void TypeAttribute_UsesConverterForTheDeclaredType()
 	{
 		JsonSerializer serializer = new();

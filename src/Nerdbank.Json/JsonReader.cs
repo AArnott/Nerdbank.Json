@@ -682,20 +682,19 @@ public ref struct JsonReader
 			throw new FormatException("Expected a JSON string.");
 		}
 
-		long start = index++;
-		while (index < this.utf8Json.Length)
+		long start = index;
+		index = this.utf8Json.IndexOfDelimiter(index + 1);
+		if (index >= 0)
 		{
 			if (this.utf8Json[index] == (byte)'"')
 			{
 				token = this.utf8Json.Slice(start, index + 1 - start);
+				ValidateStringBytes(token[1..^1]);
 				this.position = index + 1;
 				return true;
 			}
 
-			if (this.utf8Json[index++] == (byte)'\\')
-			{
-				return false;
-			}
+			return false;
 		}
 
 		throw new FormatException("Unterminated JSON string.");
@@ -712,10 +711,47 @@ public ref struct JsonReader
 
 	private static void ValidateStringBytes(ReadOnlySpan<byte> bytes, bool allowControlCharacters = false)
 	{
-		JsonReader validator = new(bytes);
-		while (!validator.End)
+		JsonInput input = new(bytes);
+		long index = 0;
+		while (index < input.Length)
 		{
-			validator.ValidateStringByte(validator.utf8Json[validator.position++], allowControlCharacters);
+			ValidateStringByte(in input, ref index, input[index++], allowControlCharacters);
+		}
+	}
+
+	private static void ValidateStringByte(scoped in JsonInput input, ref long position, byte first, bool allowControlCharacters)
+	{
+		if (first < 0x20 && !allowControlCharacters)
+		{
+			throw new FormatException("Unescaped control character in JSON string.");
+		}
+
+		if (first < 0x80)
+		{
+			return;
+		}
+
+		int continuation = first switch
+		{
+			>= 0xC2 and <= 0xDF => 1,
+			>= 0xE0 and <= 0xEF => 2,
+			>= 0xF0 and <= 0xF4 => 3,
+			_ => throw new FormatException("Invalid UTF-8 in JSON string."),
+		};
+		for (int i = 0; i < continuation; i++)
+		{
+			if (position >= input.Length)
+			{
+				throw new FormatException("Incomplete UTF-8 in JSON string.");
+			}
+
+			byte next = input[position++];
+			if (next is < 0x80 or > 0xBF
+				|| (i == 0 && ((first == 0xE0 && next < 0xA0) || (first == 0xED && next >= 0xA0)
+					|| (first == 0xF0 && next < 0x90) || (first == 0xF4 && next >= 0x90))))
+			{
+				throw new FormatException("Invalid UTF-8 in JSON string.");
+			}
 		}
 	}
 
@@ -826,34 +862,13 @@ public ref struct JsonReader
 	{
 		this.SkipWhiteSpaceUtf8(cancellationToken);
 		long start = this.position;
-		if (this.TryConsume((byte)'-'))
+		if (JsonPrimitives.TryReadNumberToken(in this.utf8Json, start, isFinalBlock: true, out long length, cancellationToken) != JsonPrimitives.DecodeResult.Success)
 		{
+			throw new FormatException("Expected a complete, valid JSON number.");
 		}
 
-		long integerStart = this.position;
-		this.ReadDigitsUtf8(requireAtLeastOne: true, cancellationToken);
-		if (this.position - integerStart > 1 && this.utf8Json[integerStart] == (byte)'0')
-		{
-			throw new FormatException("JSON numbers cannot have leading zeros.");
-		}
-
-		if (this.TryConsume((byte)'.'))
-		{
-			this.ReadDigitsUtf8(requireAtLeastOne: true, cancellationToken);
-		}
-
-		if (this.TryConsume((byte)'e') || this.TryConsume((byte)'E'))
-		{
-			if (!this.TryConsume((byte)'+'))
-			{
-				this.TryConsume((byte)'-');
-			}
-
-			this.ReadDigitsUtf8(requireAtLeastOne: true, cancellationToken);
-		}
-
-		this.ValidateScalarTerminator();
-		return materialize ? this.utf8Json.Slice(start, this.position - start) : default;
+		this.position += length;
+		return materialize ? this.utf8Json.Slice(start, length) : default;
 	}
 
 	private readonly void ValidateScalarTerminator()
@@ -976,25 +991,6 @@ public ref struct JsonReader
 		}
 
 		return false;
-	}
-
-	private void ReadDigitsUtf8(bool requireAtLeastOne, CancellationToken cancellationToken = default)
-	{
-		long start = this.position;
-		while (this.position < this.utf8Json.Length && this.utf8Json[this.position] is >= (byte)'0' and <= (byte)'9')
-		{
-			if ((this.position & 1023) == 0)
-			{
-				cancellationToken.ThrowIfCancellationRequested();
-			}
-
-			this.position++;
-		}
-
-		if (requireAtLeastOne && this.position == start)
-		{
-			throw new FormatException("Expected one or more digits in the JSON number.");
-		}
 	}
 
 	private int ReadEscapeSequenceUtf8()
@@ -1142,40 +1138,7 @@ public ref struct JsonReader
 	}
 
 	private void ValidateStringByte(byte first, bool allowControlCharacters = false)
-	{
-		if (first < 0x20 && !allowControlCharacters)
-		{
-			throw new FormatException("Unescaped control character in JSON string.");
-		}
-
-		if (first < 0x80)
-		{
-			return;
-		}
-
-		int continuation = first switch
-		{
-			>= 0xC2 and <= 0xDF => 1,
-			>= 0xE0 and <= 0xEF => 2,
-			>= 0xF0 and <= 0xF4 => 3,
-			_ => throw new FormatException("Invalid UTF-8 in JSON string."),
-		};
-		for (int i = 0; i < continuation; i++)
-		{
-			if (this.position >= this.utf8Json.Length)
-			{
-				throw new FormatException("Incomplete UTF-8 in JSON string.");
-			}
-
-			byte next = this.utf8Json[this.position++];
-			if (next is < 0x80 or > 0xBF
-				|| (i == 0 && ((first == 0xE0 && next < 0xA0) || (first == 0xED && next >= 0xA0)
-					|| (first == 0xF0 && next < 0x90) || (first == 0xF4 && next >= 0x90))))
-			{
-				throw new FormatException("Invalid UTF-8 in JSON string.");
-			}
-		}
-	}
+		=> ValidateStringByte(in this.utf8Json, ref this.position, first, allowControlCharacters);
 
 	private void RequireCurrent(byte expected)
 	{

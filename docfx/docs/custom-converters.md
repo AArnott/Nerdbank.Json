@@ -29,6 +29,8 @@ No DOM registration is necessary.
 
 [!code-csharp[](../../samples/cs/CustomConverters.cs#DeferredRawJson)]
 
+[!code-csharp[](../../samples/cs/CustomConverters.cs#RawEnvelopeModel)]
+
 <xref:Nerdbank.Json.JsonReader.ReadRaw(Nerdbank.Json.SerializationContext)?displayProperty=nameWithType> validates and skips one value using the active depth and cancellation limits.
 Sequence-backed readers return a zero-copy borrowed slice; span-backed readers copy only the captured value into owned storage.
 Borrowed slices are valid only while their input buffers remain alive and unchanged.
@@ -64,6 +66,27 @@ Reader and writer `Clone` methods preserve syntax or formatting options but star
 They do not inherit container state.
 There is intentionally no public writer `GetSpan`/`Advance` pair: arbitrary fragments cannot safely maintain JSON container and pending-property state.
 Use <xref:Nerdbank.Json.JsonWriter.WriteRaw*> for trusted, complete JSON values.
+
+## Stateless scalar primitives
+
+<xref:Nerdbank.Json.JsonPrimitives> provides allocation-free reads and writes for null, booleans, signed and unsigned 64-bit integers, finite doubles, decimals, and exact number tokens.
+Its number grammar is shared with the reader rather than maintained as a second parser.
+Primitive readers start exactly at the token; they do not skip whitespace, comments, or a BOM.
+
+Pass `isFinalBlock: false` when more bytes can arrive.
+A complete-looking number or literal at the end of a non-final block returns `InsufficientBuffer`, since another byte could extend the number or invalidate the literal boundary.
+A delimiter or `isFinalBlock: true` establishes the boundary.
+Truncated prefixes in a final block are `TokenMismatch`, not a successful default value.
+
+The nested <xref:Nerdbank.Json.JsonPrimitives.DecodeResult> distinguishes success, wrong-type/malformed/out-of-range input, an empty buffer, and an incomplete valid prefix.
+Read `tokenSize` as bytes consumed on success, a minimum required source length on incomplete input, and zero on mismatch.
+Decoded outputs are meaningful only on success.
+Writers leave the destination unchanged when it is too short and report its exact required length.
+Non-finite floating-point input and invalid raw number tokens fail with a required length of zero.
+
+The stateless surface deliberately does not yet include decoded strings, arbitrary raw JSON values, container framing, or dedicated narrow integer and single-precision overloads.
+Use the stateful reader and writer for those operations.
+In particular, strings need a caller-owned decoding destination and an explicit partial-escape/UTF-8 contract before a stateless API can be added safely.
 
 ## Security considerations
 
