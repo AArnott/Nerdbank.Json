@@ -231,7 +231,7 @@ public partial class JsonMultidimensionalArrayTests
 	{
 		this.UseFlatFormat();
 		FlatProbeConverter converter = new();
-		this.Serializer = this.Serializer with { Converters = new ConverterCollection([converter]) };
+		this.Serializer = this.Serializer with { Converters = [converter] };
 		FlatProbe[,] value = { { new(1), new(2) } };
 		ITypeShape<FlatProbe[,]> shape = Shape<FlatProbe[,], JsonMultidimensionalArrayTests>();
 		string json = await this.WriteFlat(value, shape, async: true);
@@ -261,7 +261,7 @@ public partial class JsonMultidimensionalArrayTests
 	public void Flat_Schema_DescribesDimensionsAndData(JsonSchemaDialect dialect, string tupleKeyword)
 	{
 		this.UseFlatFormat();
-		string schema = this.Serializer.GetJsonSchema(Shape<int[,,], JsonMultidimensionalArrayTests>(), new JsonSchemaOptions { Dialect = dialect });
+		string schema = this.Serializer.GetJsonSchema(Shape<int[,,], JsonMultidimensionalArrayTests>(), new JsonSchemaOptions { Dialect = dialect }).ToJsonString();
 		Assert.Contains($"\"{tupleKeyword}\":[", schema, StringComparison.Ordinal);
 		Assert.Contains("""{"type":"array","minItems":3,"maxItems":3,"items":{"type":"integer","minimum":0,"maximum":2147483647}}""", schema, StringComparison.Ordinal);
 		Assert.Contains("""{"type":"array","items":{"type":"integer","minimum":-2147483648,"maximum":2147483647}}""", schema, StringComparison.Ordinal);
@@ -334,14 +334,14 @@ public partial class JsonMultidimensionalArrayTests
 	{
 		public override bool PreferAsyncSerialization => true;
 
-		public override void Write(ref JsonWriter writer, FlatProbe value, SerializationContext context) => throw new NotSupportedException();
+		public override void Write(ref JsonWriter writer, in FlatProbe value, SerializationContext context) => throw new NotSupportedException();
 
 		public override FlatProbe Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();
 
 		public override async ValueTask WriteAsync(JsonAsyncWriter writer, FlatProbe value, SerializationContext context)
 		{
 			JsonWriter syncWriter = writer.CreateWriter();
-			syncWriter.WriteNumberValue(value.Value);
+			syncWriter.Write(value.Value);
 			writer.ReturnWriter(ref syncWriter);
 			await writer.FlushIfAppropriateAsync(context);
 		}

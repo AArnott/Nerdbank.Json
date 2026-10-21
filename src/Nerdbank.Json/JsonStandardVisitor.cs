@@ -237,7 +237,9 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 
 	public override object? VisitUnionCase<TUnionCase, TUnion>(IUnionCaseShape<TUnionCase, TUnion> unionCaseShape, object? state = null)
 	{
-		var caseConverter = (JsonConverter<TUnionCase>)unionCaseShape.UnionCaseType.Accept(this)!;
+		JsonConverter<TUnionCase> caseConverter = owner.TryGetCustomConverter(unionCaseShape.UnionCaseType, out JsonConverter? custom) && custom is not null
+			? (JsonConverter<TUnionCase>)custom
+			: (JsonConverter<TUnionCase>)unionCaseShape.UnionCaseType.Accept(this)!;
 		return new JsonUnionCaseConverter<TUnionCase, TUnion>(caseConverter, unionCaseShape.Marshaler);
 	}
 

@@ -54,7 +54,7 @@ public abstract class UnusedDataPacket
 				}
 
 				writer.WritePropertyName(entry.Key);
-				writer.WriteRawValue(entry.Value);
+				writer.WriteRaw(entry.Value);
 				first = false;
 			}
 		}

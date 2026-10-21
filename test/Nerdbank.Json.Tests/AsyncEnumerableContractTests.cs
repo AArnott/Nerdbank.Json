@@ -198,7 +198,7 @@ public partial class AsyncEnumerableContractTests : TestBase
 		public override ValueTask WriteAsync(JsonAsyncWriter writer, WrappedInt value, SerializationContext context)
 		{
 			JsonWriter syncWriter = writer.CreateWriter();
-			syncWriter.WriteStringValue("v" + value.Value);
+			syncWriter.Write("v" + value.Value);
 			writer.ReturnWriter(ref syncWriter);
 			return writer.FlushIfAppropriateAsync(context);
 		}

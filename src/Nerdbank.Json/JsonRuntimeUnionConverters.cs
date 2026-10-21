@@ -193,7 +193,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 	{
 		if (this.objectEnvelope is not null)
 		{
-			return this.objectEnvelope.ReadDiscriminator(ref reader).TryNavigate(ref reader, in segment, options);
+			return this.objectEnvelope.ReadDiscriminator(ref reader).SkipToValue(ref reader, in segment, context);
 		}
 
 		reader.ReadStartArray();
@@ -225,7 +225,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		if (this.objectEnvelope is not null)
 		{
 			JsonConverter objectConverter = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context).ConfigureAwait(false);
-			int objectInner = await objectConverter.TryNavigateAsync(reader, segment, options, context).ConfigureAwait(false);
+			int objectInner = await objectConverter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
 			return objectInner < 0 ? -1 : objectInner + 1;
 		}
 

@@ -21,11 +21,11 @@ internal sealed class JsonFlattenedArrayConverter<TArray, TElement>(JsonConverte
 	public override bool PreferAsyncSerialization => true;
 
 	/// <inheritdoc/>
-	public override void Write(ref JsonWriter writer, TArray? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TArray? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -308,7 +308,7 @@ internal sealed class JsonFlattenedArrayConverter<TArray, TElement>(JsonConverte
 				writer.WriteValueSeparator();
 			}
 
-			writer.WriteNumberValue(array.GetLength(i));
+			writer.Write(array.GetLength(i));
 		}
 
 		writer.WriteEndArray();

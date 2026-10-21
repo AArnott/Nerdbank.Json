@@ -118,7 +118,7 @@ public partial class JsonObjectAsyncTests
 		public override void Write(ref JsonWriter writer, in string? value, SerializationContext context)
 		{
 			Assert.NotNull(context.TypeShapeProvider);
-			writer.WriteStringValue(value + context["suffix"]);
+			writer.Write(value + context["suffix"]);
 		}
 
 		public override string? Read(ref JsonReader reader, SerializationContext context) => reader.ReadString() + context["suffix"];

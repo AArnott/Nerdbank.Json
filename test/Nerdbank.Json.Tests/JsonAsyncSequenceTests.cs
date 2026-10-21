@@ -46,7 +46,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 	[Test]
 	public async Task IndexHook_CustomEnvelope_TracksOpenContainers()
 	{
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([new WrappedArrayConverter()]) };
+		JsonSerializer serializer = new() { Converters = [new WrappedArrayConverter()] };
 		const string json = """{"groups":{"data":[{"items":[1]},{"items":[2,3]}],"tail":true},"tail":42}""";
 		using ChunkedStream stream = new(Encoding.UTF8.GetBytes(json), 1);
 		JsonSerializer.StreamingEnumerationOptions<GroupEnvelope, int> options = new(x => x.Groups[1].Items);
@@ -396,12 +396,47 @@ public partial class JsonAsyncSequenceTests : TestBase
 	}
 
 	[Test]
-	public async Task PathExpression_ThroughUnion()
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task PathExpression_ThroughUnion(bool useObjects)
 	{
-		byte[] utf8 = Encoding.UTF8.GetBytes("""{"pet":["Cat",{"toys":["ball","mouse"],"lives":9}]}""");
+		this.Serializer = this.Serializer with { UseDiscriminatorObjects = useObjects };
+		byte[] utf8 = Encoding.UTF8.GetBytes(useObjects
+			? """{"pet":{"Cat":{"toys":["ball","mouse"],"lives":9}}}"""
+			: """{"pet":["Cat",{"toys":["ball","mouse"],"lives":9}]}""");
 		using ChunkedStream stream = new(utf8, 3);
 		List<string> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<UnionEnvelope, string>(stream, Shape<UnionEnvelope, UnionEnvelope>(), new(e => e.Pet.Toys)));
 		Assert.Equal(["ball", "mouse"], result);
+	}
+
+	[Test]
+	[Arguments(false, false)]
+	[Arguments(false, true)]
+	[Arguments(true, false)]
+	[Arguments(true, true)]
+	public async Task PathExpression_ThroughUnion_UsesCustomCaseNavigationHooks(bool useObjects, bool runtimeMapping)
+	{
+		JsonSerializer serializer = this.Serializer with
+		{
+			UseDiscriminatorObjects = useObjects,
+			Converters = [new CatToysConverter()],
+		};
+		if (runtimeMapping)
+		{
+			serializer = serializer with { DerivedTypeUnions = [new DerivedShapeMapping<Animal> { { "Cat", Shape<Cat, Cat>() } }] };
+		}
+
+		string json = useObjects
+			? """{"pet":{"Cat":{"wire":["ball","mouse"]}},"tail":true}"""
+			: """{"pet":["Cat",{"wire":["ball","mouse"]}],"tail":true}""";
+		string expectedUnion = useObjects ? """{"Cat":{"wire":["ball","mouse"]}}""" : """["Cat",{"wire":["ball","mouse"]}]""";
+		Animal pet = new Cat(["ball", "mouse"], 9);
+		Assert.Equal(expectedUnion, serializer.Serialize(pet, Shape<Animal, Animal>()));
+		Cat roundtrip = Assert.IsType<Cat>(serializer.Deserialize(expectedUnion, Shape<Animal, Animal>()));
+		Assert.Equal(pet.Toys, roundtrip.Toys);
+		Assert.Equal("mouse", serializer.DeserializePath(json, Shape<UnionEnvelope, UnionEnvelope>(), new JsonSerializer.DeserializePathOptions<UnionEnvelope, string>(e => e.Pet.Toys[1])));
+		using ChunkedStream stream = new(Encoding.UTF8.GetBytes(json), 1);
+		Assert.Equal(["ball", "mouse"], await CollectAsync(serializer.DeserializePathEnumerableAsync<UnionEnvelope, string>(stream, Shape<UnionEnvelope, UnionEnvelope>(), new(e => e.Pet.Toys))));
 	}
 
 	[Test]
@@ -501,7 +536,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 
 	private sealed class WrappedArrayConverter : JsonConverter<Inner[]>
 	{
-		public override void Write(ref JsonWriter writer, Inner[]? value, SerializationContext context) => throw new NotSupportedException();
+		public override void Write(ref JsonWriter writer, in Inner[]? value, SerializationContext context) => throw new NotSupportedException();
 
 		public override Inner[]? Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();
 
@@ -530,6 +565,82 @@ public partial class JsonAsyncSequenceTests : TestBase
 
 	[GenerateShape]
 	internal partial record UnionEnvelope(Animal Pet);
+
+	private sealed class CatToysConverter : JsonConverter<Cat>
+	{
+		public override void Write(ref JsonWriter writer, in Cat? value, SerializationContext context)
+		{
+			if (value is null)
+			{
+				writer.WriteNull();
+				return;
+			}
+
+			writer.WriteStartObject();
+			writer.WritePropertyName("wire");
+			writer.WriteStartArray();
+			for (int i = 0; i < value.Toys.Length; i++)
+			{
+				if (i > 0)
+				{
+					writer.WriteValueSeparator();
+				}
+
+				writer.Write(value.Toys[i]);
+			}
+
+			writer.WriteEndArray();
+			writer.WriteEndObject();
+		}
+
+		public override Cat? Read(ref JsonReader reader, SerializationContext context)
+		{
+			if (reader.TryReadNull())
+			{
+				return null;
+			}
+
+			reader.ReadStartObject();
+			Assert.Equal("wire", reader.ReadRequiredString());
+			reader.ReadNameSeparator();
+			reader.ReadStartArray();
+			List<string> toys = [];
+			if (!reader.TryReadEndArray())
+			{
+				do
+				{
+					toys.Add(reader.ReadRequiredString());
+					if (reader.TryReadEndArray())
+					{
+						break;
+					}
+
+					reader.ReadValueSeparator();
+				}
+				while (true);
+			}
+
+			Assert.True(reader.TryReadEndObject());
+			return new Cat(toys.ToArray(), 9);
+		}
+
+		public override bool SkipToPropertyValue(ref JsonReader reader, IPropertyShape propertyShape, SerializationContext context)
+		{
+			Assert.Equal(nameof(Animal.Toys), propertyShape.Name);
+			reader.ReadStartObject();
+			Assert.Equal("wire", reader.ReadRequiredString());
+			reader.ReadNameSeparator();
+			return true;
+		}
+
+		public override async ValueTask<bool> SkipToPropertyValueAsync(JsonAsyncReader reader, IPropertyShape propertyShape, SerializationContext context)
+		{
+			Assert.Equal(nameof(Animal.Toys), propertyShape.Name);
+			await reader.ReadStartObjectAsync(context);
+			Assert.Equal("wire", await reader.ReadPropertyNameAsync(context));
+			return true;
+		}
+	}
 
 	[GenerateShape]
 	internal partial record CustomEnvelope(CustomList List);

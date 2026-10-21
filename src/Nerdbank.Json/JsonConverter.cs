@@ -97,6 +97,31 @@ public abstract class JsonConverter
 		return await this.TryNavigateAsync(reader, segment, GetNavigationOptions(context), context).ConfigureAwait(false) >= 0;
 	}
 
+	/// <summary>Writes an untyped value.</summary>
+	/// <param name="writer">The destination writer.</param>
+	/// <param name="value">The value to write.</param>
+	/// <param name="context">The operation context.</param>
+	public abstract void WriteObject(ref JsonWriter writer, object? value, SerializationContext context);
+
+	/// <summary>Reads an untyped value.</summary>
+	/// <param name="reader">The source reader.</param>
+	/// <param name="context">The operation context.</param>
+	/// <returns>The deserialized value.</returns>
+	public abstract object? ReadObject(ref JsonReader reader, SerializationContext context);
+
+	/// <summary>Writes an untyped value asynchronously.</summary>
+	/// <param name="writer">The destination writer.</param>
+	/// <param name="value">The value to write.</param>
+	/// <param name="context">The operation context.</param>
+	/// <returns>A task tracking the write.</returns>
+	public abstract ValueTask WriteObjectAsync(JsonAsyncWriter writer, object? value, SerializationContext context);
+
+	/// <summary>Reads an untyped value asynchronously.</summary>
+	/// <param name="reader">The source reader.</param>
+	/// <param name="context">The operation context.</param>
+	/// <returns>The deserialized value.</returns>
+	public abstract ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context);
+
 	/// <summary>
 	/// Advances the reader from this converter's value to the child value selected by a targeted-deserialization segment.
 	/// </summary>
@@ -162,34 +187,10 @@ public abstract class JsonConverter
 		return found ? reader.NavigationDepth - depth : -1;
 	}
 
-	/// <summary>Writes an untyped value.</summary>
-	/// <param name="writer">The destination writer.</param>
-	/// <param name="value">The value to write.</param>
-	/// <param name="context">The operation context.</param>
-	public abstract void WriteObject(ref JsonWriter writer, object? value, SerializationContext context);
-
-	/// <summary>Reads an untyped value.</summary>
-	/// <param name="reader">The source reader.</param>
-	/// <param name="context">The operation context.</param>
-	/// <returns>The deserialized value.</returns>
-	public abstract object? ReadObject(ref JsonReader reader, SerializationContext context);
-
-	/// <summary>Writes an untyped value asynchronously.</summary>
-	/// <param name="writer">The destination writer.</param>
-	/// <param name="value">The value to write.</param>
-	/// <param name="context">The operation context.</param>
-	/// <returns>A task tracking the write.</returns>
-	public abstract ValueTask WriteObjectAsync(JsonAsyncWriter writer, object? value, SerializationContext context);
-
-	/// <summary>Reads an untyped value asynchronously.</summary>
-	/// <param name="reader">The source reader.</param>
-	/// <param name="context">The operation context.</param>
-	/// <returns>The deserialized value.</returns>
-	public abstract ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context);
-
 	/// <summary>Gets this converter without its reference-preservation wrapper.</summary>
 	/// <returns>The converter for the underlying value representation.</returns>
 	internal virtual JsonConverter UnwrapReferencePreservation() => this;
+
 	private static JsonNavigationSegment CreatePropertySegment(IPropertyShape propertyShape, SerializationContext context)
 		=> new(JsonPathSegment.ForMember(context.Cache.GetSerializedPropertyName(propertyShape.Name, propertyShape.AttributeProvider), propertyShape));
 

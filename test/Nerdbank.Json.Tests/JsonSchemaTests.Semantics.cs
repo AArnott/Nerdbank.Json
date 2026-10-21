@@ -196,7 +196,7 @@ public partial class JsonSchemaTests
 
 	internal partial class TextIntegerConverter : JsonConverter<int>
 	{
-		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => writer.WriteStringValue(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => writer.Write(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
 		public override int Read(ref JsonReader reader, SerializationContext context) => int.Parse(reader.ReadString()!, System.Globalization.CultureInfo.InvariantCulture);
 
@@ -205,7 +205,7 @@ public partial class JsonSchemaTests
 
 	private sealed class UndocumentedIntegerConverter : JsonConverter<int>
 	{
-		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => writer.WriteStringValue("integer");
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => writer.Write("integer");
 
 		public override int Read(ref JsonReader reader, SerializationContext context) => 0;
 	}

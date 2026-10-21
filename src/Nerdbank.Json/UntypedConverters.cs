@@ -256,7 +256,7 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 				writer.Write(s);
 				break;
 			case char c:
-				writer.WriteStringValue(c.ToString());
+				writer.Write(c.ToString());
 				break;
 			case byte n:
 				writer.Write(n);

@@ -52,7 +52,7 @@ public partial class ConverterCollectionTests
 		{
 		}
 
-		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => writer.WriteNumberValue(value);
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => writer.Write(value);
 
 		public override int Read(ref JsonReader reader, SerializationContext context) => int.Parse(reader.ReadNumberToken(), System.Globalization.CultureInfo.InvariantCulture);
 	}

@@ -97,7 +97,7 @@ public partial class CustomReferenceConverterTests
 		{
 			if (value is null)
 			{
-				writer.WriteNullValue();
+				writer.WriteNull();
 				return;
 			}
 

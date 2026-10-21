@@ -97,7 +97,7 @@ internal sealed partial class NameValueCollectionConverter : JsonConverter<NameV
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -115,7 +115,7 @@ internal sealed partial class NameValueCollectionConverter : JsonConverter<NameV
 			string[]? values = value.GetValues(i);
 			if (values is null)
 			{
-				writer.WriteNullValue();
+				writer.WriteNull();
 			}
 			else if (values.Length == 1)
 			{

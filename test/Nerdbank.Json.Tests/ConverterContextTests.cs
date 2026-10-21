@@ -92,7 +92,7 @@ public partial class ConverterContextTests
 
 	private sealed class PassThroughStringConverter : JsonConverter<string>
 	{
-		public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) => writer.WriteStringValue(value);
+		public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) => writer.Write(value);
 
 		public override string? Read(ref JsonReader reader, SerializationContext context) => reader.ReadString();
 	}
