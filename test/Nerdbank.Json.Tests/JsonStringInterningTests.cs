@@ -103,6 +103,47 @@ public partial class JsonStringInterningTests
 		}
 	}
 
+	[Test]
+	public async Task DeterministicHashCollisions_PreserveValuesAndCanonicalInstances()
+	{
+		const uint Prime = 16777619;
+		List<string> colliding = [];
+		unchecked
+		{
+			for (uint prefix = 1; colliding.Count < 128 && prefix <= char.MaxValue; prefix++)
+			{
+				uint hash = (2166136261 ^ prefix) * Prime;
+				for (uint second = 0; second <= char.MaxValue; second++)
+				{
+					uint intermediate = (hash ^ second) * Prime;
+					if (intermediate <= char.MaxValue && !char.IsSurrogate((char)prefix) && !char.IsSurrogate((char)second) && !char.IsSurrogate((char)intermediate))
+					{
+						string candidate = new([(char)prefix, (char)second, (char)intermediate]);
+						Assert.Equal(0u, (intermediate ^ candidate[2]) * Prime);
+						colliding.Add(candidate);
+						break;
+					}
+				}
+			}
+		}
+
+		Assert.Equal(128, colliding.Count);
+		string[] values = [.. colliding, .. colliding];
+		JsonSerializer serializer = new() { InternStrings = true };
+		string json = serializer.Serialize<string[], JsonStringInterningTests>(values);
+		string[] result = serializer.Deserialize<string[], JsonStringInterningTests>(json)!;
+		using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+		string[] asyncResult = (await serializer.DeserializeAsync(stream, PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<string[]>()!))!;
+		foreach (string[] actual in new[] { result, asyncResult })
+		{
+			Assert.Equal(values, actual);
+			for (int i = 0; i < colliding.Count; i++)
+			{
+				Assert.Same(actual[i], actual[i + colliding.Count]);
+			}
+		}
+	}
+
 #if NET
 	[Test]
 	[Arguments("hello\\nworld")]
