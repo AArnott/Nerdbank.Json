@@ -344,19 +344,22 @@ public partial class JsonSkipSecurityTests : TestBase
 	}
 
 	[Test]
-	[Arguments(false)]
-	[Arguments(true)]
-	public async Task UnionNavigation_CountsEnvelopeAndPayload(bool runtime)
+	[Arguments(false, false)]
+	[Arguments(false, true)]
+	[Arguments(true, false)]
+	[Arguments(true, true)]
+	public async Task UnionNavigation_CountsEnvelopeAndPayload(bool runtime, bool objectEnvelope)
 	{
 		JsonSerializer serializer = new()
 		{
 			StartingContext = new SerializationContext { MaxDepth = 4 },
+			UseDiscriminatorObjects = objectEnvelope,
 			DerivedTypeUnions = runtime
 				? [new DerivedShapeMapping<UnionBase> { { "UnionCase", Shape<UnionCase>() } }]
 				: [],
 		};
-		const string accepted = """{"pet":["UnionCase",{"unknown":[],"value":7,"items":[7]}]}""";
-		const string rejected = """{"pet":["UnionCase",{"unknown":[[]],"value":7,"items":[7]}]}""";
+		string accepted = Wrap("""{"unknown":[],"value":7,"items":[7]}""");
+		string rejected = Wrap("""{"unknown":[[]],"value":7,"items":[7]}""");
 		JsonSerializer.DeserializePathOptions<UnionHolder, int> selectValue = new(x => x.Pet.Value);
 		JsonSerializer.StreamingEnumerationOptions<UnionHolder, int> selectItems = new(x => x.Pet.Items);
 		Assert.Equal(7, serializer.DeserializePath(accepted, Shape<UnionHolder>(), selectValue));
@@ -365,10 +368,12 @@ public partial class JsonSkipSecurityTests : TestBase
 		AssertDepthException(await Assert.ThrowsAnyAsync<Exception>(() => Collect(serializer, rejected)));
 
 		JsonSerializer shallower = serializer with { StartingContext = new SerializationContext { MaxDepth = 3 } };
-		const string targetTooDeep = """{"pet":["UnionCase",{"value":7,"items":[7]}]}""";
+		string targetTooDeep = Wrap("""{"value":7,"items":[7]}""");
 		JsonSerializer.DeserializePathOptions<UnionHolder, int[]> selectArray = new(x => x.Pet.Items);
 		AssertDepthException(Assert.ThrowsAny<Exception>(() => shallower.DeserializePath(targetTooDeep, Shape<UnionHolder>(), selectArray)));
 		AssertDepthException(await Assert.ThrowsAnyAsync<Exception>(() => Collect(shallower, targetTooDeep)));
+
+		string Wrap(string payload) => objectEnvelope ? """{"pet":{"UnionCase":""" + payload + "}}" : """{"pet":["UnionCase",""" + payload + "]}";
 
 		async Task Collect(JsonSerializer owner, string json)
 		{
