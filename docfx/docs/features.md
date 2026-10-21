@@ -41,8 +41,8 @@ Current behavior:
 * Mutable collections use their shape-provided constructor and appender; parameterized collections buffer elements and then invoke their shape-provided constructor.
 * Dictionary keys must be supported simple scalar or enum types.
 * Getter-only mutable collection and dictionary properties are populated into their existing instances during deserialization.
-* Rectangular multidimensional arrays (rank 2 and higher) serialize to and from nested JSON arrays.
-* Unknown JSON properties are ignored during deserialization unless an extension-data property captures them.
+* Rectangular multidimensional arrays (rank 2 and higher) use nested JSON arrays by default, or `MultiDimensionalArrayFormat.Flat` for `[[dimension lengths], [flat elements]]`.
+* Unknown JSON properties are ignored during deserialization unless a settable `UnusedDataPacket` member captures them.
 * Property names default to camelCase.
 * `JsonSerializer.PropertyNamingPolicy` can be set to `null` or another `JsonNamingPolicy` built-in.
 * `JsonSerializer.WriteIndented` can emit human-readable JSON with line breaks and indentation.
@@ -54,9 +54,9 @@ Current behavior:
 * `JsonSerializer.ConverterTypes` can register converter classes, including open generic converter types.
 * `JsonSerializer.ConverterFactories` can register runtime converter factories for type-driven interception.
 * `JsonConverterAttribute` can attach custom converters directly to types, properties, and constructor parameters.
-* `JsonExtensionDataAttribute` can capture unknown object members into a dictionary of raw JSON fragments for forward-compatible round-tripping.
+* A property or field of type `UnusedDataPacket` captures unknown object members as raw JSON fragments for forward-compatible round-tripping; private members can be exposed with `PropertyShapeAttribute`.
 * Types implementing `IJsonSerializationCallbacks` can validate or prepare state before serialization and restore invariants after deserialization.
-* `JsonCollectionComparerAttribute` can select an `IEqualityComparer<T>` or `IComparer<T>` for a dictionary or set member so the deserializer preserves member-specific semantics such as case-insensitive keys.
+* `UseComparerAttribute` can select an `IEqualityComparer<T>` or `IComparer<T>` for a dictionary or set member so the deserializer preserves member-specific semantics such as case-insensitive keys.
 * `JsonSerializer.SerializeDefaultValues` can omit default-valued properties during serialization.
 * `JsonSerializer.SerializeEnumValuesByName` can serialize enums as strings when simple names exist.
 * `JsonSerializer.DeserializeDefaultValues` can relax required-member and non-nullable reference enforcement during deserialization.
@@ -65,9 +65,9 @@ Current behavior:
 * `JsonSerializer.AllowTrailingCommas` can accept trailing commas while reading arrays and objects.
 * `JsonSerializer.ReadCommentHandling` can skip `//` and `/* */` comments while deserializing.
 * Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
-* `JsonSerializer.Unions` can add, replace, extend, or disable unions at runtime using explicitly supplied type shapes, and can opt into an experimental discriminator-free duck-typing strategy.
-* `JsonSerializer.GetJsonSchema` can export a JSON Schema (draft 2020-12) document describing the effective representation of a type.
-* `JsonSerializer.DeserializeAt` can deserialize only a single value selected by a `JsonPath` or a member-access expression, skipping unrelated JSON.
+* `JsonSerializer.DerivedTypeUnions` can add, replace, extend, or disable unions at runtime using explicitly supplied type shapes, and can opt into an experimental discriminator-free duck-typing strategy.
+* `JsonSerializer.GetJsonSchema` exports a `System.Text.Json.Nodes.JsonObject` for draft 4, draft 7, or draft 2020-12, describing the effective representation of a type.
+* `JsonSerializer.DeserializePath` reads a single value selected by a `JsonPath` or typed `DeserializePathOptions`, skipping unrelated JSON.
 
 Converter registration notes:
 
@@ -83,7 +83,7 @@ Property validation notes:
 * Non-nullable reference-type properties reject explicit JSON `null` values during deserialization.
 * Getter-only mutable collection properties ignore JSON `null` instead of replacing their existing collection instances.
 * Property-name case insensitivity only affects object-property and constructor-parameter matching during deserialization; serialization still uses the configured emitted names.
-* Extension data captures raw JSON text, so retained unknown members round-trip without being reinterpreted through another converter.
+* `UnusedDataPacket` retains raw JSON text, so unknown members round-trip without being reinterpreted through another converter. Getter-only packet members can write supplied packets but do not capture unknown input.
 
 Constructor deserialization notes:
 
@@ -129,11 +129,11 @@ See [Asynchronous streaming](async-streaming.md).
 
 ## Sequence Streaming and Targeted Deserialization
 
-* <xref:Nerdbank.Json.JsonSerializer.DeserializeArrayAsync*> streams a top-level JSON array as an asynchronous sequence.
-* <xref:Nerdbank.Json.JsonSerializer.DeserializeNewlineDelimitedAsync*> streams NDJSON values, requiring a line terminator between values.
-* <xref:Nerdbank.Json.JsonSerializer.DeserializeArrayAtAsync*> streams an array selected inside an envelope by JSON path or member-access expression.
-* <xref:Nerdbank.Json.JsonSerializer.SerializeArrayAsync*> and <xref:Nerdbank.Json.JsonSerializer.SerializeNewlineDelimitedAsync*> write asynchronous sequences with backpressure.
-* <xref:Nerdbank.Json.JsonSerializer.DeserializeAt*> reads only a selected value, skipping unrelated JSON.
+* <xref:Nerdbank.Json.JsonSerializer.DeserializeEnumerableAsync*> streams values using `SequenceOptions`: `JsonSequenceFormat.NDJson` (the default) requires a line terminator between values; `JsonSequenceFormat.JsonArray` reads a top-level array.
+* <xref:Nerdbank.Json.JsonSerializer.DeserializePathEnumerableAsync*> streams an array selected inside an envelope by JSON path or typed `StreamingEnumerationOptions`. Typed options control caller-supplied pipe ownership through `LeaveOpen`.
+* <xref:Nerdbank.Json.JsonSerializer.SerializeEnumerableAsync*> writes asynchronous sequences with the selected framing and backpressure.
+* <xref:Nerdbank.Json.JsonSerializer.DeserializePath*> reads only a selected value, skipping unrelated JSON.
+* Custom converters support logical properties and indices through `SkipToPropertyValue`, `SkipToIndexValue`, and their asynchronous counterparts.
 
 Targeted deserialization and sequence streaming do not support reference preservation.
 Completing a sequence validates its remaining framing; disposing the enumerator early does not drain or validate the remaining document.

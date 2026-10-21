@@ -16,21 +16,21 @@ It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`,
 * Built-in serialization and deserialization for common .NET primitive and BCL types.
 * PolyType-driven serialization for mutable objects, records, and immutable objects with mapped constructor parameters.
 * Mutable and parameterized collections and dictionaries, including read-only and immutable types when their PolyType shapes supply construction support.
-* Dictionaries with supported simple scalar or enum keys, getter-only mutable collection population, and rectangular multidimensional arrays.
+* Dictionaries with supported simple scalar or enum keys, getter-only mutable collection population, and rectangular multidimensional arrays with nested or flat representations.
 * camelCase property naming by default, configurable with `JsonNamingPolicy`.
 * Optional indented output for human-readable JSON.
 * Optional case-insensitive property-name matching during deserialization.
 * Optional enum-name serialization with numeric fallback for unnamed values.
 * Runtime custom converter registration with immutable converter instance/type collections or converter factories using `ConverterContext`.
 * Attribute-driven custom converter registration on types, properties, and constructor parameters.
-* Optional unknown-member retention through `JsonExtensionDataAttribute`.
+* Optional unknown-member retention through a member of type `UnusedDataPacket`.
 * Built-in byte buffer handling using Base64 JSON strings.
 * Optional trailing-comma and comment skipping support during deserialization.
 * Configurable deserialization policy for missing required values and non-nullable reference validation.
 * Optional reference preservation for repeated references, with either cycle rejection or support for cycles through mutable objects and collections.
 * Synchronous stream APIs and incremental asynchronous stream/pipe serialization with cancellation and backpressure.
-* Asynchronous sequence reading and writing for JSON arrays and NDJSON, plus streaming arrays selected inside an envelope.
-* Targeted deserialization by JSON path or member-access expression.
+* Asynchronous sequence reading and writing through `DeserializeEnumerableAsync` and `SerializeEnumerableAsync`, with `SequenceOptions` selecting `JsonSequenceFormat.NDJson` or `JsonSequenceFormat.JsonArray`.
+* Targeted `DeserializePath` by JSON path or member-access options, and `DeserializePathEnumerableAsync` for arrays selected inside an envelope.
 * Shape-declared unions and runtime `DerivedTypeUnions` mappings, with array or single-property discriminator envelopes.
 * JSON Schema draft 4, draft 7, and draft 2020-12 export as `System.Text.Json.Nodes.JsonObject`, separate from the native JSON DOM.
 * Serialization callbacks, operation-scoped string interning, collection comparers, and configurable security limits.
@@ -148,22 +148,47 @@ public partial class Person
 {
 	public string? Name { get; set; }
 
-	[JsonExtensionData]
-	public Dictionary<string, string>? ExtensionData { get; set; }
+	public UnusedDataPacket? UnusedData { get; set; }
 }
 ```
+
+The packet retains raw JSON values, including their original numeric text.
+A setter is required to capture unknown members; a getter is required to write a supplied packet.
+Private packet fields or properties can be included with `[PropertyShape]`.
+
+To read a selected member without materializing the enclosing object:
+
+```csharp
+JsonSerializer.DeserializePathOptions<Person, int> options = new(person => person.Age);
+int age = serializer.DeserializePath<Person, int>(json, options);
+```
+
+To stream a top-level JSON array instead of the default NDJSON framing:
+
+```csharp
+JsonSerializer.SequenceOptions options = new() { Format = JsonSequenceFormat.JsonArray };
+await foreach (Person? person in serializer.DeserializeEnumerableAsync<Person>(stream, options))
+{
+	Console.WriteLine(person?.Name);
+}
+```
+
+Rectangular multidimensional arrays default to `MultiDimensionalArrayFormat.Nested`.
+Set `JsonSerializer.MultiDimensionalArrayFormat` to `MultiDimensionalArrayFormat.Flat` to use the tuple `[[dimension lengths], [flat elements]]`, preserving empty dimensions.
 
 ## Design Notes
 
 * The low-level JSON writer does not delegate to another serializer.
 * String escaping follows RFC 8259 requirements instead of aggressively escaping extra characters.
 * The converter and visitor architecture uses PolyType shapes, including source-generated shapes for NativeAOT-safe contracts.
-* The object-graph layer supports settable properties and mapped constructor parameters, uses camelCase property names by default, and can either ignore unknown JSON properties or retain them in an extension-data dictionary.
+* The object-graph layer supports settable properties and mapped constructor parameters, uses camelCase property names by default, and can either ignore unknown JSON properties or retain them in an `UnusedDataPacket` member.
 * Collection and dictionary construction follows the supplied PolyType shape: mutable collections are populated directly, while parameterized collections are constructed from buffered elements.
 * Runtime-registered converters are consulted before built-in and PolyType-generated converters.
-* Synchronous custom converters override `Write(ref JsonWriter writer, in T? value, SerializationContext context)`; public non-generic invocation APIs support runtime-shaped values.
+* Synchronous custom converters override `Write(ref JsonWriter writer, in T? value, SerializationContext context)`; public sealed object-method overrides support non-generic invocation.
+* Low-level scalar output uses `JsonWriter.Write`, `WriteNull`, and `WriteRaw`; typed numeric input uses methods such as `JsonReader.ReadInt32` and `ReadDouble`.
+* Custom representations expose logical navigation through `SkipToPropertyValue` and `SkipToIndexValue`, with corresponding asynchronous hooks.
 * `JsonConverterAttribute` can override converter selection for a type, property, or constructor parameter.
-* `JsonExtensionDataAttribute` can capture unknown JSON members as raw JSON text for forward-compatible round-tripping.
+* A member of type `UnusedDataPacket` captures unknown JSON members as raw JSON text for forward-compatible round-tripping, without an extension-data attribute.
 * Deserialization can optionally skip comments and accept trailing commas.
 * Asynchronous stream and pipe APIs process built-in objects and collections incrementally; custom converters using the default asynchronous hooks buffer their individual values.
 * Cyclic back-references require early registration of mutable instances; immutable or constructor-bound objects cannot be back-referenced while under construction.
