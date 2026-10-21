@@ -65,7 +65,7 @@ internal sealed class JsonOptionalConverter<TOptional, TElement> : JsonConverter
 		this.createSome = createSome;
 	}
 
-	public override void Write(ref JsonWriter writer, TOptional? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TOptional? value, SerializationContext context)
 	{
 		if (!this.deconstructor(value, out TElement? element))
 		{
@@ -104,7 +104,7 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 		}
 	}
 
-	public override void Write(ref JsonWriter writer, TEnum value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TEnum value, SerializationContext context)
 	{
 		var underlyingValue = (TUnderlying)(object)value;
 		if (this.namesByValue?.TryGetValue(underlyingValue, out string? name) == true)
@@ -188,7 +188,7 @@ internal sealed class JsonSurrogateConverter<T, TSurrogate> : JsonConverter<T>
 		this.surrogateConverter = surrogateConverter;
 	}
 
-	public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 		=> this.surrogateConverter.Write(ref writer, this.shape.Marshaler.Marshal(value), context);
 
 	public override T? Read(ref JsonReader reader, SerializationContext context)
@@ -212,7 +212,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		this.deserializersByStringAlias = deserializersByStringAlias;
 	}
 
-	public override void Write(ref JsonWriter writer, TUnion? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TUnion? value, SerializationContext context)
 	{
 		if (!typeof(TUnion).IsValueType && value is null)
 		{
@@ -364,7 +364,7 @@ internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter
 		this.marshaler = marshaler;
 	}
 
-	public override void Write(ref JsonWriter writer, TUnion? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TUnion? value, SerializationContext context)
 		=> this.inner.Write(ref writer, this.marshaler.Unmarshal(value), context);
 
 	public override TUnion? Read(ref JsonReader reader, SerializationContext context)
@@ -491,7 +491,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 	public override bool PreferAsyncSerialization => true;
 
-	public override void Write(ref JsonWriter writer, TDeclaring? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TDeclaring? value, SerializationContext context)
 	{
 		if (value is null)
 		{

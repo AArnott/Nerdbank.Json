@@ -85,6 +85,9 @@ public record struct SerializationContext
 	/// </summary>
 	internal StringInterning? StringInterningCache { get; private init; }
 
+	/// <summary>Gets the reference id being constructed by the current converter, or zero when none applies.</summary>
+	internal int ReferenceId { get; init; }
+
 	/// <summary>
 	/// Gets a value indicating whether this context belongs to a serialization operation that is already in progress.
 	/// </summary>
@@ -147,6 +150,21 @@ public record struct SerializationContext
 		if (--this.MaxDepth < 0)
 		{
 			throw new InvalidOperationException("Exceeded maximum depth of object graph.");
+		}
+	}
+
+	/// <summary>Reports a newly constructed instance before deserializing its members.</summary>
+	/// <param name="value">The instance being deserialized.</param>
+	/// <remarks>
+	/// Custom converters should call this before reading nested values to support reference cycles.
+	/// The call has no effect unless cycle-preserving deserialization is active.
+	/// The converter must return the same instance it reports.
+	/// </remarks>
+	public void ReportObjectConstructed(object? value)
+	{
+		if (this.ReferenceId != 0)
+		{
+			this.ReferenceTracker?.ReportObjectConstructed(value, this.ReferenceId);
 		}
 	}
 

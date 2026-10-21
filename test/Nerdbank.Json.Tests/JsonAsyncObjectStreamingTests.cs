@@ -228,7 +228,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 	{
 		internal TaskCompletionSource<bool> Signal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-		public override void Write(ref JsonWriter writer, Probe value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in Probe value, SerializationContext context)
 			=> writer.WriteStringValue(value.Text);
 
 		public override Probe Read(ref JsonReader reader, SerializationContext context)

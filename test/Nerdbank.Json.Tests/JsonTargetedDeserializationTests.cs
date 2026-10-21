@@ -320,7 +320,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 
 	private sealed class Point3Converter(JsonNamingPolicy policy) : JsonConverter<Point3>
 	{
-		public override void Write(ref JsonWriter writer, Point3? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in Point3? value, SerializationContext context)
 		{
 			writer.WriteStartArray();
 			writer.WriteNumberValue(value!.X);

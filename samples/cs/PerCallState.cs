@@ -41,7 +41,7 @@ public partial class TenantId
 // Fills in the tenant from per-call state when the value doesn't specify one.
 public sealed class TenantIdConverter : JsonConverter<TenantId>
 {
-	public override void Write(ref JsonWriter writer, TenantId? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TenantId? value, SerializationContext context)
 	{
 		if (value is null)
 		{

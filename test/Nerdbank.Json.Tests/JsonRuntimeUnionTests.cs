@@ -327,7 +327,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 
 	private sealed class CircleConverter : JsonConverter<Circle>
 	{
-		public override void Write(ref JsonWriter writer, Circle? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in Circle? value, SerializationContext context)
 		{
 			if (value is null)
 			{

@@ -33,7 +33,7 @@ internal sealed class ObjectConverter : JsonConverter<object>
 	public override object? Read(ref JsonReader reader, SerializationContext context)
 		=> reader.TryReadNull() ? null : JsonValueConverter.Instance.Read(ref reader, context);
 
-	public override void Write(ref JsonWriter writer, object? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in object? value, SerializationContext context)
 	{
 		if (value is null)
 		{
@@ -183,7 +183,7 @@ internal sealed class ExpandoObjectConverter : JsonConverter<ExpandoObject>
 		return result;
 	}
 
-	public override void Write(ref JsonWriter writer, ExpandoObject? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in ExpandoObject? value, SerializationContext context)
 	{
 		if (value is null)
 		{

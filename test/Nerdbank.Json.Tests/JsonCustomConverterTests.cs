@@ -117,7 +117,7 @@ public partial class JsonObjectSerializerTests
 
 	internal sealed partial class UpperCaseStringConverter : JsonConverter<string>
 	{
-		public override void Write(ref JsonWriter writer, string? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in string? value, SerializationContext context)
 		{
 			writer.WriteStringValue(value?.ToUpperInvariant());
 		}
@@ -138,7 +138,7 @@ public partial class JsonObjectSerializerTests
 
 	internal sealed partial class AttributedStringWrapperConverter : JsonConverter<AttributedStringWrapper>
 	{
-		public override void Write(ref JsonWriter writer, AttributedStringWrapper? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in AttributedStringWrapper? value, SerializationContext context)
 		{
 			if (value is null)
 			{
@@ -178,7 +178,7 @@ public partial class JsonObjectSerializerTests
 
 	internal sealed partial class GenericValueConverter<T> : JsonConverter<GenericValue<T>>
 	{
-		public override void Write(ref JsonWriter writer, GenericValue<T>? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in GenericValue<T>? value, SerializationContext context)
 		{
 			if (value is null)
 			{
@@ -221,7 +221,7 @@ public partial class JsonObjectSerializerTests
 
 	private sealed class CharListWrapperConverter(JsonConverter<char> elementConverter) : JsonConverter<List<char>>
 	{
-		public override void Write(ref JsonWriter writer, List<char>? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in List<char>? value, SerializationContext context)
 		{
 			if (value is null)
 			{

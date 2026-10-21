@@ -42,7 +42,7 @@ internal sealed class JsonMultidimensionalArrayConverter<TArray, TElement> : Jso
 	}
 
 	/// <inheritdoc/>
-	public override void Write(ref JsonWriter writer, TArray? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TArray? value, SerializationContext context)
 	{
 		if (value is null)
 		{

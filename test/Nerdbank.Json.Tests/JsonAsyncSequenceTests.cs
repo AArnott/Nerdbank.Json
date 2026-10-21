@@ -329,7 +329,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 
 	internal sealed class CustomListConverter : JsonConverter<CustomList>
 	{
-		public override void Write(ref JsonWriter writer, CustomList? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in CustomList? value, SerializationContext context)
 		{
 			writer.WriteStartObject();
 			writer.WritePropertyName("v");

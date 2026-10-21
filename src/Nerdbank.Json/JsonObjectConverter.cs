@@ -39,7 +39,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	public override bool PreferAsyncSerialization => true;
 
-	public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 	{
 		if (value is null)
 		{

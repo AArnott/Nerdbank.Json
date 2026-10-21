@@ -50,7 +50,7 @@ public partial record Point(int X, int Y);
 // override the navigator would only understand plain objects and arrays.
 public sealed class PointConverter : JsonConverter<Point>
 {
-	public override void Write(ref JsonWriter writer, Point? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in Point? value, SerializationContext context)
 	{
 		writer.WriteStartArray();
 		writer.WriteNumberValue(value!.X);

@@ -44,7 +44,7 @@ public partial class Foo
 
 public sealed class FooConverter : JsonConverter<Foo>
 {
-	public override void Write(ref JsonWriter writer, Foo? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in Foo? value, SerializationContext context)
 	{
 		if (value is null)
 		{
@@ -101,7 +101,7 @@ public partial class Inner
 
 public sealed class WrapperConverter : JsonConverter<Wrapper>
 {
-	public override void Write(ref JsonWriter writer, Wrapper? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in Wrapper? value, SerializationContext context)
 	{
 		if (value is null)
 		{
@@ -169,7 +169,7 @@ public partial class Envelope<T>
 public sealed class EnvelopeConverter<T> : JsonConverter<Envelope<T>>
 	where T : IShapeable<T>
 {
-	public override void Write(ref JsonWriter writer, Envelope<T>? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in Envelope<T>? value, SerializationContext context)
 	{
 		if (value is null)
 		{
@@ -220,7 +220,7 @@ public sealed class EnvelopeConverterFactory : IJsonConverterFactory
 	{
 		private readonly JsonConverter<T> valueConverter = context.GetConverter(T.GetTypeShape());
 
-		public override void Write(ref JsonWriter writer, Envelope<T>? value, SerializationContext serializationContext)
+		public override void Write(ref JsonWriter writer, in Envelope<T>? value, SerializationContext serializationContext)
 		{
 			if (value is null)
 			{

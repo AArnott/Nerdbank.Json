@@ -41,7 +41,7 @@ internal sealed class JsonValueConverter : JsonConverter<JsonValue>
 		}
 	}
 
-	public override void Write(ref JsonWriter writer, JsonValue? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in JsonValue? value, SerializationContext context)
 	{
 		if (value is null)
 		{

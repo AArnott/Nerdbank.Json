@@ -65,7 +65,7 @@ internal sealed class JsonRuntimeUnionCaseConverter<TBase, TCase> : JsonConverte
 		this.inner = inner;
 	}
 
-	public override void Write(ref JsonWriter writer, TBase? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TBase? value, SerializationContext context)
 		=> this.inner.Write(ref writer, (TCase?)value, context);
 
 	public override TBase? Read(ref JsonReader reader, SerializationContext context)
@@ -141,7 +141,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		}
 	}
 
-	public override void Write(ref JsonWriter writer, TBase? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TBase? value, SerializationContext context)
 	{
 		if (!typeof(TBase).IsValueType && value is null)
 		{
@@ -290,7 +290,7 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 		}
 	}
 
-	public override void Write(ref JsonWriter writer, TBase? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TBase? value, SerializationContext context)
 	{
 		if (!typeof(TBase).IsValueType && value is null)
 		{

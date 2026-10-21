@@ -204,7 +204,7 @@ public partial class JsonSerializerContextOverloadTests : TestBase
 
 	private sealed class StateConverter : JsonConverter<string>
 	{
-		public override void Write(ref JsonWriter writer, string? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in string? value, SerializationContext context)
 			=> writer.WriteStringValue(context[StateKey] as string);
 
 		public override string? Read(ref JsonReader reader, SerializationContext context)
@@ -218,7 +218,7 @@ public partial class JsonSerializerContextOverloadTests : TestBase
 	{
 		private readonly JsonSerializer inner = new();
 
-		public override void Write(ref JsonWriter writer, int value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context)
 			=> this.inner.Serialize(ref writer, "nested", StringShape, context);
 
 		public override int Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();

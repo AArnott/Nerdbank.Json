@@ -15,7 +15,6 @@ internal sealed class ConverterCache
 {
 	private readonly ConcurrentDictionary<(Type Type, Type Provider), ITypeShape> cachedTypeShapes = new();
 	private readonly JsonSerializerConfiguration configuration;
-	private object? lastConverter;
 	private MultiProviderTypeCache? cachedConverters;
 	private MultiProviderTypeCache? nativeAotCachedConverters;
 
@@ -83,19 +82,14 @@ internal sealed class ConverterCache
 #if NET
 		if (!RuntimeFeature.IsDynamicCodeSupported)
 		{
-			if (this.lastConverter is JsonConverter<T> lastConverter)
-			{
-				return lastConverter;
-			}
-
 			JsonConverter<T> converter = this.TryGetProfferedConverter(shape, visitor: null, out JsonConverter<T>? profferedConverter)
 				? profferedConverter
 				: (JsonConverter<T>)this.NativeAotCachedConverters.GetOrAdd(shape)!;
-			return (JsonConverter<T>)(this.lastConverter = this.WrapWithReferencePreservation(converter));
+			return this.WrapWithReferencePreservation(converter);
 		}
 #endif
 
-		return (JsonConverter<T>)(this.lastConverter is JsonConverter<T> cachedConverter ? cachedConverter : (this.lastConverter = this.CachedConverters.GetOrAdd(shape)!));
+		return (JsonConverter<T>)this.CachedConverters.GetOrAdd(shape)!;
 	}
 
 	internal JsonConverter GetOrAddConverter(ITypeShape shape)

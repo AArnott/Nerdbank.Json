@@ -186,7 +186,7 @@ public partial class JsonStringInterningTests
 			return [first];
 		}
 
-		public override void Write(ref JsonWriter writer, string[]? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in string[]? value, SerializationContext context)
 			=> throw new NotSupportedException();
 	}
 #endif

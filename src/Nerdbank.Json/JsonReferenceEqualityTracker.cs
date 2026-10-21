@@ -22,6 +22,26 @@ internal sealed class JsonReferenceEqualityTracker
 		this.allowCycles = mode == ReferencePreservationMode.AllowCycles;
 	}
 
+	internal void ReportObjectConstructed(object? value, int referenceId)
+	{
+		if (!this.allowCycles || value is null)
+		{
+			return;
+		}
+
+		if (this.deserializedObjects.TryGetValue(referenceId, out object? existing))
+		{
+			if (!ReferenceEquals(existing, value))
+			{
+				throw new InvalidOperationException("A converter reported different instances for the same reference id.");
+			}
+
+			return;
+		}
+
+		this.deserializedObjects.Add(referenceId, value);
+	}
+
 	internal void WriteObject(ref JsonWriter writer, object value, JsonConverter inner, SerializationContext context)
 	{
 		if (this.TryGetSerializedObject(value, out int referenceId))
@@ -109,14 +129,14 @@ internal sealed class JsonReferenceEqualityTracker
 			(this.inProgressUnregisteredIds ??= []).Add(assignedReferenceId);
 			try
 			{
-				value = inner.Read(ref reader, context) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
+				value = inner.Read(ref reader, context with { ReferenceId = assignedReferenceId }) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
 			}
 			finally
 			{
 				this.inProgressUnregisteredIds.Remove(assignedReferenceId);
 			}
 
-			this.deserializedObjects.Add(assignedReferenceId, value);
+			this.ReportObjectConstructed(value, assignedReferenceId);
 		}
 		else
 		{
@@ -228,14 +248,14 @@ internal sealed class JsonReferenceEqualityTracker
 			(this.inProgressUnregisteredIds ??= []).Add(assignedReferenceId);
 			try
 			{
-				value = await inner.ReadAsync(reader, context).ConfigureAwait(false) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
+				value = await inner.ReadAsync(reader, context with { ReferenceId = assignedReferenceId }).ConfigureAwait(false) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
 			}
 			finally
 			{
 				this.inProgressUnregisteredIds.Remove(assignedReferenceId);
 			}
 
-			this.deserializedObjects.Add(assignedReferenceId, value);
+			this.ReportObjectConstructed(value, assignedReferenceId);
 		}
 		else
 		{

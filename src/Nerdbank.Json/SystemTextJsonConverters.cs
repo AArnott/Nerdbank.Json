@@ -35,7 +35,7 @@ internal sealed class SystemTextJsonElementConverter : JsonConverter<JsonElement
 		return document.RootElement.Clone();
 	}
 
-	public override void Write(ref JsonWriter writer, JsonElement value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in JsonElement value, SerializationContext context)
 	{
 		if (value.ValueKind == System.Text.Json.JsonValueKind.Undefined)
 		{
@@ -59,7 +59,7 @@ internal sealed class SystemTextJsonNodeConverter : JsonConverter<JsonNode>
 	public override JsonNode? Read(ref JsonReader reader, SerializationContext context)
 		=> JsonNode.Parse(reader.ReadRawValue(), nodeOptions: null, SystemTextJsonInterop.DocumentOptions);
 
-	public override void Write(ref JsonWriter writer, JsonNode? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in JsonNode? value, SerializationContext context)
 	{
 		if (value is null)
 		{
@@ -83,7 +83,7 @@ internal sealed class SystemTextJsonDocumentConverter : JsonConverter<JsonDocume
 	public override JsonDocument? Read(ref JsonReader reader, SerializationContext context)
 		=> JsonDocument.Parse(reader.ReadRawValue(), SystemTextJsonInterop.DocumentOptions);
 
-	public override void Write(ref JsonWriter writer, JsonDocument? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in JsonDocument? value, SerializationContext context)
 	{
 		if (value is null)
 		{

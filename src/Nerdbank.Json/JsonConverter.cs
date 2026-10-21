@@ -79,13 +79,30 @@ public abstract class JsonConverter
 	public virtual ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 		=> JsonAsyncTargetedNavigator.NavigateRawTokenAsync(reader, segment, options, context);
 
-	internal abstract void WriteObject(ref JsonWriter writer, object? value, SerializationContext context);
+	/// <summary>Writes an untyped value.</summary>
+	/// <param name="writer">The destination writer.</param>
+	/// <param name="value">The value to write.</param>
+	/// <param name="context">The operation context.</param>
+	public abstract void WriteObject(ref JsonWriter writer, object? value, SerializationContext context);
 
-	internal abstract object? ReadObject(ref JsonReader reader, SerializationContext context);
+	/// <summary>Reads an untyped value.</summary>
+	/// <param name="reader">The source reader.</param>
+	/// <param name="context">The operation context.</param>
+	/// <returns>The deserialized value.</returns>
+	public abstract object? ReadObject(ref JsonReader reader, SerializationContext context);
 
-	internal abstract ValueTask WriteObjectAsync(JsonAsyncWriter writer, object? value, SerializationContext context);
+	/// <summary>Writes an untyped value asynchronously.</summary>
+	/// <param name="writer">The destination writer.</param>
+	/// <param name="value">The value to write.</param>
+	/// <param name="context">The operation context.</param>
+	/// <returns>A task tracking the write.</returns>
+	public abstract ValueTask WriteObjectAsync(JsonAsyncWriter writer, object? value, SerializationContext context);
 
-	internal abstract ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context);
+	/// <summary>Reads an untyped value asynchronously.</summary>
+	/// <param name="reader">The source reader.</param>
+	/// <param name="context">The operation context.</param>
+	/// <returns>The deserialized value.</returns>
+	public abstract ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context);
 }
 
 /// <summary>
@@ -102,7 +119,7 @@ public abstract class JsonConverter<T> : JsonConverter
 	/// <param name="writer">The writer to receive the JSON value.</param>
 	/// <param name="value">The value to write.</param>
 	/// <param name="context">Context for the serialization operation.</param>
-	public abstract void Write(ref JsonWriter writer, T? value, SerializationContext context);
+	public abstract void Write(ref JsonWriter writer, in T? value, SerializationContext context);
 
 	/// <summary>
 	/// Reads a value from JSON.
@@ -157,22 +174,26 @@ public abstract class JsonConverter<T> : JsonConverter
 		return result;
 	}
 
-	internal sealed override void WriteObject(ref JsonWriter writer, object? value, SerializationContext context)
+	/// <inheritdoc/>
+	public sealed override void WriteObject(ref JsonWriter writer, object? value, SerializationContext context)
 		=> this.Write(ref writer, (T?)value, context);
 
-	internal sealed override object? ReadObject(ref JsonReader reader, SerializationContext context)
+	/// <inheritdoc/>
+	public sealed override object? ReadObject(ref JsonReader reader, SerializationContext context)
 		=> this.Read(ref reader, context);
 
-	internal sealed override ValueTask WriteObjectAsync(JsonAsyncWriter writer, object? value, SerializationContext context)
+	/// <inheritdoc/>
+	public sealed override ValueTask WriteObjectAsync(JsonAsyncWriter writer, object? value, SerializationContext context)
 		=> this.WriteAsync(writer, (T?)value, context);
 
-	internal sealed override async ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context)
+	/// <inheritdoc/>
+	public sealed override async ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context)
 		=> await this.ReadAsync(reader, context).ConfigureAwait(false);
 }
 
 internal sealed class BuiltInJsonConverter<T> : JsonConverter<T>
 {
-	public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 	{
 		if (BuiltInJsonConverters.RequiresNestedContext(typeof(T)))
 		{
@@ -216,7 +237,7 @@ internal sealed class DelayedJsonConverterFactory : IDelayedValueFactory
 
 	private sealed class DelayedJsonConverter<T>(DelayedValue<JsonConverter> self) : JsonConverter<T>
 	{
-		public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 			=> ((JsonConverter<T>)self.Result).Write(ref writer, value, context);
 
 		public override T? Read(ref JsonReader reader, SerializationContext context)

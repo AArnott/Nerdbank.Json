@@ -24,7 +24,7 @@ string draft7Schema = serializer.GetJsonSchema<Product>(
 // A custom converter can describe its own representation by overriding GetJsonSchema.
 public sealed class TemperatureConverter : JsonConverter<Temperature>
 {
-	public override void Write(ref JsonWriter writer, Temperature? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in Temperature? value, SerializationContext context)
 		=> writer.WriteNumberValue(value?.Celsius ?? 0);
 
 	public override Temperature? Read(ref JsonReader reader, SerializationContext context)

@@ -402,7 +402,7 @@ internal partial record Coord(int X, int Y);
 
 internal sealed class CoordConverter : JsonConverter<Coord>
 {
-	public override void Write(ref JsonWriter writer, Coord? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in Coord? value, SerializationContext context)
 	{
 		writer.WriteStartArray();
 		writer.WriteNumberValue(value!.X);
