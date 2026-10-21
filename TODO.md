@@ -15,7 +15,7 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 ## Bootstrap
 
 - [x] Inspect the implemented source surface and establish this tracker.
-- [ ] Update README and feature documentation to describe current functionality.
+- [x] Update README and feature documentation to describe current functionality.
 
 ## Converter infrastructure
 

@@ -1,6 +1,7 @@
 # Features
 
-Nerdbank.Json currently focuses on a narrow but working core.
+Nerdbank.Json provides UTF-8 JSON serialization through PolyType contracts, custom converters, and low-level readers and writers.
+Its implemented features include constructor-bound objects, mutable and parameterized collections, incremental streaming, reference preservation, unions, targeted deserialization, and JSON Schema generation.
 
 ## Low-Level UTF-8 Writer
 
@@ -9,7 +10,7 @@ The low-level writer writes UTF-8 directly to `IBufferWriter<byte>`, which keeps
 Key traits:
 
 * Direct UTF-8 emission.
-* Optional pretty-printed output with `JsonSerializer.WriteIndented`.
+* Optional pretty-printed output with <xref:Nerdbank.Json.JsonSerializer.WriteIndented>.
 * RFC 8259 escaping for required characters only.
 * Numeric formatting using invariant culture.
 * Base64 encoding for byte buffers.
@@ -29,15 +30,16 @@ The built-in serializer currently supports:
 
 ## PolyType Object Graphs
 
-The serializer now includes an initial PolyType-based contract layer for object graphs.
+The PolyType-based contract layer supports mutable objects as well as records and immutable objects whose constructor parameters map to serializable properties.
 
 Current behavior:
 
 * Mutable object types with settable properties can be serialized and deserialized.
 * Types with parameterized constructors can be materialized when constructor parameters map to serializable properties.
 * Nested objects compose through the same converter cache.
-* Mutable `ICollection<T>` implementations with public parameterless constructors can be serialized and deserialized.
-* Mutable `IDictionary<TKey, TValue>` implementations with public parameterless constructors can be serialized and deserialized when `TKey` is a supported simple key type.
+* Enumerable and dictionary shapes support both mutable and parameterized construction, including read-only and immutable collections when their shapes supply construction support.
+* Mutable collections use their shape-provided constructor and appender; parameterized collections buffer elements and then invoke their shape-provided constructor.
+* Dictionary keys must be supported simple scalar or enum types.
 * Getter-only mutable collection and dictionary properties are populated into their existing instances during deserialization.
 * Rectangular multidimensional arrays (rank 2 and higher) serialize to and from nested JSON arrays.
 * Unknown JSON properties are ignored during deserialization unless an extension-data property captures them.
@@ -59,7 +61,7 @@ Current behavior:
 * `JsonSerializer.SerializeEnumValuesByName` can serialize enums as strings when simple names exist.
 * `JsonSerializer.DeserializeDefaultValues` can relax required-member and non-nullable reference enforcement during deserialization.
 * `JsonSerializer.InternStrings` can reuse equal string instances within one deserialization operation.
-* `JsonSerializer.PreserveReferences` can preserve repeated references in acyclic object graphs.
+* <xref:Nerdbank.Json.JsonSerializer.PreserveReferences> can preserve repeated references and optionally allow cycles through mutable objects and collections.
 * `JsonSerializer.AllowTrailingCommas` can accept trailing commas while reading arrays and objects.
 * `JsonSerializer.ReadCommentHandling` can skip `//` and `/* */` comments while deserializing.
 * Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
@@ -111,30 +113,42 @@ String interning notes:
 
 Current limitations:
 
-* Read-only scalar and immutable properties are not populated unless a future converter adds explicit support.
-* Immutable or constructor-only collections are not implemented yet.
+* Getter-only scalar and immutable properties are not populated unless bound to constructor parameters.
+* Collections whose shapes provide no construction strategy can be serialized but not deserialized.
+* Parameterized collection construction buffers the collection's elements, even when its JSON input is read incrementally.
 * Dictionary keys are intentionally limited to simple scalar and enum-like types rather than arbitrary object graphs.
 * Delegate types are not supported.
 
 ## Stream APIs
 
-Nerdbank.Json exposes synchronous stream overloads plus **true asynchronous, incremental** stream and
-pipe overloads (`SerializeAsync`/`DeserializeAsync`) built on `PipeReader`/`PipeWriter`. These stream
-large object graphs without buffering the whole payload, apply backpressure, and honor cancellation
-and explicit stream ownership. See [Asynchronous streaming](async-streaming.md).
+Nerdbank.Json exposes synchronous stream overloads plus incremental asynchronous stream and pipe overloads through <xref:Nerdbank.Json.JsonSerializer.SerializeAsync*> and <xref:Nerdbank.Json.JsonSerializer.DeserializeAsync*>.
+These use <xref:System.IO.Pipelines.PipeReader> and <xref:System.IO.Pipelines.PipeWriter>, apply backpressure, honor cancellation, and leave caller-supplied streams and pipes open.
+Built-in object and collection converters process members and elements incrementally, including constructor-bound objects.
+Custom converters using the default asynchronous hooks buffer their individual values rather than streaming their contents.
+See [Asynchronous streaming](async-streaming.md).
+
+## Sequence Streaming and Targeted Deserialization
+
+* <xref:Nerdbank.Json.JsonSerializer.DeserializeArrayAsync*> streams a top-level JSON array as an asynchronous sequence.
+* <xref:Nerdbank.Json.JsonSerializer.DeserializeNewlineDelimitedAsync*> streams NDJSON values, requiring a line terminator between values.
+* <xref:Nerdbank.Json.JsonSerializer.DeserializeArrayAtAsync*> streams an array selected inside an envelope by JSON path or member-access expression.
+* <xref:Nerdbank.Json.JsonSerializer.SerializeArrayAsync*> and <xref:Nerdbank.Json.JsonSerializer.SerializeNewlineDelimitedAsync*> write asynchronous sequences with backpressure.
+* <xref:Nerdbank.Json.JsonSerializer.DeserializeAt*> reads only a selected value, skipping unrelated JSON.
+
+Targeted deserialization and sequence streaming do not support reference preservation.
+Completing a sequence validates its remaining framing; disposing the enumerator early does not drain or validate the remaining document.
+See [Asynchronous sequence streaming](async-sequences.md) and [Targeted deserialization](targeted-deserialization.md).
 
 ## Untyped JSON
 
-Nerdbank.Json includes an opt-in, dependency-free untyped JSON document object model
-(`JsonValue`) plus opt-in converters for `object`, `ExpandoObject`, and the `System.Text.Json`
-DOM types. The default serializer roots none of this and never uses reflection. See
-[Untyped JSON and DOM converters](untyped-json.md).
+Nerdbank.Json includes an opt-in native JSON document object model, <xref:Nerdbank.Json.JsonValue>, plus opt-in converters for `object`, <xref:System.Dynamic.ExpandoObject>, and the System.Text.Json DOM types.
+The default serializer does not root these converters; source-generated shapes avoid reflection-based contract discovery.
+See [Untyped JSON and DOM converters](untyped-json.md).
 
 ## ASP.NET Core MVC
 
-The separate `Nerdbank.Json.AspNetCoreMvcFormatter` package provides MVC input and output formatters backed
-by Nerdbank.Json and an explicitly supplied, source-generated `ITypeShapeProvider`, for AOT-safe JSON in
-controller-based Web APIs. See [ASP.NET Core MVC formatters](aspnetcore-mvc.md).
+The separate `Nerdbank.Json.AspNetCoreMvcFormatter` package provides MVC input and output formatters backed by Nerdbank.Json and an explicitly supplied, source-generated `ITypeShapeProvider`, for AOT-safe JSON in controller-based Web APIs.
+See [ASP.NET Core MVC formatters](aspnetcore-mvc.md).
 
 ## Behavioral Notes
 
@@ -146,4 +160,6 @@ controller-based Web APIs. See [ASP.NET Core MVC formatters](aspnetcore-mvc.md).
 
 ## Current Scope
 
-This phase does not yet include immutable collection breadth, a richer contract-customization system, or an incremental streaming pipeline.
+The serializer supports mutable and constructor-bound contracts, shape-supported parameterized collections, and incremental asynchronous streaming today.
+Collection deserialization depends on the construction strategy supplied by the type shape; arbitrary dictionary object keys and delegates remain unsupported.
+API parity with Nerdbank.MessagePack is ongoing, with JSON-specific representation and configuration retained.

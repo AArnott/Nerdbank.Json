@@ -5,16 +5,18 @@
 
 Nerdbank.Json is a UTF-8 JSON serializer being built in the same general shape as Nerdbank.MessagePack, but without layering on top of System.Text.Json, Newtonsoft.Json, or any other serializer.
 
-The current implementation includes a low-level writer/reader pair, a built-in converter table for common .NET types, and an initial PolyType-backed object serializer for mutable object graphs. It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`, `net472`, and `netstandard2.0`.
+The implementation includes low-level UTF-8 readers and writers, built-in converters for common .NET types, and PolyType-backed serialization for mutable and constructor-bound object graphs.
+It supports incremental asynchronous streaming, reference preservation, unions, targeted deserialization, and JSON Schema generation.
+It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`, `net472`, and `netstandard2.0`.
 
 ## Features
 
 * Direct UTF-8 JSON writing to `IBufferWriter<byte>`.
 * RFC 8259 string escaping, limited to the characters that must be escaped.
 * Built-in serialization and deserialization for common .NET primitive and BCL types.
-* PolyType-driven serialization for object graphs with settable properties.
-* Mutable `ICollection<T>` implementations with public parameterless constructors, including `List<T>`.
-* Mutable `IDictionary<string, TValue>` implementations with public parameterless constructors, including `Dictionary<string, TValue>`.
+* PolyType-driven serialization for mutable objects, records, and immutable objects with mapped constructor parameters.
+* Mutable and parameterized collections and dictionaries, including read-only and immutable types when their PolyType shapes supply construction support.
+* Dictionaries with supported simple scalar or enum keys, getter-only mutable collection population, and rectangular multidimensional arrays.
 * camelCase property naming by default, configurable with `JsonNamingPolicy`.
 * Optional indented output for human-readable JSON.
 * Optional case-insensitive property-name matching during deserialization.
@@ -25,8 +27,14 @@ The current implementation includes a low-level writer/reader pair, a built-in c
 * Built-in byte buffer handling using Base64 JSON strings.
 * Optional trailing-comma and comment skipping support during deserialization.
 * Configurable deserialization policy for missing required values and non-nullable reference validation.
-* Optional acyclic reference preservation.
-* Synchronous stream and async stream overloads.
+* Optional reference preservation for repeated references, with either cycle rejection or support for cycles through mutable objects and collections.
+* Synchronous stream APIs and incremental asynchronous stream/pipe serialization with cancellation and backpressure.
+* Asynchronous sequence reading and writing for JSON arrays and NDJSON, plus streaming arrays selected inside an envelope.
+* Targeted deserialization by JSON path or member-access expression.
+* Shape-declared and runtime-configured unions, plus JSON Schema draft 2020-12 export.
+* Serialization callbacks, operation-scoped string interning, collection comparers, and configurable security limits.
+* Opt-in native JSON DOM, untyped object, `ExpandoObject`, and System.Text.Json DOM converters.
+* A separate ASP.NET Core MVC formatter package using explicitly supplied type shapes.
 * Multi-targeting across modern .NET and .NET Framework.
 * Test-driven development with focused round-trip coverage for the current built-in type surface.
 
@@ -54,7 +62,7 @@ string json = serializer.Serialize(new DateTimeOffset(2024, 7, 1, 12, 34, 56, Ti
 DateTimeOffset value = serializer.Deserialize<DateTimeOffset>(json);
 ```
 
-For mutable object graphs, annotate your root type with `GenerateShape` and use the same serializer APIs:
+For object graphs, annotate your root type with `GenerateShape` and use the same serializer APIs:
 
 ```csharp
 using Nerdbank.Json;
@@ -104,7 +112,7 @@ To override built-in or shape-based handling for specific types at runtime:
 ```csharp
 JsonSerializer serializer = new()
 {
-	Converters = new JsonConverterCollection(new JsonConverter[] { new MyCustomConverter() }),
+	Converters = new ConverterCollection(new JsonConverter[] { new MyCustomConverter() }),
 	ConverterTypes = new JsonConverterTypeCollection(new[] { typeof(MyOpenGenericConverter<>) }),
 	ConverterFactories = new IJsonConverterFactory[] { new MyFactory() },
 };
@@ -147,15 +155,19 @@ public partial class Person
 
 * The low-level JSON writer does not delegate to another serializer.
 * String escaping follows RFC 8259 requirements instead of aggressively escaping extra characters.
-* This repository is intended to grow toward the richer converter and visitor architecture used by Nerdbank.MessagePack.
-* The current object-graph layer supports mutable types with settable properties, uses camelCase property names by default, and can either ignore unknown JSON properties or retain them in an extension-data dictionary.
-* Mutable `ICollection<T>` and `IDictionary<string, TValue>` implementations with public parameterless constructors are supported through the same converter cache.
+* The converter and visitor architecture uses PolyType shapes, including source-generated shapes for NativeAOT-safe contracts.
+* The object-graph layer supports settable properties and mapped constructor parameters, uses camelCase property names by default, and can either ignore unknown JSON properties or retain them in an extension-data dictionary.
+* Collection and dictionary construction follows the supplied PolyType shape: mutable collections are populated directly, while parameterized collections are constructed from buffered elements.
 * Runtime-registered converters are consulted before built-in and PolyType-generated converters.
 * `JsonConverterAttribute` can override converter selection for a type, property, or constructor parameter.
 * `JsonExtensionDataAttribute` can capture unknown JSON members as raw JSON text for forward-compatible round-tripping.
 * Deserialization can optionally skip comments and accept trailing commas.
-* Current stream overloads buffer the full payload before reading or writing; incremental streaming APIs will come later.
+* Asynchronous stream and pipe APIs process built-in objects and collections incrementally; custom converters using the default asynchronous hooks buffer their individual values.
+* Cyclic back-references require early registration of mutable instances; immutable or constructor-bound objects cannot be back-referenced while under construction.
+* Targeted deserialization and sequence streaming do not support reference preservation.
 
 ## Status
 
-The built-in type surface listed above is working and covered by focused serializer tests. PolyType-backed mutable object graphs and stream/async overloads are now available in an initial form. Broader contract features, constructor-based materialization, and incremental streaming remain under active development.
+The implemented feature surface is described in the [feature guide](docfx/docs/features.md), with dedicated guides for streaming, unions, schema generation, reference preservation, and MVC integration.
+API parity work with Nerdbank.MessagePack remains in progress; the capabilities above are implemented, not a future roadmap.
+Dictionary keys are limited to supported simple types, collections without construction support are serialization-only, and getter-only scalar or immutable properties require constructor binding to be populated.
