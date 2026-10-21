@@ -58,7 +58,7 @@ if (Test-Path -LiteralPath $ArtifactDirectory) {
 $null = New-Item -ItemType Directory -Path $ArtifactDirectory -ErrorAction Stop
 $steps = [Collections.Generic.List[object]]::new()
 $testReports = [Collections.Generic.List[object]]::new()
-$budgets = @{ 'linux-x64' = 5.88; 'osx-arm64' = 5.40; 'win-x64' = 5.79 }
+$budgets = @{ 'linux-x64' = 5.88; 'osx-arm64' = 5.65; 'win-x64' = 5.79 }
 $report = [ordered]@{
     SchemaVersion = 1
     StartedUtc = [DateTime]::UtcNow.ToString('o')

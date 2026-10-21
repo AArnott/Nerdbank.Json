@@ -62,7 +62,7 @@ The `test/AotCompatibilityTest` project complements those analyzers by rooting t
 Add each shipping assembly that must be validated as a `TrimmerRootAssembly`, and keep this project publishable in `test/dirs.proj`.
 Root `Directory.Build.props` supplies project-reference defaults for both traversal and SDK projects that remove the `_IsPublishing` global property for managed dependencies, avoiding duplicate project instances that write to the same outputs during parallel publishing.
 
-Native image size regression testing uses `AotNativeConsole`, including its runtime checks, with the existing baselines of 5.88 MiB on Linux x64, 5.40 MiB on macOS arm64, and 5.79 MiB on Windows x64, each allowing +/- 0.2 MiB.
+Native image size regression testing uses `AotNativeConsole`, including its runtime checks, with reviewed baselines of 5.88 MiB on Linux x64, 5.65 MiB on macOS arm64, and 5.79 MiB on Windows x64, each allowing +/- 0.2 MiB.
 The separate `AotSizeTest` measures a minimal reachable serialization image and verifies its address-book round-trip without rooting the library.
 Its report is explicitly uncalibrated and does not replace the broad application's size guard.
 Recalibrate baselines only from native images measured on each target OS after reviewing intentional code-size changes; a measurement on Windows does not calibrate Linux or macOS.

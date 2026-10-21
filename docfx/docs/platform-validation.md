@@ -3,7 +3,8 @@
 Use `tools/Validate-Platform.ps1` from this branch to collect platform evidence without editing code or recalibrating baselines.
 It runs serial Release builds, core/MVC/analyzer managed tests for every declared framework (including .NET Framework on Windows), the F# round-trip self-check, eligible NativeAOT test variants discovered through the existing traversal, and all four native fixtures.
 Benchmarks and CPU traces are opt-in and must wait until other performance measurements have finished.
-Full Windows and WSL Ubuntu 26.04 runs against source `a28b0ef` pass, including the permissive Unicode policy, split-token scratch, scalar overloads, and direct writer-buffer APIs; actual macOS execution remains pending.
+Full Windows and WSL Ubuntu 26.04 runs against source `a28b0ef` pass, including the permissive Unicode policy, split-token scratch, scalar overloads, and direct writer-buffer APIs.
+macOS arm64 CI has also executed the build, tests, and native fixtures; its 5.6566 MiB broad image informed the operator-approved baseline below, while an independent run of this handoff script on the user's Mac has not been claimed.
 The script's existence alone is not evidence for any other host or revision.
 
 ## Requirements
@@ -91,7 +92,9 @@ Previously existing native outputs may be collected after a failure, but they ar
 Missing test reports, zero executed tests, incomplete results, missing image reports, failed commands, or blocked stages produce a nonzero exit.
 Inspect both the exit code and JSON status; never infer success from an artifact folder merely existing.
 
-The broad `AotNativeConsole` guard preserves **linux-x64 5.88 MiB**, **osx-arm64 5.40 MiB**, and **win-x64 5.79 MiB**, each **+/- 0.2 MiB**.
+The broad `AotNativeConsole` guard uses **linux-x64 5.88 MiB**, **osx-arm64 5.65 MiB**, and **win-x64 5.79 MiB**, each **+/- 0.2 MiB**.
+The macOS baseline was explicitly reviewed and approved after CI measured 5,931,376 bytes (5.6566009521484375 MiB); only that platform's center changed, not the tolerance, fixture, or runtime checks.
+Windows/Linux baselines remain unchanged, and calibration is not automatic.
 Other supported RIDs are reported as `NOT_CALIBRATED`, not as a passed size guard.
 The separate minimal `AotSizeTest` remains uncalibrated on every RID and cannot replace the broad guard.
 `AotCompatibilityTest` roots the shipping assemblies, while `AotRuntimeCompatibilityTest` checks native runtime behavior; both published executables are also run.

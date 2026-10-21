@@ -30,7 +30,7 @@ The current public-contract review finds no identified regression that requires 
 
 The remaining contiguous-read gap and segmented scratch latency tradeoffs stay logged in the current checkpoint and benchmark guide.
 The rejected hash experiment remains rejected; unchanged public APIs do not prevent another measured implementation experiment later.
-Actual macOS execution is separately pending and must not be reported as completed.
+Independent user-Mac handoff execution remains separate from the CI evidence now recorded in the current macOS calibration checkpoint below.
 
 ## Bootstrap
 
@@ -102,7 +102,18 @@ Actual macOS execution is separately pending and must not be reported as complet
 - [x] Investigate and optimize the object elapsed-time regression without sacrificing allocation parity, safety, or correctness; causal boundaries and accepted fixes are recorded below.
 - [ ] Further isolate and reduce residual small/wide-object read cost as a non-blocking follow-up, not an API-finalization gate; the accepted fixes do not establish complete original-speed restoration.
 - [x] Execute full Linux validation in an isolated WSL Linux-native checkout, preserving existing size budgets.
-- [ ] Receive actual macOS validation evidence from the ready script/instructions handoff; no Mac execution is claimed.
+- [x] Receive actual macOS execution evidence from CI; an independent user-Mac handoff run is still not claimed.
+
+## Current macOS CI calibration (operator-approved)
+
+GitHub Actions run `39676067406` at `78a9fc9` executes the macOS build, tests, and native fixtures successfully; its broad native image is 5,931,376 bytes (5.6566009521484375 MiB).
+The live operator explicitly accepted growth from the historical 5.40 MiB baseline and authorized recalibration.
+The new macOS arm64 center is **5.65 MiB**, with the same **+/- 0.2 MiB** tolerance; Windows/Linux centers stay **5.79/5.88 MiB**.
+Both CI checks and the standalone platform validator use the reviewed value; no fixture coverage, runtime feature, assertion, or required check is removed or bypassed.
+This evidence supersedes older macOS-unverified statements below; the next CI run still has to confirm the recalibrated guard.
+The low-level source is unchanged: the experimental runtime-union navigation size reduction is preserved only on local branch `perf/deferred-union-navigation` at `315b3d8`, not merged or pushed.
+Actual arm64 compiler reports attribute 68,440 code bytes to duplicated generic async navigation state machines and their MoveNext wrappers; that remains a measured optimization lead, not a proven fix or an API-finalization gate.
+The candidate was not validated: its latest build stopped on a whitespace analyzer error before tests ran; Medium baseline reports and compiler evidence are retained in session artifacts for a later investigation.
 
 ## Current API finalization checkpoint (source `a28b0ef`)
 
@@ -143,7 +154,7 @@ Direct-buffer Single writing measured 104.32 ns versus 101.42 ns through normal 
 | Segmented scratch latency | Allocation gains are proven, with number/name cases approximately 13% slower against the repeated policy-only baseline. | Retain documented tradeoff; investigate internal copy/cursor costs without changing lifetime contracts. |
 | Direct scalar writer sample | Transactional primitive formatting uses scratch then copies; reservation accounting adds work. These are plausible sources, not measured causal attribution. | Consider destination-size-specialized formatting after profiling; no new public API is required. |
 | Legacy numeric behavior | Full-precision E8/E16 formatting fixes lossy legacy defaults and preserves signed zero; parsing follows the same target-runtime rounding limitations as JsonReader, including the documented near-halfway Single case. | Correctness cases are tested on net472 and modern .NET; further parser improvements are internal follow-ups, not a rounding-equivalence claim across runtimes. |
-| macOS execution | Script and standalone Copilot handoff are ready, but no Mac evidence has been received. | External validation remains pending; do not claim execution or recalibrate its size budget. |
+| macOS execution | CI build/tests/native execution evidence is now available, with operator-approved 5.65 +/- 0.2 MiB calibration documented above. | Confirm the recalibrated guard in CI; do not claim an independent user-Mac handoff run. |
 
 ## HISTORICAL Unicode, scratch, and performance checkpoint (source `ef6e8f9`)
 

@@ -75,7 +75,7 @@ jobs:
       run: |
         $extension = if ($IsWindows) { '.exe' } else { '' }
         # Preserve the existing baselines; recalibrate only with measurements on each OS.
-        $expectedSizeMiB = if ($IsLinux) { 5.88 } elseif ($IsMacOS) { 5.40 } else { 5.79 }
+        $expectedSizeMiB = if ($IsLinux) { 5.88 } elseif ($IsMacOS) { 5.65 } else { 5.79 }
         ./tools/Measure-AotImage.ps1 `
           -Path "./bin/AotNativeConsole/${{ env.BUILDCONFIGURATION }}/net10.0/${{ matrix.rid }}/publish/AotNativeConsole$extension" `
           -RuntimeIdentifier '${{ matrix.rid }}' `
@@ -141,7 +141,7 @@ jobs:
         $FailedChecks = @()
         $Combinations = @(
           @{ OS = 'ubuntu-26.04'; RID = 'linux-x64'; ExpectedSizeMiB = 5.88 },
-          @{ OS = 'macOS-15'; RID = 'osx-arm64'; ExpectedSizeMiB = 5.40 },
+          @{ OS = 'macOS-15'; RID = 'osx-arm64'; ExpectedSizeMiB = 5.65 },
           @{ OS = 'windows-2025'; RID = 'win-x64'; ExpectedSizeMiB = 5.79 }
         )
 
