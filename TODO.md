@@ -104,6 +104,16 @@ Independent user-Mac handoff execution remains separate from the CI evidence now
 - [x] Execute full Linux validation in an isolated WSL Linux-native checkout, preserving existing size budgets.
 - [x] Receive actual macOS execution evidence from CI; an independent user-Mac handoff run is still not claimed.
 
+## Renewed throughput investigation
+
+The user authorized continued measured performance investigation without requiring complete original-speed parity.
+The first retained change is contiguous lexical string scanning: local-span prefix handling plus an outlined SIMD search, preserving the original scalar handlers, permissive Unicode policy, failures/positions, and segmented/legacy paths.
+Matched repeated Medium runs cut the large escaped string-array cases from 576/833 us to 78/344 us without/with interning, with unchanged allocations; ordinary object timings do not establish a speedup and remain logged in the [benchmark report](docfx/docs/benchmarking.md).
+All 4,841 managed tests pass, including 432 lexical threshold/boundary cases across four core frameworks; the full Release build is warning-free.
+Four earlier variants are preserved on named local branches and not merged because of worse short-string or segmented tradeoffs.
+Next measured leads are repeated end traversal in segmented span probing and signed division in property-name bucket selection; no public API change is required for either.
+Native/startup impact and final cross-platform validation will be recorded separately rather than inferred from timing.
+
 ## Current macOS CI calibration (operator-approved)
 
 GitHub Actions run `39676067406` at `78a9fc9` executes the macOS build, tests, and native fixtures successfully; its broad native image is 5,931,376 bytes (5.6566009521484375 MiB).

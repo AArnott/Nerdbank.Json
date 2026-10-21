@@ -40,6 +40,9 @@ internal readonly ref struct JsonInput
 	/// <summary>Gets the input length without narrowing sequence offsets.</summary>
 	internal long Length { get; }
 
+	/// <summary>Gets the borrowed contiguous input, or an empty span for segmented input.</summary>
+	internal ReadOnlySpan<byte> ContiguousSpan => this.span;
+
 	/// <summary>Gets a byte at an absolute input offset.</summary>
 	/// <param name="index">The absolute offset.</param>
 	internal byte this[long index]

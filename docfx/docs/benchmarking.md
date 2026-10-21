@@ -208,6 +208,40 @@ The direct-buffer writer case also uses transactional primitive formatting and i
 Legacy numeric formatting/rounding behavior is documented separately in the [converter guide](custom-converters.md); these timing/allocation results are for modern .NET 9 only.
 Full reports, distributions, medians, and allocation counts are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\api-final-medium-baseline` and `files\api-final-medium-candidate`.
 
+## Contiguous lexical string scanning
+
+A renewed investigation at `75a817c` targeted the byte-at-a-time CLR string scanner identified in warmed profiles, not Unicode prevalidation (which is already removed).
+The retained implementation scans a short ordinary prefix through the borrowed contiguous span, then uses an outlined SIMD search for quotes, backslashes, and all 32 ASCII controls.
+The original delimiter/error handlers retain escape semantics and exact failure positions; segmented and legacy inputs keep their scalar loop.
+Search state is held outside the reader struct, and early escapes do not pay for the vector helper.
+This does not change public APIs, Unicode fallback policy, ownership, token limits, or allocations.
+
+Serial Windows x64 .NET 9.0.21 Release Medium runs used SDK 10.0.402, BDN 0.15.8, affinity 2, default tiering/PGO, two launches, ten warmups, fifteen measurements, and the user's existing power plan.
+The original source was repeated as A2; the final candidate B5 was also repeated.
+Errors below are 99.9% confidence-interval half-widths, and all allocation columns are unchanged.
+
+| String-array case | Original A2 mean +/- error, us | B5 mean +/- error, us | B5 repeat mean +/- error, us | B/op |
+|---|---:|---:|---:|---:|
+| Plain | 3.239 +/- 0.047 | 3.094 +/- 0.041 | 3.128 +/- 0.041 | 5288 |
+| Plain, interned | 4.076 +/- 0.085 | 4.078 +/- 0.112 | 4.135 +/- 0.118 | 2592 |
+| Escaped | 10.704 +/- 0.266 | 10.728 +/- 0.202 | 10.473 +/- 0.264 | 6312 |
+| Escaped, interned | 12.096 +/- 0.325 | 12.000 +/- 0.134 | 11.813 +/- 0.229 | 2608 |
+| Unicode escapes | 9.352 +/- 0.280 | 9.194 +/- 0.090 | 9.421 +/- 0.224 | 4776 |
+| Unicode escapes, interned | 10.500 +/- 0.228 | 10.414 +/- 0.280 | 10.311 +/- 0.357 | 2584 |
+| Large escaped | 576.088 +/- 4.977 | 79.548 +/- 2.552 | 77.893 +/- 2.209 | 1052328 |
+| Large escaped, interned | 833.474 +/- 12.622 | 345.262 +/- 3.561 | 343.543 +/- 2.984 | 18952 |
+
+The large escaped cases are approximately 86%/59% faster without/with interning; these are 64-string fixtures, not per-string or general serializer speedup claims.
+Normal object read controls do not demonstrate full recovery: original A2 small/wide means were 378.0/1306.1 ns, B5 386.8/1345.1 ns, and B5 repeat 394.0/1377.8 ns.
+Their intervals, launch distributions and write-control drift prevent attributing these small upward moves conclusively; no normal-object speedup is claimed, and this remains an explicit investigation lead rather than hidden performance debt.
+Segmented B5 controls retain 104/768/1024/1024 B allocations and are 14.486/6.746/3.593/10.337 us, versus A2 13.915/7.049/3.592/10.562 us, with noisy numeric/name distributions.
+
+Earlier candidates are preserved locally: `47be292` on `perf/lexical-string-scan` gates inside the loop, `199c9cb` on `perf/lexical-token-gate-b2` moves the gate before it, `72a4f19` on `perf/lexical-isolated-b3` splits the entire contiguous parser, and `5f6ffc4` on `perf/lexical-guarded-b4` outlines only search.
+They retain the large-string gains but have worse segmented or short escaped-string tradeoffs; they are not merged.
+The final candidate passes all 4,841 managed tests, including 432 exhaustive lexical cases across .NET 8/9/10 and .NET Framework, with explicit scalar-prefix/SIMD thresholds, malformed UTF-8, escaped code units, segment splits, interning, and exact failure consumption.
+Native/startup impact is a separate validation item; no startup or native-size improvement is inferred from these throughput results.
+All distributions, medians and raw measurements are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\lexical-scan-baseline-A1`, `files\lexical-scan-baseline-A2`, `files\lexical-scan-candidate-B1` through `B5`, and `files\lexical-scan-confirm-B5`.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.

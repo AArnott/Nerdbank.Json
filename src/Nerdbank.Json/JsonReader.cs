@@ -910,6 +910,27 @@ public ref struct JsonReader
 		this.RequireCurrent((byte)'"');
 		this.position++;
 		long segmentStart = this.position;
+#if NET8_0_OR_GREATER
+		ReadOnlySpan<byte> contiguous = this.utf8Json.ContiguousSpan;
+		if (!contiguous.IsEmpty)
+		{
+			int start = checked((int)this.position);
+			int index = start;
+			int prefixEnd = start + Math.Min(8, contiguous.Length - start);
+			while (index < prefixEnd && contiguous[index] is >= 0x20 and not (byte)'"' and not (byte)'\\')
+			{
+				index++;
+			}
+
+			if (index == prefixEnd && contiguous.Length - index >= 16)
+			{
+				index = JsonStringSearch.FindSpecialByte(contiguous, index);
+			}
+
+			this.position = index;
+		}
+#endif
+
 		while (this.position < this.utf8Json.Length)
 		{
 			byte ch = this.utf8Json[this.position++];
