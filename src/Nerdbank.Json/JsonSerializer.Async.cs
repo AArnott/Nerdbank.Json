@@ -70,16 +70,11 @@ public partial record JsonSerializer
 	public async ValueTask SerializeAsync<T>(Stream stream, T? value, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(stream);
+		Requires.NotNull(shape);
 
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		try
-		{
-			await this.SerializeAsync(writer, value, shape, cancellationToken).ConfigureAwait(false);
-		}
-		finally
-		{
-			await writer.CompleteAsync().ConfigureAwait(false);
-		}
+		CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken;
+		await CompleteStreamSerializationAsync(writer, this.SerializeAsync(writer, value, shape, cancellationToken), effectiveCancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>Serializes a value asynchronously to a stream with per-call state.</summary>
@@ -96,14 +91,7 @@ public partial record JsonSerializer
 		Requires.NotNull(shape);
 		ThrowIfOperationInProgress(startingContext);
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		try
-		{
-			await this.SerializeAsync(writer, value, shape, startingContext).ConfigureAwait(false);
-		}
-		finally
-		{
-			await writer.CompleteAsync().ConfigureAwait(false);
-		}
+		await CompleteStreamSerializationAsync(writer, this.SerializeAsync(writer, value, shape, startingContext), startingContext.CancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -270,6 +258,29 @@ public partial record JsonSerializer
 		finally
 		{
 			await reader.CompleteAsync().ConfigureAwait(false);
+		}
+	}
+
+	private static async ValueTask CompleteStreamSerializationAsync(PipeWriter writer, ValueTask operation, CancellationToken cancellationToken)
+	{
+		try
+		{
+			try
+			{
+				await operation.ConfigureAwait(false);
+			}
+			catch (Exception ex)
+			{
+				// Completing with the failure releases buffers without retrying writes or flushing partial JSON.
+				await writer.CompleteAsync(ex).ConfigureAwait(false);
+				throw;
+			}
+
+			await writer.CompleteAsync().ConfigureAwait(false);
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, cancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during serialization.", ex);
 		}
 	}
 

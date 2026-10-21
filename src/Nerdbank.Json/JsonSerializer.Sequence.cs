@@ -255,15 +255,11 @@ public partial record JsonSerializer
 	public async ValueTask SerializeArrayAsync<T>(Stream stream, IAsyncEnumerable<T> values, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(stream);
+		Requires.NotNull(values);
+		Requires.NotNull(shape);
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		try
-		{
-			await this.SerializeArrayAsync(writer, values, shape, cancellationToken).ConfigureAwait(false);
-		}
-		finally
-		{
-			await writer.CompleteAsync().ConfigureAwait(false);
-		}
+		CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken;
+		await CompleteStreamSerializationAsync(writer, this.SerializeArrayAsync(writer, values, shape, cancellationToken), effectiveCancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
@@ -324,15 +320,11 @@ public partial record JsonSerializer
 	public async ValueTask SerializeEnumerableAsync<T>(Stream stream, IAsyncEnumerable<T> values, ITypeShape<T> shape, SequenceOptions options = default, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(stream);
+		Requires.NotNull(values);
+		Requires.NotNull(shape);
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		try
-		{
-			await this.SerializeEnumerableAsync(writer, values, shape, options, cancellationToken).ConfigureAwait(false);
-		}
-		finally
-		{
-			await writer.CompleteAsync().ConfigureAwait(false);
-		}
+		CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken;
+		await CompleteStreamSerializationAsync(writer, this.SerializeEnumerableAsync(writer, values, shape, options, cancellationToken), effectiveCancellationToken).ConfigureAwait(false);
 	}
 
 #pragma warning disable SA1202 // Keep the private core enumerator adjacent to its public entry points.

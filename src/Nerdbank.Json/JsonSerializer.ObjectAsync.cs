@@ -45,15 +45,9 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(stream);
 		Requires.NotNull(shape);
+		SerializationContext context = this.CreateSerializationContext(shape.Provider, cancellationToken);
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		try
-		{
-			await this.SerializeObjectAsync(writer, value, shape, cancellationToken).ConfigureAwait(false);
-		}
-		finally
-		{
-			await writer.CompleteAsync().ConfigureAwait(false);
-		}
+		await CompleteStreamSerializationAsync(writer, this.SerializeObjectAsyncCore(writer, value, shape, context), context.CancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>Serializes an untyped value asynchronously to a stream using per-call state.</summary>
@@ -67,16 +61,9 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(stream);
 		Requires.NotNull(shape);
-		ThrowIfOperationInProgress(startingContext);
+		SerializationContext context = this.CreateSerializationContext(startingContext) with { TypeShapeProvider = shape.Provider };
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		try
-		{
-			await this.SerializeObjectAsync(writer, value, shape, startingContext).ConfigureAwait(false);
-		}
-		finally
-		{
-			await writer.CompleteAsync().ConfigureAwait(false);
-		}
+		await CompleteStreamSerializationAsync(writer, this.SerializeObjectAsyncCore(writer, value, shape, context), context.CancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>Deserializes an untyped value asynchronously from a pipe.</summary>

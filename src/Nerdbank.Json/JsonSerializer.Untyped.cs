@@ -184,14 +184,8 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(stream);
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		try
-		{
-			await this.SerializeJsonValueAsync(writer, value, cancellationToken).ConfigureAwait(false);
-		}
-		finally
-		{
-			await writer.CompleteAsync().ConfigureAwait(false);
-		}
+		CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken;
+		await CompleteStreamSerializationAsync(writer, this.SerializeJsonValueAsync(writer, value, cancellationToken), effectiveCancellationToken).ConfigureAwait(false);
 	}
 
 	private JsonValue? DeserializeJsonValue(scoped ReadOnlySpan<byte> utf8Json, CancellationToken cancellationToken)

@@ -132,8 +132,8 @@ public partial class JsonSerializerExceptionTests
 				IAsyncEnumerable<int> sequence = surface switch
 				{
 					"array" => serializer.DeserializeArrayAsync(reader, Shape<int>()),
-					"ndjson" => serializer.DeserializeNewlineDelimitedAsync(reader, Shape<int>()),
-					_ => serializer.DeserializeArrayAtAsync(reader, JsonPath.Root.Member("items"), Shape<int>()),
+					"ndjson" => serializer.DeserializeEnumerableAsync(reader, Shape<int>()),
+					_ => serializer.DeserializePathEnumerableAsync(reader, JsonPath.Root.Member("items"), Shape<int>()),
 				};
 				await using IAsyncEnumerator<int> enumerator = sequence.GetAsyncEnumerator(cancellation.Token);
 				if (cancel)
@@ -166,7 +166,7 @@ public partial class JsonSerializerExceptionTests
 		{
 			if (newlineDelimited)
 			{
-				await serializer.SerializeNewlineDelimitedAsync(stream, Source(), Shape<int>());
+				await serializer.SerializeEnumerableAsync(stream, Source(), Shape<int>());
 			}
 			else
 			{
@@ -193,6 +193,50 @@ public partial class JsonSerializerExceptionTests
 		using MemoryStream stream = new(Encoding.UTF8.GetBytes("{}"));
 		await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await serializer.DeserializeJsonValueAsync(stream, cancellation.Token));
 		await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await serializer.SerializeJsonValueAsync(stream, new JsonArray([]), cancellation.Token));
+	}
+
+	[Test]
+	[Arguments("typed")]
+	[Arguments("object")]
+	[Arguments("typed-context")]
+	[Arguments("object-context")]
+	[Arguments("native")]
+	[Arguments("array")]
+	[Arguments("ndjson")]
+	public async Task StreamFailure_IsNotRetriedOrUnwrappedByCompletion(string surface)
+	{
+		foreach (bool failOnFlush in new[] { false, true })
+		{
+			IOException cause = new("Stream failure.");
+			using FailingStream stream = new(cause, failOnFlush);
+			JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(() => SerializeToStreamAsync(new JsonSerializer(), stream, surface));
+			Assert.Same(cause, exception.InnerException);
+			Assert.Equal(1, stream.WriteAttempts);
+			Assert.Equal(failOnFlush ? 1 : 0, stream.FlushAttempts);
+			Assert.True(stream.CanWrite);
+		}
+	}
+
+	[Test]
+	[Arguments("typed")]
+	[Arguments("object")]
+	[Arguments("typed-context")]
+	[Arguments("object-context")]
+	[Arguments("array")]
+	[Arguments("ndjson")]
+	public async Task ConverterFailure_DoesNotFlushBufferedOutputOrLoseCode(string surface)
+	{
+		JsonSerializationException cause = new("Failure after buffering output.")
+		{
+			Code = JsonSerializationException.ErrorCode.DoublePropertyAssignment,
+		};
+		JsonSerializer serializer = new() { Converters = [new PartialFailureConverter(cause)] };
+		using MemoryStream stream = new();
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(() => SerializeToStreamAsync(serializer, stream, surface));
+		Assert.Same(cause, exception);
+		Assert.Equal(JsonSerializationException.ErrorCode.DoublePropertyAssignment, exception.Code);
+		Assert.Equal(0, stream.Length);
+		Assert.True(stream.CanWrite);
 	}
 
 	[Test]
@@ -290,12 +334,110 @@ public partial class JsonSerializerExceptionTests
 		}
 	}
 
+	private static async Task SerializeToStreamAsync(JsonSerializer serializer, Stream stream, string surface)
+	{
+		ITypeShape<int> shape = Shape<int>();
+		switch (surface)
+		{
+			case "typed":
+				await serializer.SerializeAsync(stream, 1, shape);
+				break;
+			case "object":
+				await serializer.SerializeObjectAsync(stream, 1, shape);
+				break;
+			case "typed-context":
+				await serializer.SerializeAsync(stream, 1, shape, serializer.StartingContext);
+				break;
+			case "object-context":
+				await serializer.SerializeObjectAsync(stream, 1, shape, serializer.StartingContext);
+				break;
+			case "native":
+				await serializer.SerializeJsonValueAsync(stream, JsonValue.Create(1L));
+				break;
+			case "array":
+				await serializer.SerializeArrayAsync(stream, Source(), shape);
+				break;
+			case "ndjson":
+				await serializer.SerializeEnumerableAsync(stream, Source(), shape);
+				break;
+			default:
+				throw new ArgumentOutOfRangeException(nameof(surface));
+		}
+
+		static async IAsyncEnumerable<int> Source()
+		{
+			await Task.Yield();
+			yield return 1;
+		}
+	}
+
 	private static ITypeShape<T> Shape<T>() => PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<T>()!;
 
 	[GenerateShape]
 	public partial class Model
 	{
 		public int? Count { get; set; }
+	}
+
+	private sealed class FailingStream(Exception cause, bool failOnFlush) : MemoryStream
+	{
+		internal int WriteAttempts { get; private set; }
+
+		internal int FlushAttempts { get; private set; }
+
+		public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+		{
+			this.WriteAttempts++;
+			if (!failOnFlush)
+			{
+				return Task.FromException(cause);
+			}
+
+			cancellationToken.ThrowIfCancellationRequested();
+			this.Write(buffer, offset, count);
+			return Task.CompletedTask;
+		}
+
+#if NET
+		public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+		{
+			this.WriteAttempts++;
+			if (!failOnFlush)
+			{
+				return new(Task.FromException(cause));
+			}
+
+			cancellationToken.ThrowIfCancellationRequested();
+			this.Write(buffer.Span);
+			return default;
+		}
+#endif
+
+		public override Task FlushAsync(CancellationToken cancellationToken)
+		{
+			this.FlushAttempts++;
+			return failOnFlush ? Task.FromException(cause) : base.FlushAsync(cancellationToken);
+		}
+	}
+
+	private sealed class PartialFailureConverter(Exception cause) : JsonConverter<int>
+	{
+		public override bool PreferAsyncSerialization => true;
+
+		public override int Read(ref JsonReader reader, SerializationContext context) => throw cause;
+
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => throw cause;
+
+		public override async ValueTask WriteAsync(JsonAsyncWriter writer, int value, SerializationContext context)
+		{
+			JsonWriter sync = writer.CreateWriter();
+			sync.WriteStartArray();
+			sync.Write(value);
+			writer.ReturnWriter(ref sync);
+			writer.Flush();
+			await Task.Yield();
+			throw cause;
+		}
 	}
 
 	private sealed class FailingConverter(Exception cause, CancellationTokenSource? cancellation = null) : JsonConverter<int>
