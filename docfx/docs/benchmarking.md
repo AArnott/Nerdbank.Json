@@ -42,6 +42,11 @@ Allocations remained 200 B and 664 B respectively; both object writes remained a
 These are paired local measurements, not cross-platform guarantees or a claim that all segmented-input overhead has been recovered.
 The small-object candidate distributions and some baseline runs were noisy; retain the raw distributions and repeat comparisons rather than relying on a single mean.
 
+On .NET 8 and later, contiguous string-byte validation also uses the runtime's vectorized ASCII range search before an outlined strict fallback.
+Two medium runs measured wide reads at 1446/1413 ns, versus 1589/1592/1605 ns for the preceding scalar ASCII validation; small reads were 413/410 ns, with the preceding results varying from 412 to 445 ns.
+The wide-object improvement repeated, while the incremental small-object timing overlapped the preceding variation.
+Older targets retain scalar validation, and no target relaxes malformed UTF-8, control-byte, or surrogate checks.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.

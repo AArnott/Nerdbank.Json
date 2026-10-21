@@ -287,6 +287,76 @@ public partial class JsonReaderTests
 	}
 
 	[Test]
+	[Arguments(0)]
+	[Arguments(15)]
+	[Arguments(16)]
+	[Arguments(31)]
+	[Arguments(32)]
+	[Arguments(63)]
+	[Arguments(64)]
+	[Arguments(127)]
+	[Arguments(128)]
+	public void EscapedString_ValidatesAfterAsciiPrefix(int prefixLength)
+	{
+		string prefix = new('a', prefixLength);
+		foreach (string suffix in new[] { string.Empty, "\u007F", "é", "笑", "😀", "é笑😀tail" })
+		{
+			byte[] json = Encoding.UTF8.GetBytes("\"\\n" + prefix + suffix + "\"");
+			JsonReader reader = new(json);
+			Assert.Equal("\n" + prefix + suffix, reader.ReadRequiredString());
+			Assert.Equal(json.Length, reader.Consumed);
+		}
+
+#if NET
+		ArrayBufferWriter<byte> buffer = new();
+		JsonWriter writer = new(buffer);
+		string decoded = prefix + "\0\né笑😀";
+		writer.WriteString(Encoding.UTF8.GetBytes(decoded));
+		writer.Flush();
+		JsonReader written = new(buffer.WrittenSpan);
+		Assert.Equal(decoded, written.ReadRequiredString());
+#endif
+	}
+
+	[Test]
+	[Arguments(0)]
+	[Arguments(15)]
+	[Arguments(16)]
+	[Arguments(31)]
+	[Arguments(32)]
+	[Arguments(63)]
+	[Arguments(64)]
+	[Arguments(127)]
+	[Arguments(128)]
+	public void EscapedString_RejectsInvalidBytesAfterAsciiPrefix(int prefixLength)
+	{
+		byte[][] invalidSuffixes =
+		[
+			[0],
+			[0x1F],
+			[0x80],
+			[0xC0, 0xAF],
+			[0xE0, 0x80, 0x80],
+			[0xED, 0xA0, 0x80],
+			[0xF4, 0x90, 0x80, 0x80],
+			[0xC2],
+			[0xE0, 0xA0],
+			[0xF0, 0x90, 0x80],
+			[0xC3, 0xA9, 0x1F],
+			[0xC3, 0xA9, 0x80],
+		];
+		foreach (byte[] suffix in invalidSuffixes)
+		{
+			byte[] json = [(byte)'"', (byte)'\\', (byte)'n', .. Encoding.UTF8.GetBytes(new string('a', prefixLength)), .. suffix, (byte)'"'];
+			Assert.Throws<FormatException>(() =>
+			{
+				JsonReader reader = new(json);
+				reader.ReadRequiredString();
+			});
+		}
+	}
+
+	[Test]
 	public void SegmentedBase64AndSkipLimits_AllBoundaries()
 	{
 		byte[] bytes = "\"YWJ\\u006a\""u8.ToArray();

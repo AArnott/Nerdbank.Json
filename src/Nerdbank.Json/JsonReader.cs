@@ -6,6 +6,7 @@
 using System.Buffers;
 using System.Buffers.Text;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Nerdbank.Json;
@@ -730,6 +731,21 @@ public ref struct JsonReader
 		};
 
 	private static void ValidateStringBytes(ReadOnlySpan<byte> bytes, bool allowControlCharacters = false)
+	{
+#if NET8_0_OR_GREATER
+		int index = bytes.IndexOfAnyExceptInRange(allowControlCharacters ? (byte)0 : (byte)0x20, (byte)0x7F);
+		if (index < 0)
+		{
+			return;
+		}
+
+		bytes = bytes[index..];
+#endif
+		ValidateStringBytesSlow(bytes, allowControlCharacters);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static void ValidateStringBytesSlow(ReadOnlySpan<byte> bytes, bool allowControlCharacters)
 	{
 		for (int index = 0; index < bytes.Length; index++)
 		{
