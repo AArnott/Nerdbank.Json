@@ -43,6 +43,15 @@ public class JsonPrimitivesTests
 
 	[Test]
 	[Arguments("0")]
+	[Arguments("-0")]
+	[Arguments("12345")]
+	[Arguments("-12345")]
+	[Arguments("12345.625")]
+	[Arguments("-12345.625")]
+	[Arguments("0.625")]
+	[Arguments("-0.625")]
+	[Arguments("0e+2")]
+	[Arguments("-0E-2")]
 	[Arguments("-12.50e+2")]
 	[Arguments("1e-25")]
 	[Arguments("1234567890123456789012345678901234567890")]
@@ -63,6 +72,37 @@ public class JsonPrimitivesTests
 		byte[] terminated = Encoding.UTF8.GetBytes(text + " ");
 		Assert.Equal(DecodeResult.Success, TryReadNumberToken(terminated, out _, out consumed, isFinalBlock: false));
 		Assert.Equal(bytes.Length, consumed);
+	}
+
+	[Test]
+	[Arguments("00", false)]
+	[Arguments("012345", false)]
+	[Arguments("-012345", false)]
+	[Arguments("00.625", false)]
+	[Arguments("-00e+2", false)]
+	[Arguments("-", true)]
+	[Arguments("12345.", true)]
+	[Arguments("12345e", true)]
+	[Arguments("12345e+", true)]
+	[Arguments("-0.", true)]
+	public void NumberTokenInvalidOrIncompleteOutputs(string text, bool incomplete)
+	{
+		foreach (bool final in new[] { false, true })
+		{
+			foreach (string delimiter in new[] { string.Empty, "," })
+			{
+				byte[] bytes = Encoding.UTF8.GetBytes(text + delimiter);
+				bool needsMore = incomplete && !final && delimiter.Length == 0;
+				DecodeResult expected = needsMore ? DecodeResult.InsufficientBuffer : DecodeResult.TokenMismatch;
+				int expectedSize = needsMore ? bytes.Length + 1 : 0;
+				Assert.Equal(expected, TryReadNumberToken(bytes, out ReadOnlySpan<byte> token, out int size, final));
+				Assert.True(token.IsEmpty);
+				Assert.Equal(expectedSize, size);
+				Assert.Equal(expected, TryRead(bytes, out double value, out size, final));
+				Assert.Equal(0, value);
+				Assert.Equal(expectedSize, size);
+			}
+		}
 	}
 
 	[Test]

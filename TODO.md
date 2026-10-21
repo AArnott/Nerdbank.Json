@@ -113,6 +113,12 @@ All 4,841 managed tests pass, including 432 lexical threshold/boundary cases acr
 Four earlier variants are preserved on named local branches and not merged because of worse short-string or segmented tradeoffs.
 Next measured leads are repeated end traversal in segmented span probing and signed division in property-name bucket selection; no public API change is required for either.
 Native/startup impact and final cross-platform validation will be recorded separately rather than inferred from timing.
+The next retained fix removes a numeric leading-zero lookback that reset the segmented byte cursor to the entire input's start whenever integer digits crossed segments.
+This turns the tiny-segment 1,024-number case from approximately 7.3 ms into 0.218 ms (about 33 times faster), with the same 104 B allocation; scaling is now approximately linear and the 32-number control is about twice as fast.
+The digit loop, cancellation checks, grammar, failure outputs, token spellings, and public APIs remain unchanged; all 5,013 managed tests pass.
+The old constant-time span access became expensive with borrowed segmentation (`3737b21`) and was later copied into the shared lexer (`088ae4f`); warmed profiles and repeated original-source controls corroborate this cause.
+The [benchmark report](docfx/docs/benchmarking.md) includes scaling/error/allocation tables and an anomalous unchanged escaped-string control, not just the wins.
+Remaining profiled targets include split-token copy setup, redundant span-probe traversal, per-byte segment access, and property lookup division.
 
 ## Current macOS CI calibration (operator-approved)
 

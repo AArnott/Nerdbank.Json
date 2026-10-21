@@ -242,6 +242,39 @@ The final candidate passes all 4,841 managed tests, including 432 exhaustive lex
 Native/startup impact is a separate validation item; no startup or native-size improvement is inferred from these throughput results.
 All distributions, medians and raw measurements are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\lexical-scan-baseline-A1`, `files\lexical-scan-baseline-A2`, `files\lexical-scan-candidate-B1` through `B5`, and `files\lexical-scan-confirm-B5`.
 
+## Forward-only numeric token scanning
+
+Warmed segmented profiles attributed 52.4% exclusive managed-thread samples to byte-cursor access and another 8.9% to casts.
+The integer leading-zero check reread the token's first digit after scanning it; when digits crossed segments, that backward access reset the cached byte cursor to the entire sequence's start.
+An originally constant-time span lookup became repeated whole-prefix traversal after borrowed segmented input was introduced in `3737b21`; `088ae4f` later moved the same pattern into the shared stateless lexer.
+Retaining the first integer byte, including the byte following a minus sign, removes that lookback without changing the digit loop, grammar, cancellation cadence, final-block classification, token storage, or public APIs.
+
+`NumberTokenScalingBenchmarks` constructs deterministic arrays of `12345.625` outside measurement and validates every value and final source position.
+The same serial Windows/.NET 9 Medium settings as the lexical experiment apply.
+The original lexer was measured twice; errors are 99.9% confidence-interval half-widths.
+
+| Count / segment bytes | Original A1 mean, us | Original A2 mean +/- error, us | Forward-only mean +/- error, us | B/op, unchanged |
+|---|---:|---:|---:|---:|
+| 32 / contiguous | 1.697 | 1.752 +/- 0.103 | 1.739 +/- 0.039 | 0 |
+| 256 / contiguous | 13.680 | 13.080 +/- 0.195 | 13.987 +/- 0.271 | 0 |
+| 1024 / contiguous | 55.005 | 52.733 +/- 1.445 | 55.343 +/- 0.885 | 0 |
+| 32 / 3 | 14.889 | 13.785 +/- 0.527 | 7.478 +/- 0.762 | 104 |
+| 256 / 3 | 509.432 | 502.584 +/- 10.573 | 49.785 +/- 0.497 | 104 |
+| 1024 / 3 | 7309.659 | 7255.690 +/- 261.187 | 218.070 +/- 16.889 | 104 |
+| 32 / 64 | 3.998 | 3.796 +/- 0.092 | 3.742 +/- 0.096 | 104 |
+| 256 / 64 | 32.369 | 32.042 +/- 0.837 | 29.718 +/- 0.673 | 104 |
+| 1024 / 64 | 161.799 | 160.152 +/- 8.064 | 119.108 +/- 1.490 | 104 |
+
+Tiny-segment growth is now approximately linear rather than quadratic: the 1,024-value case falls from about 7.3 ms to 0.218 ms, roughly 33 times faster, without increasing allocation.
+This is segmentation-dependent scaling evidence, not a 33-times general serializer claim.
+Contiguous controls vary between baseline repeats and do not establish a new speedup; ordinary object allocation targets remain 200/664/0/0 B.
+The fixed 32-number segmented control repeats at 6.70/6.98 us versus original 13.51-14.43 us, all 104 B.
+An unrelated escaped-string control was noisy: one candidate run measured 14.71 us versus original 10.55-10.61 us; a repeat measured 11.59 +/- 1.12 us with a 10.83 us median.
+No source in that string path changes here, but the anomaly is retained rather than silently discarded or called a causal regression.
+Paired warmed profiles move byte-cursor exclusive share from 52.4% to 19.7%, with split-token copying/parsing becoming more prominent; samples are attribution, not elapsed-time or kernel CPU counts.
+All 5,013 managed tests pass; new tests were first checked against the original parser, retaining existing legacy zero-sign semantics and exact source positions rather than changing unrelated behavior.
+Full reports and paired traces are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\numeric-forward-baseline-A1`, `files\numeric-forward-baseline-A2`, `files\numeric-forward-candidate-B1`, `files\numeric-forward-confirm-B2`, and `files\segmented-*-baseline` / `files\segmented-*-forward-cache`.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.

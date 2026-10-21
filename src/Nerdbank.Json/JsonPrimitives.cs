@@ -488,19 +488,21 @@ public static class JsonPrimitives
 		}
 
 		long index = start;
-		if (input[index] == (byte)'-')
+		byte firstIntegerDigit = input[index];
+		if (firstIntegerDigit == (byte)'-')
 		{
 			index++;
-		}
+			if (index == input.Length)
+			{
+				return Incomplete(isFinalBlock, index - start, out tokenSize);
+			}
 
-		if (index == input.Length)
-		{
-			return Incomplete(isFinalBlock, index - start, out tokenSize);
+			firstIntegerDigit = input[index];
 		}
 
 		long integerStart = index;
 		if (!ReadDigits(in input, ref index, cancellationToken)
-			|| (index - integerStart > 1 && input[integerStart] == (byte)'0'))
+			|| (index - integerStart > 1 && firstIntegerDigit == (byte)'0'))
 		{
 			tokenSize = 0;
 			return DecodeResult.TokenMismatch;
