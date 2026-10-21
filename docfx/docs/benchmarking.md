@@ -54,11 +54,40 @@ This recovers most, but not all, of the integration regression: the accepted pre
 The remaining difference is not attributed solely to validation; these measurements do not isolate every remaining reader cost.
 An explicit contiguous string-parser specialization was also tested and removed because its small effect did not justify a second path.
 
-A further medium run of the committed code measured small reads at 351.1 ± 2.13 ns (median 351.1 ns) and wide reads at 1270.5 ± 14.17 ns (median 1269.4 ns), with unchanged 200/664 B allocations.
-Writes measured 179.2 ± 1.08 ns and 479.3 ± 5.62 ns, both at 0 B.
+The final Medium run of source `7ea67c8` measured small reads at 351.1 ± 2.13 ns (median 351.1 ns) and wide reads at 1270.5 ± 14.17 ns (median 1269.4 ns), with unchanged 200/664 B allocations.
+Writes measured 179.2 ± 1.08 ns (median 178.9 ns) and 479.3 ± 5.62 ns (median 477.3 ns), both at 0 B.
+Intervals are mean +/- 99.9% confidence-interval half-width.
+Compared with accepted pre-low-level reads near 313/1077 ns, final reads remain about 12%/18% slower; earlier frozen-original Medium reads were 292.9/1055.1 ns, so full speed recovery is not claimed.
+The accepted reader fixes are `440b7fe` (printable-ASCII fast path), `8767712` (vectorized range validation with strict fallback), and `6938cba` (cached length and outlined segmented helpers).
+Strict validation and segmented-capable navigation remain possible residual contributors, not a fully isolated causal split.
+Paired warm sampled-thread-time frame percentages are relative attribution, not elapsed-time ratios.
 The full 64-case skip matrix also completed at the same medium job and affinity, covering four token distributions, two sizes, four segment sizes, and cancellable/non-cancellable contexts.
 It reported 0–1 B per contiguous operation and 104–107 B per segmented operation across those payload sizes, consistent with bounded navigation state rather than payload materialization; the small differences within those ranges were not separately attributed.
 These final-only skip measurements do not establish a paired skip-throughput improvement.
+
+## Final Linux Medium comparison
+
+An isolated WSL Ubuntu 26.04 Linux-native checkout measured the frozen original `f64da69` and current `7ea67c8` with SDK 10.0.402, .NET 9.0.21, BDN 0.15.8, Release, affinity mask 2, default tiering, two launches, ten warmups, and fifteen iterations.
+The runs were serial with no other builds.
+Errors are 99.9% confidence-interval half-widths; allocations are unchanged.
+
+| Operation | Original mean +/- error, ns | Original median, ns | Current mean +/- error, ns | B/op, both |
+|---|---:|---:|---:|---:|
+| Small read | 352.7 +/- 21.77 | 348.7 | 398.9 +/- 3.31 | 200 |
+| Wide read | 1124.8 +/- 16.03 | 1122.8 | 1400.4 +/- 14.85 | 664 |
+| Small write | 186.4 +/- 6.68 | 194.1 | 200.6 +/- 1.48 | 0 |
+| Wide write | 508.8 +/- 6.09 | 511.6 | 526.2 +/- 4.67 | 0 |
+
+This is one like-for-like Linux pair, not replicated A/B/A evidence or a cross-OS performance comparison.
+The original small-read distribution is noisier; minimum-iteration warnings and outliers are retained.
+All original object allocation parity targets are met, but neither this pair nor the Windows results demonstrate full elapsed-time recovery.
+
+The earlier provider-initialization copies and removed converter-locality shortcut were separately established as causal regressions using historical parent/child Medium jobs and counterfactuals.
+Their accepted fixes preserve public converter by-value isolation and exact provider/shape identity; the unsafe historical type-only shortcut is not shipping code.
+The repository's `TODO.md` retains those controls, accepted/rejected decisions, and full artifact mapping.
+Reader raw evidence is outside source control in session `6fbada64-d1bf-444d-be95-97580c7b0685`, `files/reader-perf`, including `RootCause.txt`, `object-measurements.csv`, traces, disassembly, and rejected patches.
+Earlier causal evidence remains in session `ccd4d45f-edf7-4ad2-bce2-e9f5839aa2f8`, `files/perf-cause`.
+Linux evidence includes `perf-linux-medium-baseline-f64/repo` and host logs `final-linux-medium.log` and `final-linux-perf-validation-summary.log`.
 
 ## Native image size
 

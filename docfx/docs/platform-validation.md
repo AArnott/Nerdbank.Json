@@ -3,7 +3,8 @@
 Use `tools/Validate-Platform.ps1` from this branch to collect platform evidence without editing code or recalibrating baselines.
 It runs serial Release builds, core/MVC/analyzer managed tests for every declared framework (including .NET Framework on Windows), the F# round-trip self-check, eligible NativeAOT test variants discovered through the existing traversal, and all four native fixtures.
 Benchmarks and CPU traces are opt-in and must wait until other performance measurements have finished.
-No macOS or Linux execution is implied by the existence of this script.
+Full Windows and WSL Ubuntu 26.04 runs against source `7ea67c8` pass; actual macOS execution remains pending.
+The script's existence alone is not evidence for any other host or revision.
 
 ## Requirements
 
@@ -54,8 +55,16 @@ An Intel Mac uses `osx-x64`, whose broad size budget is **not calibrated**; neve
 WSL is a separate Linux environment and needs its own SDK, runtimes, PowerShell, and native prerequisites; Windows installations do not satisfy these requirements.
 The initial WSL Ubuntu 26.04 handoff environment lacked the pinned SDK and .NET 8/9 runtimes; subsequently authorized provisioning installed SDK 10.0.402 and .NET/ASP.NET Core 8.0.32, 9.0.21, and 10.0.13 only in the isolated checkout's `obj/tools/.dotnet`.
 A minimal NativeAOT publish and JSON round-trip succeeded there with explicit `-p:CppCompilerAndLinker=/usr/bin/g++`; clang remains absent, and the initial full validation attempt failed at that prerequisite as expected.
-The coordinator subsequently executed the full Linux script with GCC: prerequisites, Release build, native publish/tests, all four fixtures, F# self-check, and size guards passed, but all seven managed `dotnet test` commands failed at report-argument forwarding and correctly failed the missing-TRX requirement.
-The direct managed runner addresses that forwarding failure; the coordinator owns the full Linux rerun, and macOS validation remains pending.
+An earlier full Linux attempt passed native stages but failed all seven managed `dotnet test` commands at report-argument forwarding and correctly failed the missing-TRX requirement.
+That failure is historical: after the direct managed runner fix, the coordinator executed the complete script at `7ea67c8`, with **3,191 managed passes, zero failures/skips**, including 163 analyzer tests.
+Linux native core .NET 9 and .NET 10 each passed 946 tests with two known platform-input skips (1,892 passes out of 1,896 cases total, zero failures); all four fixtures, the F# self-check, and native image guards passed.
+The isolated Linux-native checkout is `/home/andrew/.local/share/nerdbank-json-copilot-70b1bb69/repo`, with complete evidence under `obj/final-linux-reader-7ea/validation.json` and its containing directory.
+The broad Linux image is 6,310,840 bytes (6.018486022949219 MiB), within the unchanged 5.88 +/- 0.2 MiB guard; the minimal image is 3,002,256 bytes (2.8631744384765625 MiB), uncalibrated.
+Windows evidence at `obj/final-windows-reader-7ea/validation.json` records 4,129 managed passes with zero failures/skips and the same 1,892 native passes/four input skips, all four fixtures, F# self-check, and native image guards passing.
+The broad Windows image is 6,097,920 bytes (5.8154296875 MiB), within the unchanged 5.79 +/- 0.2 MiB guard; the minimal image is 2,782,208 bytes (2.6533203125 MiB), uncalibrated.
+Working-directory artifact resolution, explicit GCC selection, and direct built DLL/executable MTP/TRX forwarding are therefore validated on the relevant hosts; missing reports or failures still produce nonzero exits.
+No apt, sudo, or global SDK installation was used, and the system SDK was unchanged.
+macOS remains an external handoff, not a passed validation; its arm64 budget remains historical, unchanged, and unverified for this source.
 Do not provision, build, or run benchmarks while competing measurements are running.
 
 ## Run and collect
@@ -143,6 +152,9 @@ It retains command logs, diagnostics, TRX counters, and `smoke.json` in a new GU
 Existing smoke artifact directories are rejected, and a runner/report failure remains a failure rather than falling back to console parsing.
 
 ## Standalone Copilot prompt for the Mac
+
+First use a dedicated Mac checkout of branch `aarnott-miniature-engine`, including source `7ea67c8` and this documentation checkpoint.
+No Mac result is claimed until the complete run evidence is returned.
 
 > In the dedicated checkout of the supplied branch, read `CONTRIBUTING.md` and `docfx/docs/platform-validation.md`, then run `pwsh -NoProfile -File ./tools/Validate-Platform.ps1 -ArtifactDirectory ./obj/platform-macos`.
 > Verify the supplied branch/HEAD without changing branches or discarding edits, check native Apple Silicon versus Rosetta architecture, and honor the exact SDK 10.0.402 plus .NET/ASP.NET Core 8/9/10 runtime requirements.

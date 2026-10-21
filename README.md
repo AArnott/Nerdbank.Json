@@ -207,23 +207,19 @@ The implemented feature surface is described in the [feature guide](docfx/docs/f
 The public-API audit is complete for this checkpoint, with remaining low-level breadth explicitly deferred; this is not a claim of perfect binary parity with Nerdbank.MessagePack.
 Dictionary keys are limited to supported simple types, collections without construction support are serialization-only, and getter-only scalar or immutable properties require constructor binding to be populated.
 
-The deferred integration checkpoint `c4f2121` (2026-10-21) builds all Release targets with warnings treated as errors and passes all **4,057 managed tests**, with zero warnings, failures, or skips.
-This includes 163 analyzer tests and all configured core and MVC frameworks.
-All three C# documentation samples remain compiled in the managed-only net8.0 target.
-Fresh Windows NativeAOT linking is blocked by local `vswhere.exe` discovery; the command gate denied the process-local Visual Studio Installer PATH prefix required on this machine.
-No fresh native execution or image-size result is claimed for this checkpoint.
+Full platform validation of source `7ea67c8` (2026-10-21) passes on Windows and WSL Ubuntu 26.04: **4,129 Windows and 3,191 Linux managed tests**, with zero failures or skips, including all 163 analyzer tests on each OS.
+On each OS, NativeAOT core tests on .NET 9 and 10 total **1,892 passes, zero failures, and four known platform-input skips**; all four native fixtures publish with warnings as errors and execute, the F# self-check passes, and native image guards pass without recalibrating budgets.
+Only NativeAOT creation of non-zero-lower-bound array inputs skips; managed normalization assertions remain intact.
+The final source also passed DocFX with zero warnings/errors and formatting verification.
+MVC retains strict single-JSON-body validation.
 
-At the historical `13bc811` checkpoint, the Windows net10.0 native core suite had **805 passes, zero failures, and two explicit platform skips**: NativeAOT cannot create the non-zero-lower-bound array inputs; managed normalization assertions remain intact.
-All four NativeAOT fixtures published with warnings treated as errors and executed successfully at that checkpoint.
-The historical broad image was 6,159,360 bytes (5.874 MiB), passing the unchanged Windows 5.79 +/- 0.2 MiB guard; the minimal image was 2,771,456 bytes (2.643 MiB, uncalibrated).
-Linux/macOS budgets are preserved without recalibration; final-tree cross-platform execution remains a coordinator handoff.
-MVC uses the public object async APIs while retaining strict single-JSON-body validation, with no MVC test skips.
-DocFX, formatting verification, and the self-checking F# sample also succeed.
+Matched Medium performance evidence, causal fixes, exact native sizes, and artifact locations are recorded in [TODO.md](TODO.md) and the [benchmark guide](docfx/docs/benchmarking.md).
+Original object allocation parity is preserved, but full speed restoration is **not** claimed: final Windows small/wide reads remain about 12%/18% slower than the accepted pre-low-level reader.
+macOS has **not** been executed; the [platform validation guide](docfx/docs/platform-validation.md) provides the ready-to-run script and standalone Copilot handoff.
+In a dedicated checkout of this branch on the Mac, run `pwsh -NoProfile -File ./tools/Validate-Platform.ps1 -ArtifactDirectory ./obj/platform-macos` and return the complete evidence directory without changing size budgets.
 
-The causal performance investigation and its accepted recovery are documented in [TODO.md](TODO.md); full speed restoration is not claimed.
-No throughput comparison is claimed for the later segmented-reader integration; matching medium jobs must run after integration builds stop.
 Segmented parsing, owned raw values, UTF-8 string/token APIs, scalar `JsonPrimitives`, and NBJson001/NBJson002/NBJson031/NBJson051 are implemented.
-Stateless decoded strings, raw/container framing, and dedicated narrow-number overloads remain deliberately deferred.
+Stateless decoded strings, raw/container framing, dedicated narrow-number overloads, and writer `GetSpan`/`Advance` remain deliberately outside the implemented contract.
 Experimental duck typing validates candidates against object contract metadata but remains an experimental selection strategy.
 Async-stream first-value reads cannot safely retain prefetch; use caller-owned pipes.
 See [TODO.md](TODO.md) for final evidence, constraints, and superseded checkpoints.

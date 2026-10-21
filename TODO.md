@@ -75,13 +75,129 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 - [x] Add the direct `RawJson` wrapper with explicit ownership and an automatic owned converter.
 - [x] Address deferred analyzer rules NBJson031 and NBJson051, and activate contract-aware NBJson001/NBJson002.
 - [x] Add memory/array readers, clones, token inspection, decoded UTF-8 strings, and the reviewed stateless scalar primitives.
-- [ ] Extend stateless breadth to decoded strings, general raw/container framing, and dedicated narrow-number overloads; the implemented scalar subset does not imply these contracts.
-- [ ] Publish and execute final deferred Windows NativeAOT core net9.0/net10.0 and all four fixtures; current local linker discovery and command approval block fresh execution.
+- [x] Document intentional low-level contract limits separately from implementation tasks; the implemented scalar subset does not promise general string/container primitives.
+- [x] Publish and execute final Windows NativeAOT core net9.0/net10.0 and all four fixtures; the final full platform run supersedes the historical linker block.
 - [x] Investigate and optimize the object elapsed-time regression without sacrificing allocation parity, safety, or correctness; causal boundaries and accepted fixes are recorded below.
-- [ ] Further reduce the residual small-object read cost; the accepted fixes do not establish complete original-speed restoration.
-- [ ] Execute Linux/macOS validation; do not infer results or recalibrate their budgets from Windows measurements.
+- [ ] Further isolate and reduce residual small/wide-object read cost; the accepted fixes do not establish complete original-speed restoration.
+- [x] Execute full Linux validation in an isolated WSL Linux-native checkout, preserving existing size budgets.
+- [ ] Receive actual macOS validation evidence from the ready script/instructions handoff; no Mac execution is claimed.
 
-## Final deferred integration QA (2026-10-21)
+## FINAL documentation/evidence checkpoint (2026-10-21, source `7ea67c8`)
+
+**This is the current authoritative checkpoint.**
+It supersedes older counts, inactive-analyzer/parser deferrals, Windows native-linking blocks, and Linux-unverified statements retained below as historical evidence.
+The requested cause identification, accepted fixes, remaining deferred integration, Medium measurements, and Windows/WSL validation are complete; residual performance work and an external Mac result remain open.
+This checkpoint changes documentation only on `aarnott-miniature-engine`, with no further source changes, experiments, delegation, branch creation, push, PR, or amend.
+Approved JSON/secure-comparer exceptions and the breaking-change/no-obsolete-alias policy above remain unchanged; an eventual PR must explain that policy, but no PR is requested or created here.
+
+### Final platform evidence
+
+The coordinator executed the complete `tools/Validate-Platform.ps1` run against `7ea67c8` on both operating systems.
+
+| Evidence | Windows x64 | WSL Ubuntu 26.04 Linux x64 |
+|---|---:|---:|
+| Managed tests passed | 4,129 | 3,191 |
+| Managed failures / skips | 0 / 0 | 0 / 0 |
+| Analyzer tests included | 163 | 163 |
+| Native core .NET 9 passed / skipped | 946 / 2 | 946 / 2 |
+| Native core .NET 10 passed / skipped | 946 / 2 | 946 / 2 |
+| Native total passed / total cases | 1,892 / 1,896 | 1,892 / 1,896 |
+| Native failures | 0 | 0 |
+| Native fixtures published with warnings as errors and executed | All four | All four |
+| F# self-check / native image guards | PASS / PASS | PASS / PASS |
+| Broad image bytes | 6,097,920 | 6,310,840 |
+| Broad image MiB | 5.8154296875 | 6.018486022949219 |
+| Unchanged broad budget, MiB | 5.79 +/- 0.2 | 5.88 +/- 0.2 |
+| Minimal image bytes | 2,782,208 | 3,002,256 |
+| Minimal image MiB (uncalibrated) | 2.6533203125 | 2.8631744384765625 |
+
+The two native skips per framework are only non-zero-lower-bound `Array.CreateInstance` input creation; all managed normalization assertions remain intact.
+All four fixtures means `AotSizeTest`, `AotRuntimeCompatibilityTest`, `AotNativeConsole`, and `AotCompatibilityTest`, not merely successful native linking.
+DocFX with warnings as errors reports zero warnings/errors, `dotnet format` verification exits zero, and the source-checkpoint `git diff --check` was clean.
+No source changed after these checks; this documentation-only checkpoint does not claim a new test run.
+
+Windows evidence is in `obj\final-windows-reader-7ea\validation.json` and its complete run directory.
+Linux evidence is in `obj/final-linux-reader-7ea/validation.json` beneath the isolated Linux-native checkout `/home/andrew/.local/share/nerdbank-json-copilot-70b1bb69/repo`.
+The existing SDK helper installed SDK 10.0.402 and .NET/ASP.NET Core 8.0.32, 9.0.21, and 10.0.13 only under that checkout's `obj` directory; the system SDK was unchanged.
+Linux had no clang, so the full run explicitly selected the validated `-CppCompilerAndLinker /usr/bin/g++`; no apt, sudo, or global installation was used.
+Script fixes `0378400` (PowerShell working-directory artifact resolution and explicit Linux compiler) and `4e35844` (direct built DLL/executable MTP/TRX forwarding) are proven by these full runs; failed commands and missing reports remain nonzero failures.
+Earlier failed prerequisite/forwarding runs are retained history, not final failures.
+
+Actual macOS execution remains pending.
+The [platform guide](docfx/docs/platform-validation.md) contains requirements and a standalone Copilot prompt: use a dedicated checkout of this branch, then run `pwsh -NoProfile -File ./tools/Validate-Platform.ps1 -ArtifactDirectory ./obj/platform-macos`.
+Return the complete `validation.json`, logs, TRX, and native size artifacts, including failure evidence.
+Medium is optional and must wait until no other jobs are running.
+Do not recalibrate budgets: macOS arm64's historical 5.40 +/- 0.2 MiB guard remains unchanged and unverified on this source.
+
+### Implemented surface and intentional limits
+
+The reader borrows segmented JSON without flattening the entire payload.
+Owned `RawJson` has an automatic converter; borrowed capture and `ToOwned` make lifetime transitions explicit.
+Decoded UTF-8 string/token inspection, memory/array constructors, clones, and stateless scalar `JsonPrimitives` with final-block `DecodeResult` and shared numeric grammar are implemented.
+NBJson001/NBJson002 are active contract-aware diagnostics, not descriptor-only stubs; NBJson031 uses conservative control-flow analysis, and NBJson051 gives real .NET mapping guidance.
+Diagnostic pages, packaging/source-consumer checks, and all 163 analyzer tests pass.
+Duck-typing required metadata, constructor checks, and concrete-base cases are fixed through `f0fcfba`; strict ambiguity rejection and the experimental marker remain, while serializer-naming-dependent validation stays at converter creation.
+
+Decoded stateless strings, arbitrary raw/container primitives, dedicated narrow-number primitive overloads, and writer `GetSpan`/`Advance` are intentional remaining contract limits, not no-op stubs or unchecked implementation promises.
+Asynchronous stream deserialization remains strict because a temporary pipe cannot return prefetched bytes to an arbitrary non-seekable stream.
+The compiled retained-`PipeReader` example is tested for repeated first-value reads, and MVC's strict HTTP-body contract is not weakened.
+Supported dictionary-key restrictions and immutable/constructor-bound cycle restrictions also remain intentional.
+
+### Causal performance findings and final Medium evidence
+
+Historical parent/child Medium jobs, counterfactuals, paired warm unboxed EventPipe traces, and disassembly identify two original regression causes rather than speculative context-size attribution.
+At `e692cab`, provider initialization with record-`with` copies moves small writes from 179.8 to 198.1 ns (repeat 178.0 to 196.7); removing only the copies gives 178.3 ns.
+At `d5b883f`, removing the last-converter shortcut moves small writes from 186.9-190.8 to 217.1-223.1 ns; restoring only that shortcut gives 196.0 ns, while padding the parent context does not reproduce the regression.
+The old type-only shortcut is unsafe: public shape identity requires the actual provider identity.
+Accepted fixes are internal readonly property dispatch `f2b7961` while preserving public converter by-value isolation, and atomic exact-shape locality caching `2fdeb10`.
+`d2830c5` subsequently proves and repairs equality-colliding dictionary shape keys with a reference comparer.
+The historical report below retains full controls and uncertainty.
+
+Low-level integration introduced a separate measured regression: small/wide reads reached about 498/2,327 ns and writes 187/511 ns.
+Warm profiles and disassembly identified per-ASCII-byte general UTF-8 validation, scalar validation work, and expanded segmented navigation on contiguous input.
+Accepted `440b7fe`, `8767712`, and `6938cba` add a printable-ASCII span fast path, runtime-vectorized ASCII range validation with strict fallback, and cached immutable length/outlined segmented helpers.
+They neither flatten whole payloads nor skip validation.
+An explicit span-specialized parser experiment was rejected; its patch is retained outside the checkout and none remains in source.
+The bounded-depth native-code total decreased from 6,521 to 4,934 bytes; this is not a whole-library image-size measurement.
+
+The final Windows job uses .NET 9.0.21, SDK 10.0.402, BDN 0.15.8, Release, affinity mask 2, default tiering, two launches, ten warmups, and fifteen iterations, serially.
+Errors below are 99.9% confidence-interval half-widths.
+
+| Final `7ea67c8` operation | Mean +/- error, ns | Median, ns | B/op |
+|---|---:|---:|---:|
+| Small read | 351.1 +/- 2.13 | 351.1 | 200 |
+| Wide read | 1,270.5 +/- 14.17 | 1,269.4 | 664 |
+| Small write | 179.2 +/- 1.08 | 178.9 | 0 |
+| Wide write | 479.3 +/- 5.62 | 477.3 | 0 |
+
+Against accepted pre-low-level reads of about 313/1,077 ns and writes of 179-185/483-505 ns, reads remain about 12%/18% slower.
+Earlier original `f64da69` Medium reads were 292.9/1,055.1 ns, so neither original nor pre-low-level read speed is fully recovered.
+Strict validation and segmented-capable paths plausibly contribute to residual cost, but their causal shares are not fully isolated.
+Paired warm sampled-thread-time frame percentages are relative attribution, not elapsed-time ratios.
+All original object allocation parity targets are met; earlier noisy/bimodal distributions remain retained.
+The full 64-case ReaderSkip Medium matrix succeeds, reporting 0-1 B contiguous and 104-107 B segmented per operation with BDN rounding.
+These small navigation allocations do not grow with payload size; this is not a claim that all segmented readers allocate zero bytes or a paired skip-throughput improvement.
+
+A real WSL Medium original/current pair uses frozen `f64da69` and `7ea67c8`, the same SDK/runtime/BDN, affinity 2, two launches, ten warmups, and fifteen iterations, serially with no other builds.
+
+| WSL operation | Original mean +/- error, ns | Original median, ns | Current mean +/- error, ns | B/op, both |
+|---|---:|---:|---:|---:|
+| Small read | 352.7 +/- 21.77 | 348.7 | 398.9 +/- 3.31 | 200 |
+| Wide read | 1,124.8 +/- 16.03 | 1,122.8 | 1,400.4 +/- 14.85 | 664 |
+| Small write | 186.4 +/- 6.68 | 194.1 | 200.6 +/- 1.48 | 0 |
+| Wide write | 508.8 +/- 6.09 | 511.6 | 526.2 +/- 4.67 | 0 |
+
+The original Linux small-read run is noisier; this is one matched pair, not replicated Linux A/B/A evidence or a cross-OS speed comparison.
+Minimum-iteration warnings and outliers are retained rather than hidden.
+Reader evidence is retained outside source control at `C:\Users\andre\.copilot\session-state\6fbada64-d1bf-444d-be95-97580c7b0685\files\reader-perf`, including `RootCause.txt`, `object-measurements.csv`, traces, disassembly, and rejected patches.
+Original causal evidence remains in session `ccd4d45f-edf7-4ad2-bce2-e9f5839aa2f8`, `files\perf-cause`.
+Linux benchmark evidence includes the isolated `perf-linux-medium-baseline-f64/repo` and host logs `final-linux-medium.log` and `final-linux-perf-validation-summary.log`.
+The requested checkpoint is complete with these explicit limits; perfect API parity and full speed recovery are not claimed.
+
+## HISTORICAL deferred integration QA (2026-10-21, through `c4f2121`)
+
+This section preserves the earlier integration evidence.
+The FINAL `7ea67c8` checkpoint above supersedes its pending benchmark/platform work and Windows linker block.
 
 The exclusive-main integration preserves the causal performance fixes, the user's `0aa59ea` project grouping, strict MVC body handling, and the current duck-typing and stream-ownership contracts.
 `CustomConverters.cs`, `AsyncStreaming.cs`, and `AnalyzerGuidance.cs` are all included in the managed-only net8.0 sample group.
@@ -146,7 +262,7 @@ Only the two known unsupported lower-bound-array inputs may skip natively.
 The coordinator-provided real WSL baseline pass predates this final integration; refreshed Linux validation and macOS execution remain separate handoff work.
 No OS size budget was changed or recalibrated.
 
-## Active performance attribution follow-up (2026-10-20)
+## HISTORICAL performance attribution follow-up (2026-10-20)
 
 The historical checkpoint below is retained as evidence. The attribution follow-up
 is complete with accepted code `2fdeb10`, following `f2b7961`; both descend from
@@ -155,7 +271,7 @@ replication, causal controls, and paired warm sampled-thread-time profiles ident
 two concrete regression components. This is a substantial partial recovery, not
 a claim that every timing difference across the 64-commit range is decomposed.
 Production-default tiering/PGO and constant benchmark inputs are the primary configuration.
-Deferred parser/raw-wrapper/analyzer work follows this performance investigation.
+At this historical checkpoint, parser/raw-wrapper/analyzer work was still deferred; the FINAL checkpoint above records its implementation and later reader measurements.
 
 ### Causal findings, not just source hypotheses
 
@@ -375,13 +491,14 @@ the cause of that one-off test-thread allocation is not established.
 NativeAOT net10.0 passes 808 tests with the same two platform-input skips
 (810 total), including provider/identity/allocation tests.
 
-## Final accepted checkpoint (2026-10-20, code `13bc811`)
+## HISTORICAL accepted checkpoint (2026-10-20, code `13bc811`)
 
 This section records the **earlier** accepted checkpoint. Its statement of finality
 is scoped to that checkpoint; the performance follow-up above supersedes its
 elapsed-time result and final-code designation without replacing its historical evidence.
 
-**This is the authoritative final result.** It supersedes the earlier managed counts, native input-creation failures, size measurements, pending benchmark comparison, and unverified platform-guard notes retained below as historical evidence.
+**This was the authoritative result for `13bc811`, not the current source.**
+It superseded the earlier managed counts, native input-creation failures, size measurements, pending benchmark comparison, and unverified platform-guard notes retained below as historical evidence.
 The accepted implementation is `13bc811`; the rejected provider-local experiment is not included.
 The branch remains `aarnott-miniature-engine`; this documentation checkpoint creates no branch or PR, pushes nothing, and amends nothing.
 Approved differences above are unchanged. Breaking cleanup remains authorized, with no obsolete aliases restored.
@@ -440,7 +557,9 @@ The candidate was surgically reverted; accepted `13bc811` is unchanged, and its 
 Patch/evidence remains outside the checkout in child session `9ea17ac4-60dd-4182-ba35-c0d060ada2a2`, under `files/provider-local-experiment`.
 This is not an accepted optimization.
 
-### Remaining boundaries and deferrals
+### Historical remaining boundaries and deferrals
+
+The following deferrals describe `13bc811` only; the FINAL checkpoint above supersedes the parser/raw/analyzer and Linux status.
 
 Zero-copy segmented parsing, the direct raw stateless wrapper, remaining low-level breadth, NBJson031/NBJson051, elapsed-time optimization, and Linux/macOS execution remain deferred as tracked above.
 NBJson001/NBJson002 remain descriptor-only inactive diagnostics, as documented.
@@ -448,7 +567,7 @@ Experimental duck typing does not have identical constructor-time validation sem
 Async-stream first-value reads cannot preserve prefetched bytes when disposing the temporary pipe; use a caller-owned pipe instead.
 Supported JSON dictionary-key limits and immutable/constructor-bound cycle limits remain intentional feature constraints, not unimplemented promises.
 
-## Fixed-snapshot integration checkpoint
+## HISTORICAL fixed-snapshot integration checkpoint
 
 The sections below preserve historical integration evidence. Their counts, failures, pending work, and verification limitations are superseded where explicitly resolved by the final accepted checkpoint above.
 
