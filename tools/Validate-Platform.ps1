@@ -8,6 +8,8 @@
     A new directory. Existing paths are rejected to preserve previous evidence.
 .PARAMETER TestFilter
     MTP tree-node filter for managed and native tests. The default runs all tests.
+.PARAMETER CppCompilerAndLinker
+    Explicit Linux NativeAOT compiler executable, such as /usr/bin/g++. No automatic fallback is applied.
 .PARAMETER RunBenchmarks
     Runs BenchmarkDotNet serially with the Medium job in Release.
 .PARAMETER BenchmarkFilter
@@ -31,7 +33,9 @@ param(
     [ValidateNotNullOrEmpty()]
     [string]$TraceCommand = 'dotnet-trace',
     [ValidateNotNullOrEmpty()]
-    [string]$TraceProfile = 'dotnet-common,dotnet-sampled-thread-time'
+    [string]$TraceProfile = 'dotnet-common,dotnet-sampled-thread-time',
+    [ValidateNotNullOrEmpty()]
+    [string]$CppCompilerAndLinker
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,11 +45,17 @@ $pwsh = Join-Path $PSHOME $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })
 if (!$ArtifactDirectory) {
     $ArtifactDirectory = Join-Path $repo (Join-Path 'obj' (Join-Path 'platform-validation' ([guid]::NewGuid().ToString('N'))))
 }
-$ArtifactDirectory = [IO.Path]::GetFullPath($ArtifactDirectory)
+$artifactProvider = $null
+$artifactDrive = $null
+$ArtifactDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(
+    $ArtifactDirectory, [ref]$artifactProvider, [ref]$artifactDrive)
+if ($artifactProvider.Name -ne 'FileSystem') {
+    throw 'ArtifactDirectory must use the FileSystem provider.'
+}
 if (Test-Path -LiteralPath $ArtifactDirectory) {
     throw "Artifact directory already exists; choose a new path: $ArtifactDirectory"
 }
-$null = New-Item -ItemType Directory -Path $ArtifactDirectory
+$null = New-Item -ItemType Directory -Path $ArtifactDirectory -ErrorAction Stop
 $steps = [Collections.Generic.List[object]]::new()
 $testReports = [Collections.Generic.List[object]]::new()
 $budgets = @{ 'linux-x64' = 5.88; 'osx-arm64' = 5.40; 'win-x64' = 5.79 }
@@ -65,6 +75,7 @@ $report = [ordered]@{
         PowerShellVersion = $PSVersionTable.PSVersion.ToString()
         PowerShellExecutable = $pwsh
         DotnetExecutable = $null
+        CppCompilerAndLinker = $null
         TraceExecutable = $null
         DotnetArchitecture = $null
         DotnetHostRID = $null
@@ -78,6 +89,8 @@ $report = [ordered]@{
         Configuration = 'Release'
         TestFilter = $TestFilter
         TestScope = $(if ($TestFilter -eq '/*/*/*/*') { 'ALL' } else { 'TARGETED' })
+        CppCompilerAndLinker = $CppCompilerAndLinker
+        NativeMSBuildProperties = @()
         RunBenchmarks = [bool]$RunBenchmarks
         BenchmarkJob = 'Medium'
         BenchmarkFilter = $BenchmarkFilter
@@ -150,10 +163,11 @@ function Assert-Command {
 }
 
 function Invoke-DotnetWithAssets {
-    param([string]$Name, [string[]]$Arguments, [string]$RestoreTarget)
+    param([string]$Name, [string[]]$Arguments, [string]$RestoreTarget, [string[]]$MSBuildProperties = @())
+    $Arguments += $MSBuildProperties
     $result = Invoke-Recorded $Name $dotnetExecutable $Arguments
     if (!$result.Succeeded -and $result.Text -match 'NETSDK(1004|1005|1047|1064)\b') {
-        $restore = Invoke-Recorded "$Name-restore-missing-assets" $dotnetExecutable @('restore', $RestoreTarget, '-p:Configuration=Release', '-m:1')
+        $restore = Invoke-Recorded "$Name-restore-missing-assets" $dotnetExecutable (@('restore', $RestoreTarget, '-p:Configuration=Release', '-m:1') + $MSBuildProperties)
         if ($restore.Succeeded) {
             $retryArguments = @($Arguments | ForEach-Object {
                 if ($_ -like '-bl:*') { $_ -replace '\.binlog$', '-retry.binlog' } else { $_ }
@@ -167,6 +181,21 @@ function Invoke-DotnetWithAssets {
         }
     }
     $result
+}
+
+function Resolve-NativeCompiler {
+    param([string]$Compiler)
+    if (!$IsLinux) {
+        throw '-CppCompilerAndLinker is supported only on Linux; macOS and Windows retain their platform toolchains.'
+    }
+    $command = Get-Command $Compiler -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    if (!(Test-Path -LiteralPath $command.Source -PathType Leaf)) {
+        throw "Native compiler is not a file: $($command.Source)"
+    }
+    if ($command.Source -match '[;\r\n]') {
+        throw 'Native compiler path cannot contain MSBuild property separators or newlines.'
+    }
+    $command.Source
 }
 
 function Read-TestReport {
@@ -238,6 +267,13 @@ function Test-BenchmarkReports {
 Push-Location $repo
 $savedGitEngine = $env:NBGV_GitEngine
 try {
+    $nativeProperties = @()
+    if ($PSBoundParameters.ContainsKey('CppCompilerAndLinker')) {
+        $CppCompilerAndLinker = Resolve-NativeCompiler $CppCompilerAndLinker
+        $report.Host.CppCompilerAndLinker = $CppCompilerAndLinker
+        $nativeProperties = @("-p:CppCompilerAndLinker=$CppCompilerAndLinker")
+        $report.Options.NativeMSBuildProperties = $nativeProperties
+    }
     Assert-Command (Invoke-Recorded 'git-head' 'git' @('rev-parse', 'HEAD'))
     $head = (Get-Content -LiteralPath (Join-Path $ArtifactDirectory $steps[-1].Log) -Raw).Trim()
     $dirty = Invoke-Recorded 'git-dirty' 'git' @('status', '--porcelain=v1', '--untracked-files=all')
@@ -293,7 +329,7 @@ try {
             }
         }
     }
-    $properties = Invoke-Recorded 'target-platform' $dotnetExecutable @('msbuild', (Join-Path (Join-Path 'test' 'AotSizeTest') 'AotSizeTest.csproj'), '-nologo', '-getProperty:DefaultRuntimeIdentifier,NETCoreSdkRuntimeIdentifier,NETCoreSdkPortableRuntimeIdentifier')
+    $properties = Invoke-Recorded 'target-platform' $dotnetExecutable (@('msbuild', (Join-Path (Join-Path 'test' 'AotSizeTest') 'AotSizeTest.csproj'), '-nologo', '-getProperty:DefaultRuntimeIdentifier,NETCoreSdkRuntimeIdentifier,NETCoreSdkPortableRuntimeIdentifier') + $nativeProperties)
     Assert-Command $properties
     $evaluated = ($properties.Text | ConvertFrom-Json).Properties
     $rid = $evaluated.DefaultRuntimeIdentifier
@@ -313,7 +349,8 @@ try {
         Assert-Command (Invoke-Recorded 'native-sdk' 'xcrun' @('--show-sdk-path'))
         Assert-Command (Invoke-Recorded 'native-compiler-version' 'clang' @('--version'))
     } elseif ($IsLinux) {
-        Assert-Command (Invoke-Recorded 'native-compiler-version' 'clang' @('--version'))
+        $nativeCompiler = if ($nativeProperties.Count) { $CppCompilerAndLinker } else { 'clang' }
+        Assert-Command (Invoke-Recorded 'native-compiler-version' $nativeCompiler @('--version'))
         Assert-Command (Invoke-Recorded 'native-linker-version' 'ld' @('--version'))
         Assert-Command (Invoke-Recorded 'native-zlib' 'pkg-config' @('--modversion', 'zlib'))
         Assert-Command (Invoke-Recorded 'linux-kernel' 'uname' @('-a'))
@@ -357,13 +394,13 @@ try {
     }
 
     $traversal = Join-Path 'test' 'dirs.proj'
-    $publish = Invoke-DotnetWithAssets 'native-publish' @('publish', $traversal, '--no-restore', '-c', 'Release', '-m:1', '-warnAsError', '-warnNotAsError:NU1901,NU1902,NU1903,NU1904', "-bl:$(Join-Path $ArtifactDirectory 'native-publish.binlog')") $traversal
+    $publish = Invoke-DotnetWithAssets 'native-publish' @('publish', $traversal, '--no-restore', '-c', 'Release', '-m:1', '-warnAsError', '-warnNotAsError:NU1901,NU1902,NU1903,NU1904', "-bl:$(Join-Path $ArtifactDirectory 'native-publish.binlog')") $traversal $nativeProperties
     $report.Stages.NativePublish = $publish.Step.Status
     if ($publish.Succeeded) {
-        $discoveryScript = (Join-Path $PSScriptRoot 'Get-NativeAOTTestProjects.ps1').Replace("'", "''")
-        $discovery = Invoke-Recorded 'native-test-discovery' $pwsh @('-NoProfile', '-Command', "& '$discoveryScript' -Configuration Release | ConvertTo-Json -Depth 10 -AsArray")
+        # Use the same traversal query as Get-NativeAOTTestProjects.ps1, with invocation-local compiler properties.
+        $discovery = Invoke-Recorded 'native-test-discovery' $dotnetExecutable (@('msbuild', $traversal, '-nologo', '-getTargetResult:GetNativeAOTTests', '-p:Configuration=Release') + $nativeProperties)
         Assert-Command $discovery
-        $nativeTests = @($discovery.Text | ConvertFrom-Json)
+        $nativeTests = @(($discovery.Text | ConvertFrom-Json).TargetResults.GetNativeAOTTests.Items)
         if ($nativeTests.Count -eq 0 -or !($nativeTests | Where-Object ProjectName -eq 'Nerdbank.Json.Tests')) {
             throw 'Native traversal returned no core tests.'
         }

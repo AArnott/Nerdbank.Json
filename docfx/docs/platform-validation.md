@@ -35,6 +35,11 @@ It does not automatically restore unrelated tools.
 
 macOS needs the Xcode Command Line Tools, a usable `xcrun`/`clang`, and a macOS SDK (`xcrun --show-sdk-path`).
 Linux needs `clang`, a linker (`ld`), and zlib development files discoverable by `pkg-config --modversion zlib`; use the distribution's [NativeAOT prerequisites](https://learn.microsoft.com/dotnet/core/deploying/native-aot/#prerequisites) if provisioning is authorized.
+If Linux already has a usable GCC C++ toolchain instead of clang, explicitly select its executable with `-CppCompilerAndLinker /usr/bin/g++`.
+This Linux-only opt-in resolves an executable file, requires its `--version` command to succeed, and records its exact path and the passed `-p:CppCompilerAndLinker=...` MSBuild property.
+The property is invocation-only for native publishing (including a missing-assets restore/retry) and platform/native-test discovery evaluations; it does not change project files, global configuration, PATH, or managed build/test settings.
+Without this option, the Linux clang prerequisite is unchanged; no automatic compiler fallback or installation is attempted, and macOS/Windows compiler overrides are rejected.
+GCC selection still requires the linker and zlib development prerequisites and does not establish equivalence of compiler output sizes; keep the existing size budgets unchanged.
 Windows needs Visual Studio C++ x64 build tools, the Windows SDK, and .NET Framework 4.7.2 or newer for the Windows-only managed target.
 Missing compiler/linker dependencies remain failures, not native-test skips.
 
@@ -42,19 +47,24 @@ On Apple Silicon, use native **arm64** PowerShell and dotnet, not a Rosetta term
 The script audits OS/PowerShell/SDK architectures, evaluated RID, and `hw.optional.arm64`, rejecting translated or mixed-architecture runs.
 An Intel Mac uses `osx-x64`, whose broad size budget is **not calibrated**; never substitute the arm64 budget.
 WSL is a separate Linux environment and needs its own SDK, runtimes, PowerShell, and native prerequisites; Windows installations do not satisfy these requirements.
-The known WSL Ubuntu 26.04 environment at handoff had SDK 10.0.112 (host runtime 10.0.12), not the pinned 10.0.402, and lacked .NET 8/9 runtimes.
-Do not provision or build there while the coordinator's benchmark measurements are running.
+The initial WSL Ubuntu 26.04 handoff environment lacked the pinned SDK and .NET 8/9 runtimes; subsequently authorized provisioning installed SDK 10.0.402 and .NET/ASP.NET Core 8.0.32, 9.0.21, and 10.0.13 only in the isolated checkout's `obj/tools/.dotnet`.
+A minimal NativeAOT publish and JSON round-trip succeeded there with explicit `-p:CppCompilerAndLinker=/usr/bin/g++`; clang remains absent, and the initial full validation attempt failed at that prerequisite as expected.
+Neither that probe nor these script checks establish a full Linux validation pass; the coordinator owns the updated full run, and macOS validation remains pending.
+Do not provision, build, or run benchmarks while competing measurements are running.
 
 ## Run and collect
 
 Choose a **new, nonexistent** output directory for each run.
 The script refuses an existing directory, never clears previous results, and does not upload anything.
+Relative artifact paths resolve against the caller's PowerShell filesystem location, even when the process working directory differs.
+Non-filesystem provider paths are rejected.
 
 ```powershell
 pwsh -NoProfile -File ./tools/Validate-Platform.ps1 -ArtifactDirectory ./obj/platform-macos
 ```
 
 On Linux use the same command with `./obj/platform-linux` as the artifact directory.
+For an explicitly selected Linux GCC toolchain, run `./tools/Validate-Platform.ps1 -ArtifactDirectory ./obj/platform-linux-gcc -CppCompilerAndLinker /usr/bin/g++`.
 The default runs all relevant tests; for a targeted investigation, add `-TestFilter '/*/*/JsonObjectSerializerTests/*'` (MTP tree-node syntax, not VSTest `--filter`).
 The JSON labels targeted scope explicitly; a targeted run is not a substitute for the default full handoff.
 Native core array tests have two expected skipped data cases per framework for `Flat_NonZeroLowerBounds_AreNormalized`, because NativeAOT cannot construct non-zero-lower-bound input arrays.
@@ -113,6 +123,12 @@ tar -czf ./obj/platform-macos-results.tar.gz -C ./obj platform-macos
 Use the corresponding run/archive names on Linux or for optional performance runs.
 Check the archive contains `validation.json`, logs, and requested reports/traces before sharing; review logs/binlogs for private paths or environment information and use the agreed private channel.
 No upload is performed by the script.
+
+## Lightweight script checks
+
+Run `./tools/Test-ValidatePlatform.ps1` to parse the script and exercise artifact location/provider safety, existing-evidence preservation, compiler defaults/guards, and publish/restore/retry/discovery property forwarding with mocked external commands.
+These checks use a temporary isolated fixture, intentionally make PowerShell and process working directories differ, and do not run dotnet, native compilers, builds, tests, or benchmarks.
+They do not replace real platform validation.
 
 ## Standalone Copilot prompt for the Mac
 
