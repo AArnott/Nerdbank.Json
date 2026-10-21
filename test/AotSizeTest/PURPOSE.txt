@@ -1,0 +1,13 @@
+This is a minimal reachable-code NativeAOT size fixture. It validates a generated
+record/array round-trip and emits compiler size/dependency reports for inspection.
+Do not add TrimmerRootAssembly here: test/AotCompatibilityTest intentionally roots
+the entire API, while test/AotNativeConsole exercises a broader set of features.
+
+Publish with:
+  dotnet publish test\AotSizeTest -c Release -r win-x64
+Then measure and execute it with:
+  .\tools\Measure-AotImage.ps1 -Path .\bin\AotSizeTest\Release\net10.0\win-x64\publish\AotSizeTest.exe -RuntimeIdentifier win-x64 -OutputPath aot-size-result.json
+
+CI records exact byte counts rather than comparing uncalibrated per-machine
+megabyte windows. Compare results for the same RID, SDK and fixture; a size change
+is not a throughput or allocation performance measurement.

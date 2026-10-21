@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>false</IsTestProject>
+    <RuntimeIdentifier>$(DefaultRuntimeIdentifier)</RuntimeIdentifier>
+    <DynamicCodeSupport>false</DynamicCodeSupport>
+    <StartupHookSupport>false</StartupHookSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <IlcGenerateMstatFile>true</IlcGenerateMstatFile>
+    <IlcGenerateDgmlFile>true</IlcGenerateDgmlFile>
+  </PropertyGroup>
+
+  <Import Project="..\AOT.props" />
+
+  <!-- Measure reachable serialization code, not the root-all API compatibility surface. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Nerdbank.Json\Nerdbank.Json.csproj" />
+  </ItemGroup>
+</Project>

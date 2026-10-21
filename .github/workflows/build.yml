@@ -58,39 +58,28 @@ jobs:
     - name: 🧪 test
       run: tools/dotnet-test-cloud.ps1 -Configuration ${{ env.BUILDCONFIGURATION }} -Agent ${{ runner.os }} -IncludeNativeAOT
       shell: pwsh
-    - name: 🏭 Verify NativeAOT image size
+    - name: 🏭 Measure and run minimal NativeAOT image
       run: |
-        Function GetSizeInMB($Path) {
-          if (!($IsMacOS -or $IsLinux)) { $Path += '.exe' }
-          (Get-Item $Path).Length / 1MB
-        }
-
-        $Path = './bin/AotNativeConsole/${{ env.BUILDCONFIGURATION }}/net10.0/${{ matrix.rid }}/publish/AotNativeConsole'
-        $ActualSize = GetSizeInMB $Path
-
-        if ($IsLinux) {
-          $ExpectedSize = 5.88
-        } elseif ($IsMacOS) {
-          $ExpectedSize = 5.40
-        } else {
-          $ExpectedSize = 5.79
-        }
-
-        $AllowedVariance = 0.2
-        $Result = if ([math]::Abs($ActualSize - $ExpectedSize) -le $AllowedVariance) { 'PASS' } else { 'FAIL' }
-
-        @{
-          ActualSize = $ActualSize
-          ExpectedSize = $ExpectedSize
-          AllowedVariance = $AllowedVariance
-          Result = $Result
-        } | ConvertTo-Json | Out-File -FilePath 'aot-size-result.json'
+        $extension = if ($IsWindows) { '.exe' } else { '' }
+        ./tools/Measure-AotImage.ps1 `
+          -Path "./bin/AotSizeTest/${{ env.BUILDCONFIGURATION }}/net10.0/${{ matrix.rid }}/publish/AotSizeTest$extension" `
+          -RuntimeIdentifier '${{ matrix.rid }}' `
+          -OutputPath 'aot-size-result.json'
       shell: pwsh
     - name: 📤 Upload AOT size result
       uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: aot-size-${{ matrix.os }}-${{ matrix.rid }}
         path: aot-size-result.json
+        if-no-files-found: error
+    - name: 📤 Upload native image and compiler size reports
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: aot-image-${{ matrix.os }}-${{ matrix.rid }}
+        path: |
+          bin/AotSizeTest/${{ env.BUILDCONFIGURATION }}/net10.0/${{ matrix.rid }}/publish/
+          obj/test/AotSizeTest/${{ env.BUILDCONFIGURATION }}/net10.0/${{ matrix.rid }}/native/
+        if-no-files-found: error
     - name: 💅🏻 Verify formatted code
       run: dotnet format --verify-no-changes --no-restore
       shell: pwsh
@@ -113,7 +102,7 @@ jobs:
       timeout-minutes: 3
 
   verify-aot-size:
-    name: 👮🏼 NativeAOT image size guard
+    name: 👮🏼 NativeAOT image size report
     runs-on: ubuntu-latest
     needs: build
     steps:
@@ -131,7 +120,7 @@ jobs:
           @{ OS = 'windows-2025'; RID = 'win-x64' }
         )
 
-        "Target | Actual size | Expected size | Verdict
+        "Target | Native image bytes | Native image MiB | Round-trip
         --|--|--|--" >> $env:GITHUB_STEP_SUMMARY
 
         foreach ($Combo in $Combinations) {
@@ -140,9 +129,10 @@ jobs:
 
           if (Test-Path $ResultFile) {
             $Details = Get-Content $ResultFile | ConvertFrom-Json
-            $Emoji = if ($Details.Result -eq 'PASS') { '✅' } else { '❌' }
-            " $($Combo.OS) | {0:0.00} MB | {1:0.00}±{2:0.0} MB | $Emoji" -f $Details.ActualSize, $Details.ExpectedSize, $Details.AllowedVariance >> $env:GITHUB_STEP_SUMMARY
-            if ($Details.Result -eq 'FAIL') {
+            $Valid = $Details.Result -eq 'PASS' -and $Details.SizeBytes -gt 0 -and $Details.RuntimeIdentifier -eq $Combo.RID
+            $Emoji = if ($Valid) { '✅' } else { '❌' }
+            " $($Combo.RID) | {0} | {1:0.00} | $Emoji" -f $Details.SizeBytes, ($Details.SizeBytes / 1MB) >> $env:GITHUB_STEP_SUMMARY
+            if (!$Valid) {
               $FailedChecks += "$($Combo.OS) ($($Combo.RID))"
             }
           } else {
