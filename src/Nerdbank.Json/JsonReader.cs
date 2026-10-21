@@ -731,11 +731,21 @@ public ref struct JsonReader
 
 	private static void ValidateStringBytes(ReadOnlySpan<byte> bytes, bool allowControlCharacters = false)
 	{
-		JsonInput input = new(bytes);
-		long index = 0;
-		while (index < input.Length)
+		for (int index = 0; index < bytes.Length; index++)
 		{
-			ValidateStringByte(in input, ref index, input[index++], allowControlCharacters);
+			byte first = bytes[index];
+			if (first < 0x20 && !allowControlCharacters)
+			{
+				throw new FormatException("Unescaped control character in JSON string.");
+			}
+
+			if (first >= 0x80)
+			{
+				JsonInput input = new(bytes);
+				long position = index + 1;
+				ValidateStringByte(in input, ref position, first, allowControlCharacters);
+				index = checked((int)position) - 1;
+			}
 		}
 	}
 
@@ -795,7 +805,10 @@ public ref struct JsonReader
 				return this.ReadEscapedUtf8String(segmentStart, stringInterning);
 			}
 
-			this.ValidateStringByte(ch);
+			if (ch < 0x20 || ch >= 0x80)
+			{
+				this.ValidateStringByte(ch);
+			}
 		}
 
 		throw new FormatException("Unterminated JSON string.");
@@ -1150,7 +1163,7 @@ public ref struct JsonReader
 				escaped = true;
 				this.ReadEscapeSequenceUtf8();
 			}
-			else
+			else if (ch < 0x20 || ch >= 0x80)
 			{
 				this.ValidateStringByte(ch);
 			}

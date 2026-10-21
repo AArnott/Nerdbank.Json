@@ -30,6 +30,18 @@ Cached object serialization into a reused, sufficiently large buffer should allo
 `JsonObjectSerializerTests.Serialize_CachedObjectGraph_DoesNotAllocate` guards this warmed path, including converter lookup with a generated object shape.
 NativeAOT converter lookup uses a static state factory so its fallback does not introduce a closure allocation on either managed or native cache hits.
 
+## Contiguous reader validation
+
+String validation must remain strict for control bytes, malformed UTF-8, and unpaired surrogate escapes, including segmented input.
+Printable ASCII can be checked without invoking the general segmented UTF-8 validator for every byte.
+Paired warm CPU traces and Tier-1 disassembly identified this per-byte dispatch in both property-name lookup and string-value reading after segmented input was introduced.
+
+On Windows x64, .NET 9.0.21, SDK 10.0.402, BenchmarkDotNet 0.15.8, the medium job (two launches, ten warmups, fifteen iterations) at affinity mask 2 measured small-object reads at 498/504 ns before and 445/436 ns after this validation change.
+Wide-object reads changed from 2327/2329 ns to 1589/1592 ns.
+Allocations remained 200 B and 664 B respectively; both object writes remained allocation-free.
+These are paired local measurements, not cross-platform guarantees or a claim that all segmented-input overhead has been recovered.
+The small-object candidate distributions and some baseline runs were noisy; retain the raw distributions and repeat comparisons rather than relying on a single mean.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.
