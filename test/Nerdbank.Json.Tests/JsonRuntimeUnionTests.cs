@@ -162,12 +162,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	[Test]
 	public void DuckTyping_CaseWithoutRequiredProperties_Throws()
 	{
-		JsonSerializer serializer = new()
-		{
-			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<Shape2, Shape2>(), Shape<EmptyShape, EmptyShape>(), Shape<Circle, Circle>())],
-		};
-
-		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{}""", Shape<Shape2, Shape2>()));
+		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<Shape2, Shape2>(), Shape<EmptyShape, EmptyShape>(), Shape<Circle, Circle>()));
 	}
 
 	[Test]

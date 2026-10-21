@@ -412,7 +412,7 @@ internal static class RuntimeUnionBuilder
 			JsonConverter<TBase> caseConverter = caseShape.Type == typeof(TBase) && baseConverter is not null
 				? baseConverter
 				: new JsonRuntimeUnionCaseConverter<TBase>(owner.GetOrAddConverter(caseShape));
-			IReadOnlyCollection<string> required = RuntimeUnionHelpers.GetRequiredSerializedPropertyNames(caseShape as IObjectTypeShape, owner);
+			IReadOnlyCollection<string> required = RuntimeUnionHelpers.GetRequiredSerializedPropertyNames(caseShape, owner);
 			caseEntries.Add(new(caseShape.Type, alias.Type == DerivedTypeIdentifier.AliasType.Integer ? alias.IntAlias : null, alias.Type == DerivedTypeIdentifier.AliasType.String ? alias.StringAlias : null, caseConverter, required));
 		}
 
@@ -488,37 +488,75 @@ internal static class RuntimeUnionBuilder
 
 internal static class RuntimeUnionHelpers
 {
-	internal static IReadOnlyCollection<string> GetRequiredSerializedPropertyNames(IObjectTypeShape? objectShape, ConverterCache owner)
+	/// <summary>Gets required object properties using the same metadata as the object converter.</summary>
+	/// <param name="shape">The case shape, possibly including generated union metadata.</param>
+	/// <returns>The required properties of the case's bare object contract.</returns>
+	internal static IEnumerable<IPropertyShape> GetRequiredProperties(ITypeShape shape)
 	{
-		if (objectShape is null)
+		ITypeShape bareShape = shape is IUnionTypeShape unionShape ? unionShape.BaseType : shape;
+		if (bareShape is not IObjectTypeShape objectShape)
 		{
-			return [];
+			yield break;
 		}
 
-		HashSet<string> requiredClrNames = new(StringComparer.Ordinal);
-		if (objectShape.Constructor is { } constructor)
-		{
-			foreach (IParameterShape parameter in constructor.Parameters)
-			{
-				if (parameter.IsRequired)
-				{
-					requiredClrNames.Add(parameter.Name);
-				}
-			}
-		}
-
-		HashSet<string> required = new(owner.PropertyNameComparer);
 		foreach (IPropertyShape property in objectShape.Properties)
 		{
-			if (requiredClrNames.Contains(property.Name) || HasRequiredMemberAttribute(property.MemberInfo))
+			IParameterShape? parameter = GetMatchingConstructorParameter(objectShape, property);
+			bool canReadProperty = property.HasSetter || parameter is not null
+				|| (property.HasGetter && property.PropertyType is IEnumerableTypeShape { ConstructionStrategy: CollectionConstructionStrategy.Mutable } or IDictionaryTypeShape { ConstructionStrategy: CollectionConstructionStrategy.Mutable });
+			if (canReadProperty && property.PropertyType.Type != typeof(UnusedDataPacket) && IsRequiredProperty(property, parameter))
 			{
-				required.Add(owner.GetSerializedPropertyName(property.Name, property.AttributeProvider));
+				yield return property;
 			}
+		}
+	}
+
+	/// <summary>Resolves required property names using the serializer's naming and comparison policies.</summary>
+	/// <param name="shape">The case shape.</param>
+	/// <param name="owner">The converter cache with the effective serializer configuration.</param>
+	/// <returns>The required serialized property names.</returns>
+	internal static IReadOnlyCollection<string> GetRequiredSerializedPropertyNames(ITypeShape shape, ConverterCache owner)
+	{
+		HashSet<string> required = new(owner.PropertyNameComparer);
+		foreach (IPropertyShape property in GetRequiredProperties(shape))
+		{
+			required.Add(owner.GetSerializedPropertyName(property.Name, property.AttributeProvider));
 		}
 
 		return required;
 	}
 
+	/// <summary>Matches constructor metadata to a property, preferring an exact name over a unique case-insensitive match.</summary>
+	/// <param name="objectShape">The declaring object shape.</param>
+	/// <param name="property">The property shape.</param>
+	/// <returns>The matching parameter, if any.</returns>
+	internal static IParameterShape? GetMatchingConstructorParameter(IObjectTypeShape objectShape, IPropertyShape property)
+	{
+		IParameterShape? match = objectShape.Constructor?.Parameters.FirstOrDefault(p => p.Name == property.Name);
+		if (match is null && objectShape.Constructor is { } constructor)
+		{
+			IParameterShape[] candidates = constructor.Parameters.Where(p => StringComparer.OrdinalIgnoreCase.Equals(p.Name, property.Name)).ToArray();
+			if (candidates.Length == 1)
+			{
+				match = candidates[0];
+			}
+		}
+
+		return match;
+	}
+
+	/// <summary>Gets the effective required flag, including constructor and property shape overrides.</summary>
+	/// <param name="property">The property shape.</param>
+	/// <param name="constructorParameter">The matching constructor parameter, if any.</param>
+	/// <returns>Whether the object converter requires the property.</returns>
+	internal static bool IsRequiredProperty(IPropertyShape property, IParameterShape? constructorParameter)
+		=> constructorParameter?.IsRequired
+			?? property.AttributeProvider?.GetCustomAttributes<PropertyShapeAttribute>(inherit: true).FirstOrDefault()?.IsRequired
+			?? HasRequiredMemberAttribute(property.MemberInfo);
+
+	/// <summary>Checks required-member metadata without discovering types dynamically.</summary>
+	/// <param name="memberInfo">The member metadata, if available.</param>
+	/// <returns>Whether the member declares the required-member attribute.</returns>
 	private static bool HasRequiredMemberAttribute(MemberInfo? memberInfo)
 	{
 		if (memberInfo is null)

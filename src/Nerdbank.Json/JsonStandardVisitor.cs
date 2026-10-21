@@ -104,15 +104,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			}
 
 			serializedPropertyNamesByClrName[property.Name] = owner.GetSerializedPropertyName(property.Name, property.AttributeProvider);
-			IParameterShape? matchingParameter = objectShape.Constructor?.Parameters.FirstOrDefault(p => p.Name == property.Name);
-			if (matchingParameter is null && objectShape.Constructor is { } constructor)
-			{
-				IParameterShape[] candidates = constructor.Parameters.Where(p => StringComparer.OrdinalIgnoreCase.Equals(p.Name, property.Name)).ToArray();
-				if (candidates.Length == 1)
-				{
-					matchingParameter = candidates[0];
-				}
-			}
+			IParameterShape? matchingParameter = RuntimeUnionHelpers.GetMatchingConstructorParameter(objectShape, property);
 
 			if (property.Accept(this, matchingParameter) is JsonProperty<T> jsonProperty)
 			{
@@ -172,9 +164,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 	public override object? VisitProperty<TDeclaringType, TPropertyType>(IPropertyShape<TDeclaringType, TPropertyType> propertyShape, object? state = null)
 	{
 		IParameterShape? constructorParameter = state as IParameterShape;
-		bool isRequired = constructorParameter?.IsRequired
-			?? propertyShape.AttributeProvider?.GetCustomAttributes<PropertyShapeAttribute>(inherit: true).FirstOrDefault()?.IsRequired
-			?? HasRequiredMemberAttribute(propertyShape.MemberInfo);
+		bool isRequired = RuntimeUnionHelpers.IsRequiredProperty(propertyShape, constructorParameter);
 		Getter<TDeclaringType, TPropertyType>? getter = propertyShape.HasGetter ? propertyShape.GetGetter() : null;
 		Setter<TDeclaringType, TPropertyType>? setter = propertyShape.HasSetter ? propertyShape.GetSetter() : null;
 		JsonConverter<TPropertyType> converter = this.GetConverter(propertyShape.PropertyType, propertyShape.AttributeProvider);
@@ -245,24 +235,6 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 
 	public override object? VisitFunction<TFunction, TArgumentState, TResult>(IFunctionTypeShape<TFunction, TArgumentState, TResult> functionShape, object? state = null)
 		=> throw new NotSupportedException($"JSON serialization does not support delegate types such as {functionShape.Type.FullName}.");
-
-	private static bool HasRequiredMemberAttribute(MemberInfo? memberInfo)
-	{
-		if (memberInfo is null)
-		{
-			return false;
-		}
-
-		foreach (CustomAttributeData attribute in memberInfo.CustomAttributes)
-		{
-			if (attribute.AttributeType.FullName == "System.Runtime.CompilerServices.RequiredMemberAttribute")
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
 
 	private static bool TryGetCollectionComparerAttribute(IGenericCustomAttributeProvider? attributeProvider, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out UseComparerAttribute? comparerAttribute)
 	{

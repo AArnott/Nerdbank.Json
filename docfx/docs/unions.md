@@ -82,10 +82,10 @@ Only the base type and the derived types explicitly listed with <xref:PolyType.D
 If a runtime object is more derived than any registered union case, Nerdbank.Json will serialize it as the nearest registered base case.
 On deserialization, the object is rehydrated as that registered case, not as the original more-derived runtime type.
 
-## Current scope
+## Runtime configuration
 
-Nerdbank.Json currently supports attribute-driven union metadata through PolyType shapes.
-It does not currently document or expose the broader runtime union-registration and duck-typing features available in Nerdbank.MessagePack.
+Attribute-driven metadata is the default, but <xref:Nerdbank.Json.JsonSerializer.DerivedTypeUnions> can add, replace, extend, or disable unions per serializer.
+See [runtime union configuration](runtime-unions.md) for explicit shape mappings, JSON object envelopes, and experimental discriminator-free duck typing.
 
 ## Custom converters
 

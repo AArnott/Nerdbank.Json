@@ -39,16 +39,30 @@ Values are written as the bare case object rather than the envelope.
 Duck typing has important constraints:
 
 * It is **slower** than the default strategy because each object is buffered and re-scanned.
-* It uses **required** properties only; optional properties are not reliable evidence and are ignored
-  for case selection.
-* It **rejects ambiguous input** (a JSON object whose properties satisfy more than one case) and
-  **insufficient evidence** (no case whose required properties are all present) with a clear
-  <xref:System.FormatException>.
-* Each case must declare at least one required property, or configuration fails.
-* Property names respect the serializer's naming policy.
+* It uses **required** properties only; optional properties are not reliable evidence and are ignored for case selection.
+  Constructor requirements, C# `required` members, and `PropertyShapeAttribute.IsRequired` follow the same precedence as ordinary object deserialization.
+  Computed getter-only scalar properties do not participate.
+* It checks **every case** and rejects ambiguous input (a JSON object whose properties satisfy more than one case) and insufficient evidence (no case whose required properties are all present) with <xref:Nerdbank.Json.JsonSerializationException> retaining a causal <xref:System.FormatException>.
+  Neither registration order nor property order breaks a tie.
+* The constructor requires at least two distinct concrete, assignable cases.
+  An abstract or interface base is not a case; a concrete base is automatically included and must satisfy the same requirements as every derived case.
+  Every case must have at least one required object property; missing required-property metadata is rejected immediately with <xref:System.ArgumentException>, before a serializer is used.
+* A concrete base is **not a fallback** for an unrecognized or ambiguous object.
+  In particular, if a derived case requires all of the base case's required names, an object satisfying the derived case also satisfies the base and is rejected as ambiguous.
+  Use discriminator-based unions when the contracts overlap this way.
+* Property names respect explicit shape names, the serializer's naming policy, and its case-insensitive matching setting.
+  Serialized names are resolved when the converter is created, not in the union constructor, because one union configuration can be reused with different serializers.
+  Naming-policy or case-folding collisions can therefore make otherwise distinct cases ambiguous when reading input.
+* Custom case converters are honored, but their bare JSON objects must retain the required serialized property names described by their shapes.
+  Duck typing does not infer a new selection contract from converter output or a JSON Schema.
+  JSON Schema describes the bare case objects with `oneOf`, regardless of `UseDiscriminatorObjects`.
 * The buffered re-scan honors the serializer's `AllowTrailingCommas` and `ReadCommentHandling`
   settings, so comments and trailing commas inside a duck-typed object are handled exactly as they
   are for the outer document.
+
+These ambiguity and evidence checks deliberately differ from Nerdbank.MessagePack's experimental filter-and-base-fallback behavior.
+JSON does not select an unchecked remaining candidate or fall back to a base object after evidence fails.
+The `DuckTyping` experimental diagnostic remains in effect.
 
 ## Discriminator objects
 
