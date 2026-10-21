@@ -30,32 +30,68 @@ public partial class JsonObjectAsyncTests
 	}
 
 	[Test]
-	public async Task PipeUntypedRoundTrip()
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task PipeUntypedRoundTrip(bool perCallState)
 	{
 		ITypeShape<string> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<string>()!;
-		JsonSerializer serializer = new();
+		JsonSerializer serializer = new() { Converters = [new StateConverter()] };
+		SerializationContext context = new();
+		context["suffix"] = "!";
 		Pipe pipe = new();
-		await serializer.SerializeObjectAsync(pipe.Writer, "hello", shape);
+		if (perCallState)
+		{
+			await serializer.SerializeObjectAsync(pipe.Writer, "hello", shape, context);
+		}
+		else
+		{
+			await serializer.SerializeObjectAsync(pipe.Writer, "hello", shape);
+		}
+
 		await pipe.Writer.CompleteAsync();
-		Assert.Equal("hello", await serializer.DeserializeObjectAsync(pipe.Reader, shape));
+		Assert.Equal(
+			perCallState ? "hello!!" : "hello",
+			perCallState ? await serializer.DeserializeObjectAsync(pipe.Reader, shape, context) : await serializer.DeserializeObjectAsync(pipe.Reader, shape));
 		await pipe.Reader.CompleteAsync();
 	}
 
 	[Test]
 	public async Task TypedStreamPerCallStateAndLegacyWitnessOverloads()
 	{
-		ITypeShape<string> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<string>()!;
 		JsonSerializer serializer = new() { Converters = [new StateConverter()] };
 		SerializationContext context = new();
 		context["suffix"] = "!";
 		using MemoryStream stream = new();
-		await serializer.SerializeAsync(stream, "value", shape, context);
+		await serializer.SerializeAsync<string, JsonObjectAsyncTests>(stream, "value", context);
 		stream.Position = 0;
-		Assert.Equal("value!!", await serializer.DeserializeAsync(stream, shape, context));
+		Assert.Equal("value!!", await serializer.DeserializeAsync<string, JsonObjectAsyncTests>(stream, context));
 		stream.SetLength(0);
 		await serializer.SerializeAsync<string, JsonObjectAsyncTests>(stream, "ordinary");
 		stream.Position = 0;
 		Assert.Equal("ordinary", await serializer.DeserializeAsync<string, JsonObjectAsyncTests>(stream));
+	}
+
+	[Test]
+	public async Task GeneratedAsyncContextConvenienceOverloads()
+	{
+		JsonSerializer serializer = new() { Converters = [new StateConverter()] };
+		SerializationContext context = new();
+		context["suffix"] = "!";
+		AsyncModel value = new() { Value = "value" };
+		using MemoryStream stream = new();
+		await serializer.SerializeAsync(stream, value, context);
+		stream.Position = 0;
+		Assert.Equal("value!!", (await serializer.DeserializeAsync<AsyncModel>(stream, context))!.Value);
+		Pipe pipe = new();
+		await serializer.SerializeAsync(pipe.Writer, value, context);
+		await pipe.Writer.CompleteAsync();
+		Assert.Equal("value!!", (await serializer.DeserializeAsync<AsyncModel>(pipe.Reader, context))!.Value);
+		await pipe.Reader.CompleteAsync();
+		pipe = new();
+		await serializer.SerializeAsync<string, JsonObjectAsyncTests>(pipe.Writer, "value", context);
+		await pipe.Writer.CompleteAsync();
+		Assert.Equal("value!!", await serializer.DeserializeAsync<string, JsonObjectAsyncTests>(pipe.Reader, context));
+		await pipe.Reader.CompleteAsync();
 	}
 
 	[Test]
@@ -69,6 +105,12 @@ public partial class JsonObjectAsyncTests
 		await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await serializer.DeserializeObjectAsync(stream, shape, cancellation.Token));
 		await Assert.ThrowsAsync<FormatException>(async () => await serializer.DeserializeObjectAsync(stream, shape));
 		Assert.True(stream.CanRead);
+	}
+
+	[GenerateShape]
+	public partial class AsyncModel
+	{
+		public string? Value { get; set; }
 	}
 
 	private sealed class StateConverter : JsonConverter<string>

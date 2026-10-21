@@ -203,7 +203,7 @@ public sealed class EnvelopeConverter<T> : JsonConverter<Envelope<T>>
 
 public sealed class EnvelopeConverterFactory : IJsonConverterFactory
 {
-	public JsonConverter? CreateConverter(Type type, ITypeShape? shape, in JsonConverterFactoryContext context)
+	public JsonConverter? CreateConverter(Type type, ITypeShape? shape, in ConverterContext context)
 	{
 		if (!type.IsGenericType || type.GetGenericTypeDefinition() != typeof(Envelope<>))
 		{
@@ -215,7 +215,7 @@ public sealed class EnvelopeConverterFactory : IJsonConverterFactory
 		return (JsonConverter?)Activator.CreateInstance(converterType, context);
 	}
 
-	private sealed class FactoryEnvelopeConverter<T>(JsonConverterFactoryContext context) : JsonConverter<Envelope<T>>
+	private sealed class FactoryEnvelopeConverter<T>(ConverterContext context) : JsonConverter<Envelope<T>>
 		where T : IShapeable<T>
 	{
 		private readonly JsonConverter<T> valueConverter = context.GetConverter(T.GetTypeShape());

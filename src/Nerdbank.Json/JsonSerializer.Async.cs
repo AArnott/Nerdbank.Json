@@ -205,6 +205,46 @@ public partial record JsonSerializer
 	/// <inheritdoc cref="DeserializeAsync{T}(Stream, ITypeShape{T}, CancellationToken)"/>
 	public ValueTask<T?> DeserializeAsync<T, TProvider>(Stream stream, CancellationToken cancellationToken = default)
 		where TProvider : IShapeable<T> => this.DeserializeAsync(stream, TProvider.GetTypeShape(), cancellationToken);
+
+	/// <inheritdoc cref="SerializeAsync{T}(PipeWriter, T, ITypeShape{T}, SerializationContext)"/>
+	[OverloadResolutionPriority(-1)]
+	public ValueTask SerializeAsync<T>(PipeWriter writer, T? value, SerializationContext startingContext)
+		where T : IShapeable<T> => this.SerializeAsync(writer, value, T.GetTypeShape(), startingContext);
+
+	/// <inheritdoc cref="SerializeAsync{T}(PipeWriter, T, ITypeShape{T}, SerializationContext)"/>
+	[OverloadResolutionPriority(-1)]
+	public ValueTask SerializeAsync<T, TProvider>(PipeWriter writer, T? value, SerializationContext startingContext)
+		where TProvider : IShapeable<T> => this.SerializeAsync(writer, value, TProvider.GetTypeShape(), startingContext);
+
+	/// <inheritdoc cref="SerializeAsync{T}(Stream, T, ITypeShape{T}, SerializationContext)"/>
+	[OverloadResolutionPriority(-1)]
+	public ValueTask SerializeAsync<T>(Stream stream, T? value, SerializationContext startingContext)
+		where T : IShapeable<T> => this.SerializeAsync(stream, value, T.GetTypeShape(), startingContext);
+
+	/// <inheritdoc cref="SerializeAsync{T}(Stream, T, ITypeShape{T}, SerializationContext)"/>
+	[OverloadResolutionPriority(-1)]
+	public ValueTask SerializeAsync<T, TProvider>(Stream stream, T? value, SerializationContext startingContext)
+		where TProvider : IShapeable<T> => this.SerializeAsync(stream, value, TProvider.GetTypeShape(), startingContext);
+
+	/// <inheritdoc cref="DeserializeAsync{T}(PipeReader, ITypeShape{T}, SerializationContext)"/>
+	[OverloadResolutionPriority(-1)]
+	public ValueTask<T?> DeserializeAsync<T>(PipeReader reader, SerializationContext startingContext)
+		where T : IShapeable<T> => this.DeserializeAsync(reader, T.GetTypeShape(), startingContext);
+
+	/// <inheritdoc cref="DeserializeAsync{T}(PipeReader, ITypeShape{T}, SerializationContext)"/>
+	[OverloadResolutionPriority(-1)]
+	public ValueTask<T?> DeserializeAsync<T, TProvider>(PipeReader reader, SerializationContext startingContext)
+		where TProvider : IShapeable<T> => this.DeserializeAsync(reader, TProvider.GetTypeShape(), startingContext);
+
+	/// <inheritdoc cref="DeserializeAsync{T}(Stream, ITypeShape{T}, SerializationContext)"/>
+	[OverloadResolutionPriority(-1)]
+	public ValueTask<T?> DeserializeAsync<T>(Stream stream, SerializationContext startingContext)
+		where T : IShapeable<T> => this.DeserializeAsync(stream, T.GetTypeShape(), startingContext);
+
+	/// <inheritdoc cref="DeserializeAsync{T}(Stream, ITypeShape{T}, SerializationContext)"/>
+	[OverloadResolutionPriority(-1)]
+	public ValueTask<T?> DeserializeAsync<T, TProvider>(Stream stream, SerializationContext startingContext)
+		where TProvider : IShapeable<T> => this.DeserializeAsync(stream, TProvider.GetTypeShape(), startingContext);
 #endif
 
 	/// <summary>Deserializes a value asynchronously from a stream with per-call state.</summary>

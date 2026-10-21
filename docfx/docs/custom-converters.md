@@ -58,7 +58,8 @@ The converter reads the state from the context it is given:
 
 [!code-csharp[](../../samples/cs/PerCallState.cs#PerCallStateConverter)]
 
-Overloads that accept a <xref:Nerdbank.Json.SerializationContext> are available for `Serialize`, `Deserialize`, `SerializeObject`, and `DeserializeObject` on <xref:Nerdbank.Json.JsonWriter> and <xref:Nerdbank.Json.JsonReader>, and for `SerializeAsync` and `DeserializeAsync` on <xref:System.IO.Pipelines.PipeWriter> and <xref:System.IO.Pipelines.PipeReader>. Keep these points in mind:
+Overloads that accept a <xref:Nerdbank.Json.SerializationContext> are available for `Serialize`, `Deserialize`, `SerializeObject`, and `DeserializeObject` on <xref:Nerdbank.Json.JsonWriter> and <xref:Nerdbank.Json.JsonReader>, and for their asynchronous counterparts on pipes and streams.
+Keep these points in mind:
 
 - The supplied context is used *instead of* <xref:Nerdbank.Json.JsonSerializer.StartingContext?displayProperty=nameWithType>. Its state is not merged with the serializer's, so start from `serializer.StartingContext` (as the sample does) when you want to keep the serializer's settings and state.
 - The operation is canceled by the context's <xref:Nerdbank.Json.SerializationContext.CancellationToken?displayProperty=nameWithType>, so these overloads take no separate `CancellationToken` parameter.
@@ -94,7 +95,16 @@ When one converter pattern applies to many types, implement <xref:Nerdbank.Json.
 
 [!code-csharp[](../../samples/cs/CustomConverters.cs#CustomConverterFactory)]
 
-While a factory is creating a converter, it can use <xref:Nerdbank.Json.JsonConverterFactoryContext> to resolve supporting converters.
+While a factory is creating a converter, it can use <xref:Nerdbank.Json.ConverterContext> to resolve supporting converters.
+Both converter contexts expose the active shape provider and support typed shapes, untyped shapes, witness types, and runtime-type lookup.
+Factories implementing <xref:PolyType.Abstractions.ITypeShapeFunc> can use <xref:Nerdbank.Json.JsonConverterFactoryExtensions.Invoke*> to enter a generic context without reflection-based generic activation.
+
+## Reference cycles in custom converters
+
+Call <xref:Nerdbank.Json.SerializationContext.ReportObjectConstructed*> after constructing an instance and before deserializing its members.
+When cycle-preserving deserialization is enabled, nested references can then resolve to that instance before the converter returns.
+Return the same instance that was reported.
+The call has no effect when cycle preservation is not active.
 
 ## Version compatibility
 
