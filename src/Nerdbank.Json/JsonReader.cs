@@ -18,7 +18,7 @@ public ref struct JsonReader
 	private readonly bool allowTrailingCommas;
 	private readonly JsonCommentHandling commentHandling;
 	private readonly bool sequenceInput;
-	private readonly JsonInput utf8Json;
+	private JsonInput utf8Json;
 	private ReadOnlySequence<byte>? sequence;
 	private long position;
 	private int navigationDepth;
@@ -122,6 +122,9 @@ public ref struct JsonReader
 	/// <summary>Gets the number of bytes consumed from the input buffer.</summary>
 	internal readonly long BytesConsumed => this.position;
 
+	/// <summary>Gets a value indicating whether the original input starts with a stream byte-order mark.</summary>
+	internal readonly bool HasByteOrderMark => this.utf8Json.Matches(0, "\uFEFF"u8);
+
 	/// <summary>Gets the net number of containers entered through structural reader methods.</summary>
 	internal readonly int NavigationDepth => this.navigationDepth;
 
@@ -129,8 +132,13 @@ public ref struct JsonReader
 	/// Creates an independent copy of this reader at the current position.
 	/// </summary>
 	/// <returns>A copy of this reader positioned at the same location.</returns>
-	/// <remarks>Advancing the returned reader does not affect this instance.</remarks>
-	public readonly JsonReader CreatePeekReader() => this;
+	/// <remarks>Advancing the returned reader does not affect this instance. Segmented readers copy only their small navigation state, never the input payload.</remarks>
+	public readonly JsonReader CreatePeekReader()
+	{
+		JsonReader result = this;
+		result.utf8Json = this.utf8Json.CreatePeekInput();
+		return result;
+	}
 
 	/// <summary>Creates a reader over different input using this reader's syntax options.</summary>
 	/// <param name="jsonUtf8">The new borrowed input.</param>
@@ -154,7 +162,7 @@ public ref struct JsonReader
 	public bool TryReadNull()
 	{
 		this.SkipWhiteSpaceUtf8();
-		if (this.utf8Json.Length - this.position >= 4 && this.utf8Json.Slice(this.position, 4).SequenceEqual("null"u8))
+		if (this.utf8Json.Matches(this.position, "null"u8))
 		{
 			this.position += 4;
 			this.ValidateScalarTerminator();
@@ -171,14 +179,14 @@ public ref struct JsonReader
 	public bool ReadBoolean()
 	{
 		this.SkipWhiteSpaceUtf8();
-		if (this.utf8Json.Length - this.position >= 4 && this.utf8Json.Slice(this.position, 4).SequenceEqual("true"u8))
+		if (this.utf8Json.Matches(this.position, "true"u8))
 		{
 			this.position += 4;
 			this.ValidateScalarTerminator();
 			return true;
 		}
 
-		if (this.utf8Json.Length - this.position >= 5 && this.utf8Json.Slice(this.position, 5).SequenceEqual("false"u8))
+		if (this.utf8Json.Matches(this.position, "false"u8))
 		{
 			this.position += 5;
 			this.ValidateScalarTerminator();
@@ -205,14 +213,16 @@ public ref struct JsonReader
 
 	/// <summary>Attempts to read decoded UTF-8 string bytes without allocating.</summary>
 	/// <param name="span">Receives a borrowed view of the string's content, without quotes.</param>
-	/// <returns>Whether the next string is unescaped and contiguous. Null, escaped, or segmented strings return false without advancing.</returns>
+	/// <returns>Whether the next string's content is unescaped and contiguous. Null, escaped content, or content spanning segments returns false without advancing.</returns>
 	/// <remarks>A successful span borrows the reader's input lifetime. Invalid JSON throws rather than returning false.</remarks>
 	public bool TryReadStringSpan(out ReadOnlySpan<byte> span)
 	{
 		span = default;
+		(ReadOnlyMemory<byte> Memory, SequencePosition Next, long Start) cursor = this.utf8Json.SaveCursor();
 		JsonReader peek = this;
 		if (peek.TryReadNull())
 		{
+			this.utf8Json.RestoreCursor(cursor);
 			return false;
 		}
 
@@ -223,6 +233,7 @@ public ref struct JsonReader
 			return true;
 		}
 
+		this.utf8Json.RestoreCursor(cursor);
 		return false;
 	}
 
@@ -250,10 +261,12 @@ public ref struct JsonReader
 			return null;
 		}
 
+		(ReadOnlyMemory<byte> Memory, SequencePosition Next, long Start) cursor = this.utf8Json.SaveCursor();
 		JsonReader peek = this;
 		bool escaped = peek.ReadStringTokenUtf8(default, out long start, out long length);
 		if (escaped)
 		{
+			this.utf8Json.RestoreCursor(cursor);
 			return new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(this.ReadRequiredString()));
 		}
 
@@ -470,6 +483,11 @@ public ref struct JsonReader
 
 		RawJson raw = this.CaptureRaw(this.position, length);
 		JsonReader validation = new(raw.Json, this.allowTrailingCommas, this.commentHandling);
+		if (validation.HasByteOrderMark)
+		{
+			throw new FormatException("A raw JSON value cannot include a stream byte-order mark.");
+		}
+
 		validation.Skip(new());
 		validation.EnsureFullyConsumed();
 		this.position += length;
@@ -659,7 +677,7 @@ public ref struct JsonReader
 	internal bool IsNextTokenNull()
 	{
 		this.SkipWhiteSpaceUtf8();
-		return this.utf8Json.Length - this.position >= 4 && this.utf8Json.Slice(this.position, 4).SequenceEqual("null"u8);
+		return this.utf8Json.Matches(this.position, "null"u8);
 	}
 
 	internal char PeekValueToken()
@@ -1151,7 +1169,7 @@ public ref struct JsonReader
 	private readonly RawJson CaptureRaw(long start, long length)
 	{
 		return this.sequenceInput
-			? new(this.sequence!.Value.Slice(start, length))
+			? new(this.utf8Json.SliceSequence(start, length) ?? this.sequence!.Value.Slice(start, length))
 			: new(new ReadOnlySequence<byte>(this.utf8Json.Slice(start, length).ToArray())) { IsOwned = true };
 	}
 }

@@ -1,6 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Buffers;
 using System.Dynamic;
 using Nerdbank.Json;
 using PolyType;
@@ -13,6 +14,42 @@ if (json != """{"number":42}""")
 }
 
 JsonSerializer serializer = new();
+RawJson raw = serializer.Deserialize(" [1.2300e+02,\"\\u0061\"]", GetShape<RawJson, RawJson>());
+if (!raw.IsOwned || serializer.Serialize(raw, GetShape<RawJson, RawJson>()) != """[1.2300e+02,"\u0061"]""")
+{
+	throw new InvalidOperationException("Owned raw JSON did not retain exact token spelling.");
+}
+
+LowLevelSegment first = new("\"é"u8.ToArray());
+LowLevelSegment last = first.Append("😀\\n\""u8.ToArray());
+ReadOnlySequence<byte> segmented = new(first, 0, last, last.Memory.Length);
+JsonReader utf8Reader = new(segmented);
+if (utf8Reader.NextJsonType != JsonValueKind.String
+	|| !utf8Reader.ReadStringSpan().SequenceEqual("é😀\n"u8)
+	|| !utf8Reader.End
+	|| JsonPrimitives.TryReadInt64("-123"u8, out long scalar, out int consumed) != JsonPrimitives.DecodeResult.Success
+	|| scalar != -123 || consumed != 4
+	|| JsonPrimitives.TryReadDouble("1e+"u8, out _, out _, isFinalBlock: false) != JsonPrimitives.DecodeResult.InsufficientBuffer)
+{
+	throw new InvalidOperationException("The low-level segmented reader or scalar primitives failed.");
+}
+
+ArrayBufferWriter<byte> utf8Output = new();
+JsonWriter utf8Writer = new(utf8Output);
+utf8Writer.WriteStartArray();
+utf8Writer.WriteString("é😀\n"u8);
+utf8Writer.WriteValueSeparator();
+utf8Writer.Write(raw);
+utf8Writer.WriteEndArray();
+utf8Writer.Flush();
+Span<byte> primitiveOutput = stackalloc byte[32];
+if (!utf8Output.WrittenSpan.SequenceEqual("""["é😀\n",[1.2300e+02,"\u0061"]]"""u8)
+	|| !JsonPrimitives.TryWrite(primitiveOutput, scalar, out int written)
+	|| !primitiveOutput[..written].SequenceEqual("-123"u8))
+{
+	throw new InvalidOperationException("The UTF-8 string, raw JSON, or primitive writer failed.");
+}
+
 AddressBook original = new([new("Ada", 36), new("Grace", 45)], new("Ada", 36));
 string addressBookJson = serializer.Serialize(original, GetShape<AddressBook, AddressBook>());
 if (addressBookJson != """{"people":[{"name":"Ada","age":36},{"name":"Grace","age":45}],"favorite":{"name":"Ada","age":36}}""")

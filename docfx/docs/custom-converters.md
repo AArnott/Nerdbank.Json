@@ -39,12 +39,15 @@ The method retains its owned copy when called on a mutable instance, so subseque
 
 <xref:Nerdbank.Json.JsonWriter.Write(Nerdbank.Json.RawJson)?displayProperty=nameWithType> and the built-in converter validate exactly one strict JSON value before writing its UTF-8 bytes directly.
 This does not normalize numbers, decode and re-escape strings, or apply indentation within the raw payload.
-Comments, trailing commas, multiple values, and empty or default payloads are rejected.
+Comments, trailing commas, stream byte-order marks, multiple values, and empty or default payloads are rejected.
+Normal raw capture skips a leading stream byte-order mark before capturing the value, so it cannot introduce one inside an enclosing JSON container.
 For explicitly unvalidated output, use <xref:Nerdbank.Json.JsonWriter.WriteRaw*> only with already trusted JSON.
 
 Sequence-backed <xref:Nerdbank.Json.JsonReader> instances parse the original segments rather than flattening the document.
 Only individual scalar tokens that cross segment boundaries may need temporary GC-owned storage.
 Peeking copies reader position, not input ownership; advancing a peek reader does not advance the original.
+For segmented input, an explicit peek allocates a small independent navigation cursor rather than copying any payload.
+Tentative UTF-8 string reads use allocation-free cursor checkpoints.
 
 ## UTF-8 strings and token inspection
 
@@ -53,7 +56,7 @@ Peeking copies reader position, not input ownership; advancing a peek reader doe
 Inspection skips permitted insignificant input but does not validate an entire value.
 
 <xref:Nerdbank.Json.JsonReader.TryReadStringSpan*> returns a borrowed, decoded UTF-8 view only for an unescaped, contiguous string.
-It returns false without advancing for null, escaped, or segmented strings; malformed strings still throw.
+It returns false without advancing for null, escaped content, or content spanning segments; malformed strings still throw.
 Use <xref:Nerdbank.Json.JsonReader.ReadStringSequence?displayProperty=nameWithType> to handle all nullable strings, or <xref:Nerdbank.Json.JsonReader.ReadStringSpan?displayProperty=nameWithType> when null is not allowed.
 Both return decoded content, never JSON escape text, and allocate token-scoped storage only when necessary.
 Unescaped sequence slices retain the input's borrowed lifetime.
@@ -80,6 +83,8 @@ Truncated prefixes in a final block are `TokenMismatch`, not a successful defaul
 
 The nested <xref:Nerdbank.Json.JsonPrimitives.DecodeResult> distinguishes success, wrong-type/malformed/out-of-range input, an empty buffer, and an incomplete valid prefix.
 Read `tokenSize` as bytes consumed on success, a minimum required source length on incomplete input, and zero on mismatch.
+An incomplete-input size is a lower bound, not a guarantee that a buffer of that length will complete the token: further bytes may extend its lexeme, and a delimiter or final-block indication is still necessary.
+Size hints are capped at the maximum span length, <xref:System.Int32.MaxValue>.
 Decoded outputs are meaningful only on success.
 Writers leave the destination unchanged when it is too short and report its exact required length.
 Non-finite floating-point input and invalid raw number tokens fail with a required length of zero.

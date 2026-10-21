@@ -10,6 +10,9 @@ namespace Nerdbank.Json;
 /// Readers start exactly at a token, without skipping whitespace, comments, or a BOM.
 /// Set isFinalBlock only when no more input can arrive. A scalar at the end of a non-final block needs
 /// another byte to establish its boundary. Failure outputs are not decoded values.
+/// An incomplete token's size is a lower bound, not a completion guarantee: further bytes may extend
+/// its lexeme, and a delimiter or final-block indication is still required. Size hints are capped at
+/// <see cref="int.MaxValue"/>, the maximum span length.
 /// Writers leave the destination unchanged on failure and report the exact required size, or zero for invalid input.
 /// </remarks>
 public static class JsonPrimitives
@@ -66,7 +69,7 @@ public static class JsonPrimitives
 	{
 		JsonInput input = new(source);
 		DecodeResult result = TryReadNumberToken(in input, 0, isFinalBlock, out long size);
-		tokenSize = checked((int)size);
+		tokenSize = size <= int.MaxValue ? (int)size : int.MaxValue;
 		value = result == DecodeResult.Success ? source[..tokenSize] : default;
 		return result;
 	}

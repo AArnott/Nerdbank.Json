@@ -16,6 +16,11 @@ internal sealed class RawJsonConverter : JsonConverter<RawJson>
 	public override void Write(ref JsonWriter writer, in RawJson value, SerializationContext context)
 	{
 		JsonReader validation = new(value.Json);
+		if (validation.HasByteOrderMark)
+		{
+			throw new FormatException("A raw JSON value cannot include a stream byte-order mark.");
+		}
+
 		validation.Skip(context);
 		validation.EnsureFullyConsumed();
 		context.CancellationToken.ThrowIfCancellationRequested();

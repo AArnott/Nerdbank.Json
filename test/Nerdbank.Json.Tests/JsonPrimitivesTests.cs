@@ -149,7 +149,34 @@ public class JsonPrimitivesTests
 		Assert.Equal(required, written);
 		Assert.Equal(expected, exact);
 		JsonReader reader = new(exact);
-		reader.Skip(new());
+		switch (kind)
+		{
+			case "Null":
+				reader.ReadNull();
+				break;
+			case "Boolean":
+				Assert.False(reader.ReadBoolean());
+				break;
+			case "Int64":
+				Assert.Equal(long.MinValue, reader.ReadInt64());
+				break;
+			case "UInt64":
+				Assert.Equal(ulong.MaxValue, reader.ReadUInt64());
+				break;
+			case "Double":
+				Assert.Equal(-1.25e200, reader.ReadDouble());
+				break;
+			case "Decimal":
+				Assert.Equal(decimal.MaxValue, reader.ReadDecimal());
+				break;
+			case "Token":
+				Assert.Equal("1.2300e+02", reader.ReadNumberToken());
+				break;
+			default:
+				Assert.Fail("Unknown primitive kind.");
+				break;
+		}
+
 		Assert.True(reader.End);
 	}
 

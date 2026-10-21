@@ -24,6 +24,10 @@ internal readonly ref struct JsonInput
 		this.segments = sequence.IsSingleSegment ? null : new(sequence);
 	}
 
+	/// <summary>Initializes a new instance of the <see cref="JsonInput"/> struct with an independent segment cursor.</summary>
+	/// <param name="segments">The copied navigation state.</param>
+	private JsonInput(Segments segments) => this.segments = segments;
+
 	/// <summary>Gets the input length without narrowing sequence offsets.</summary>
 	internal long Length => this.segments is null ? this.span.Length : this.segments.Sequence.Length;
 
@@ -50,6 +54,33 @@ internal readonly ref struct JsonInput
 		return token.IsSingleSegment ? token.First.Span : token.ToArray();
 	}
 
+	/// <summary>Compares a short literal without copying segmented input or disturbing the token-slice cursor.</summary>
+	/// <param name="start">The absolute literal offset.</param>
+	/// <param name="literal">The expected bytes.</param>
+	/// <returns>Whether the bytes match.</returns>
+	internal bool Matches(long start, ReadOnlySpan<byte> literal)
+	{
+		if (start < 0 || this.Length - start < literal.Length)
+		{
+			return false;
+		}
+
+		if (this.segments is null)
+		{
+			return this.span.Slice(checked((int)start), literal.Length).SequenceEqual(literal);
+		}
+
+		for (int i = 0; i < literal.Length; i++)
+		{
+			if (this.segments.GetByte(start + i) != literal[i])
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	/// <summary>Gets a borrowed span only when the requested range is contiguous.</summary>
 	/// <param name="start">The range offset.</param>
 	/// <param name="length">The range length.</param>
@@ -67,6 +98,24 @@ internal readonly ref struct JsonInput
 		value = slice.IsSingleSegment ? slice.First.Span : default;
 		return slice.IsSingleSegment;
 	}
+
+	/// <summary>Slices segmented input using its cached sequence cursor.</summary>
+	/// <param name="start">The absolute range offset.</param>
+	/// <param name="length">The range length.</param>
+	/// <returns>The borrowed slice, or null for contiguous input.</returns>
+	internal ReadOnlySequence<byte>? SliceSequence(long start, long length) => this.segments?.Slice(start, length);
+
+	/// <summary>Copies navigation state for an independent peek without copying input storage.</summary>
+	/// <returns>The same contiguous view, or a segmented view with an independent cursor.</returns>
+	internal JsonInput CreatePeekInput() => this.segments is null ? this : new(this.segments.CreatePeek());
+
+	/// <summary>Saves the byte cursor for an allocation-free, tentative token read.</summary>
+	/// <returns>The current navigation-only checkpoint.</returns>
+	internal (ReadOnlyMemory<byte> Memory, SequencePosition Next, long Start) SaveCursor() => this.segments?.SaveCursor() ?? default;
+
+	/// <summary>Restores a byte cursor after a tentative read did not consume a token.</summary>
+	/// <param name="cursor">A checkpoint from this input.</param>
+	internal void RestoreCursor((ReadOnlyMemory<byte> Memory, SequencePosition Next, long Start) cursor) => this.segments?.RestoreCursor(cursor);
 
 	/// <summary>Finds the next quote or backslash without materializing input.</summary>
 	/// <param name="start">The offset at which to start searching.</param>
@@ -90,7 +139,7 @@ internal readonly ref struct JsonInput
 		return -1;
 	}
 
-	/// <summary>Caches a segment cursor; reader copies may safely share this navigation-only cache.</summary>
+	/// <summary>Caches forward segment and token-slice cursors without owning or flattening input storage.</summary>
 	private sealed class Segments
 	{
 		private ReadOnlyMemory<byte> memory;
@@ -108,8 +157,35 @@ internal readonly ref struct JsonInput
 			this.slicePosition = sequence.Start;
 		}
 
+		private Segments(Segments original)
+		{
+			this.Sequence = original.Sequence;
+			this.memory = original.memory;
+			this.next = original.next;
+			this.start = original.start;
+			this.slicePosition = original.slicePosition;
+			this.sliceOffset = original.sliceOffset;
+		}
+
 		/// <summary>Gets the original sequence.</summary>
 		internal ReadOnlySequence<byte> Sequence { get; }
+
+		/// <summary>Creates independent cursor state so peeking does not force the original reader to rescan earlier segments.</summary>
+		/// <returns>A cursor over the same borrowed storage.</returns>
+		internal Segments CreatePeek() => new(this);
+
+		/// <summary>Saves the current byte cursor independently of token slicing.</summary>
+		/// <returns>The navigation checkpoint.</returns>
+		internal (ReadOnlyMemory<byte> Memory, SequencePosition Next, long Start) SaveCursor() => (this.memory, this.next, this.start);
+
+		/// <summary>Restores a byte cursor after a tentative token read.</summary>
+		/// <param name="cursor">The saved navigation checkpoint.</param>
+		internal void RestoreCursor((ReadOnlyMemory<byte> Memory, SequencePosition Next, long Start) cursor)
+		{
+			this.memory = cursor.Memory;
+			this.next = cursor.Next;
+			this.start = cursor.Start;
+		}
 
 		/// <summary>Slices tokens with a separate forward cursor so token materialization remains linear.</summary>
 		/// <param name="offset">The absolute token offset.</param>

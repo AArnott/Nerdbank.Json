@@ -48,6 +48,31 @@ public partial class RawJsonTests
 	}
 
 	[Test]
+	public void RawCaptureBorrowsAcrossEverySplitAndOwnedCopiesRemainIndependent()
+	{
+		byte[] bytes = """ [1.2300e+02,"\u0061"] null"""u8.ToArray();
+		for (int split = 0; split <= bytes.Length; split++)
+		{
+			bytes[2] = (byte)'1';
+			Segment first = new(bytes.AsMemory(0, split));
+			Segment last = first.Append(ReadOnlyMemory<byte>.Empty).Append(bytes.AsMemory(split));
+			ReadOnlySequence<byte> sequence = new(first, 0, last, last.Memory.Length);
+			JsonReader reader = new(sequence);
+			RawJson borrowed = reader.ReadRaw(new SerializationContext());
+			Assert.False(borrowed.IsOwned);
+			Assert.Equal(sequence.GetPosition(1), borrowed.Json.Start);
+			Assert.Equal("""[1.2300e+02,"\u0061"]""", Text(borrowed));
+			RawJson copy = borrowed;
+			copy = copy.ToOwned();
+			bytes[2] = (byte)'9';
+			Assert.Equal("""[9.2300e+02,"\u0061"]""", Text(borrowed));
+			Assert.Equal("""[1.2300e+02,"\u0061"]""", Text(copy));
+			reader.ReadNull();
+			Assert.True(reader.End);
+		}
+	}
+
+	[Test]
 	public void ExplicitLengthValidatesBoundsAndOneValue()
 	{
 		JsonReader reader = new(" 123 true"u8);
@@ -93,6 +118,7 @@ public partial class RawJsonTests
 	[Arguments("\"\\q\"")]
 	[Arguments("\"\\uD800\"")]
 	[Arguments("/*comment*/null")]
+	[Arguments("\uFEFFnull")]
 	public void InvalidPayloadCannotBeWritten(string json)
 	{
 		RawJson raw = (RawJson)Encoding.UTF8.GetBytes(json);
@@ -121,6 +147,20 @@ public partial class RawJsonTests
 		{
 			JsonReader reader = new(raw.Json);
 			reader.ReadRaw(new SerializationContext { CancellationToken = cancellation.Token });
+		});
+	}
+
+	[Test]
+	public void StreamByteOrderMarkIsNotPartOfCapturedValue()
+	{
+		byte[] bytes = Encoding.UTF8.GetBytes("\uFEFFnull");
+		RawJson raw = new JsonSerializer().Deserialize<RawJson>(bytes);
+		Assert.Equal("null", Text(raw));
+		Assert.Equal("null", new JsonSerializer().Serialize(raw));
+		Assert.Throws<FormatException>(() =>
+		{
+			JsonReader reader = new(bytes);
+			reader.ReadRaw(bytes.Length);
 		});
 	}
 

@@ -144,6 +144,82 @@ public partial class JsonReaderTests
 	}
 
 	[Test]
+	public void Segmented_LengthMayExceedInt32WithoutFlatteningOrNarrowing()
+	{
+		Segment first = new("0 "u8.ToArray());
+		Segment last = first;
+		byte[] reusedBlock = new byte[1024 * 1024];
+		for (int i = 0; i < 2048; i++)
+		{
+			last = last.Append(reusedBlock);
+		}
+
+		ReadOnlySequence<byte> sequence = new(first, 0, last, last.Memory.Length);
+		Assert.True(sequence.Length > int.MaxValue);
+		JsonReader reader = new(sequence);
+		Assert.Equal(sequence.Length, reader.Sequence.Length);
+		Assert.Equal(0, reader.ReadInt32());
+		Assert.Equal(1, reader.Consumed);
+		Assert.False(reader.End);
+		Assert.Equal(sequence.GetPosition(1), reader.Position);
+	}
+
+#if NET
+	[Test]
+	public void SegmentedSkipDoesNotAllocateForSplitLiteralsOrNumbers()
+	{
+		byte[] bytes = Encoding.UTF8.GetBytes("[" + string.Join(",", Enumerable.Repeat("true,false,null,0", 1000)) + "]");
+		Segment first = new(ReadOnlyMemory<byte>.Empty);
+		Segment last = first;
+		for (int i = 0; i < bytes.Length; i++)
+		{
+			last = last.Append(bytes.AsMemory(i, 1));
+		}
+
+		ReadOnlySequence<byte> sequence = new(first, 0, last, last.Memory.Length);
+		JsonReader warmup = new(sequence);
+		warmup.Skip(new());
+		long before = GC.GetAllocatedBytesForCurrentThread();
+		JsonReader reader = new(sequence);
+		reader.Skip(new());
+		long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+		Assert.True(reader.End);
+		Assert.InRange(allocated, 0, 1024);
+	}
+
+	[Test]
+	public void ContiguousReaderAndPrimitiveOperationsDoNotAllocate()
+	{
+		ReadScalars();
+		long before = GC.GetAllocatedBytesForCurrentThread();
+		double sum = ReadScalars();
+		long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+		Assert.Equal(0, allocated);
+		Assert.Equal(124.5, sum);
+
+		static double ReadScalars()
+		{
+			JsonReader reader = new("[123,true,null,1.5,\"text\"]"u8);
+			reader.ReadStartArray();
+			double sum = reader.ReadInt32();
+			reader.ReadValueSeparator();
+			reader.ReadBoolean();
+			reader.ReadValueSeparator();
+			reader.ReadNull();
+			reader.ReadValueSeparator();
+			sum += reader.ReadDouble();
+			reader.ReadValueSeparator();
+			reader.ReadStringSpan();
+			reader.ReadEndArray();
+			JsonPrimitives.TryReadDouble("1.5"u8, out _, out _);
+			Span<byte> buffer = stackalloc byte[32];
+			JsonPrimitives.TryWrite(buffer, 1.5, out _);
+			return sum;
+		}
+	}
+#endif
+
+	[Test]
 	[Arguments("\"\\uD800\"")]
 	[Arguments("\"\\uDC00\"")]
 	[Arguments("\"\\uD800\\u0041\"")]
@@ -204,6 +280,40 @@ public partial class JsonReaderTests
 			JsonReader reader = new(sequence);
 			reader.Skip(new());
 		});
+	}
+
+	[Test]
+	public void SegmentedBase64AndSkipLimits_AllBoundaries()
+	{
+		byte[] bytes = "\"YWJ\\u006a\""u8.ToArray();
+		for (int split = 0; split <= bytes.Length; split++)
+		{
+			Segment first = new(bytes.AsMemory(0, split));
+			Segment last = first.Append(bytes.AsMemory(split));
+			JsonReader reader = new(new ReadOnlySequence<byte>(first, 0, last, last.Memory.Length));
+			Assert.Equal("abc"u8.ToArray(), reader.ReadBase64Bytes());
+			Assert.True(reader.End);
+		}
+
+		byte[] nested = "[{},[[]]]"u8.ToArray();
+		using CancellationTokenSource cancellation = new();
+		cancellation.Cancel();
+		for (int split = 0; split <= nested.Length; split++)
+		{
+			Segment first = new(nested.AsMemory(0, split));
+			Segment last = first.Append(nested.AsMemory(split));
+			ReadOnlySequence<byte> sequence = new(first, 0, last, last.Memory.Length);
+			Assert.Throws<InvalidOperationException>(() =>
+			{
+				JsonReader reader = new(sequence);
+				reader.Skip(new() { MaxDepth = 2 });
+			});
+			Assert.Throws<OperationCanceledException>(() =>
+			{
+				JsonReader reader = new(sequence);
+				reader.Skip(new() { CancellationToken = cancellation.Token });
+			});
+		}
 	}
 
 	[Test]
