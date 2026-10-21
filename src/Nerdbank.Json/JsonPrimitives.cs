@@ -5,7 +5,7 @@ using System.Buffers.Text;
 
 namespace Nerdbank.Json;
 
-/// <summary>Provides stateless, allocation-free UTF-8 JSON scalar encoding and decoding.</summary>
+/// <summary>Provides stateless UTF-8 JSON scalar encoding and decoding.</summary>
 /// <remarks>
 /// Readers start exactly at a token, without skipping whitespace, comments, or a BOM.
 /// Set isFinalBlock only when no more input can arrive. A scalar at the end of a non-final block needs
