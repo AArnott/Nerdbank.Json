@@ -33,6 +33,11 @@ For a missing PowerShell executable, install it through the host's approved mech
 The validation script attempts `--no-restore` first and only restores/retries after a recognized missing-assets/package error.
 It does not automatically restore unrelated tools.
 
+After the Release build, managed tests run directly from the repository's RID-neutral `bin/<project>/Release/<framework>/` outputs: the recorded dotnet host launches each .NET 8/9/10 test DLL, and Windows launches the core net472 test executable directly.
+Each matrix entry selects its own framework-specific binary; no framework or runner fallback is applied.
+MTP tree filters, TRX reporting, and diagnostics are passed directly to those runners, not forwarded through `dotnet test`, avoiding the pinned SDK's report-argument forwarding failure.
+Results and diagnostic directories are absolute because relative MTP result paths resolve against the test application's base directory, not the PowerShell working directory.
+
 macOS needs the Xcode Command Line Tools, a usable `xcrun`/`clang`, and a macOS SDK (`xcrun --show-sdk-path`).
 Linux needs `clang`, a linker (`ld`), and zlib development files discoverable by `pkg-config --modversion zlib`; use the distribution's [NativeAOT prerequisites](https://learn.microsoft.com/dotnet/core/deploying/native-aot/#prerequisites) if provisioning is authorized.
 If Linux already has a usable GCC C++ toolchain instead of clang, explicitly select its executable with `-CppCompilerAndLinker /usr/bin/g++`.
@@ -49,7 +54,8 @@ An Intel Mac uses `osx-x64`, whose broad size budget is **not calibrated**; neve
 WSL is a separate Linux environment and needs its own SDK, runtimes, PowerShell, and native prerequisites; Windows installations do not satisfy these requirements.
 The initial WSL Ubuntu 26.04 handoff environment lacked the pinned SDK and .NET 8/9 runtimes; subsequently authorized provisioning installed SDK 10.0.402 and .NET/ASP.NET Core 8.0.32, 9.0.21, and 10.0.13 only in the isolated checkout's `obj/tools/.dotnet`.
 A minimal NativeAOT publish and JSON round-trip succeeded there with explicit `-p:CppCompilerAndLinker=/usr/bin/g++`; clang remains absent, and the initial full validation attempt failed at that prerequisite as expected.
-Neither that probe nor these script checks establish a full Linux validation pass; the coordinator owns the updated full run, and macOS validation remains pending.
+The coordinator subsequently executed the full Linux script with GCC: prerequisites, Release build, native publish/tests, all four fixtures, F# self-check, and size guards passed, but all seven managed `dotnet test` commands failed at report-argument forwarding and correctly failed the missing-TRX requirement.
+The direct managed runner addresses that forwarding failure; the coordinator owns the full Linux rerun, and macOS validation remains pending.
 Do not provision, build, or run benchmarks while competing measurements are running.
 
 ## Run and collect
@@ -70,7 +76,7 @@ The JSON labels targeted scope explicitly; a targeted run is not a substitute fo
 Native core array tests have two expected skipped data cases per framework for `Flat_NonZeroLowerBounds_AreNormalized`, because NativeAOT cannot construct non-zero-lower-bound input arrays.
 Their names and reasons are preserved in the TRX files and classified in the JSON; do not weaken or remove those tests.
 
-`validation.json` contains source/host identity, options, stage statuses, exact executable/argument arrays and working directories, exit codes, durations, test counters/skips, size reports, errors, and an artifact inventory.
+`validation.json` contains source/host identity, options, stage statuses, exact executable/argument arrays and working directories, test-step target frameworks, exit codes, durations, test counters/skips, size reports, errors, and an artifact inventory.
 Logs, build binlogs, TRX/diagnostic files, native fixture publish directories, and available compiler `.mstat`/`.dgml.xml` files are retained under the same directory, including partial results on failure.
 Previously existing native outputs may be collected after a failure, but they are not executed or accepted as fresh publish success.
 Missing test reports, zero executed tests, incomplete results, missing image reports, failed commands, or blocked stages produce a nonzero exit.
@@ -127,8 +133,14 @@ No upload is performed by the script.
 ## Lightweight script checks
 
 Run `./tools/Test-ValidatePlatform.ps1` to parse the script and exercise artifact location/provider safety, existing-evidence preservation, compiler defaults/guards, and publish/restore/retry/discovery property forwarding with mocked external commands.
+The checks also exercise all seven core/MVC/analyzer .NET matrix entries plus Windows net472, exact direct-runner arguments, absolute report directories, managed skip classification, missing/zero-execution/failed/incomplete reports, and nonzero runner exits.
 These checks use a temporary isolated fixture, intentionally make PowerShell and process working directories differ, and do not run dotnet, native compilers, builds, tests, or benchmarks.
 They do not replace real platform validation.
+
+For a real minimal managed smoke after building the core Release net8.0 target, run `./tools/Test-ValidatePlatform.ps1 -ManagedSmoke`.
+This additionally primes the environment before dotnet, checks the pinned SDK, and uses the validation script's actual runner/report functions to execute `JsonReaderTests` and require its TRX.
+It retains command logs, diagnostics, TRX counters, and `smoke.json` in a new GUID-named `obj/platform-managed-smoke-*` directory; optionally select a new path with `-SmokeArtifactDirectory`.
+Existing smoke artifact directories are rejected, and a runner/report failure remains a failure rather than falling back to console parsing.
 
 ## Standalone Copilot prompt for the Mac
 

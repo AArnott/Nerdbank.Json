@@ -231,19 +231,30 @@ function Read-TestReport {
 }
 
 function Invoke-TestRun {
-    param([string]$Name, [string]$File, [string[]]$Arguments, [bool]$Native)
+    param([string]$Name, [string]$File, [string[]]$Arguments, [bool]$Native, [string]$TargetFramework)
     $directory = Join-Path $ArtifactDirectory $Name
     $null = New-Item -ItemType Directory -Path $directory
     $result = Invoke-Recorded $Name $File ($Arguments + @(
         '--treenode-filter', $TestFilter, '--results-directory', $directory,
         '--report-trx', '--report-trx-filename', "$Name.trx",
         '--diagnostic', '--diagnostic-output-directory', $directory))
+    $result.Step.TargetFramework = $TargetFramework
     $valid = $result.Succeeded
     try { Read-TestReport $directory $Native } catch {
         $report.Errors.Add($_.Exception.Message)
         $valid = $false
     }
     $valid
+}
+
+function Invoke-ManagedTestRun {
+    param([string]$Project, [string]$TargetFramework)
+    # Match Directory.Build.props' RID-neutral Release layout, never native publish outputs.
+    $extension = if ($TargetFramework -eq 'net472') { '.exe' } else { '.dll' }
+    $path = Join-Path $repo (Join-Path 'bin' (Join-Path $Project (Join-Path 'Release' (Join-Path $TargetFramework "$Project$extension"))))
+    $file = if ($TargetFramework -eq 'net472') { $path } else { $dotnetExecutable }
+    $arguments = if ($TargetFramework -eq 'net472') { @() } else { @($path) }
+    Invoke-TestRun "managed-$Project-$TargetFramework" $file $arguments $false $TargetFramework
 }
 
 function Test-BenchmarkReports {
@@ -383,8 +394,7 @@ try {
             $frameworks = if ($project -eq 'Nerdbank.Json.Analyzers.Tests') { @('net8.0') } else { @('net8.0', 'net9.0', 'net10.0') }
             if ($IsWindows -and $project -eq 'Nerdbank.Json.Tests') { $frameworks += 'net472' }
             foreach ($framework in $frameworks) {
-                $projectPath = Join-Path (Join-Path 'test' $project) "$project.csproj"
-                $ok = Invoke-TestRun "managed-$project-$framework" $dotnetExecutable @('test', '--project', $projectPath, '--no-build', '--no-restore', '-c', 'Release', '--framework', $framework, '--') $false
+                $ok = Invoke-ManagedTestRun $project $framework
                 $managedOK = $ok -and $managedOK
             }
         }
@@ -406,7 +416,7 @@ try {
         }
         $nativeOK = $true
         foreach ($test in $nativeTests) {
-            $ok = Invoke-TestRun "native-$($test.ProjectName)-$($test.TargetFramework)" $test.ExecutablePath @() $true
+            $ok = Invoke-TestRun "native-$($test.ProjectName)-$($test.TargetFramework)" $test.ExecutablePath @() $true $test.TargetFramework
             $nativeOK = $ok -and $nativeOK
         }
         $report.Stages.NativeTests = if ($nativeOK) { 'PASS' } else { 'FAIL' }

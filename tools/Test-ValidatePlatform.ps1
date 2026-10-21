@@ -2,7 +2,10 @@
 #requires -Version 7.2
 
 [CmdletBinding()]
-param()
+param(
+    [switch]$ManagedSmoke,
+    [string]$SmokeArtifactDirectory
+)
 
 $ErrorActionPreference = 'Stop'
 $scriptPath = Join-Path $PSScriptRoot 'Validate-Platform.ps1'
@@ -14,7 +17,7 @@ $source = Get-Content -LiteralPath $scriptPath -Raw
 $mock = @'
 function Get-Command {
     param($Name, $CommandType, $ErrorAction)
-    if ($Name -eq 'dotnet') { return [pscustomobject]@{ Source = $pwsh } }
+    if ($Name -eq 'dotnet') { return [pscustomobject]@{ Source = $compiler } }
     Microsoft.PowerShell.Core\Get-Command $Name -CommandType Application -ErrorAction Stop
 }
 
@@ -42,7 +45,21 @@ function Invoke-Recorded {
             } } | ConvertTo-Json
         }
         'native-compiler-version' { $succeeded = !$failCompilerVersion }
-        'release-build' { $succeeded = $false }
+        'native-msvc' { $text = 'mock-cl.exe' }
+        'release-build' { $succeeded = $runManaged }
+        { $_ -like 'managed-*' } {
+            $directory = $Arguments[[array]::IndexOf($Arguments, '--results-directory') + 1]
+            $filename = $Arguments[[array]::IndexOf($Arguments, '--report-trx-filename') + 1]
+            $executed = if ($managedReportMode -eq 'zero') { 0 } else { 1 }
+            $failed = if ($managedReportMode -eq 'failed') { 1 } else { 0 }
+            $outcome = if ($managedReportMode -eq 'incomplete') { 'Aborted' } else { 'Completed' }
+            $succeeded = $managedReportMode -ne 'exit'
+            if ($managedReportMode -ne 'missing') {
+                Set-Content -LiteralPath (Join-Path $directory $filename) -Value @"
+<TestRun><Results><UnitTestResult testName="Flat_NonZeroLowerBounds_AreNormalized" outcome="NotExecuted"><Output><ErrorInfo><Message>mock skip</Message></ErrorInfo></Output></UnitTestResult></Results><ResultSummary outcome="$outcome"><Counters total="2" executed="$executed" passed="1" failed="$failed" /></ResultSummary></TestRun>
+"@
+            }
+        }
         'native-publish' { $succeeded = $false; $text = 'NETSDK1004: mocked missing assets' }
         'native-test-discovery' {
             $text = @{ TargetResults = @{ GetNativeAOTTests = @{ Items = @() } } } | ConvertTo-Json -Depth 5
@@ -75,7 +92,9 @@ try {
     $replacements = @(
         @{ Node = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-Recorded' }, $true); Text = $mock },
         @{ Node = $ast.Find({ param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$repo' }, $true)
-            Text = '$repo = ''' + $fixture.Replace("'", "''") + '''; $TestIsLinux = $simulateLinux; $TestIsMacOS = $false' }
+            Text = '$repo = ''' + $fixture.Replace("'", "''") + '''; $TestIsLinux = $simulateLinux; $TestIsWindows = $simulateWindows; $TestIsMacOS = $false' },
+        @{ Node = $ast.Find({ param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$vswhere' }, $true)
+            Text = '$vswhere = Join-Path $repo ''vswhere.exe''' }
     )
     foreach ($replacement in ($replacements | Sort-Object { $_.Node.Extent.StartOffset } -Descending)) {
         $extent = $replacement.Node.Extent
@@ -83,12 +102,15 @@ try {
     }
     $source = $source -replace '\$IsLinux\b', '$TestIsLinux'
     $source = $source -replace '\$IsMacOS\b', '$TestIsMacOS'
+    $source = $source -replace '\$IsWindows\b', '$TestIsWindows'
     $caseScript = Join-Path $fixture 'Validate-Platform-Mocked.ps1'
     Set-Content -LiteralPath $caseScript -Value $source
 
     Set-Location $psDirectory
     [Environment]::CurrentDirectory = $processDirectory
     $simulateLinux = $true
+    $simulateWindows = $false
+    $runManaged = $false
     $failCompilerVersion = $false
     $compiler = Join-Path $PSHOME $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })
     & $caseScript -ArtifactDirectory '.\nested\override' -CppCompilerAndLinker $compiler
@@ -165,9 +187,98 @@ try {
     if ($LASTEXITCODE -ne 1 -or $osReport.Errors -notcontains '-CppCompilerAndLinker is supported only on Linux; macOS and Windows retain their platform toolchains.') {
         throw 'An explicit compiler on an unsupported OS was not rejected.'
     }
-    Write-Host 'Platform script checks passed: location/provider safety, evidence preservation, compiler opt-in/default/guards, and property forwarding.'
+
+    $runManaged = $true
+    $failCompilerVersion = $false
+    $filter = '/*/*/JsonReaderTests/*'
+    foreach ($windows in @($false, $true)) {
+        $simulateWindows = $windows
+        $simulateLinux = !$windows
+        foreach ($managedReportMode in @('valid', 'missing', 'zero', 'failed', 'incomplete', 'exit')) {
+            $case = "managed-$windows-$managedReportMode"
+            & $caseScript -ArtifactDirectory ".\$case" -TestFilter $filter
+            $managedReport = Get-Content -LiteralPath (Join-Path $psDirectory "$case\validation.json") -Raw | ConvertFrom-Json
+            $expected = @(
+                'Nerdbank.Json.Tests|net8.0', 'Nerdbank.Json.Tests|net9.0', 'Nerdbank.Json.Tests|net10.0',
+                'Nerdbank.Json.AspNetCoreMvcFormatter.Tests|net8.0', 'Nerdbank.Json.AspNetCoreMvcFormatter.Tests|net9.0',
+                'Nerdbank.Json.AspNetCoreMvcFormatter.Tests|net10.0', 'Nerdbank.Json.Analyzers.Tests|net8.0'
+            )
+            if ($windows) { $expected += 'Nerdbank.Json.Tests|net472' }
+            $managedSteps = @($managedReport.Steps | Where-Object Name -like 'managed-*')
+            if ($managedSteps.Count -ne $expected.Count) { throw "Incomplete managed matrix in $case." }
+            foreach ($target in $expected) {
+                $project, $framework = $target.Split('|')
+                $name = "managed-$project-$framework"
+                $step = @($managedSteps | Where-Object Name -eq $name)
+                if ($step.Count -ne 1) { throw "Missing or duplicate target $name." }
+                $step = $step[0]
+                $extension = if ($framework -eq 'net472') { '.exe' } else { '.dll' }
+                $binary = Join-Path $fixture "bin\$project\Release\$framework\$project$extension"
+                $directory = Join-Path $managedReport.ArtifactDirectory $name
+                $expectedArgs = @(
+                    '--treenode-filter', $filter, '--results-directory', $directory,
+                    '--report-trx', '--report-trx-filename', "$name.trx",
+                    '--diagnostic', '--diagnostic-output-directory', $directory
+                )
+                $expectedFile = $compiler
+                if ($framework -eq 'net472') { $expectedFile = $binary } else { $expectedArgs = @($binary) + $expectedArgs }
+                if ($step.File -ne $expectedFile -or $step.TargetFramework -ne $framework -or
+                    (ConvertTo-Json -InputObject @($step.Arguments) -Compress) -cne (ConvertTo-Json -InputObject $expectedArgs -Compress) -or
+                    ![IO.Path]::IsPathFullyQualified($directory)) {
+                    throw "Wrong executable, framework, or direct MTP arguments for $name."
+                }
+            }
+            $expectedStatus = if ($managedReportMode -eq 'valid') { 'PASS' } else { 'FAIL' }
+            if ($managedReport.Stages.ManagedTests -ne $expectedStatus -or $managedReport.ValidationSucceeded -or $LASTEXITCODE -ne 1) {
+                throw "Managed report/exit failure semantics changed in $case."
+            }
+            if ($managedReportMode -eq 'valid' -and ($managedReport.TestReports.Count -ne $expected.Count -or
+                @($managedReport.TestReports | Where-Object { $_.Native -or $_.Executed -ne 1 -or
+                    $_.Skipped.Count -ne 1 -or $_.Skipped[0].KnownNativeArrayLimitation }).Count -ne 0)) {
+                throw 'Managed counters or skip classification changed.'
+            }
+            if ($managedReportMode -eq 'missing' -and @($managedReport.Errors | Where-Object { $_ -like 'Missing test report in *' }).Count -ne $expected.Count) {
+                throw 'Missing TRX reports were not all rejected.'
+            }
+            if ($managedReportMode -eq 'zero' -and @($managedReport.Errors | Where-Object { $_ -like 'Test report has no executed tests:*' }).Count -ne $expected.Count) {
+                throw 'Zero-execution TRX reports were not all rejected.'
+            }
+        }
+    }
+    Write-Host 'Platform script checks passed: paths, evidence preservation, compiler guards/forwarding, all seven managed targets plus Windows net472, direct MTP arguments, and report/exit failures.'
 } finally {
     Set-Location $savedLocation
     [Environment]::CurrentDirectory = $savedProcessDirectory
     Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+if ($ManagedSmoke) {
+    $repo = Split-Path $PSScriptRoot -Parent
+    if (!$SmokeArtifactDirectory) {
+        $SmokeArtifactDirectory = Join-Path $repo "obj\platform-managed-smoke-$([guid]::NewGuid().ToString('N'))"
+    }
+    $ArtifactDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($SmokeArtifactDirectory)
+    if (Test-Path -LiteralPath $ArtifactDirectory) { throw "Smoke artifact directory already exists: $ArtifactDirectory" }
+    $null = New-Item -ItemType Directory -Path $ArtifactDirectory
+    $steps = [Collections.Generic.List[object]]::new()
+    $testReports = [Collections.Generic.List[object]]::new()
+    $report = @{ Errors = [Collections.Generic.List[string]]::new() }
+    $TestFilter = '/*/*/JsonReaderTests/*'
+    foreach ($name in @('Invoke-Recorded', 'Read-TestReport', 'Invoke-TestRun', 'Invoke-ManagedTestRun')) {
+        $node = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
+        . ([scriptblock]::Create($node.Extent.Text))
+    }
+    . (Join-Path $repo '.github\Prime-ForCopilot.ps1')
+    if ($LASTEXITCODE -ne 0) { throw 'Prime-ForCopilot failed.' }
+    $dotnetExecutable = (Get-Command dotnet -CommandType Application | Select-Object -First 1).Source
+    $sdk = Invoke-Recorded 'smoke-sdk' $dotnetExecutable @('--version')
+    $requiredSdk = (Get-Content -LiteralPath (Join-Path $repo 'global.json') -Raw | ConvertFrom-Json).sdk.version
+    if (!$sdk.Succeeded -or $sdk.Text.Trim() -ne $requiredSdk) { throw "Smoke requires SDK $requiredSdk." }
+    $succeeded = Invoke-ManagedTestRun 'Nerdbank.Json.Tests' 'net8.0'
+    @{
+        Succeeded = $succeeded; SDK = $sdk.Text.Trim(); Repository = $repo; ArtifactDirectory = $ArtifactDirectory
+        Steps = $steps; TestReports = $testReports; Errors = $report.Errors
+    } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $ArtifactDirectory 'smoke.json')
+    if (!$succeeded) { throw "Managed smoke failed; evidence: $ArtifactDirectory" }
+    Write-Host "Managed JsonReaderTests/TRX smoke passed: $ArtifactDirectory"
 }
