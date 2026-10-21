@@ -35,8 +35,12 @@
   <ItemGroup>
     <!-- Supply the analyzer's shape-model dependency without changing application framework asset selection. -->
     <PackageDownload Include="PolyType.Roslyn" Version="[$(PolyTypeVersion)-unstable]" />
+  </ItemGroup>
+  <ItemGroup>
     <AnalyzerProjectReference Include="..\Nerdbank.Json.Analyzers\Nerdbank.Json.Analyzers.csproj" />
     <AnalyzerProjectReference Include="..\Nerdbank.Json.Analyzers.CodeFixes\Nerdbank.Json.Analyzers.CodeFixes.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="@(AnalyzerProjectReference)">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <OutputItemType>AnalyzerAssembly</OutputItemType>
