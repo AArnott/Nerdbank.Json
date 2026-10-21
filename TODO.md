@@ -75,17 +75,176 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 - [ ] Design the deferred direct stateless raw-wrapper API.
 - [ ] Address deferred analyzer rules NBJson031 and NBJson051.
 - [ ] Address the explicitly deferred remaining low-level API breadth.
-- [ ] Investigate and optimize the remaining object elapsed-time regression without sacrificing allocation parity, safety, or correctness.
+- [x] Investigate and optimize the object elapsed-time regression without sacrificing allocation parity, safety, or correctness; causal boundaries and accepted fixes are recorded below.
+- [ ] Further reduce the residual small-object read cost; the accepted fixes do not establish complete original-speed restoration.
 - [ ] Execute Linux/macOS validation; do not infer results or recalibrate their budgets from Windows measurements.
 
 ## Active performance attribution follow-up (2026-10-20)
 
-The historical checkpoint below is retained unchanged as evidence, not a claim that
-the remaining regression has been explained. Matched medium historical jobs,
-first-bad parent/child replication, and paired warm sampled-thread-time profiles
-are now in progress. Production-default tiering/PGO and constant benchmark inputs
-are the primary configuration.
+The historical checkpoint below is retained as evidence. The attribution follow-up
+is complete with accepted code `2fdeb10`, following `f2b7961`; both descend from
+the user's unchanged `0aa59ea`. Matched medium historical jobs, parent/child
+replication, causal controls, and paired warm sampled-thread-time profiles identify
+two concrete regression components. This is a substantial partial recovery, not
+a claim that every timing difference across the 64-commit range is decomposed.
+Production-default tiering/PGO and constant benchmark inputs are the primary configuration.
 Deferred parser/raw-wrapper/analyzer work follows this performance investigation.
+
+### Causal findings, not just source hypotheses
+
+All timing jobs below use BDN 0.15.8, SDK 10.0.402, .NET 9.0.21 x64, Windows 11,
+Threadripper PRO 7995WX, Release, affinity mask 2, the actual **MediumRun** preset:
+2 launches, 10 warmups and 15 measured iterations per launch, with BDN's default
+adaptive iteration duration. The four `ObjectBenchmarks.*NerdbankJson` methods and
+their generated models/input source are copied unchanged to each detached worktree.
+No benchmark runs, builds, or traces overlap. No global power plan or applications
+are changed. No tiering-disabled results are substituted for normal tiering/PGO.
+These medium jobs are not the earlier 250-ms/10-iteration measurements.
+
+| Boundary | Repeated small-read means (parent -> child), ns | Repeated small-write means (parent -> child), ns | Causal control |
+|---|---|---|---|
+| `f744a3f` -> `e692cab` | 300.7 -> 320.7; 296.7 -> 320.1 | 179.8 -> 198.1; 178.0 -> 196.7 | Provider-local initialization on `e692cab` gives 311.0 ns read and 178.3 ns write; the added record-`with` copies explain the write step, but not all read cost. |
+| `4ec30c4` -> `d5b883f` | Parent 313.4-336.1; child 346.6-388.6, with noisy/multimodal child reads | Parent 186.9-190.8; child 217.1-223.1 | Restoring only the historical last-converter shortcut on `d5b883f` gives 320.0 ns read / 196.0 ns write without undoing `in T` or reference registration. |
+
+Representative parent/child uncertainty (ns, BDN Error is the 99.9% CI half-width):
+
+| Snapshot/run | Operation | Mean | Median | Error | StdDev |
+|---|---|---:|---:|---:|---:|
+| `replicate-f744a3f` | Small read | 296.7 | 297.4 | 6.69 | 9.16 |
+| `replicate-e692cab` | Small read | 320.1 | 321.5 | 6.51 | 8.91 |
+| `replicate-f744a3f` | Small write | 178.0 | 178.6 | 1.37 | 1.88 |
+| `replicate-e692cab` | Small write | 196.7 | 194.1 | 7.21 | 10.34 |
+| `boundary3-4ec30c4` | Small read | 313.4 | 311.9 | 5.09 | 7.30 |
+| `boundary3-d5b883f` | Small read | 388.6 | 360.4 | 39.99 | 59.85 |
+| `boundary3-4ec30c4` | Small write | 186.9 | 185.3 | 6.74 | 9.23 |
+| `boundary3-d5b883f` | Small write | 223.1 | 222.6 | 2.36 | 3.38 |
+
+The unmodified `d5b883f` snapshot does **not build**: its async-enumerable converter
+was not migrated to `in TEnumerable?`. Its original failed log is retained under
+`initial-d5b883f`. Subsequent measurements explicitly apply only that override
+signature repair, to a converter never used by these object benchmarks. This is
+an adjusted historical snapshot, not a claim that the original commit builds.
+No intermediate closure-allocating snapshots are used; `13bc811` remains preserved.
+
+Adding only the later `ReferenceId` auto-property to the parent as a layout control
+gives 321.7 ns small read / 184.7 ns small write, not the child slowdown.
+Thus attributing the second step primarily to the 72-to-80-byte context growth or
+`in T` would be incorrect. The first provider change grows the context from
+64 to 72 bytes and adds full-struct clones; the second adds another field, but its
+removed locality shortcut is a separately demonstrated cost. The earlier unsafe
+shortcut is a measurement-only control, never restored to shipping code.
+The wider-object historical distributions do not support an equally precise
+first-bad classification; they are retained rather than blindly labeled good/bad.
+
+### Paired warm attribution
+
+Official session-local `dotnet-trace` 10.0.750501 collects
+`dotnet-common,dotnet-sampled-thread-time` for 20 seconds after six seconds of
+startup/warmup, from already-built 30-second workload processes. The harness
+validates results, retains observable outputs, and uses an unboxed write sink.
+Pairs cover both causal boundaries and `0aa59ea` versus `2fdeb10`, for wide reads
+and small writes. These are EventPipe sampled **thread-time** stacks, not precise
+kernel on-CPU measurements or quantitative throughput comparisons.
+
+The unboxed write profile at `f744a3f` attributes 37.70% exclusively to
+`SerializeCore`; at `e692cab` this becomes 51.52%. At the second boundary,
+dictionary `FindEntry` appears at 3.25% exclusive on the child and is absent from
+the parent's top functions. The accepted locality cache removes it from the final
+write top functions. `PopulateReference` is the dominant current wide-read frame:
+60.47% exclusive before versus 46.83% after; its inclusive children still include
+UTF-8 string decoding, property-name comparisons, and scalar conversion.
+Inlining and changed work per second affect these percentages; they are not
+additive nanosecond estimates or proof that all residual time is copying.
+
+Medium-job warm disassembly shows the property-dispatch change removes one
+80-byte bulk-copy call from the serialization Core body (4337 -> 4161 bytes for
+the small fixture). The provider-local control removes two more bulk copies.
+BDN code-size totals have bounded disassembly depth and are not whole-library
+native-size measurements. Earlier Dry/ColdStart assembly is retained only as
+cold-JIT diagnostic evidence, not used to explain warmed timings.
+
+### Final replicated medium comparison
+
+`final-*` runs serialize the original / pre-fix / accepted snapshots in sequence;
+`final-repeat-*` repeats that entire sequence. All values are ns except bytes.
+The final code has no provider-initialization experiment.
+
+| Snapshot | Operation | Mean | Median | Error | StdDev | B/op | Repeat mean |
+|---|---|---:|---:|---:|---:|---:|---:|
+| Original `f64da69` | Small read | 292.9 | 301.4 | 11.25 | 15.77 | 200 | 282.0 |
+| Pre-fix `0aa59ea` | Small read | 345.5 | 338.0 | 14.01 | 20.53 | 200 | 332.8 |
+| Accepted `2fdeb10` | Small read | 312.9 | 302.8 | 21.54 | 30.19 | 200 | 313.7 |
+| Original `f64da69` | Wide read | 1055.1 | 1063.8 | 35.04 | 47.96 | 664 | 1093.2 |
+| Pre-fix `0aa59ea` | Wide read | 1139.5 | 1123.5 | 37.72 | 52.88 | 664 | 1150.7 |
+| Accepted `2fdeb10` | Wide read | 1071.1 | 1054.8 | 35.66 | 52.27 | 664 | 1077.2 |
+| Original `f64da69` | Small write | 179.0 | 178.4 | 3.57 | 5.23 | 0 | 177.8 |
+| Pre-fix `0aa59ea` | Small write | 230.6 | 233.8 | 10.17 | 14.91 | 0 | 220.3 |
+| Accepted `2fdeb10` | Small write | 185.3 | 184.8 | 1.99 | 2.92 | 0 | 179.7 |
+| Original `f64da69` | Wide write | 495.9 | 496.5 | 5.80 | 8.13 | 0 | 495.5 |
+| Pre-fix `0aa59ea` | Wide write | 555.8 | 551.0 | 11.27 | 16.16 | 0 | 554.7 |
+| Accepted `2fdeb10` | Wide write | 504.9 | 499.0 | 14.06 | 20.61 | 0 | 482.7 |
+
+The accepted means improve over pre-fix in both sequences: approximately 6-9%
+small read, 6% wide read, 18-20% small write, and 9-13% wide write. These are
+observed mean changes, not a uniform speed guarantee. Wide operations and small
+writes return close to the frozen original range. Small-read means remain
+approximately 7-11% above the original; their distributions also vary by launch.
+No exact attribution of every remaining read nanosecond is established.
+Median, CI, StdDev, GC, and allocation data for both sequences are retained in
+the JSON/CSV reports and the generated `all-measurements.csv`.
+
+### Rejected controls and final tradeoffs
+
+| Experiment | Decision | Evidence and retention |
+|---|---|---|
+| Historical type-only last-converter restoration | Causal control only; unsafe for multiple providers | `d5b883f-cache-control.patch` and `causal-controls-d5b883f-cache-control`; do not merge. |
+| Parent context padded with `ReferenceId` | Reject as explanation for the second step | `context-padding-control.patch` and `layout-intervention-4ec30c4-context80`. |
+| Historical provider-local setter | Confirms the first write cause, not an accepted change | `e692cab-provider-control.patch` and `causal-controls-e692cab-provider-local`. |
+| Current operation-local provider setter | Reject tradeoff | `provider-local-current.patch`; A/B/A/B small writes 176.8/169.7/180.9/172.7 ns, but wide writes 481.5/497.5/470.5/487.7 ns. Smaller-body assembly alone is not sufficient. |
+| Provider fused into `Start` | Reject | `provider-start-current.patch`; repeated wide writes 535.7/538.6 ns versus preceding cache-only 470.5-481.5 ns; more wiring without a worthwhile win. |
+| Readonly internal property dispatch | Accept `f2b7961` | Details below; custom converters retain by-value isolation. |
+| Shape-aware locality cache | Accept `2fdeb10` | Details below; shape identity, concurrency and zero warm allocation are covered. |
+
+All four final NativeAOT fixtures publish with warnings as errors and execute.
+The broad image is **6,092,800 bytes / 5.810546875 MiB** and passes the actual
+unchanged Windows **5.79 +/- 0.2 MiB** guard; it is 66,560 bytes smaller than the
+prior 6,159,360-byte checkpoint. The minimal image is **2,767,360 bytes /
+2.63916015625 MiB**, still explicitly uncalibrated. New cache entries/delegate
+have a cold-memory cost, but warmed writes remain allocation-free, including
+alternating shapes. Cold-start latency and aggregate IL size are not benchmarked;
+the image sizes are measured, not inferred from bounded-depth JIT disassembly.
+Final Release build and all 3,479 managed tests pass. The accepted native core
+suite passes 808 tests with the same two unsupported input-creation skips.
+No public API signatures, approved safety behavior, or features are removed.
+Linux/macOS remain unexecuted and their budgets are unchanged.
+
+### Reproduction and raw artifacts
+
+Artifact root (intentionally retained outside source control):
+`C:\Users\andre\.copilot\session-state\ccd4d45f-edf7-4ad2-bce2-e9f5839aa2f8\files\perf-cause`.
+`Measure-History.ps1` contains the exact serial medium command; `Program.cs`,
+`Rebuild-ProfileHarnesses.ps1`, and `Collect-Profiles.ps1` reproduce the final
+unboxed warm profiles. Benchmark source is the existing `test\Benchmarks` project;
+no parallel benchmark project or shipping harness is added.
+
+Every measurement directory includes build logs, per-launch BDN raw logs, CSV and
+full JSON reports. `initial-*`, `replicate-*`, `boundary2-*`, and `boundary3-*`
+retain historical evidence; `acceptanceA/B/A2/B2-*` retain property-copy acceptance;
+`cacheA/B/A2-*`, `cache-nested-*`, and `provider*` retain subsequent experiments.
+An early `cache-screen` directory was reused for a candidate repeat: its first
+summary JSON/CSV was overwritten, but both timestamped raw BDN logs remain.
+Subsequent script runs refuse to overwrite measurement directories.
+The final and replicated final reports are separately named and intact.
+
+`unboxed-<sha>-<read-wide|write-small>.nettrace`, `-exclusive.txt`, `-inclusive.txt`,
+and `.speedscope.json` are the authoritative paired profiles. Earlier profile
+prefixes used a boxed integer write sink and are superseded for write attribution;
+this never affected BDN operation timing or its allocation measurement.
+`final-managed-build.log`, `final-managed-tests.log`, `final-*-publish.log`,
+`final-*-run.log`, `final-broad-size-guard.json`, and `final-minimal-size-report.json`
+retain final validation. The detached measurement worktrees and exact rejected
+patches are intentionally retained for reproduction; no existing branch/worktree
+was reset, overwritten, renamed, or removed, and nothing was pushed.
 
 ### Accepted internal property-dispatch copy reduction
 
@@ -150,6 +309,10 @@ NativeAOT net10.0 passes 808 tests with the same two platform-input skips
 (810 total), including provider/identity/allocation tests.
 
 ## Final accepted checkpoint (2026-10-20, code `13bc811`)
+
+This section records the **earlier** accepted checkpoint. Its statement of finality
+is scoped to that checkpoint; the performance follow-up above supersedes its
+elapsed-time result and final-code designation without replacing its historical evidence.
 
 **This is the authoritative final result.** It supersedes the earlier managed counts, native input-creation failures, size measurements, pending benchmark comparison, and unverified platform-guard notes retained below as historical evidence.
 The accepted implementation is `13bc811`; the rejected provider-local experiment is not included.
