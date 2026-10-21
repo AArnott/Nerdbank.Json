@@ -276,8 +276,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			.Set("additionalProperties", false);
 	}
 
-	private static JsonSchemaObject CreateUndocumented(JsonConverter converter) => new JsonSchemaObject()
-		.Set("$comment", $"No JSON schema is available for the custom converter '{converter.GetType().FullName}'; any JSON value is permitted here.");
+	private static JsonSchemaObject CreateUndocumented(JsonConverter converter) => JsonConverter<int>.CreateUndocumentedSchema(converter.GetType());
 
 	private JsonSchemaObject BuildRuntimeUnionSchema<T>(ITypeShape<T> shape, DerivedTypeUnion entry)
 	{

@@ -1,7 +1,8 @@
 # JSON Schema export
 
-The `JsonSerializer.GetJsonSchema` method produces a
-standards-based **JSON Schema (draft 2020-12 by default)** document that describes how the serializer represents a type.
+The `JsonSerializer.GetJsonSchema` method returns a mutable <xref:System.Text.Json.Nodes.JsonObject> containing a standards-based **JSON Schema (draft 2020-12 by default)** document that describes how the serializer represents a type.
+Call `ToJsonString()` on the result to obtain JSON text.
+The schema DOM is distinct from the optional native JSON DOM; ordinary serialization does not execute through System.Text.Json.
 The schema is generated from the effective, source-generated shape and converter graph, so it is trimming-safe
 and NativeAOT-safe, and it reflects the serializer's configuration.
 
@@ -41,9 +42,11 @@ Draft 4 and Draft 7 use an array-valued `items` keyword for tuples and `addition
 
 A custom converter describes its representation by overriding
 `JsonConverter.GetJsonSchema`.
-Use the <xref:Nerdbank.Json.JsonSchemaContext> to resolve nested schemas so shared definitions and recursion are
-handled consistently. The context exposes the selected <xref:Nerdbank.Json.JsonSchemaContext.Dialect> and provides
-`CreateTupleSchema` and `ApplyTupleSchema` helpers for dialect-correct positional array schemas.
+Use <xref:Nerdbank.Json.JsonSchemaContext.GetJsonSchema(PolyType.ITypeShape)> to resolve nested schemas so shared definitions and recursion are handled consistently.
+The context exposes the selected <xref:Nerdbank.Json.JsonSchemaContext.Dialect> and provides `CreateTupleSchema` and `ApplyTupleSchema` helpers that accept a <xref:System.Text.Json.Nodes.JsonArray> of positional schemas.
+Ownership of this array transfers to the result.
+Custom converters can use the protected `ApplyJsonSchemaNullability`, `CreateUndocumentedSchema`, and `CreateJsonValue` helpers on <xref:Nerdbank.Json.JsonConverter`1>.
+Custom fragments are not automatically translated between dialects; converters should honor the requested dialect or throw <xref:System.NotSupportedException>.
 
 [!code-csharp[](../../samples/cs/JsonSchemaExport.cs#JsonSchemaCustomConverter)]
 

@@ -44,6 +44,27 @@ public partial record JsonSerializer
 		where TProvider : IShapeable<T> => this.GetJsonSchema(TProvider.GetTypeShape(), options);
 #endif
 
+	/// <summary>Produces a JSON Schema using a type shape provider.</summary>
+	/// <typeparam name="T">The type to describe.</typeparam>
+	/// <param name="provider">The type shape provider.</param>
+	/// <returns>The JSON Schema document.</returns>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "Public API accepts an ITypeShapeProvider.")]
+	public JsonSchemaObject GetJsonSchema<T>(ITypeShapeProvider provider) => this.GetJsonSchema<T>(provider, JsonSchemaOptions.Default);
+
+	/// <summary>Produces a JSON Schema using a type shape provider and specified options.</summary>
+	/// <typeparam name="T">The type to describe.</typeparam>
+	/// <param name="provider">The type shape provider.</param>
+	/// <param name="options">The schema generation options.</param>
+	/// <returns>The JSON Schema document.</returns>
+	/// <exception cref="ArgumentException">The provider does not supply the requested type shape.</exception>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "Public API accepts an ITypeShapeProvider.")]
+	public JsonSchemaObject GetJsonSchema<T>(ITypeShapeProvider provider, JsonSchemaOptions options)
+	{
+		Requires.NotNull(provider);
+		Requires.NotNull(options);
+		return this.GetJsonSchema(provider.GetTypeShape(typeof(T)) ?? throw new ArgumentException($"This provider had no type shape for {typeof(T)}.", nameof(provider)), options);
+	}
+
 	/// <summary>
 	/// Produces a JSON Schema (draft 2020-12 by default) document that describes how this serializer represents the given type.
 	/// </summary>

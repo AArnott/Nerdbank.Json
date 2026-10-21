@@ -113,7 +113,7 @@ public abstract class JsonConverter
 /// Base type for JSON converters that handle a specific .NET type.
 /// </summary>
 /// <typeparam name="T">The .NET type handled by the converter.</typeparam>
-public abstract class JsonConverter<T> : JsonConverter
+public abstract partial class JsonConverter<T> : JsonConverter
 {
 	internal override Type DataType => typeof(T);
 
