@@ -37,6 +37,7 @@ public ref struct JsonWriter
 	private BufferWriter writer;
 	private int depth;
 	private bool pendingPropertyValue;
+	private int reservedValueLength;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="JsonWriter"/> struct.
@@ -90,7 +91,68 @@ public ref struct JsonWriter
 	/// <summary>
 	/// Ensures everything previously written has been flushed to the underlying <see cref="IBufferWriter{T}"/>.
 	/// </summary>
-	public void Flush() => this.writer.Commit();
+	public void Flush()
+	{
+		this.reservedValueLength = 0;
+		this.writer.Commit();
+	}
+
+	/// <summary>
+	/// Reserves contiguous space for one complete, trusted UTF-8 JSON value.
+	/// </summary>
+	/// <param name="length">The minimum number of payload bytes required. Zero requests a nonempty span.</param>
+	/// <returns>A borrowed span of at least <paramref name="length"/> bytes, excluding any enclosing indentation.</returns>
+	/// <remarks>
+	/// Fill the span and call <see cref="Advance"/> once with the complete value's byte length.
+	/// As with <see cref="WriteRaw(ReadOnlySpan{byte})"/>, syntax is not validated: fragments, property names,
+	/// separators, empty values, and multiple values are not supported.
+	/// Reservation does not consume a value or change container state, but may flush previously written bytes.
+	/// Each successful call replaces the previous reservation; unadvanced contents need not be preserved.
+	/// The span expires on another reservation, any write, <see cref="Advance"/>, <see cref="Flush"/>,
+	/// or returning this writer to <see cref="JsonAsyncWriter"/>. Do not copy a writer to share its reservation.
+	/// </remarks>
+	/// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is negative or too large for a contiguous reservation including indentation.</exception>
+	public Span<byte> GetSpan(int length)
+	{
+		Requires.Range(length >= 0, nameof(length));
+		int prefixLength = this.GetValuePrefixLength();
+		Requires.Range(Math.Max(length, 1) <= int.MaxValue - prefixLength - this.writer.UncommittedBytes, nameof(length));
+		this.reservedValueLength = 0;
+		Span<byte> span = this.writer.GetSpan(Math.Max(length, 1) + prefixLength);
+		this.reservedValueLength = Math.Min(span.Length - prefixLength, int.MaxValue - this.writer.UncommittedBytes - prefixLength);
+		return span.Slice(prefixLength, this.reservedValueLength);
+	}
+
+	/// <summary>
+	/// Commits one complete, trusted UTF-8 JSON value written into the latest <see cref="GetSpan"/> reservation.
+	/// </summary>
+	/// <param name="length">The number of payload bytes written, or zero to cancel the reservation without writing a value.</param>
+	/// <remarks>
+	/// A positive advance consumes the reservation and applies the same enclosing indentation and value bookkeeping
+	/// as <see cref="WriteRaw(ReadOnlySpan{byte})"/>. Payload contents are not validated, escaped, or reindented.
+	/// Callers still write enclosing separators explicitly. A zero advance is also allowed without a reservation.
+	/// Invalid advances leave the reservation, byte counters, and container state unchanged.
+	/// </remarks>
+	/// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is negative or exceeds the reserved span.</exception>
+	/// <exception cref="InvalidOperationException">A positive advance has no active reservation.</exception>
+	public void Advance(int length)
+	{
+		Requires.Range(length >= 0, nameof(length));
+		if (length == 0)
+		{
+			this.reservedValueLength = 0;
+			return;
+		}
+
+		if (this.reservedValueLength == 0)
+		{
+			throw new InvalidOperationException("Call GetSpan before advancing a complete raw JSON value.");
+		}
+
+		Requires.Range(length <= this.reservedValueLength, nameof(length));
+		this.BeforeValueToken();
+		this.writer.Advance(length);
+	}
 
 	/// <summary>Creates a writer for a new destination using this writer's formatting options.</summary>
 	/// <param name="writer">The new destination.</param>
@@ -131,6 +193,7 @@ public ref struct JsonWriter
 	/// </summary>
 	public void WriteEndObject()
 	{
+		this.reservedValueLength = 0;
 		ContainerState state = this.PopContainer(ContainerKind.Object);
 		if (this.WriteIndented && state.Count > 0)
 		{
@@ -155,6 +218,7 @@ public ref struct JsonWriter
 	/// </summary>
 	public void WriteEndArray()
 	{
+		this.reservedValueLength = 0;
 		ContainerState state = this.PopContainer(ContainerKind.Array);
 		if (this.WriteIndented && state.Count > 0)
 		{
@@ -169,6 +233,7 @@ public ref struct JsonWriter
 	/// </summary>
 	public void WriteValueSeparator()
 	{
+		this.reservedValueLength = 0;
 		this.WriteByte((byte)',');
 		if (this.WriteIndented)
 		{
@@ -561,6 +626,7 @@ public ref struct JsonWriter
 
 	private void BeforeValueToken()
 	{
+		this.reservedValueLength = 0;
 		if (this.pendingPropertyValue)
 		{
 			this.pendingPropertyValue = false;
@@ -590,6 +656,19 @@ public ref struct JsonWriter
 
 		state.Count++;
 		this.SetStack(this.depth - 1, state);
+	}
+
+	private readonly int GetValuePrefixLength()
+	{
+		if (!this.WriteIndented || this.pendingPropertyValue || this.depth == 0)
+		{
+			return 0;
+		}
+
+		ContainerState state = this.GetStack(this.depth - 1);
+
+		// Leave room for BeforeValueToken without moving or overwriting the caller's payload.
+		return state.Kind == ContainerKind.Array ? checked((this.depth * 2) + (state.Count == 0 ? 1 : 0)) : 0;
 	}
 
 	private void PushContainer(ContainerKind kind)
@@ -676,6 +755,7 @@ public ref struct JsonWriter
 
 	private ContainerState PreparePropertyName()
 	{
+		this.reservedValueLength = 0;
 		ContainerState state = this.GetCurrentContainer(ContainerKind.Object);
 		if (this.WriteIndented)
 		{

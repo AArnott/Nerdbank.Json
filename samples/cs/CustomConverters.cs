@@ -122,6 +122,40 @@ public sealed class FooConverter : JsonConverter<Foo>
 
 // </YourOwnConverter>
 
+// <DirectWriterBuffer>
+[GenerateShape]
+[JsonConverter(typeof(DirectNumberConverter))]
+public partial class DirectNumber
+{
+	public long Value { get; set; }
+}
+
+public sealed class DirectNumberConverter : JsonConverter<DirectNumber>
+{
+	public override void Write(ref JsonWriter writer, in DirectNumber? value, SerializationContext context)
+	{
+		if (value is null)
+		{
+			writer.WriteNull();
+			return;
+		}
+
+		// A signed 64-bit integer requires at most 20 UTF-8 bytes.
+		Span<byte> destination = writer.GetSpan(20);
+		if (!JsonPrimitives.TryWrite(destination, value.Value, out int bytesWritten))
+		{
+			throw new InvalidOperationException("The reserved number buffer was too small.");
+		}
+
+		writer.Advance(bytesWritten);
+	}
+
+	public override DirectNumber? Read(ref JsonReader reader, SerializationContext context)
+		=> reader.TryReadNull() ? null : new DirectNumber { Value = reader.ReadInt64() };
+}
+
+// </DirectWriterBuffer>
+
 // <DelegateSubValues>
 [GenerateShape]
 public partial class Wrapper

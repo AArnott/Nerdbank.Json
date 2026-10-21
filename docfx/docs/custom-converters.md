@@ -76,8 +76,28 @@ Do not pass an already-quoted or already-escaped JSON token to this method; use 
 
 Reader and writer `Clone` methods preserve syntax or formatting options but start at the root of their new input or destination.
 They do not inherit container state.
-There is intentionally no public writer `GetSpan`/`Advance` pair: arbitrary fragments cannot safely maintain JSON container and pending-property state.
-Use <xref:Nerdbank.Json.JsonWriter.WriteRaw*> for trusted, complete JSON values.
+
+## Writing directly into the output buffer
+
+Use <xref:Nerdbank.Json.JsonWriter.GetSpan(System.Int32)?displayProperty=nameWithType> and <xref:Nerdbank.Json.JsonWriter.Advance(System.Int32)?displayProperty=nameWithType> to encode one complete, trusted UTF-8 JSON value directly into the writer's buffer.
+This is the direct-buffer equivalent of <xref:Nerdbank.Json.JsonWriter.WriteRaw*>: it does not validate or escape the payload.
+Do not use it for fragments, property names, separators, empty payloads, or multiple values.
+For validated raw output, use <xref:Nerdbank.Json.RawJson> instead.
+
+[!code-csharp[](../../samples/cs/CustomConverters.cs#DirectWriterBuffer)]
+
+`GetSpan(length)` returns at least the requested payload capacity, excluding space reserved for enclosing indentation; zero requests a nonempty span.
+Reserving does not start a JSON value or change pending-property state, although growing the buffer may flush previously written bytes.
+Fill the returned span, then call `Advance(bytesWritten)` once with the length of the complete value, which may exceed the requested minimum but must fit the returned span.
+A positive advance applies normal value bookkeeping and enclosing indentation, without reformatting the payload's internal JSON.
+As with other writer APIs, callers write enclosing value separators explicitly.
+
+`Advance(0)` cancels a reservation without writing an empty value or consuming pending-property state, and is harmless without a reservation.
+Negative or oversized arguments are rejected; an invalid advance does not consume the reservation or change byte counters.
+A new reservation replaces the old one and need not preserve its unadvanced contents, so rewrite the entire value after retrying with a larger span.
+The borrowed span expires on another reservation, a write, any advance, a flush, or returning the writer to <xref:Nerdbank.Json.JsonAsyncWriter>.
+Never retain that span across those operations or copy a writer to share its reservation.
+A clone starts with no reservation, and async writer handoff preserves only advanced values and normal container state, not outstanding reservations.
 
 ## Stateless scalar primitives
 

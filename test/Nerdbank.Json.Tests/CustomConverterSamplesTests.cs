@@ -3,8 +3,21 @@
 
 #if NET8_0
 [GenerateShapeFor<Envelope<Inner>>]
+[GenerateShapeFor<DirectNumber[]>]
 public partial class CustomConverterSamplesTests
 {
+	[Test]
+	public void DirectBufferConverterSampleWritesCompleteNumbers()
+	{
+		JsonSerializer serializer = new();
+		Assert.Equal("-9223372036854775808", serializer.Serialize(new DirectNumber { Value = long.MinValue }));
+		Assert.Equal(long.MaxValue, serializer.Deserialize<DirectNumber>("9223372036854775807")!.Value);
+		Assert.Equal("null", serializer.Serialize<DirectNumber>(null));
+		Assert.Null(serializer.Deserialize<DirectNumber>("null"));
+		DirectNumber[] values = [new() { Value = 1 }, new() { Value = -2 }];
+		Assert.Equal("[1,-2]", serializer.Serialize<DirectNumber[], CustomConverterSamplesTests>(values));
+	}
+
 	[Test]
 	public void RawEnvelopeSampleRetainsExactPayload()
 	{
