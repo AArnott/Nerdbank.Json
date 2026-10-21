@@ -78,6 +78,44 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 - [ ] Investigate and optimize the remaining object elapsed-time regression without sacrificing allocation parity, safety, or correctness.
 - [ ] Execute Linux/macOS validation; do not infer results or recalibrate their budgets from Windows measurements.
 
+## Active performance attribution follow-up (2026-10-20)
+
+The historical checkpoint below is retained unchanged as evidence, not a claim that
+the remaining regression has been explained. Matched medium historical jobs,
+first-bad parent/child replication, and paired warm sampled-thread-time profiles
+are now in progress. Production-default tiering/PGO and constant benchmark inputs
+are the primary configuration.
+Deferred parser/raw-wrapper/analyzer work follows this performance investigation.
+
+### Accepted internal property-dispatch copy reduction
+
+Only the internal synchronous `JsonProperty` read/write dispatch takes the context
+by readonly reference. Public converters still receive independent by-value
+contexts; no public signature, depth, provider, reference, or state semantics change.
+Sibling/start-context isolation is covered for both mutable and constructor-bound
+objects. The Release solution builds without warnings; all 3,475 managed tests pass.
+
+Matched BDN medium jobs (2 launches, 10 warmups, 15 measured iterations, affinity 2,
+.NET 9.0.21 / SDK 10.0.402 / BDN 0.15.8) gave these means in ns:
+
+| Operation | Baseline A | Candidate B | Baseline A2 | Candidate B2 |
+|---|---:|---:|---:|---:|
+| DeserializeSmall | 336.4 | 335.7 | 337.3 | 318.1 |
+| DeserializeWide | 1144.2 | 1080.1 | 1128.4 | 1077.0 |
+| SerializeSmall | 212.5 | 194.7 | 215.9 | 199.1 |
+| SerializeWide | 548.6 | 543.3 | 548.3 | 497.6 |
+
+The repeatable small-write and wide-read improvements justify the four signature
+changes. Small-read and wide-write gains vary between launches/runs; no uniform
+percentage gain or complete restoration is claimed. Allocation remains 200/664 B
+for reads and zero for writes. Nested DeepChain improves 584.7 to 551.5 ns with
+unchanged 152 B; nested Order is inconclusive (2144.2 +/- 39.31 versus
+2192.5 +/- 78.21 ns), with unchanged 32 B.
+Warm disassembly removes one 80-byte copy from the inlined serialization property
+dispatch and reduces the small serialization Core body from 4337 to 4161 bytes.
+Raw benchmark/profile evidence is under the current session's `files\perf-cause`;
+the final causal report will retain the complete uncertainty and artifact mapping.
+
 ## Final accepted checkpoint (2026-10-20, code `13bc811`)
 
 **This is the authoritative final result.** It supersedes the earlier managed counts, native input-creation failures, size measurements, pending benchmark comparison, and unverified platform-guard notes retained below as historical evidence.

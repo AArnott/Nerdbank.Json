@@ -311,11 +311,11 @@ internal abstract class JsonProperty<TDeclaring>
 
 	internal abstract bool CanDeserialize { get; }
 
-	internal abstract bool Write(ref JsonWriter writer, TDeclaring container, SerializationContext context, bool first);
+	internal abstract bool Write(ref JsonWriter writer, TDeclaring container, in SerializationContext context, bool first);
 
 	internal abstract ValueTask<bool> WriteAsync(JsonAsyncWriter writer, TDeclaring container, SerializationContext context, bool first);
 
-	internal abstract void Read(ref JsonReader reader, ref TDeclaring container, SerializationContext context);
+	internal abstract void Read(ref JsonReader reader, ref TDeclaring container, in SerializationContext context);
 
 	internal abstract ValueTask<TDeclaring> ReadValueIntoAsync(JsonAsyncReader reader, TDeclaring container, SerializationContext context);
 }
@@ -348,7 +348,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 
 	internal override bool CanDeserialize => this.setter is not null || this.deserializeIntoExistingInstance;
 
-	internal override bool Write(ref JsonWriter writer, TDeclaring container, SerializationContext context, bool first)
+	internal override bool Write(ref JsonWriter writer, TDeclaring container, in SerializationContext context, bool first)
 	{
 		if (this.getter is null)
 		{
@@ -396,7 +396,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		return true;
 	}
 
-	internal override void Read(ref JsonReader reader, ref TDeclaring container, SerializationContext context)
+	internal override void Read(ref JsonReader reader, ref TDeclaring container, in SerializationContext context)
 	{
 		if (this.setter is not null)
 		{
