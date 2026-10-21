@@ -174,6 +174,40 @@ Reader raw evidence is outside source control in session `6fbada64-d1bf-444d-be9
 Earlier causal evidence remains in session `ccd4d45f-edf7-4ad2-bce2-e9f5839aa2f8`, `files/perf-cause`.
 Linux evidence includes `perf-linux-medium-baseline-f64/repo` and host logs `final-linux-medium.log` and `final-linux-perf-validation-summary.log`.
 
+## Final scalar and direct-buffer API impact
+
+Source `a28b0ef` completes overloaded scalar `TryRead`/`TryWrite` APIs, including every 8- through 64-bit integer width and single precision, and adds complete-value writer `GetSpan`/`Advance` reservations.
+These APIs are retained for parity and direct-buffer use, without treating residual throughput work as an API-finalization gate.
+The writer adds an internal reservation-length field and reservation-clearing stores; their padded-size/startup effects have not been isolated, and no public contract requires that representation.
+
+Serial Windows x64 Release Medium jobs used .NET 9.0.21, SDK 10.0.402, BDN 0.15.8, affinity 2, normal tiering/PGO, two launches, ten warmups, fifteen measurement iterations, and the existing user power plan.
+The baseline is `ac0ad15`; the candidate has the shipping implementation at `81f3fbd` plus the subsequently committed benchmark fixture.
+Errors are 99.9% confidence-interval half-widths.
+
+| Object operation | Before mean +/- error (median), ns | After mean +/- error (median), ns | B/op, both |
+|---|---:|---:|---:|
+| Small read | 365.9 +/- 9.1 (369.9) | 378.0 +/- 7.3 (376.9) | 200 |
+| Wide read | 1301.2 +/- 46.4 (1290.6) | 1331.8 +/- 68.6 (1280.6) | 664 |
+| Small write | 180.1 +/- 3.6 (179.8) | 178.6 +/- 1.1 (178.3) | 0 |
+| Wide write | 465.0 +/- 3.5 (464.3) | 469.0 +/- 6.2 (464.9) | 0 |
+
+The read means move upward by approximately 3.3%/2.3%, but confidence intervals overlap and the wide-read median moves downward.
+This pair does not establish a new causal regression or a speedup; the unchanged reader paths are controls, not evidence that writer reservation bookkeeping caused their variation.
+Object allocation parity remains intact.
+Minimum-iteration warnings and outliers remain in the raw reports; this is one matched pair, not replicated A/B/A evidence.
+
+| Scalar operation | Stateful API mean +/- error, ns | Primitive API mean +/- error, ns | B/op, both |
+|---|---:|---:|---:|
+| Read Int32 | 44.26 +/- 1.10 | 25.73 +/- 0.37 | 0 |
+| Read Single | 66.09 +/- 1.55 | 47.61 +/- 1.47 | 0 |
+| Write Single | 101.42 +/- 2.27 | 104.32 +/- 1.55 | 0 |
+
+`PrimitiveBenchmarks` validates inputs and equivalent written bytes outside measurement and compares exact, already-framed scalar tokens rather than complete serializer workloads.
+The lower-level reads avoid reader setup and insignificant-character handling; that is useful specialization, not proof of general serializer acceleration.
+The direct-buffer writer case also uses transactional primitive formatting and is not faster than ordinary scalar writing in this sample; the APIs allow callers to encode directly but do not guarantee that every encoder is cheaper.
+Legacy numeric formatting/rounding behavior is documented separately in the [converter guide](custom-converters.md); these timing/allocation results are for modern .NET 9 only.
+Full reports, distributions, medians, and allocation counts are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\api-final-medium-baseline` and `files\api-final-medium-candidate`.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.

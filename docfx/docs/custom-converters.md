@@ -101,7 +101,9 @@ A clone starts with no reservation, and async writer handoff preserves only adva
 
 ## Stateless scalar primitives
 
-<xref:Nerdbank.Json.JsonPrimitives> provides allocation-free reads and writes for null, booleans, signed and unsigned 64-bit integers, finite doubles, decimals, and exact number tokens.
+<xref:Nerdbank.Json.JsonPrimitives> provides stateless reads and writes for null, booleans, every signed and unsigned integer width from 8 through 64 bits, finite single- and double-precision numbers, decimals, and exact number tokens.
+Scalar readers use `TryRead` overloads selected by the declared output type, matching the MessagePack API model; replaced type-specific method names are removed rather than retained as aliases.
+Scalar writers use the corresponding `TryWrite` overloads, including direct single-precision formatting rather than widening a float to double.
 Its number grammar is shared with the reader rather than maintained as a second parser.
 Primitive readers start exactly at the token; they do not skip whitespace, comments, or a BOM.
 
@@ -118,7 +120,11 @@ Decoded outputs are meaningful only on success.
 Writers leave the destination unchanged when it is too short and report its exact required length.
 Non-finite floating-point input and invalid raw number tokens fail with a required length of zero.
 
-The stateless surface deliberately does not yet include decoded strings, arbitrary raw JSON values, container framing, or dedicated narrow integer and single-precision overloads.
+Floating-point reads follow the target framework's numeric parsing behavior, including legacy rounding limitations.
+Legacy floating-point output uses exponential notation with nine significant digits for single precision and seventeen for double precision instead of the old formatter's lossy defaults; negative zero is preserved.
+The span-based contract does not imply that every legacy runtime formatting helper is allocation-free.
+
+The stateless surface deliberately does not yet include decoded strings, arbitrary raw JSON values, or container framing.
 Use the stateful reader and writer for those operations.
 In particular, strings need a caller-owned decoding destination and an explicit partial-escape/UTF-8 contract before a stateless API can be added safely.
 

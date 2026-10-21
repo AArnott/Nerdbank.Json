@@ -68,6 +68,8 @@ Actual macOS execution is separately pending and must not be reported as complet
 - [x] Align sequence streaming as `DeserializeEnumerableAsync` with `SequenceOptions` and `JsonSequenceFormat.NDJson` / `JsonArray`.
 - [x] Align public converter navigation hooks as `SkipToPropertyValue` / `SkipToIndexValue` and their asynchronous counterparts.
 - [x] Align low-level typed numeric reader methods and scalar writer `Write` / `WriteNull` / `WriteRaw` APIs.
+- [x] Finalize MessagePack-style overloaded scalar `JsonPrimitives.TryRead`/`TryWrite`, including all 8- through 64-bit integer widths and single precision, without retaining replaced named readers.
+- [x] Finalize direct writer `GetSpan`/`Advance` access for one complete trusted raw value, preserving JSON indentation, pending-property state, cancellation of reservations, clones, and async handoff.
 - [x] Integrate context-aware `Skip(SerializationContext)` and raw capture, preserving remaining depth and cancellation through coordinator-only paths without a `SkipValue` alias.
 
 ## Platform
@@ -102,7 +104,48 @@ Actual macOS execution is separately pending and must not be reported as complet
 - [x] Execute full Linux validation in an isolated WSL Linux-native checkout, preserving existing size budgets.
 - [ ] Receive actual macOS validation evidence from the ready script/instructions handoff; no Mac execution is claimed.
 
-## Current Unicode, scratch, and performance checkpoint (source `ef6e8f9`)
+## Current API finalization checkpoint (source `a28b0ef`)
+
+The remaining common scalar-overload and direct writer-buffer API gaps are implemented, rather than held for complete throughput recovery.
+Accepted commits are `31dbb33` (overloaded scalar APIs and caller migration), `7db40f0` (complete-value buffer reservations and compiled converter example), `d2ab8e0` (portable buffer tests), `81f3fbd` (legacy floating precision/signed zero), and `a28b0ef` (focused benchmarks).
+Replaced scalar reader names are removed without obsolete aliases; the eventual PR must retain the authorized breaking-change explanation.
+`GetSpan` reserves without consuming a value; positive `Advance` commits one complete trusted value, and zero cancels.
+Raw fragments, property names, or multiple values per reservation are deliberately not promised: JSON container and pending-property state must remain coherent.
+Remaining stateless string/container operations require JSON-specific decoding/framing contracts, not MessagePack's encoded-length headers; stateful reader/writer and borrowed raw APIs remain available.
+
+| Evidence at `a28b0ef` | Windows x64 | WSL Ubuntu 26.04 Linux x64 |
+|---|---:|---:|
+| Managed tests passed / failed / skipped | 4409 / 0 / 0 | 3405 / 0 / 0 |
+| Native core .NET 9 passed / skipped | 1017 / 2 | 1017 / 2 |
+| Native core .NET 10 passed / skipped | 1017 / 2 | 1017 / 2 |
+| Native failures | 0 | 0 |
+| All four native fixtures / F# self-check | PASS / PASS | PASS / PASS |
+| Broad image bytes / MiB | 6110720 / 5.82763671875 | 6323240 / 6.030311584472656 |
+| Unchanged broad budget, MiB | 5.79 +/- 0.2 | 5.88 +/- 0.2 |
+| Minimal image bytes / MiB (uncalibrated) | 2786816 / 2.65771484375 | 3010480 / 2.8710174560546875 |
+
+Full Release builds and native publishes pass with warnings as errors; both size guards pass without recalibration.
+The native skips remain only unsupported nonzero-lower-bound input-array creation, with managed assertions intact.
+DocFX builds with zero warnings/errors and formatting verification passes.
+Coordinator runtime validation supersedes the workers' permission-blocked test execution; no unexecuted worker checks are counted as passes.
+Full reports are `obj\final-api-windows-a28b0ef\validation.json` and the isolated Linux checkout's `obj/final-api-linux-a28b0ef/validation.json`.
+
+The [benchmark guide](docfx/docs/benchmarking.md) records fresh serial Medium object controls and the new scalar fixtures, including absolute means, errors, medians, allocations, and evidence paths.
+Object allocations remain 200/664/0/0 B for small/wide reads/writes; overlapping timing intervals do not establish a new causal regression or speedup.
+Exact-token primitive Int32/Single reads measured 25.73/47.61 ns versus 44.26/66.09 ns through a reader, all allocation-free on .NET 9; this is specialization, not full-serializer speed restoration.
+Direct-buffer Single writing measured 104.32 ns versus 101.42 ns through normal writing, so no universal fast-writer claim is made.
+
+### Non-blocking follow-ups and limits
+
+| Scenario | Evidence and suspected source | Disposition |
+|---|---|---|
+| Residual contiguous object reads | Warm profiles implicate object population including lookup/dispatch; hashing alone is unproven and its unrolling experiment is rejected. | Keep measuring implementation hypotheses later; do not block preferred API finalization. |
+| Segmented scratch latency | Allocation gains are proven, with number/name cases approximately 13% slower against the repeated policy-only baseline. | Retain documented tradeoff; investigate internal copy/cursor costs without changing lifetime contracts. |
+| Direct scalar writer sample | Transactional primitive formatting uses scratch then copies; reservation accounting adds work. These are plausible sources, not measured causal attribution. | Consider destination-size-specialized formatting after profiling; no new public API is required. |
+| Legacy numeric behavior | Full-precision E8/E16 formatting fixes lossy legacy defaults and preserves signed zero; parsing follows the same target-runtime rounding limitations as JsonReader, including the documented near-halfway Single case. | Correctness cases are tested on net472 and modern .NET; further parser improvements are internal follow-ups, not a rounding-equivalence claim across runtimes. |
+| macOS execution | Script and standalone Copilot handoff are ready, but no Mac evidence has been received. | External validation remains pending; do not claim execution or recalibrate its size budget. |
+
+## HISTORICAL Unicode, scratch, and performance checkpoint (source `ef6e8f9`)
 
 This supersedes the historical checkpoint below for current semantics, test counts, and native sizes.
 Commit `7e2e3cf` implements the user-directed permissive Unicode policy; commit `ef6e8f9` implements caller-owned scratch for split tokens.

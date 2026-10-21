@@ -10,6 +10,7 @@ The low-level writer writes UTF-8 directly to `IBufferWriter<byte>`, which keeps
 Key traits:
 
 * Direct UTF-8 emission.
+* Direct output-buffer reservations for complete trusted raw values through <xref:Nerdbank.Json.JsonWriter.GetSpan(System.Int32)> and <xref:Nerdbank.Json.JsonWriter.Advance(System.Int32)>.
 * Optional pretty-printed output with <xref:Nerdbank.Json.JsonSerializer.WriteIndented>.
 * RFC 8259 escaping for required characters only.
 * Numeric formatting using invariant culture.
@@ -23,9 +24,9 @@ Decoded UTF-8 string spans and sequences, token inspection, memory/array constru
 
 <xref:Nerdbank.Json.RawJson> retains exact JSON bytes with explicit borrowed and owned lifetimes.
 Its automatic converter returns owned storage and writes exactly one validated strict JSON value directly to UTF-8 output.
-<xref:Nerdbank.Json.JsonPrimitives> supplies allocation-free stateless scalar reads and writes with explicit incomplete-input results and atomic destination writes.
+<xref:Nerdbank.Json.JsonPrimitives> supplies overloaded stateless boolean and numeric reads/writes, covering all 8- through 64-bit integer widths, single/double precision, and decimal, with explicit incomplete-input results and atomic destination writes.
 Stateless decoded strings and general raw/container framing are not yet implemented.
-See [custom converters](custom-converters.md) for lifetime, Unicode validation, and partial-block contracts.
+See [custom converters](custom-converters.md) for lifetime, Unicode policy, and partial-block contracts.
 
 ## Built-In Type Coverage
 

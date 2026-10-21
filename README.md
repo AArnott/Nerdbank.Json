@@ -12,6 +12,7 @@ It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`,
 ## Features
 
 * Direct UTF-8 JSON writing to `IBufferWriter<byte>`.
+* Direct writer-buffer reservations for complete trusted JSON values through `GetSpan` / `Advance`, plus overloaded stateless boolean and numeric primitives for all integer widths, single/double precision, and decimal.
 * Borrowed segmented UTF-8 parsing, decoded UTF-8 string views, token inspection, and stateless scalar primitives.
 * Caller-owned scratch for split numeric/property tokens and incremental string decoding, with pooled fallbacks for large tokens rather than fixed token-size limits.
 * `RawJson` values with explicit borrowed/owned lifetimes and automatic owned deserialization.
@@ -205,11 +206,11 @@ Set `JsonSerializer.MultiDimensionalArrayFormat` to `MultiDimensionalArrayFormat
 ## Status
 
 The implemented feature surface is described in the [feature guide](docfx/docs/features.md), with dedicated guides for streaming, unions, schema generation, reference preservation, and MVC integration.
-The public-API audit is complete for this checkpoint, with remaining low-level breadth explicitly deferred; this is not a claim of perfect binary parity with Nerdbank.MessagePack.
+MessagePack-aligned scalar overloads and direct writer-buffer APIs are implemented; JSON-specific contract differences and remaining stateless string/container breadth are explicit, not a claim of perfect binary parity.
 Dictionary keys are limited to supported simple types, collections without construction support are serialization-only, and getter-only scalar or immutable properties require constructor binding to be populated.
 
-Full platform validation of source `7ea67c8` (2026-10-21) passes on Windows and WSL Ubuntu 26.04: **4,129 Windows and 3,191 Linux managed tests**, with zero failures or skips, including all 163 analyzer tests on each OS.
-On each OS, NativeAOT core tests on .NET 9 and 10 total **1,892 passes, zero failures, and four known platform-input skips**; all four native fixtures publish with warnings as errors and execute, the F# self-check passes, and native image guards pass without recalibrating budgets.
+Full platform validation of source `a28b0ef` (2026-10-21) passes on Windows and WSL Ubuntu 26.04: **4,409 Windows and 3,405 Linux managed tests**, with zero failures or skips, including all 163 analyzer tests on each OS.
+On each OS, NativeAOT core tests on .NET 9 and 10 total **2,034 passes, zero failures, and four known platform-input skips**; all four native fixtures publish with warnings as errors and execute, the F# self-check passes, and native image guards pass without recalibrating budgets.
 Only NativeAOT creation of non-zero-lower-bound array inputs skips; managed normalization assertions remain intact.
 The final source also passed DocFX with zero warnings/errors and formatting verification.
 MVC retains strict single-JSON-body validation.
@@ -217,12 +218,12 @@ String tokens enforce JSON lexical grammar rather than Unicode well-formedness: 
 Raw JSON and unescaped UTF-8 views preserve source bytes; UTF-8 string writes escape quotes, backslashes, and controls without validating non-ASCII payloads, while CLR writes escape lone surrogates.
 
 Matched Medium performance evidence, causal fixes, exact native sizes, and artifact locations are recorded in [TODO.md](TODO.md) and the [benchmark guide](docfx/docs/benchmarking.md).
-Original object allocation parity is preserved, but full speed restoration is **not** claimed: final Windows small/wide reads remain about 12%/18% slower than the accepted pre-low-level reader.
+Original object allocation parity is preserved, but full speed restoration is **not** claimed; remaining timing tradeoffs and suspected sources are logged as non-blocking performance follow-ups rather than reasons to defer preferred APIs.
 macOS has **not** been executed; the [platform validation guide](docfx/docs/platform-validation.md) provides the ready-to-run script and standalone Copilot handoff.
 In a dedicated checkout of this branch on the Mac, run `pwsh -NoProfile -File ./tools/Validate-Platform.ps1 -ArtifactDirectory ./obj/platform-macos` and return the complete evidence directory without changing size budgets.
 
 Segmented parsing, owned raw values, UTF-8 string/token APIs, scalar `JsonPrimitives`, and NBJson001/NBJson002/NBJson031/NBJson051 are implemented.
-Stateless decoded strings, raw/container framing, dedicated narrow-number overloads, and writer `GetSpan`/`Advance` remain deliberately outside the implemented contract.
+Stateless decoded strings and general raw/container framing remain outside the implemented primitive contract; use the stateful reader/writer and borrowed raw APIs for these JSON-specific operations.
 Experimental duck typing validates candidates against object contract metadata but remains an experimental selection strategy.
 Async-stream first-value reads cannot safely retain prefetch; use caller-owned pipes.
 See [TODO.md](TODO.md) for final evidence, constraints, and superseded checkpoints.
