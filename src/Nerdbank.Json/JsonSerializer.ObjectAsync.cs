@@ -148,19 +148,33 @@ public partial record JsonSerializer
 
 	private async ValueTask SerializeObjectAsyncCore(PipeWriter writer, object? value, ITypeShape shape, SerializationContext context)
 	{
-		JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
-		await this.ConverterCache.GetOrAddConverter(shape).WriteObjectAsync(asyncWriter, value, context).ConfigureAwait(false);
-		await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
+		try
+		{
+			JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
+			await this.ConverterCache.GetOrAddConverter(shape).WriteObjectAsync(asyncWriter, value, context).ConfigureAwait(false);
+			await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during serialization.", ex);
+		}
 	}
 
 	private async ValueTask<object?> DeserializeObjectAsyncCore(PipeReader reader, ITypeShape shape, SerializationContext context)
 	{
-		using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+		try
 		{
-			CancellationToken = context.CancellationToken,
-		};
-		object? result = await this.ConverterCache.GetOrAddConverter(shape).ReadObjectAsync(asyncReader, context).ConfigureAwait(false);
-		await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
-		return result;
+			using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+			{
+				CancellationToken = context.CancellationToken,
+			};
+			object? result = await this.ConverterCache.GetOrAddConverter(shape).ReadObjectAsync(asyncReader, context).ConfigureAwait(false);
+			await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+			return result;
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during deserialization.", ex);
+		}
 	}
 }

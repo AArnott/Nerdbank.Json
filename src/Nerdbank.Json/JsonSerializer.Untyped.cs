@@ -72,13 +72,20 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(reader);
 		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+		try
 		{
-			CancellationToken = context.CancellationToken,
-		};
-		JsonValue? result = await JsonValueConverter.Instance.ReadAsync(asyncReader, context).ConfigureAwait(false);
-		await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
-		return result;
+			using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+			{
+				CancellationToken = context.CancellationToken,
+			};
+			JsonValue? result = await JsonValueConverter.Instance.ReadAsync(asyncReader, context).ConfigureAwait(false);
+			await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+			return result;
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during deserialization.", ex);
+		}
 	}
 
 	/// <summary>
@@ -116,8 +123,7 @@ public partial record JsonSerializer
 			{
 				WriteIndented = this.WriteIndented,
 			};
-			SerializationContext context = this.CreateSerializationContext(cancellationToken);
-			JsonValueConverter.Instance.Write(ref writer, value, context);
+			this.SerializeJsonValueCore(ref writer, value, cancellationToken);
 			return writer.FlushAndGetString();
 		}
 		finally
@@ -139,8 +145,7 @@ public partial record JsonSerializer
 		{
 			WriteIndented = this.WriteIndented,
 		};
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		JsonValueConverter.Instance.Write(ref jsonWriter, value, context);
+		this.SerializeJsonValueCore(ref jsonWriter, value, cancellationToken);
 		jsonWriter.Flush();
 	}
 
@@ -167,9 +172,16 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(writer);
 		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
-		await JsonValueConverter.Instance.WriteAsync(asyncWriter, value, context).ConfigureAwait(false);
-		await asyncWriter.FlushAsync(cancellationToken).ConfigureAwait(false);
+		try
+		{
+			JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
+			await JsonValueConverter.Instance.WriteAsync(asyncWriter, value, context).ConfigureAwait(false);
+			await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during serialization.", ex);
+		}
 	}
 
 	/// <summary>
@@ -183,8 +195,14 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(stream);
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		await this.SerializeJsonValueAsync(writer, value, cancellationToken).ConfigureAwait(false);
-		await writer.CompleteAsync().ConfigureAwait(false);
+		try
+		{
+			await this.SerializeJsonValueAsync(writer, value, cancellationToken).ConfigureAwait(false);
+		}
+		finally
+		{
+			await writer.CompleteAsync().ConfigureAwait(false);
+		}
 	}
 
 	private JsonValue? DeserializeJsonValue(scoped ReadOnlySpan<byte> utf8Json, CancellationToken cancellationToken)
@@ -196,8 +214,28 @@ public partial record JsonSerializer
 	private JsonValue? DeserializeJsonValueCore(ref JsonReader reader, CancellationToken cancellationToken)
 	{
 		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		JsonValue? value = JsonValueConverter.Instance.Read(ref reader, context);
-		reader.EnsureFullyConsumed();
-		return value;
+		try
+		{
+			JsonValue? value = JsonValueConverter.Instance.Read(ref reader, context);
+			reader.EnsureFullyConsumed();
+			return value;
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during deserialization.", ex);
+		}
+	}
+
+	private void SerializeJsonValueCore(ref JsonWriter writer, JsonValue? value, CancellationToken cancellationToken)
+	{
+		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		try
+		{
+			JsonValueConverter.Instance.Write(ref writer, value, context);
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during serialization.", ex);
+		}
 	}
 }

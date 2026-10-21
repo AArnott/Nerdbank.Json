@@ -16,8 +16,10 @@ namespace Nerdbank.Json;
 /// This type is immutable and thread-safe.
 /// </para>
 /// <para>
-/// Synchronous serialization and deserialization failures are reported as <see cref="JsonSerializationException"/>.
-/// The original exception is available as the inner exception; cancellation and argument validation errors are not wrapped.
+/// Serialization and deserialization operation failures, including asynchronous sequence enumeration, are reported as
+/// <see cref="JsonSerializationException"/>. Existing serialization exceptions retain their instance and error code;
+/// other failures retain their original cause as the inner exception. Argument validation and
+/// <see cref="OperationCanceledException"/> when the operation's cancellation token is canceled are not wrapped.
 /// </para>
 /// <para>
 /// When targeting .NET Standard 2.0 or .NET Framework, some important methods are available only as extension methods,
@@ -206,7 +208,7 @@ public partial record JsonSerializer
 		{
 			this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, context);
 		}
-		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException(ex.Message, ex);
 		}
@@ -233,7 +235,7 @@ public partial record JsonSerializer
 		{
 			this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, context);
 		}
-		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException(ex.Message, ex);
 		}
@@ -291,7 +293,7 @@ public partial record JsonSerializer
 		{
 			return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, context);
 		}
-		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException(ex.Message, ex);
 		}
@@ -318,7 +320,7 @@ public partial record JsonSerializer
 		{
 			return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, context);
 		}
-		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException(ex.Message, ex);
 		}
@@ -395,7 +397,7 @@ public partial record JsonSerializer
 
 			this.ConverterCache.GetOrAddConverter(shape).Write(ref writer, value, context);
 		}
-		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException(ex.Message, ex);
 		}
@@ -414,11 +416,14 @@ public partial record JsonSerializer
 
 			return this.ConverterCache.GetOrAddConverter(shape).Read(ref reader, context);
 		}
-		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException(ex.Message, ex);
 		}
 	}
+
+	private static bool ShouldWrapSerializationException(Exception exception, CancellationToken cancellationToken)
+		=> exception is not JsonSerializationException && (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested);
 
 	private static void EnsureFullyConsumed(ref JsonReader reader)
 	{

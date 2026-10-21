@@ -60,38 +60,12 @@ public partial record JsonSerializer
 	/// <param name="shape">The shape of <typeparamref name="T"/>.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>An asynchronous sequence of elements.</returns>
-	public async IAsyncEnumerable<T?> DeserializeArrayAsync<T>(PipeReader reader, ITypeShape<T> shape, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+	public IAsyncEnumerable<T?> DeserializeArrayAsync<T>(PipeReader reader, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(reader);
 		Requires.NotNull(shape);
 		this.ThrowIfSequenceStreamingUnsupported();
-
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
-		{
-			CancellationToken = context.CancellationToken,
-		};
-		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
-
-		if (!await asyncReader.TryReadNullAsync(context).ConfigureAwait(false))
-		{
-			await asyncReader.ReadStartArrayAsync(context).ConfigureAwait(false);
-			if (!await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
-			{
-				while (true)
-				{
-					yield return await asyncReader.ReadValueAsync(converter, context).ConfigureAwait(false);
-					if (await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
-					{
-						break;
-					}
-
-					await asyncReader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
-				}
-			}
-		}
-
-		await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+		return NormalizeSequenceExceptions(this.DeserializeArrayCoreAsync(reader, shape, cancellationToken), cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken);
 	}
 
 	/// <summary>
@@ -128,48 +102,19 @@ public partial record JsonSerializer
 	/// <param name="options">The framing options. The default is newline-delimited JSON.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>An asynchronous sequence of values.</returns>
-	/// <exception cref="FormatException">Thrown if two values are not separated by a line terminator.</exception>
-	public async IAsyncEnumerable<T?> DeserializeEnumerableAsync<T>(PipeReader reader, ITypeShape<T> shape, SequenceOptions options = default, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+	/// <exception cref="JsonSerializationException">Thrown if deserialization or newline framing fails.</exception>
+	public IAsyncEnumerable<T?> DeserializeEnumerableAsync<T>(PipeReader reader, ITypeShape<T> shape, SequenceOptions options = default, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(reader);
 		Requires.NotNull(shape);
 		ValidateSequenceOptions(options);
 		if (options.Format == JsonSequenceFormat.JsonArray)
 		{
-			await foreach (T? element in this.DeserializeArrayAsync(reader, shape, cancellationToken).ConfigureAwait(false))
-			{
-				yield return element;
-			}
-
-			yield break;
+			return this.DeserializeArrayAsync(reader, shape, cancellationToken);
 		}
 
 		this.ThrowIfSequenceStreamingUnsupported();
-
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
-		{
-			CancellationToken = context.CancellationToken,
-		};
-		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
-
-		bool first = true;
-		while (true)
-		{
-			(int next, bool sawLineTerminator) = await asyncReader.PeekNextByteAcrossLinesAsync().ConfigureAwait(false);
-			if (next == -1)
-			{
-				break;
-			}
-
-			if (!first && !sawLineTerminator)
-			{
-				throw new FormatException("Newline-delimited JSON values must be separated by a line terminator.");
-			}
-
-			first = false;
-			yield return await asyncReader.ReadValueAsync(converter, context).ConfigureAwait(false);
-		}
+		return NormalizeSequenceExceptions(this.DeserializeNewlineDelimitedCoreAsync(reader, shape, cancellationToken), cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken);
 	}
 
 	/// <summary>
@@ -264,31 +209,38 @@ public partial record JsonSerializer
 		Requires.NotNull(shape);
 
 		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
-		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
-
-		JsonWriter syncWriter = asyncWriter.CreateWriter();
-		syncWriter.WriteStartArray();
-		asyncWriter.ReturnWriter(ref syncWriter);
-
-		bool first = true;
-		await foreach (T value in values.WithCancellation(context.CancellationToken).ConfigureAwait(false))
+		try
 		{
-			if (!first)
+			JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
+			JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
+
+			JsonWriter syncWriter = asyncWriter.CreateWriter();
+			syncWriter.WriteStartArray();
+			asyncWriter.ReturnWriter(ref syncWriter);
+
+			bool first = true;
+			await foreach (T value in values.WithCancellation(context.CancellationToken).ConfigureAwait(false))
 			{
-				syncWriter = asyncWriter.CreateWriter();
-				syncWriter.WriteValueSeparator();
-				asyncWriter.ReturnWriter(ref syncWriter);
+				if (!first)
+				{
+					syncWriter = asyncWriter.CreateWriter();
+					syncWriter.WriteValueSeparator();
+					asyncWriter.ReturnWriter(ref syncWriter);
+				}
+
+				first = false;
+				await asyncWriter.WriteValueAsync(converter, value, context).ConfigureAwait(false);
 			}
 
-			first = false;
-			await asyncWriter.WriteValueAsync(converter, value, context).ConfigureAwait(false);
+			syncWriter = asyncWriter.CreateWriter();
+			syncWriter.WriteEndArray();
+			asyncWriter.ReturnWriter(ref syncWriter);
+			await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
 		}
-
-		syncWriter = asyncWriter.CreateWriter();
-		syncWriter.WriteEndArray();
-		asyncWriter.ReturnWriter(ref syncWriter);
-		await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during serialization.", ex);
+		}
 	}
 
 	/// <summary>
@@ -304,8 +256,14 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(stream);
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		await this.SerializeArrayAsync(writer, values, shape, cancellationToken).ConfigureAwait(false);
-		await writer.CompleteAsync().ConfigureAwait(false);
+		try
+		{
+			await this.SerializeArrayAsync(writer, values, shape, cancellationToken).ConfigureAwait(false);
+		}
+		finally
+		{
+			await writer.CompleteAsync().ConfigureAwait(false);
+		}
 	}
 
 	/// <summary>
@@ -331,19 +289,26 @@ public partial record JsonSerializer
 		}
 
 		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		JsonAsyncWriter asyncWriter = new(writer, writeIndented: false);
-		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
-
-		await foreach (T value in values.WithCancellation(context.CancellationToken).ConfigureAwait(false))
+		try
 		{
-			await asyncWriter.WriteValueAsync(converter, value, context).ConfigureAwait(false);
-			JsonWriter syncWriter = asyncWriter.CreateWriter();
-			syncWriter.WriteRaw("\n");
-			asyncWriter.ReturnWriter(ref syncWriter);
-			await asyncWriter.FlushIfAppropriateAsync(context).ConfigureAwait(false);
-		}
+			JsonAsyncWriter asyncWriter = new(writer, writeIndented: false);
+			JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
 
-		await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
+			await foreach (T value in values.WithCancellation(context.CancellationToken).ConfigureAwait(false))
+			{
+				await asyncWriter.WriteValueAsync(converter, value, context).ConfigureAwait(false);
+				JsonWriter syncWriter = asyncWriter.CreateWriter();
+				syncWriter.WriteRaw("\n");
+				asyncWriter.ReturnWriter(ref syncWriter);
+				await asyncWriter.FlushIfAppropriateAsync(context).ConfigureAwait(false);
+			}
+
+			await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during serialization.", ex);
+		}
 	}
 
 	/// <summary>
@@ -371,7 +336,71 @@ public partial record JsonSerializer
 	}
 
 #pragma warning disable SA1202 // Keep the private core enumerator adjacent to its public entry points.
-	private async IAsyncEnumerable<TElement?> DeserializePathEnumerableCoreAsync<TElement>(PipeReader reader, JsonPath path, JsonConverter?[]? converters, ITypeShape<TElement> elementShape, MissingPathBehavior missingBehavior, [EnumeratorCancellation] CancellationToken cancellationToken, bool nullIsMissing = false)
+	private async IAsyncEnumerable<T?> DeserializeArrayCoreAsync<T>(PipeReader reader, ITypeShape<T> shape, [EnumeratorCancellation] CancellationToken cancellationToken)
+	{
+		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+		{
+			CancellationToken = context.CancellationToken,
+		};
+		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
+
+		if (!await asyncReader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			await asyncReader.ReadStartArrayAsync(context).ConfigureAwait(false);
+			if (!await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+			{
+				while (true)
+				{
+					yield return await asyncReader.ReadValueAsync(converter, context).ConfigureAwait(false);
+					if (await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+					{
+						break;
+					}
+
+					await asyncReader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+				}
+			}
+		}
+
+		await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+	}
+
+	private async IAsyncEnumerable<T?> DeserializeNewlineDelimitedCoreAsync<T>(PipeReader reader, ITypeShape<T> shape, [EnumeratorCancellation] CancellationToken cancellationToken)
+	{
+		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+		{
+			CancellationToken = context.CancellationToken,
+		};
+		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
+
+		bool first = true;
+		while (true)
+		{
+			(int next, bool sawLineTerminator) = await asyncReader.PeekNextByteAcrossLinesAsync().ConfigureAwait(false);
+			if (next == -1)
+			{
+				break;
+			}
+
+			if (!first && !sawLineTerminator)
+			{
+				throw new FormatException("Newline-delimited JSON values must be separated by a line terminator.");
+			}
+
+			first = false;
+			yield return await asyncReader.ReadValueAsync(converter, context).ConfigureAwait(false);
+		}
+	}
+
+	private IAsyncEnumerable<TElement?> DeserializePathEnumerableCoreAsync<TElement>(PipeReader reader, JsonPath path, JsonConverter?[]? converters, ITypeShape<TElement> elementShape, MissingPathBehavior missingBehavior, CancellationToken cancellationToken, bool nullIsMissing = false)
+	{
+		this.ThrowIfSequenceStreamingUnsupported();
+		return NormalizeSequenceExceptions(this.DeserializePathEnumerableIteratorAsync(reader, path, converters, elementShape, missingBehavior, cancellationToken, nullIsMissing), cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken);
+	}
+
+	private async IAsyncEnumerable<TElement?> DeserializePathEnumerableIteratorAsync<TElement>(PipeReader reader, JsonPath path, JsonConverter?[]? converters, ITypeShape<TElement> elementShape, MissingPathBehavior missingBehavior, [EnumeratorCancellation] CancellationToken cancellationToken, bool nullIsMissing)
 	{
 		this.ThrowIfSequenceStreamingUnsupported();
 
@@ -439,6 +468,44 @@ public partial record JsonSerializer
 			if (!leaveOpen)
 			{
 				await reader.CompleteAsync().ConfigureAwait(false);
+			}
+		}
+	}
+
+	private static async IAsyncEnumerable<T?> NormalizeSequenceExceptions<T>(IAsyncEnumerable<T?> sequence, CancellationToken operationCancellationToken, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+	{
+		IAsyncEnumerator<T?> enumerator = sequence.GetAsyncEnumerator(cancellationToken);
+		try
+		{
+			while (true)
+			{
+				T? value;
+				try
+				{
+					if (!await enumerator.MoveNextAsync().ConfigureAwait(false))
+					{
+						break;
+					}
+
+					value = enumerator.Current;
+				}
+				catch (Exception ex) when (ShouldWrapSerializationException(ex, operationCancellationToken) && ShouldWrapSerializationException(ex, cancellationToken))
+				{
+					throw new JsonSerializationException("An error occurred during deserialization.", ex);
+				}
+
+				yield return value;
+			}
+		}
+		finally
+		{
+			try
+			{
+				await enumerator.DisposeAsync().ConfigureAwait(false);
+			}
+			catch (Exception ex) when (ShouldWrapSerializationException(ex, operationCancellationToken) && ShouldWrapSerializationException(ex, cancellationToken))
+			{
+				throw new JsonSerializationException("An error occurred during deserialization.", ex);
 			}
 		}
 	}

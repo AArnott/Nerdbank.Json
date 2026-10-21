@@ -102,7 +102,8 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 		ValueTask<MutableModel?> task = this.Serializer.DeserializeAsync(pipe.Reader, Shape<MutableModel, MutableModel>());
 		await WriteAsync(pipe.Writer, """{"a":1,"a":2}""");
 		await pipe.Writer.CompleteAsync();
-		await Assert.ThrowsAsync<JsonSerializationException>(async () => await task);
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () => await task);
+		Assert.Equal(JsonSerializationException.ErrorCode.DoublePropertyAssignment, exception.Code);
 	}
 
 	[Test]
@@ -112,7 +113,8 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 		ValueTask<CtorModel?> task = this.Serializer.DeserializeAsync(pipe.Reader, Shape<CtorModel, CtorModel>());
 		await WriteAsync(pipe.Writer, """{"a":1}""");
 		await pipe.Writer.CompleteAsync();
-		await Assert.ThrowsAsync<FormatException>(async () => await task);
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () => await task);
+		Assert.Equal(JsonSerializationException.ErrorCode.MissingRequiredProperty, exception.Code);
 	}
 
 	[Test]

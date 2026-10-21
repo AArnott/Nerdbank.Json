@@ -103,7 +103,8 @@ public partial class JsonObjectAsyncTests
 		cancellation.Cancel();
 		using MemoryStream stream = new(Encoding.UTF8.GetBytes("\"value\" trailing"));
 		await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await serializer.DeserializeObjectAsync(stream, shape, cancellation.Token));
-		await Assert.ThrowsAsync<FormatException>(async () => await serializer.DeserializeObjectAsync(stream, shape));
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () => await serializer.DeserializeObjectAsync(stream, shape));
+		Assert.IsType<FormatException>(exception.InnerException);
 		Assert.True(stream.CanRead);
 	}
 

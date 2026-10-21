@@ -69,8 +69,9 @@ public partial class JsonAsyncIOTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"name":"x","age":1,"values":[]} garbage""");
 		using ChunkedStream stream = new(utf8, chunkSize: 3);
-		await Assert.ThrowsAsync<FormatException>(async () =>
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
 			await this.Serializer.DeserializeAsync(stream, Shape<Record, Record>()));
+		Assert.IsType<FormatException>(exception.InnerException);
 	}
 
 	[Test]

@@ -114,7 +114,7 @@ public partial record JsonSerializer
 	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>A task whose result is the deserialized value.</returns>
-	/// <exception cref="FormatException">Thrown if unexpected trailing data follows the value.</exception>
+	/// <exception cref="JsonSerializationException">Thrown if deserialization fails.</exception>
 	public ValueTask<T?> DeserializeAsync<T>(PipeReader reader, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(reader);
@@ -136,7 +136,7 @@ public partial record JsonSerializer
 	/// </param>
 	/// <returns>A task whose result is the deserialized value.</returns>
 	/// <exception cref="ArgumentException">Thrown if <paramref name="startingContext"/> belongs to an operation already in progress.</exception>
-	/// <exception cref="FormatException">Thrown if unexpected trailing data follows the value.</exception>
+	/// <exception cref="JsonSerializationException">Thrown if deserialization fails.</exception>
 	/// <remarks>
 	/// Use this overload to supply per-call state to converters via <see cref="SerializationContext.this[object]"/>.
 	/// </remarks>
@@ -273,22 +273,36 @@ public partial record JsonSerializer
 	private async ValueTask SerializeAsyncCore<T>(PipeWriter writer, T? value, ITypeShape<T> shape, SerializationContext startingContext, CancellationToken cancellationToken)
 	{
 		SerializationContext context = startingContext.Start(this, this.ConverterCache, cancellationToken) with { TypeShapeProvider = shape.Provider };
-		JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
-		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
-		await converter.WriteAsync(asyncWriter, value, context).ConfigureAwait(false);
-		await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
+		try
+		{
+			JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
+			JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
+			await converter.WriteAsync(asyncWriter, value, context).ConfigureAwait(false);
+			await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during serialization.", ex);
+		}
 	}
 
 	private async ValueTask<T?> DeserializeAsyncCore<T>(PipeReader reader, ITypeShape<T> shape, SerializationContext startingContext, CancellationToken cancellationToken)
 	{
 		SerializationContext context = startingContext.Start(this, this.ConverterCache, cancellationToken) with { TypeShapeProvider = shape.Provider };
-		using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+		try
 		{
-			CancellationToken = context.CancellationToken,
-		};
-		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
-		T? result = await converter.ReadAsync(asyncReader, context).ConfigureAwait(false);
-		await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
-		return result;
+			using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+			{
+				CancellationToken = context.CancellationToken,
+			};
+			JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
+			T? result = await converter.ReadAsync(asyncReader, context).ConfigureAwait(false);
+			await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+			return result;
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during deserialization.", ex);
+		}
 	}
 }

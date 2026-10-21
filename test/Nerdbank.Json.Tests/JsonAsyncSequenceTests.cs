@@ -234,8 +234,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("[1,2] garbage");
 		using ChunkedStream stream = new(utf8, 3);
-		await Assert.ThrowsAsync<FormatException>(async () =>
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
 			await CollectAsync(this.Serializer.DeserializeArrayAsync(stream, Shape<int, Witness>())));
+		Assert.IsType<FormatException>(exception.InnerException);
 	}
 
 	[Test]
@@ -243,8 +244,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""[{"id":1,"name":"a"},{"id":"oops","name":"b"}]""");
 		using ChunkedStream stream = new(utf8, 4);
-		await Assert.ThrowsAsync<FormatException>(async () =>
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
 			await CollectAsync(this.Serializer.DeserializeArrayAsync(stream, Shape<Item, Item>())));
+		Assert.IsType<FormatException>(exception.InnerException);
 	}
 
 	[Test]
@@ -334,8 +336,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("1 2\n");
 		using ChunkedStream stream = new(utf8, 1);
-		await Assert.ThrowsAsync<FormatException>(async () =>
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
 			await CollectAsync(this.Serializer.DeserializeEnumerableAsync(stream, Shape<int, Witness>())));
+		Assert.IsType<FormatException>(exception.InnerException);
 	}
 
 	[Test]
@@ -382,8 +385,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"items":42}""");
 		using ChunkedStream stream = new(utf8, 3);
-		await Assert.ThrowsAsync<FormatException>(async () =>
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
 			await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>())));
+		Assert.IsType<FormatException>(exception.InnerException);
 	}
 
 	[Test]
@@ -455,8 +459,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 		// A pre-parsed (wire) path cannot traverse a union envelope; it needs converter metadata.
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"pet":["Cat",{"toys":[1]}]}""");
 		using ChunkedStream stream = new(utf8, 4);
-		await Assert.ThrowsAsync<NotSupportedException>(async () =>
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
 			await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("pet").Member("toys"), Shape<int, Witness>())));
+		Assert.IsType<NotSupportedException>(exception.InnerException);
 	}
 
 	[Test]

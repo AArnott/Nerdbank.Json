@@ -758,7 +758,10 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 			if (missingRequiredParameters is not null)
 			{
-				throw new FormatException($"Missing required constructor parameters: {string.Join(", ", missingRequiredParameters)}.");
+				throw new JsonSerializationException($"Missing required constructor parameters: {string.Join(", ", missingRequiredParameters)}.")
+				{
+					Code = JsonSerializationException.ErrorCode.MissingRequiredProperty,
+				};
 			}
 		}
 	}
