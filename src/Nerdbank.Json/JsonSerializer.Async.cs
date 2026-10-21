@@ -107,7 +107,7 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
-	/// Deserializes a value from UTF-8 JSON read incrementally from a <see cref="PipeReader"/>.
+	/// Deserializes the first value from UTF-8 JSON read incrementally from a <see cref="PipeReader"/>.
 	/// </summary>
 	/// <typeparam name="T">The type to deserialize.</typeparam>
 	/// <param name="reader">The pipe to read from. It is advanced but never completed by this method.</param>
@@ -115,6 +115,7 @@ public partial record JsonSerializer
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>A task whose result is the deserialized value.</returns>
 	/// <exception cref="JsonSerializationException">Thrown if deserialization fails.</exception>
+	/// <remarks>Unread bytes remain in the pipe. A scalar requires a token delimiter or end of input before it can be returned.</remarks>
 	public ValueTask<T?> DeserializeAsync<T>(PipeReader reader, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(reader);
@@ -161,11 +162,13 @@ public partial record JsonSerializer
 	public async ValueTask<T?> DeserializeAsync<T>(Stream stream, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(stream);
+		Requires.NotNull(shape);
 
 		PipeReader reader = PipeReader.Create(stream, StreamPipeReaderOptions);
 		try
 		{
-			return await this.DeserializeAsync(reader, shape, cancellationToken).ConfigureAwait(false);
+			CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken;
+			return await this.DeserializeAsyncCore(reader, shape, this.StartingContext, effectiveCancellationToken, requireFullyConsumed: true).ConfigureAwait(false);
 		}
 		finally
 		{
@@ -262,7 +265,7 @@ public partial record JsonSerializer
 		PipeReader reader = PipeReader.Create(stream, StreamPipeReaderOptions);
 		try
 		{
-			return await this.DeserializeAsync(reader, shape, startingContext).ConfigureAwait(false);
+			return await this.DeserializeAsyncCore(reader, shape, startingContext, startingContext.CancellationToken, requireFullyConsumed: true).ConfigureAwait(false);
 		}
 		finally
 		{
@@ -286,7 +289,7 @@ public partial record JsonSerializer
 		}
 	}
 
-	private async ValueTask<T?> DeserializeAsyncCore<T>(PipeReader reader, ITypeShape<T> shape, SerializationContext startingContext, CancellationToken cancellationToken)
+	private async ValueTask<T?> DeserializeAsyncCore<T>(PipeReader reader, ITypeShape<T> shape, SerializationContext startingContext, CancellationToken cancellationToken, bool requireFullyConsumed = false)
 	{
 		SerializationContext context = startingContext.Start(this, this.ConverterCache, cancellationToken) with { TypeShapeProvider = shape.Provider };
 		try
@@ -297,7 +300,11 @@ public partial record JsonSerializer
 			};
 			JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
 			T? result = await converter.ReadAsync(asyncReader, context).ConfigureAwait(false);
-			await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+			if (requireFullyConsumed)
+			{
+				await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+			}
+
 			return result;
 		}
 		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))

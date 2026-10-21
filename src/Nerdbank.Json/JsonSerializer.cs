@@ -22,6 +22,12 @@ namespace Nerdbank.Json;
 /// <see cref="OperationCanceledException"/> when the operation's cancellation token is canceled are not wrapped.
 /// </para>
 /// <para>
+/// UTF-8 buffers and caller-owned readers deserialize the first value, leaving subsequent values unread by the parser.
+/// String overloads validate a complete JSON document. Asynchronous stream overloads also validate a complete document:
+/// their temporary pipe may read ahead, so returning early could discard unread bytes when that pipe is completed.
+/// Use a caller-owned <see cref="System.IO.Pipelines.PipeReader"/> to preserve trailing data across asynchronous operations.
+/// </para>
+/// <para>
 /// When targeting .NET Standard 2.0 or .NET Framework, some important methods are available only as extension methods,
 /// so make sure to have a <c><![CDATA[using Nerdbank.Json;]]></c> directive in your code file to see these.
 /// </para>

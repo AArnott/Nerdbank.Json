@@ -165,13 +165,14 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
-	/// Deserializes UTF-8 JSON from a stream.
+	/// Deserializes the first UTF-8 JSON value from a stream.
 	/// </summary>
 	/// <typeparam name="T">The type to deserialize.</typeparam>
 	/// <param name="stream">The JSON stream.</param>
 	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>The deserialized value.</returns>
+	/// <remarks>The stream is buffered to its end and left open. Use a caller-owned pipe for consecutive incremental reads.</remarks>
 	public T? Deserialize<T>(Stream stream, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(stream);
@@ -179,9 +180,7 @@ public partial record JsonSerializer
 		using MemoryStream buffer = new();
 		stream.CopyTo(buffer);
 		JsonReader reader = new(buffer.GetBuffer().AsSpan(0, checked((int)buffer.Length)), this.AllowTrailingCommas, this.ReadCommentHandling);
-		T? value = this.Deserialize(ref reader, shape, cancellationToken);
-		EnsureFullyConsumed(ref reader);
-		return value;
+		return this.Deserialize(ref reader, shape, cancellationToken);
 	}
 
 	/// <inheritdoc cref="DeserializeObject(ref JsonReader, ITypeShape, CancellationToken)"/>
@@ -195,39 +194,31 @@ public partial record JsonSerializer
 		using MemoryStream buffer = new();
 		stream.CopyTo(buffer);
 		JsonReader reader = new(buffer.GetBuffer().AsSpan(0, checked((int)buffer.Length)), this.AllowTrailingCommas, this.ReadCommentHandling);
-		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
-		EnsureFullyConsumed(ref reader);
-		return value;
+		return this.DeserializeObject(ref reader, shape, cancellationToken);
 	}
 
 	/// <inheritdoc cref="Deserialize{T}(in ReadOnlySequence{byte}, ITypeShape{T}, CancellationToken)"/>
 	public T? Deserialize<T>(ReadOnlyMemory<byte> buffer, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		JsonReader reader = new(buffer.Span, this.AllowTrailingCommas, this.ReadCommentHandling);
-		T? value = this.Deserialize(ref reader, shape, cancellationToken);
-		EnsureFullyConsumed(ref reader);
-		return value;
+		return this.Deserialize(ref reader, shape, cancellationToken);
 	}
 
 	/// <inheritdoc cref="DeserializeObject(ref JsonReader, ITypeShape, CancellationToken)"/>
 	public object? DeserializeObject(ReadOnlyMemory<byte> buffer, ITypeShape shape, CancellationToken cancellationToken = default)
 	{
 		JsonReader reader = new(buffer.Span, this.AllowTrailingCommas, this.ReadCommentHandling);
-		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
-		EnsureFullyConsumed(ref reader);
-		return value;
+		return this.DeserializeObject(ref reader, shape, cancellationToken);
 	}
 
 	/// <inheritdoc cref="Deserialize{T}(ref JsonReader, ITypeShape{T}, CancellationToken)"/>
-	/// <param name="buffer">The msgpack to deserialize from.</param>
+	/// <param name="buffer">The UTF-8 JSON to deserialize from. Only the first value is deserialized.</param>
 #pragma warning disable CS1573 // Parameter has no matching param tag in the XML comment (but other parameters do)
 	public T? Deserialize<T>(scoped in ReadOnlySequence<byte> buffer, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 #pragma warning restore CS1573 // Parameter has no matching param tag in the XML comment (but other parameters do)
 	{
 		JsonReader reader = new(buffer, this.AllowTrailingCommas, this.ReadCommentHandling);
-		T? value = this.Deserialize(ref reader, shape, cancellationToken);
-		EnsureFullyConsumed(ref reader);
-		return value;
+		return this.Deserialize(ref reader, shape, cancellationToken);
 	}
 
 	/// <inheritdoc cref="DeserializeObject(ref JsonReader, ITypeShape, CancellationToken)"/>
@@ -237,8 +228,6 @@ public partial record JsonSerializer
 #pragma warning restore CS1573 // Parameter has no matching param tag in the XML comment (but other parameters do)
 	{
 		JsonReader reader = new(buffer, this.AllowTrailingCommas, this.ReadCommentHandling);
-		object? value = this.DeserializeObject(ref reader, shape, cancellationToken);
-		EnsureFullyConsumed(ref reader);
-		return value;
+		return this.DeserializeObject(ref reader, shape, cancellationToken);
 	}
 }

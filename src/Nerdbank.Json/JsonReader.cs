@@ -107,6 +107,7 @@ public ref struct JsonReader
 		if (this.utf8Json.Length - this.position >= 4 && this.utf8Json.Slice(this.position, 4).SequenceEqual("null"u8))
 		{
 			this.position += 4;
+			this.ValidateScalarTerminator();
 			return true;
 		}
 
@@ -123,12 +124,14 @@ public ref struct JsonReader
 		if (this.utf8Json.Length - this.position >= 4 && this.utf8Json.Slice(this.position, 4).SequenceEqual("true"u8))
 		{
 			this.position += 4;
+			this.ValidateScalarTerminator();
 			return true;
 		}
 
 		if (this.utf8Json.Length - this.position >= 5 && this.utf8Json.Slice(this.position, 5).SequenceEqual("false"u8))
 		{
 			this.position += 5;
+			this.ValidateScalarTerminator();
 			return false;
 		}
 
@@ -650,12 +653,16 @@ public ref struct JsonReader
 			this.ReadDigitsUtf8(requireAtLeastOne: true);
 		}
 
-		if (this.position < this.utf8Json.Length && this.utf8Json[this.position] is not ((byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n' or (byte)',' or (byte)']' or (byte)'}' or (byte)'/'))
-		{
-			throw new FormatException("Invalid character after a JSON number.");
-		}
-
+		this.ValidateScalarTerminator();
 		return this.utf8Json[start..this.position];
+	}
+
+	private readonly void ValidateScalarTerminator()
+	{
+		if (this.position < this.utf8Json.Length && !JsonStructureScanner.IsScalarTerminator(this.utf8Json[this.position]))
+		{
+			throw new FormatException("Invalid character after a JSON scalar value.");
+		}
 	}
 
 	private void SkipWhiteSpaceUtf8()

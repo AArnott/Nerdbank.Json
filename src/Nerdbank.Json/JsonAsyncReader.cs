@@ -911,14 +911,14 @@ public sealed class JsonAsyncReader : IDisposable
 		}
 
 		ReadResult result = await this.pipeReader.ReadAsync(this.CancellationToken).ConfigureAwait(false);
+		this.buffer = result.Buffer;
+		this.isCompleted = result.IsCompleted;
+		this.hasBufferedRead = true;
 		if (result.IsCanceled)
 		{
 			throw new OperationCanceledException(this.CancellationToken);
 		}
 
-		this.buffer = result.Buffer;
-		this.isCompleted = result.IsCompleted;
-		this.hasBufferedRead = true;
 		return true;
 	}
 

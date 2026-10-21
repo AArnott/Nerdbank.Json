@@ -116,7 +116,7 @@ public partial record JsonSerializer
 		PipeReader reader = PipeReader.Create(stream, StreamPipeReaderOptions);
 		try
 		{
-			return await this.DeserializeObjectAsync(reader, shape, cancellationToken).ConfigureAwait(false);
+			return await this.DeserializeObjectAsyncCore(reader, shape, this.CreateSerializationContext(shape.Provider, cancellationToken), requireFullyConsumed: true).ConfigureAwait(false);
 		}
 		finally
 		{
@@ -138,7 +138,7 @@ public partial record JsonSerializer
 		PipeReader reader = PipeReader.Create(stream, StreamPipeReaderOptions);
 		try
 		{
-			return await this.DeserializeObjectAsync(reader, shape, startingContext).ConfigureAwait(false);
+			return await this.DeserializeObjectAsyncCore(reader, shape, this.CreateSerializationContext(startingContext) with { TypeShapeProvider = shape.Provider }, requireFullyConsumed: true).ConfigureAwait(false);
 		}
 		finally
 		{
@@ -160,7 +160,7 @@ public partial record JsonSerializer
 		}
 	}
 
-	private async ValueTask<object?> DeserializeObjectAsyncCore(PipeReader reader, ITypeShape shape, SerializationContext context)
+	private async ValueTask<object?> DeserializeObjectAsyncCore(PipeReader reader, ITypeShape shape, SerializationContext context, bool requireFullyConsumed = false)
 	{
 		try
 		{
@@ -169,7 +169,11 @@ public partial record JsonSerializer
 				CancellationToken = context.CancellationToken,
 			};
 			object? result = await this.ConverterCache.GetOrAddConverter(shape).ReadObjectAsync(asyncReader, context).ConfigureAwait(false);
-			await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+			if (requireFullyConsumed)
+			{
+				await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+			}
+
 			return result;
 		}
 		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))

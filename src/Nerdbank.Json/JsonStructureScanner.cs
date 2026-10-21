@@ -266,7 +266,10 @@ reprocess:
 		}
 	}
 
-	private static bool IsScalarTerminator(byte b)
+	/// <summary>Determines whether a byte delimits a scalar JSON token.</summary>
+	/// <param name="b">The byte after the scalar.</param>
+	/// <returns>Whether the byte is whitespace or a JSON structural delimiter.</returns>
+	internal static bool IsScalarTerminator(byte b)
 		=> b is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n'
 			or (byte)',' or (byte)':' or (byte)'{' or (byte)'}' or (byte)'[' or (byte)']'
 			or (byte)'"' or (byte)'/';

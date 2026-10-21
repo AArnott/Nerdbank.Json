@@ -22,11 +22,12 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(json);
 		byte[] utf8Json = Encoding.UTF8.GetBytes(json);
-		return this.DeserializeJsonValue(utf8Json.AsSpan(), cancellationToken);
+		JsonReader reader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
+		return this.DeserializeJsonValueCore(ref reader, cancellationToken, requireFullyConsumed: true);
 	}
 
 	/// <summary>
-	/// Deserializes UTF-8 JSON into the native <see cref="JsonValue"/> document object model.
+	/// Deserializes the first UTF-8 JSON value into the native <see cref="JsonValue"/> document object model.
 	/// </summary>
 	/// <param name="utf8Json">The UTF-8 JSON bytes.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
@@ -35,7 +36,7 @@ public partial record JsonSerializer
 		=> this.DeserializeJsonValue(utf8Json.Span, cancellationToken);
 
 	/// <summary>
-	/// Deserializes UTF-8 JSON, possibly spanning multiple segments, into the native <see cref="JsonValue"/> document
+	/// Deserializes the first UTF-8 JSON value, possibly spanning multiple segments, into the native <see cref="JsonValue"/> document
 	/// object model.
 	/// </summary>
 	/// <param name="utf8Json">The UTF-8 JSON bytes, possibly spanning multiple segments.</param>
@@ -48,11 +49,12 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
-	/// Deserializes UTF-8 JSON from a stream into the native <see cref="JsonValue"/> document object model.
+	/// Deserializes the first UTF-8 JSON value from a stream into the native <see cref="JsonValue"/> document object model.
 	/// </summary>
 	/// <param name="stream">The stream. It is read but not disposed by this method.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>The parsed value.</returns>
+	/// <remarks>The stream is buffered to its end and left open.</remarks>
 	public JsonValue? DeserializeJsonValue(Stream stream, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(stream);
@@ -62,30 +64,17 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
-	/// Deserializes UTF-8 JSON from a <see cref="PipeReader"/> into the native <see cref="JsonValue"/> document object
+	/// Deserializes the first UTF-8 JSON value from a <see cref="PipeReader"/> into the native <see cref="JsonValue"/> document object
 	/// model, reading incrementally without buffering the whole document.
 	/// </summary>
 	/// <param name="reader">The pipe. It is advanced but not completed by this method.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>The parsed value.</returns>
-	public async ValueTask<JsonValue?> DeserializeJsonValueAsync(PipeReader reader, CancellationToken cancellationToken = default)
+	/// <remarks>Unread bytes remain in the pipe for the caller.</remarks>
+	public ValueTask<JsonValue?> DeserializeJsonValueAsync(PipeReader reader, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(reader);
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		try
-		{
-			using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
-			{
-				CancellationToken = context.CancellationToken,
-			};
-			JsonValue? result = await JsonValueConverter.Instance.ReadAsync(asyncReader, context).ConfigureAwait(false);
-			await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
-			return result;
-		}
-		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
-		{
-			throw new JsonSerializationException("An error occurred during deserialization.", ex);
-		}
+		return this.DeserializeJsonValueAsyncCore(reader, cancellationToken);
 	}
 
 	/// <summary>
@@ -100,7 +89,7 @@ public partial record JsonSerializer
 		PipeReader reader = PipeReader.Create(stream, StreamPipeReaderOptions);
 		try
 		{
-			return await this.DeserializeJsonValueAsync(reader, cancellationToken).ConfigureAwait(false);
+			return await this.DeserializeJsonValueAsyncCore(reader, cancellationToken, requireFullyConsumed: true).ConfigureAwait(false);
 		}
 		finally
 		{
@@ -211,14 +200,41 @@ public partial record JsonSerializer
 		return this.DeserializeJsonValueCore(ref reader, cancellationToken);
 	}
 
-	private JsonValue? DeserializeJsonValueCore(ref JsonReader reader, CancellationToken cancellationToken)
+	private JsonValue? DeserializeJsonValueCore(ref JsonReader reader, CancellationToken cancellationToken, bool requireFullyConsumed = false)
 	{
 		SerializationContext context = this.CreateSerializationContext(cancellationToken);
 		try
 		{
 			JsonValue? value = JsonValueConverter.Instance.Read(ref reader, context);
-			reader.EnsureFullyConsumed();
+			if (requireFullyConsumed)
+			{
+				reader.EnsureFullyConsumed();
+			}
+
 			return value;
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during deserialization.", ex);
+		}
+	}
+
+	private async ValueTask<JsonValue?> DeserializeJsonValueAsyncCore(PipeReader reader, CancellationToken cancellationToken, bool requireFullyConsumed = false)
+	{
+		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		try
+		{
+			using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+			{
+				CancellationToken = context.CancellationToken,
+			};
+			JsonValue? result = await JsonValueConverter.Instance.ReadAsync(asyncReader, context).ConfigureAwait(false);
+			if (requireFullyConsumed)
+			{
+				await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+			}
+
+			return result;
 		}
 		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
