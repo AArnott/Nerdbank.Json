@@ -3,7 +3,7 @@
 Use `tools/Validate-Platform.ps1` from this branch to collect platform evidence without editing code or recalibrating baselines.
 It runs serial Release builds, core/MVC/analyzer managed tests for every declared framework (including .NET Framework on Windows), the F# round-trip self-check, eligible NativeAOT test variants discovered through the existing traversal, and all four native fixtures.
 Benchmarks and CPU traces are opt-in and must wait until other performance measurements have finished.
-Full Windows and WSL Ubuntu 26.04 runs against source `7ea67c8` pass; actual macOS execution remains pending.
+Full Windows and WSL Ubuntu 26.04 runs against source `ef6e8f9` pass, including the permissive Unicode and split-token scratch changes; actual macOS execution remains pending.
 The script's existence alone is not evidence for any other host or revision.
 
 ## Requirements

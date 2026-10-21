@@ -82,9 +82,49 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 - [x] Execute full Linux validation in an isolated WSL Linux-native checkout, preserving existing size budgets.
 - [ ] Receive actual macOS validation evidence from the ready script/instructions handoff; no Mac execution is claimed.
 
-## FINAL documentation/evidence checkpoint (2026-10-21, source `7ea67c8`)
+## Current Unicode, scratch, and performance checkpoint (source `ef6e8f9`)
 
-**This is the current authoritative checkpoint.**
+This supersedes the historical checkpoint below for current semantics, test counts, and native sizes.
+Commit `7e2e3cf` implements the user-directed permissive Unicode policy; commit `ef6e8f9` implements caller-owned scratch for split tokens.
+JSON lexical grammar, framing, depth/cancellation, raw ownership, and exact-shape cache semantics remain intact.
+No original-speed-restoration claim is made.
+
+- [x] Remove Unicode prevalidation while preserving raw bytes and replacement-based CLR decoding.
+- [x] Audit split-token consumers: typed numbers, object property lookup, targeted property matching, and segmented strings now use borrowed/caller-owned/pooled storage as appropriate.
+- [x] Cover long tokens, pool fallback, escape/decoder boundaries, failures, navigation, and allocation behavior.
+- [x] Measure serial Medium policy-only/scratch/repeated-baseline workloads; retain allocation gains with documented mixed timing tradeoffs.
+- [x] Profile warmed contiguous object reads and test one narrow property-hash hypothesis using Medium A/B/A; reject the inconclusive candidate.
+- [x] Validate the committed source with full Windows and Linux managed/native matrices, all four native fixtures, F# self-checks, and unchanged native size budgets.
+
+The [benchmark report](docfx/docs/benchmarking.md) contains exact scratch allocations, timing/error tables, the rejected experiment, and evidence paths.
+Split numbers/property-name allocations fall from 1384/2024 B to 104/768 B; string scenarios fall from 1496/3584 B to 1024 B.
+Compared with the repeated baseline, segmented number/property-name timings are approximately 13% slower and unescaped strings approximately 7% slower; no blanket throughput win is claimed.
+The latest remaining hotspot is object population/property lookup/dispatch, not the removed Unicode prepass.
+The four-byte hash-unrolling candidate did not demonstrate a repeatable worthwhile win and is preserved only on local branch `perf/rejected-property-hash-unroll` (`8ac0e83`), not merged.
+Candidate correctness execution was permission-blocked, so no candidate test pass is claimed.
+Residual contiguous read cost and actual macOS execution remain open as tracked above.
+
+| Evidence at `ef6e8f9` | Windows x64 | WSL Ubuntu 26.04 Linux x64 |
+|---|---:|---:|
+| Managed tests passed / failed / skipped | 4232 / 0 / 0 | 3272 / 0 / 0 |
+| Native core .NET 9 passed / skipped | 973 / 2 | 973 / 2 |
+| Native core .NET 10 passed / skipped | 973 / 2 | 973 / 2 |
+| Native failures | 0 | 0 |
+| All four native fixtures / F# self-check | PASS / PASS | PASS / PASS |
+| Broad image bytes / MiB | 6113792 / 5.83056640625 | 6327336 / 6.034217834472656 |
+| Unchanged broad budget, MiB | 5.79 +/- 0.2 | 5.88 +/- 0.2 |
+| Minimal image bytes / MiB (uncalibrated) | 2787840 / 2.65869140625 | 3010480 / 2.8710174560546875 |
+
+Both builds/native publishes use warnings as errors, and both broad size guards pass without recalibration.
+Formatting verification passes, and the updated DocFX site builds with zero warnings/errors under warnings-as-errors.
+The four skipped cases per OS remain solely the two unsupported nonzero-lower-bound input-array cases per native framework.
+Full reports are `obj\unicode-scratch-windows-ef6e8f9\validation.json` and the isolated Linux checkout's `obj/unicode-scratch-linux-local-sdk-ef6e8f9/validation.json`.
+An initial Linux prerequisite attempt selected the system SDK and correctly failed; the successful rerun explicitly used the existing repo-local SDK through process-local environment variables, without global changes or new installations.
+The profile/benchmark artifacts and rejected candidate are intentionally retained outside the accepted branch for reproducibility.
+
+## HISTORICAL documentation/evidence checkpoint (2026-10-21, source `7ea67c8`)
+
+**Historical checkpoint, superseded by the current Unicode/scratch checkpoint above.**
 It supersedes older counts, inactive-analyzer/parser deferrals, Windows native-linking blocks, and Linux-unverified statements retained below as historical evidence.
 The requested cause identification, accepted fixes, remaining deferred integration, Medium measurements, and Windows/WSL validation are complete; residual performance work and an external Mac result remain open.
 This checkpoint changes documentation only on `aarnott-miniature-engine`, with no further source changes, experiments, delegation, branch creation, push, PR, or amend.

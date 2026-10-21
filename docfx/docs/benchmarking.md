@@ -98,6 +98,58 @@ The new `SegmentedTokenBenchmarks` holds number, property-name, escaped-string, 
 Its split-number and property-name policy-only results are 11.768 +/- 0.1387 us at 1384 B/op and 6.109 +/- 0.1742 us at 2024 B/op.
 Full logs, CSVs, and distributions are retained outside source control in session `37e160af-a898-413e-9aab-72e6a566cbe9`, `files\decoder-perf`, under `baseline`, `baseline-tokens`, and `policy`.
 
+## Caller-owned scratch and remaining read cost
+
+Commit `ef6e8f9` replaces implicit split-token arrays with borrowed spans, caller-owned fixed stack scratch, and pooled fallbacks for larger tokens.
+The scratch threshold is not a token-length limit: long valid numeric spellings and property names remain supported.
+Segmented strings retain decoder state across batches and flush it at escape boundaries so malformed UTF-8 has the same replacement behavior as contiguous input.
+Ownership-bearing raw results still copy when required; temporary scratch never escapes into a returned value.
+
+Policy-only `7e2e3cf` and the scratch candidate used serial Release Medium jobs on Windows x64, .NET 9.0.21, SDK 10.0.402, BDN 0.15.8, affinity mask 2, normal tiering/PGO, two launches, ten warmups, and fifteen measurement iterations.
+Errors below are 99.9% confidence-interval half-widths.
+
+| Segmented operation | Policy-only mean +/- error, us | Scratch mean +/- error, us | Policy-only repeat mean +/- error, us | B/op before / after |
+|---|---:|---:|---:|---:|
+| Numbers | 13.361 +/- 1.151 | 13.245 +/- 0.634 | 11.716 +/- 0.250 | 1384 / 104 |
+| Property names | 6.097 +/- 0.109 | 6.960 +/- 0.380 | 6.137 +/- 0.084 | 2024 / 768 |
+| Unescaped string | 3.301 +/- 0.068 | 3.466 +/- 0.057 | 3.232 +/- 0.028 | 1496 / 1024 |
+| Escaped string | 12.332 +/- 1.604 | 10.406 +/- 0.310 | 10.404 +/- 1.521 | 3584 / 1024 |
+
+The allocation reduction is established, but this is not a general throughput improvement.
+Against the repeated baseline, numbers and property names are approximately 13% slower and unescaped strings approximately 7% slower; escaped-string distributions are noisy and do not establish a speedup.
+The allocation-oriented implementation is retained with those explicit tradeoffs.
+Contiguous object read allocations remain 200/664 B and writes remain allocation-free.
+The same scratch comparison measured small/wide object reads at 365.5/1294.1 ns before and 366.5/1264.5 ns after; writes were 186.4/481.8 ns before and 190.2/507.5 ns after.
+Those object timings do not establish complete speed restoration or an isolated scratch-induced write regression, since the writer is unchanged and later unchanged-source controls drift too.
+
+### Rejected property-hash experiment
+
+Fresh warmed managed-thread-time profiles at `ef6e8f9` attribute 43.1%/49.5% of small/wide exclusive samples to object population, including inlined lookup and dispatch work.
+String reads account for another 12.2%/11.5%, and insignificant-character scanning 8.4%/6.0%.
+These are attribution samples, not precise on-CPU measurements or proof that hashing alone dominates.
+The removed Unicode prepass is not the remaining hotspot; ordinary UTF-8-to-CLR-string decoding is still necessary.
+Disassembly suggested one narrow hypothesis: unroll the serial base-31 property-name hash four bytes at a time while preserving every hash value.
+
+| Operation | A1 baseline mean +/- error (median), ns | B candidate mean +/- error (median), ns | A2 baseline mean +/- error (median), ns | B/op, all |
+|---|---:|---:|---:|---:|
+| Small read | 365.6 +/- 6.9 (362.5) | 360.6 +/- 5.4 (359.1) | 382.8 +/- 13.5 (375.5) | 200 |
+| Wide read | 1272.7 +/- 32.6 (1257.3) | 1258.1 +/- 41.0 (1283.3) | 1271.3 +/- 10.0 (1269.6) | 664 |
+| Small write | 177.1 +/- 2.7 (176.4) | 179.6 +/- 5.2 (183.7) | 187.2 +/- 9.1 (180.9) | 0 |
+| Wide write | 468.0 +/- 5.9 (466.4) | 465.8 +/- 5.6 (467.2) | 495.2 +/- 25.9 (489.5) | 0 |
+
+The serial Medium A/B/A experiment used the same settings and explicitly retained the user's existing power plan.
+The apparent 1% read-mean improvement overlaps uncertainty, the wide-read median worsens, and controls show drift and bimodality.
+Generated assembly changed as intended, but the candidate does not demonstrate a repeatable worthwhile improvement and is rejected.
+Its correctness-test command was permission-blocked, so no candidate correctness pass is claimed; it is not on the accepted branch.
+Identical baseline source also produced different native method sizes under dynamic PGO, so neither code-size nor startup improvements are claimed.
+The rejected implementation is retained locally at `perf/rejected-property-hash-unroll`, commit `8ac0e83`, without merging it.
+
+The original context-copy/cache changes and the low-level reader's former validation/segmented-access costs have measured causal evidence and accepted fixes, as recorded above and in `TODO.md`.
+The residual gap relative to the pre-segmented reader is still open; the latest profile narrows where execution time remains but does not establish another causal change or complete recovery.
+Hardware counters were not collected.
+Scratch reports are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\scratch-medium-policy-only`, `files\scratch-medium-scratch-candidate`, and `files\scratch-medium-baseline-repeat`.
+Paired profiles, disassembly, full distributions, extracted statistics, and the rejected patch are retained in session `79c835e9-2a31-4687-b0fa-7738581900dd`, under `files\contiguous-perf`.
+
 ## Historical Linux Medium comparison
 
 An isolated WSL Ubuntu 26.04 Linux-native checkout measured the frozen original `f64da69` and current `7ea67c8` with SDK 10.0.402, .NET 9.0.21, BDN 0.15.8, Release, affinity mask 2, default tiering, two launches, ten warmups, and fifteen iterations.

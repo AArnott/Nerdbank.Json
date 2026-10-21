@@ -13,6 +13,7 @@ It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`,
 
 * Direct UTF-8 JSON writing to `IBufferWriter<byte>`.
 * Borrowed segmented UTF-8 parsing, decoded UTF-8 string views, token inspection, and stateless scalar primitives.
+* Caller-owned scratch for split numeric/property tokens and incremental string decoding, with pooled fallbacks for large tokens rather than fixed token-size limits.
 * `RawJson` values with explicit borrowed/owned lifetimes and automatic owned deserialization.
 * RFC 8259 string escaping, limited to the characters that must be escaped.
 * Built-in serialization and deserialization for common .NET primitive and BCL types.
