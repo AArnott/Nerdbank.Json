@@ -158,11 +158,11 @@ public partial record JsonSerializer
 	/// <summary>
 	/// Gets the runtime union configuration that adds, replaces, extends, or disables shape-generated unions.
 	/// </summary>
-	/// <value>The default value is <see cref="JsonUnionConfiguration.Default"/>.</value>
-	public JsonUnionConfiguration Unions
+	/// <value>The default value is an empty collection.</value>
+	public DerivedTypeUnionCollection DerivedTypeUnions
 	{
-		get => this.configuration.UnionConfiguration;
-		init => this.configuration = this.configuration with { UnionConfiguration = value };
+		get => this.configuration.DerivedTypeUnions;
+		init => this.configuration = this.configuration with { DerivedTypeUnions = value };
 	}
 
 	/// <summary>

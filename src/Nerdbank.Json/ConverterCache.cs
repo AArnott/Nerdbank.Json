@@ -40,7 +40,7 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 	internal ReferencePreservationMode PreserveReferences => this.configuration.PreserveReferences;
 
-	internal JsonUnionConfiguration UnionConfiguration => this.configuration.UnionConfiguration;
+	internal DerivedTypeUnionCollection DerivedTypeUnions => this.configuration.DerivedTypeUnions;
 
 	private MultiProviderTypeCache CachedConverters
 	{
@@ -239,7 +239,7 @@ internal sealed class ConverterCache : ITypeShapeFunc
 			return true;
 		}
 
-		if (this.configuration.UnionConfiguration.TryGetEntry(shape.Type, out object? unionEntry) && unionEntry is not null)
+		if (this.configuration.DerivedTypeUnions.TryGetDerivedTypeUnion(shape.Type, out DerivedTypeUnion? unionEntry) && unionEntry is not null)
 		{
 			visitor ??= new JsonStandardVisitor(this, this.NativeAotCachedConverters.GetScopedCache(shape).CreateGenerationContext(), directShapeDispatch: true);
 			converter = RuntimeUnionBuilder.Build(this, shape, unionEntry, visitor);

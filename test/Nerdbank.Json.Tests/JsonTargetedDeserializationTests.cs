@@ -1,6 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+#pragma warning disable DuckTyping // Tests or demonstrates the experimental union strategy.
 using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
@@ -192,10 +193,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Shape2>.Create()
-					.AddCase("circle", Shape<Circle2, Circle2>())
-					.AddCase("square", Shape<Square2, Square2>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Shape2> { { "circle", Shape<Circle2, Circle2>() }, { "square", Shape<Square2, Square2>() } }],
 		};
 
 		string json = """{"shape":["circle",{"kind":"c","radius":2.5}]}""";
@@ -208,11 +206,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Shape2>.Create()
-					.AddCase("circle", Shape<Circle2, Circle2>())
-					.AddCase("square", Shape<Square2, Square2>())
-					.UseDuckTyping()),
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<Shape2, Shape2>(), Shape<Circle2, Circle2>(), Shape<Square2, Square2>())],
 		};
 
 		string json = """{"shape":{"kind":"c","radius":2.5}}""";

@@ -5,6 +5,7 @@ using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
 using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
 using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
 
+#pragma warning disable DuckTyping // Describes the experimental union strategy.
 #pragma warning disable SA1204 // Static ordering relaxed for this schema orchestration type.
 #pragma warning disable SA1202 // Public converter APIs precede internal schema orchestration details.
 #pragma warning disable SA1600 // Internal schema orchestration members are intentionally undocumented in this file.
@@ -186,7 +187,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			return custom.GetJsonSchema(this, typeShape) ?? CreateUndocumented(custom);
 		}
 
-		if (this.owner.UnionConfiguration.TryGetEntry(typeof(T), out object? entry) && entry is not null)
+		if (this.owner.DerivedTypeUnions.TryGetDerivedTypeUnion(typeof(T), out DerivedTypeUnion? entry) && entry is not null)
 		{
 			return this.BuildRuntimeUnionSchema(typeShape, entry);
 		}
@@ -257,33 +258,26 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	private static JsonSchemaObject CreateUndocumented(JsonConverter converter) => new JsonSchemaObject()
 		.Set("$comment", $"No JSON schema is available for the custom converter '{converter.GetType().FullName}'; any JSON value is permitted here.");
 
-	private JsonSchemaObject BuildRuntimeUnionSchema<T>(ITypeShape<T> shape, object entry)
+	private JsonSchemaObject BuildRuntimeUnionSchema<T>(ITypeShape<T> shape, DerivedTypeUnion entry)
 	{
-		if (ReferenceEquals(entry, JsonUnionConfiguration.DisabledSentinel))
+		if (entry.Disabled)
 		{
 			ITypeShape baseShape = shape is IUnionTypeShape disabledUnion ? disabledUnion.BaseType : shape;
 			return (JsonSchemaObject)baseShape.Accept(this.visitor)!;
 		}
 
-		var definition = (JsonUnion<T>)entry;
 		List<(object? Alias, JsonSchemaObject CaseSchema)> cases = [];
-
-		if (definition.IncludeGeneratedCases && shape is IUnionTypeShape unionShape)
+		foreach (KeyValuePair<DerivedTypeIdentifier, ITypeShape> pair in RuntimeUnionBuilder.GetCases(entry))
 		{
-			foreach (IUnionCaseShape unionCase in unionShape.UnionCases)
-			{
-				object alias = unionCase.IsTagSpecified ? unionCase.Tag : unionCase.Name;
-				cases.Add((alias, this.GetJsonSchema(unionCase.UnionCaseType)));
-			}
+			DerivedTypeIdentifier alias = pair.Key;
+			ITypeShape caseShape = pair.Value;
+			JsonSchemaObject caseSchema = caseShape.Type == typeof(T)
+				? (JsonSchemaObject)(shape is IUnionTypeShape union ? union.BaseType : shape).Accept(this.visitor)!
+				: this.GetJsonSchema(caseShape);
+			cases.Add((alias.Type == DerivedTypeIdentifier.AliasType.Integer ? (object)alias.IntAlias : alias.StringAlias, caseSchema));
 		}
 
-		foreach (RuntimeUnionCase<T> runtimeCase in definition.Cases)
-		{
-			object alias = runtimeCase.Tag is int tag ? tag : runtimeCase.Name!;
-			cases.Add((alias, this.GetJsonSchema(runtimeCase.GetCaseShape())));
-		}
-
-		if (definition.DuckTyping)
+		if (entry is DerivedTypeDuckTyping)
 		{
 			return new JsonSchemaObject().SetSchemas("oneOf", [.. cases.Select(c => c.CaseSchema)]);
 		}

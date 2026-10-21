@@ -33,8 +33,7 @@ public partial class JsonSchemaTests
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Animal>.Create().AddCase(7, Shape<Cat, Cat>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Animal> { { 7, Shape<Cat, Cat>() } }],
 		};
 
 		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>(), new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft4 }).ToJsonString();
@@ -71,8 +70,7 @@ public partial class JsonSchemaTests
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Animal>.Create().AddCase(7, Shape<Cat, Cat>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Animal> { { 7, Shape<Cat, Cat>() } }],
 		};
 
 		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>(), new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 }).ToJsonString();

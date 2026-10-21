@@ -1,6 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+#pragma warning disable DuckTyping // Tests or demonstrates the experimental union strategy.
 using System.Collections.Generic;
 using PolyType.Abstractions;
 using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
@@ -110,8 +111,7 @@ public partial class JsonSchemaTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Animal>.Create().AddCase(7, Shape<Cat, Cat>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Animal> { { 7, Shape<Cat, Cat>() } }],
 		};
 
 		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>()).ToJsonString();
@@ -123,8 +123,7 @@ public partial class JsonSchemaTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Animal>.Create().AddCase("cat", Shape<Cat, Cat>()).UseDuckTyping()),
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<Animal, Animal>(), Shape<Cat, Cat>())],
 		};
 
 		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>()).ToJsonString();

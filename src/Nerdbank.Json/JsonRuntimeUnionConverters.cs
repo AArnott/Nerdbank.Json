@@ -1,6 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+#pragma warning disable DuckTyping // Implements the experimental union strategy.
 #pragma warning disable SA1201 // Types may be ordered for locality in this multi-type helper file.
 #pragma warning disable SA1204 // Static ordering relaxed for this multi-type helper file.
 #pragma warning disable SA1402 // File may only contain a single type
@@ -13,69 +14,19 @@ using System.Text;
 
 namespace Nerdbank.Json;
 
-internal abstract class RuntimeUnionCase<TBase>
+internal sealed class JsonRuntimeUnionCaseConverter<TBase>(JsonConverter inner) : JsonConverter<TBase>
 {
-	internal RuntimeUnionCase(int? tag, string? name)
-	{
-		this.Tag = tag;
-		this.Name = name;
-	}
-
-	internal int? Tag { get; }
-
-	internal string? Name { get; }
-
-	internal abstract Type CaseType { get; }
-
-	internal abstract JsonConverter<TBase> BuildConverter(ConverterCache owner);
-
-	internal abstract IObjectTypeShape? GetObjectShape();
-
-	internal abstract ITypeShape GetCaseShape();
-}
-
-internal sealed class RuntimeUnionCase<TBase, TCase> : RuntimeUnionCase<TBase>
-	where TCase : TBase
-{
-	private readonly ITypeShape<TCase> caseShape;
-
-	internal RuntimeUnionCase(ITypeShape<TCase> caseShape, int? tag, string? name)
-		: base(tag, name)
-	{
-		this.caseShape = caseShape;
-	}
-
-	internal override Type CaseType => typeof(TCase);
-
-	internal override JsonConverter<TBase> BuildConverter(ConverterCache owner)
-		=> new JsonRuntimeUnionCaseConverter<TBase, TCase>((JsonConverter<TCase>)owner.GetOrAddConverter(this.caseShape));
-
-	internal override IObjectTypeShape? GetObjectShape() => this.caseShape as IObjectTypeShape;
-
-	internal override ITypeShape GetCaseShape() => this.caseShape;
-}
-
-internal sealed class JsonRuntimeUnionCaseConverter<TBase, TCase> : JsonConverter<TBase>
-	where TCase : TBase
-{
-	private readonly JsonConverter<TCase> inner;
-
-	internal JsonRuntimeUnionCaseConverter(JsonConverter<TCase> inner)
-	{
-		this.inner = inner;
-	}
-
 	public override void Write(ref JsonWriter writer, in TBase? value, SerializationContext context)
-		=> this.inner.Write(ref writer, (TCase?)value, context);
+		=> inner.WriteObject(ref writer, value, context);
 
 	public override TBase? Read(ref JsonReader reader, SerializationContext context)
-		=> this.inner.Read(ref reader, context);
+		=> (TBase?)inner.ReadObject(ref reader, context);
 
 	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
-		=> this.inner.TryNavigate(ref reader, in segment, options);
+		=> inner.TryNavigate(ref reader, in segment, options);
 
 	public override ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
-		=> this.inner.TryNavigateAsync(reader, segment, options, context);
+		=> inner.TryNavigateAsync(reader, segment, options, context);
 }
 
 internal readonly struct RuntimeUnionCaseEntry<TBase>
@@ -387,7 +338,7 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 
 internal static class RuntimeUnionBuilder
 {
-	internal static JsonConverter<TBase> Build<TBase>(ConverterCache owner, ITypeShape<TBase> shape, object entry, TypeShapeVisitor visitor)
+	internal static JsonConverter<TBase> Build<TBase>(ConverterCache owner, ITypeShape<TBase> shape, DerivedTypeUnion entry, TypeShapeVisitor visitor)
 	{
 		StringComparer nameComparer = owner.PropertyNameComparer;
 		ITypeShape baseTypeShape = shape is IUnionTypeShape unionForBase ? unionForBase.BaseType : shape;
@@ -395,31 +346,21 @@ internal static class RuntimeUnionBuilder
 			? (JsonConverter<TBase>)baseTypeShape.Accept(visitor)!
 			: null;
 
-		if (ReferenceEquals(entry, JsonUnionConfiguration.DisabledSentinel))
+		if (entry.Disabled)
 		{
 			return baseConverter ?? throw new NotSupportedException($"Union handling for '{typeof(TBase).FullName}' was disabled, but the base type cannot be serialized directly.");
 		}
 
-		var definition = (JsonUnion<TBase>)entry;
-		List<RuntimeUnionCaseEntry<TBase>> caseEntries = new(definition.Cases.Count);
-
-		if (definition.IncludeGeneratedCases && shape is IUnionTypeShape unionShape)
+		List<RuntimeUnionCaseEntry<TBase>> caseEntries = [];
+		foreach (KeyValuePair<DerivedTypeIdentifier, ITypeShape> pair in GetCases(entry))
 		{
-			foreach (IUnionCaseShape generatedCase in unionShape.UnionCases)
-			{
-				var caseConverter = (JsonConverter<TBase>)generatedCase.Accept(visitor)!;
-				int? tag = generatedCase.IsTagSpecified ? generatedCase.Tag : null;
-				string? name = generatedCase.IsTagSpecified ? null : generatedCase.Name;
-				IReadOnlyCollection<string> required = RuntimeUnionHelpers.GetRequiredSerializedPropertyNames(generatedCase.UnionCaseType as IObjectTypeShape, owner);
-				caseEntries.Add(new(generatedCase.UnionCaseType.Type, tag, name, caseConverter, required));
-			}
-		}
-
-		foreach (RuntimeUnionCase<TBase> runtimeCase in definition.Cases)
-		{
-			JsonConverter<TBase> caseConverter = runtimeCase.BuildConverter(owner);
-			IReadOnlyCollection<string> required = RuntimeUnionHelpers.GetRequiredSerializedPropertyNames(runtimeCase.GetObjectShape(), owner);
-			caseEntries.Add(new(runtimeCase.CaseType, runtimeCase.Tag, runtimeCase.Name, caseConverter, required));
+			DerivedTypeIdentifier alias = pair.Key;
+			ITypeShape caseShape = pair.Value;
+			JsonConverter<TBase> caseConverter = caseShape.Type == typeof(TBase) && baseConverter is not null
+				? baseConverter
+				: new JsonRuntimeUnionCaseConverter<TBase>(owner.GetOrAddConverter(caseShape));
+			IReadOnlyCollection<string> required = RuntimeUnionHelpers.GetRequiredSerializedPropertyNames(caseShape as IObjectTypeShape, owner);
+			caseEntries.Add(new(caseShape.Type, alias.Type == DerivedTypeIdentifier.AliasType.Integer ? alias.IntAlias : null, alias.Type == DerivedTypeIdentifier.AliasType.String ? alias.StringAlias : null, caseConverter, required));
 		}
 
 		if (caseEntries.Count == 0)
@@ -429,9 +370,35 @@ internal static class RuntimeUnionBuilder
 
 		VerifyUniqueAliases(caseEntries);
 
-		return definition.DuckTyping
+		return entry is DerivedTypeDuckTyping
 			? new JsonDuckTypingUnionConverter<TBase>([.. caseEntries], nameComparer, owner.AllowTrailingCommas, owner.ReadCommentHandling)
 			: new JsonRuntimeUnionConverter<TBase>(baseConverter, [.. caseEntries], nameComparer);
+	}
+
+	internal static IEnumerable<KeyValuePair<DerivedTypeIdentifier, ITypeShape>> GetCases(DerivedTypeUnion entry)
+	{
+		if (entry is IDerivedTypeMapping mapping)
+		{
+			return mapping.GetDerivedTypesMapping();
+		}
+
+		if (entry is DerivedTypeDuckTyping duck)
+		{
+			List<KeyValuePair<DerivedTypeIdentifier, ITypeShape>> cases = [];
+			if (!duck.BaseType.IsAbstract && !duck.BaseType.IsInterface)
+			{
+				cases.Add(new(duck.BaseType.FullName!, duck.BaseShape));
+			}
+
+			foreach (ITypeShape caseShape in duck.DerivedShapes.ToArray())
+			{
+				cases.Add(new(caseShape.Type.FullName!, caseShape));
+			}
+
+			return cases;
+		}
+
+		throw new NotSupportedException($"Unsupported derived type union '{entry.GetType().FullName}'.");
 	}
 
 	/// <summary>Determines whether an object shape can be deserialized directly.</summary>

@@ -196,10 +196,7 @@ internal static class ManyModels
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Payload>.Create()
-					.AddCase<TextPayload>("text", ShapeOf<TextPayload>())
-					.AddCase<NumberPayload>("number", ShapeOf<NumberPayload>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Payload> { { "text", ShapeOf<TextPayload>() }, { "number", ShapeOf<NumberPayload>() } }],
 		};
 
 		Payload value = new TextPayload("hello");

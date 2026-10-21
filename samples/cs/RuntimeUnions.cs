@@ -1,3 +1,4 @@
+#pragma warning disable DuckTyping // Tests or demonstrates the experimental union strategy.
 using Nerdbank.Json;
 using PolyType;
 using PolyType.Abstractions;
@@ -18,10 +19,7 @@ static ITypeShape<T> ShapeOf<T>()
 // Configure a union at runtime by supplying explicit, source-generated case shapes.
 JsonSerializer serializer = new()
 {
-	Unions = JsonUnionConfiguration.Default.WithUnion(
-		JsonUnion<Drawing>.Create()
-			.AddCase<Circle>("circle", ShapeOf<Circle>())
-			.AddCase<Square>("square", ShapeOf<Square>())),
+	DerivedTypeUnions = [new DerivedShapeMapping<Drawing> { { "circle", ShapeOf<Circle>() }, { "square", ShapeOf<Square>() } }],
 };
 
 Drawing value = new Circle(2.5);
@@ -36,11 +34,7 @@ Drawing roundTripped = serializer.Deserialize<Drawing>(json)!;
 // unique set of required property names present in the JSON object.
 JsonSerializer duckSerializer = new()
 {
-	Unions = JsonUnionConfiguration.Default.WithUnion(
-		JsonUnion<Drawing>.Create()
-			.AddCase<Circle>("circle", ShapeOf<Circle>())
-			.AddCase<Square>("square", ShapeOf<Square>())
-			.UseDuckTyping()),
+	DerivedTypeUnions = [new DerivedTypeDuckTyping(ShapeOf<Drawing>(), ShapeOf<Circle>(), ShapeOf<Square>())],
 };
 
 // Serializes as the bare object {"radius":2.5}; deserialization matches the 'radius' property to Circle.

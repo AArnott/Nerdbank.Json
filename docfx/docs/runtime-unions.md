@@ -1,22 +1,19 @@
 # Runtime union configuration
 
-Polymorphic types (unions) are normally described by shape-generated metadata and serialized
-using a two-element `[discriminator, payload]` envelope. <xref:Nerdbank.Json.JsonSerializer.Unions>
-lets a caller override that behavior per serializer using an immutable
-<xref:Nerdbank.Json.JsonUnionConfiguration>.
+Polymorphic types (unions) are normally described by shape-generated metadata and serialized using a two-element `[discriminator, payload]` envelope.
+<xref:Nerdbank.Json.JsonSerializer.DerivedTypeUnions> lets a caller override that behavior per serializer using an immutable <xref:Nerdbank.Json.DerivedTypeUnionCollection>.
 
 Because every case is supplied as an explicit `ITypeShape<TCase>`, the feature
 stays NativeAOT-safe: no runtime reflection is used to discover cases.
 
 ## Operations
 
-<xref:Nerdbank.Json.JsonUnion`1> builds a union definition. Combined with the configuration methods,
-you can:
+<xref:Nerdbank.Json.DerivedShapeMapping`1> builds a union definition from explicit shapes, source-generated witness types, or a shape provider.
+<xref:Nerdbank.Json.DerivedTypeMapping`1> additionally supports adding types using a provider supplied to its constructor.
 
-* **Add** a union for a base type that has no generated union: `JsonUnion<TBase>.Create().AddCase(...)`.
-* **Replace** a generated union: `Create().AddCase(...)` (generated cases are omitted).
-* **Extend** a generated union: `Create().IncludeGenerated().AddCase(...)`.
-* **Disable** union handling: `JsonUnionConfiguration.Default.WithoutUnion<TBase>()`.
+Mappings can add a union to a base type without generated union metadata or replace an existing generated union.
+To extend a generated union, include its existing cases alongside the additional cases in the mapping.
+Use <xref:Nerdbank.Json.DerivedTypeUnion.CreateDisabled(System.Type)> to ignore a generated union and serialize only its base contract.
 
 Cases may be identified by an integer tag or a string name, matching the default representation.
 
@@ -28,15 +25,14 @@ the same JSON.
 
 ## Cache identity
 
-The configuration is immutable, and every method returns a new instance. Reusing the same
-<xref:Nerdbank.Json.JsonUnionConfiguration> instance across serializers preserves converter-cache
-identity; assigning a different instance rebuilds the cache.
+Adding a mapping to a <xref:Nerdbank.Json.DerivedTypeUnionCollection> freezes it.
+Further mutation throws <xref:System.InvalidOperationException>.
+Reusing the same collection across serializers preserves configuration identity; assigning a different collection rebuilds the cache.
 
 ## Duck typing (experimental)
 
-For legacy JSON that lacks a discriminator, `UseDuckTyping()` selects a case during deserialization
-from the unique set of **required** serialized property names present in a JSON object. Values are
-written as the bare case object rather than the envelope.
+For legacy JSON that lacks a discriminator, <xref:Nerdbank.Json.DerivedTypeDuckTyping> selects a case during deserialization from the unique set of **required** serialized property names present in a JSON object.
+Values are written as the bare case object rather than the envelope.
 
 [!code-csharp[](../../samples/cs/RuntimeUnions.cs#DuckTypingUnions)]
 

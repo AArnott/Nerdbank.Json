@@ -24,7 +24,7 @@ internal record JsonSerializerConfiguration
 	private JsonCommentHandling readCommentHandling;
 	private bool internStrings;
 	private ReferencePreservationMode preserveReferences;
-	private JsonUnionConfiguration unionConfiguration = JsonUnionConfiguration.Default;
+	private DerivedTypeUnionCollection derivedTypeUnions = [];
 	private bool serializeEnumValuesByName;
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
 	private bool writeIndented;
@@ -223,12 +223,12 @@ internal record JsonSerializerConfiguration
 	/// <summary>
 	/// Gets the runtime union overrides applied during serialization and deserialization.
 	/// </summary>
-	internal JsonUnionConfiguration UnionConfiguration
+	internal DerivedTypeUnionCollection DerivedTypeUnions
 	{
-		get => this.unionConfiguration;
+		get => this.derivedTypeUnions;
 		init
 		{
-			this.unionConfiguration = value ?? throw new ArgumentNullException(nameof(value));
+			this.derivedTypeUnions = value ?? throw new ArgumentNullException(nameof(value));
 			this.converterCache = null;
 		}
 	}
