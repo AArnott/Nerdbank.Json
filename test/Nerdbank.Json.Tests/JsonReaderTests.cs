@@ -224,9 +224,8 @@ public partial class JsonReaderTests
 #endif
 
 	[Test]
-	[Arguments("\"\\uD800\"")]
-	[Arguments("\"\\uDC00\"")]
-	[Arguments("\"\\uD800\\u0041\"")]
+	[Arguments("\"\\uD80\"")]
+	[Arguments("\"\\uDC0X\"")]
 	[Arguments("\"\\q\"")]
 	[Arguments("\"line\nbreak\"")]
 	[Arguments("01")]
@@ -268,22 +267,17 @@ public partial class JsonReaderTests
 	[Arguments(0xC0, 0xAF)]
 	[Arguments(0xED, 0xA0)]
 	[Arguments(0xF4, 0x90)]
-	public void Segmented_InvalidUtf8Rejected(int firstByte, int secondByte)
+	public void Segmented_InvalidUtf8UsesReplacementFallback(int firstByte, int secondByte)
 	{
 		byte[] bytes = [(byte)'"', (byte)firstByte, (byte)secondByte, 0x80, 0x80, (byte)'"'];
 		Segment first = new(bytes.AsMemory(0, 2));
 		Segment last = first.Append(bytes.AsMemory(2));
 		ReadOnlySequence<byte> sequence = new(first, 0, last, last.Memory.Length);
-		Assert.Throws<FormatException>(() =>
-		{
-			JsonReader reader = new(sequence);
-			reader.ReadString();
-		});
-		Assert.Throws<FormatException>(() =>
-		{
-			JsonReader reader = new(sequence);
-			reader.Skip(new());
-		});
+		JsonReader reader = new(sequence);
+		Assert.Equal(Encoding.UTF8.GetString(bytes, 1, bytes.Length - 2), reader.ReadString());
+		reader = new(sequence);
+		reader.Skip(new());
+		Assert.True(reader.End);
 	}
 
 	[Test]
@@ -328,22 +322,13 @@ public partial class JsonReaderTests
 	[Arguments(64)]
 	[Arguments(127)]
 	[Arguments(128)]
-	public void EscapedString_RejectsInvalidBytesAfterAsciiPrefix(int prefixLength)
+	public void EscapedString_RejectsControlsAfterAsciiPrefix(int prefixLength)
 	{
 		byte[][] invalidSuffixes =
 		[
 			[0],
 			[0x1F],
-			[0x80],
-			[0xC0, 0xAF],
-			[0xE0, 0x80, 0x80],
-			[0xED, 0xA0, 0x80],
-			[0xF4, 0x90, 0x80, 0x80],
-			[0xC2],
-			[0xE0, 0xA0],
-			[0xF0, 0x90, 0x80],
 			[0xC3, 0xA9, 0x1F],
-			[0xC3, 0xA9, 0x80],
 		];
 		foreach (byte[] suffix in invalidSuffixes)
 		{

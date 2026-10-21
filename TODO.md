@@ -155,8 +155,8 @@ The historical report below retains full controls and uncertainty.
 
 Low-level integration introduced a separate measured regression: small/wide reads reached about 498/2,327 ns and writes 187/511 ns.
 Warm profiles and disassembly identified per-ASCII-byte general UTF-8 validation, scalar validation work, and expanded segmented navigation on contiguous input.
-Accepted `440b7fe`, `8767712`, and `6938cba` add a printable-ASCII span fast path, runtime-vectorized ASCII range validation with strict fallback, and cached immutable length/outlined segmented helpers.
-They neither flatten whole payloads nor skip validation.
+Historical `440b7fe`, `8767712`, and `6938cba` added a printable-ASCII span fast path, runtime-vectorized ASCII range validation with strict fallback, and cached immutable length/outlined segmented helpers.
+The 2026-10-21 user-directed Unicode policy below supersedes their Unicode-validation requirement, not the JSON lexical checks or borrowed-input design.
 An explicit span-specialized parser experiment was rejected; its patch is retained outside the checkout and none remains in source.
 The bounded-depth native-code total decreased from 6,521 to 4,934 bytes; this is not a whole-library image-size measurement.
 
@@ -194,6 +194,19 @@ Original causal evidence remains in session `ccd4d45f-edf7-4ad2-bce2-e9f5839aa2f
 Linux benchmark evidence includes the isolated `perf-linux-medium-baseline-f64/repo` and host logs `final-linux-medium.log` and `final-linux-perf-validation-summary.log`.
 The requested checkpoint is complete with these explicit limits; perfect API parity and full speed recovery are not claimed.
 
+## User-directed decoder policy (2026-10-21, after `a225be3`)
+
+Unicode well-formedness is application policy, not a reader/writer precondition.
+Removed the general UTF-8 validator and surrogate-pair rejection, while preserving JSON boundary, escape, control-byte, number, depth, cancellation, duplicate-property, and framing checks.
+CLR reads use replacement fallback and preserve escaped UTF-16 code units; CLR writes escape lone surrogates.
+UTF-8 writes and unescaped byte views retain non-ASCII payloads; escaped byte reads also retain non-ASCII runs, with replacement only for unrepresentable escaped lone UTF-16 surrogates.
+`RawJson` retains exact bytes and its existing owned/borrowed lifetime contracts.
+The scanner already frames ASCII boundaries independently of Unicode and required no policy change.
+Async, native DOM, property-name, and interning paths consume the same reader; optional System.Text.Json converters still necessarily inherit that external DOM's own representation rules.
+Fresh full managed validation passed 4,165 tests with zero skips after a warning-free Release solution build.
+Filtered MTP invocations were permission-denied; the explicit solution invocation succeeded and actually executed the tests.
+The isolated Medium measurements and uncertainty are recorded in `docfx/docs/benchmarking.md`; this policy change alone does not establish full object-read speed recovery.
+
 ## HISTORICAL deferred integration QA (2026-10-21, through `c4f2121`)
 
 This section preserves the earlier integration evidence.
@@ -220,7 +233,7 @@ Focused integration corrections:
 
 * `46d09f2` removes unrelated compiler warnings from analyzer fixtures; all 163 analyzer tests actually execute.
 * `d2830c5` reproduces equality-colliding shape instances aliasing converters on all managed frameworks, then uses exact reference identity in the resolved-converter dictionary.
-* `86c5e65` retains valid surrogate-pair interning coverage and explicitly documents the new strict rejection of isolated surrogate escapes, with malformed-pair tests both with and without interning.
+* Historical `86c5e65` documented strict rejection of isolated surrogate escapes; the 2026-10-21 user-directed policy explicitly supersedes this rejection while retaining valid-pair and interning coverage.
 * `31cc902` restores byte cursors after tentative escaped-property and escaped-string sizing scans, so forward fallback reads do not reset navigation to the sequence origin; untyped metadata probing uses an independent peek.
 * `2d73f0a` runs allocation guards outside parallel test activity and excludes assertions from measured regions without weakening any threshold; three consecutive complete managed matrices passed those unchanged thresholds.
 * `c4f2121` poisons returned pipe-pool buffers, forces collection, and verifies exact owned raw bytes and direct UTF-8 output; relaxed input settings do not relax raw-output validation.

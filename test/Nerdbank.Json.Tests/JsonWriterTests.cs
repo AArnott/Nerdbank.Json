@@ -46,24 +46,17 @@ public class JsonWriterTests
 	}
 
 	[Test]
-	public void InvalidUtf8DoesNotChangeWriterState()
+	public void InvalidUtf8IsPreservedWithoutChangingBoundaries()
 	{
 		TestBufferWriter buffer = new();
 		JsonWriter writer = new(buffer);
 		writer.WriteStartArray();
-		try
-		{
-			writer.WriteString(new byte[] { 0xED, 0xA0, 0x80 });
-			Assert.Fail("Expected invalid UTF-8 to be rejected.");
-		}
-		catch (FormatException)
-		{
-		}
-
+		writer.WriteString(new byte[] { 0xED, 0xA0, 0x80 });
+		writer.WriteValueSeparator();
 		writer.WriteString("ok"u8);
 		writer.WriteEndArray();
 		writer.Flush();
-		Assert.Equal("[\"ok\"]", Encoding.UTF8.GetString(buffer.WrittenArray));
+		Assert.Equal(new byte[] { (byte)'[', (byte)'"', 0xED, 0xA0, 0x80, (byte)'"', (byte)',', (byte)'"', (byte)'o', (byte)'k', (byte)'"', (byte)']' }, buffer.WrittenArray);
 	}
 
 	[Test]
@@ -186,19 +179,14 @@ public class JsonWriterTests
 	}
 
 	[Test]
-	public void WriteString_ThrowsOnUnmatchedSurrogate()
+	public void WriteString_EscapesUnmatchedSurrogate()
 	{
 		TestBufferWriter buffer = new();
 		JsonWriter writer = new(buffer);
 
-		try
-		{
-			writer.Write("\uD800");
-			Assert.Fail("Expected an ArgumentException to be thrown.");
-		}
-		catch (ArgumentException)
-		{
-		}
+		writer.Write("\uD800");
+		writer.Flush();
+		Assert.Equal("\"\\uD800\"", Encoding.UTF8.GetString(buffer.WrittenArray));
 	}
 
 	private sealed class Segment : ReadOnlySequenceSegment<byte>

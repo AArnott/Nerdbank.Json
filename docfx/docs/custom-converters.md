@@ -51,8 +51,13 @@ Tentative UTF-8 string reads use allocation-free cursor checkpoints.
 
 ## UTF-8 strings and token inspection
 
-String reading and skipping validate UTF-8, control characters, and Unicode escape pairs.
-Unpaired surrogate escapes are rejected, including when string interning is enabled; earlier versions accepted these escapes as isolated UTF-16 code units.
+String reading and skipping enforce JSON quotes, escapes, four hexadecimal digits after `\u`, and escaping of control bytes.
+They deliberately do not validate Unicode well-formedness: the application receiving the data decides whether to validate it.
+CLR string reads use the runtime's UTF-8 replacement fallback (`U+FFFD` for invalid sequences), consistently across segment boundaries.
+Each `\uXXXX` escape contributes its UTF-16 code unit, including isolated surrogates; adjacent valid surrogate pairs retain their usual CLR representation.
+CLR string writes escape isolated surrogates instead of silently replacing user data.
+Raw JSON and unescaped UTF-8 string views preserve the original bytes, not a replacement-decoded approximation.
+Decoded UTF-8 string APIs preserve non-ASCII source bytes even around JSON escapes; an escaped isolated surrogate has no valid UTF-8 representation and uses replacement fallback in those byte results.
 
 <xref:Nerdbank.Json.JsonReader.NextJsonType?displayProperty=nameWithType> uses the same <xref:Nerdbank.Json.JsonValueKind> vocabulary as the DOM.
 <xref:Nerdbank.Json.JsonReader.NextCode?displayProperty=nameWithType> exposes the next significant UTF-8 byte, while <xref:Nerdbank.Json.JsonReader.IsNull?displayProperty=nameWithType> and <xref:Nerdbank.Json.JsonReader.ReadNull?displayProperty=nameWithType> support explicit null handling.
@@ -64,7 +69,8 @@ Use <xref:Nerdbank.Json.JsonReader.ReadStringSequence?displayProperty=nameWithTy
 Both return decoded content, never JSON escape text, and allocate token-scoped storage only when necessary.
 Unescaped sequence slices retain the input's borrowed lifetime.
 
-<xref:Nerdbank.Json.JsonWriter.WriteString*> accepts decoded UTF-8 bytes, validates them, and applies JSON escaping directly without an intermediate UTF-16 string.
+<xref:Nerdbank.Json.JsonWriter.WriteString*> accepts decoded UTF-8 bytes and applies JSON escaping directly without an intermediate UTF-16 string or Unicode validation.
+Quotes, backslashes, and control bytes are escaped; all other bytes are transmitted unchanged, including invalid UTF-8.
 It accepts sequences even when a multi-byte character crosses a segment boundary.
 Do not pass an already-quoted or already-escaped JSON token to this method; use raw-value APIs for that contract.
 

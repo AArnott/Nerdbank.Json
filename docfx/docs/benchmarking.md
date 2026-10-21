@@ -32,7 +32,15 @@ NativeAOT converter lookup uses a static state factory so its fallback does not 
 
 ## Contiguous reader validation
 
-String validation must remain strict for control bytes, malformed UTF-8, and unpaired surrogate escapes, including segmented input.
+**Historical results below describe the former Unicode-validation policy, superseded by the user-directed policy change on 2026-10-21.**
+Current readers enforce JSON lexical grammar, not Unicode well-formedness.
+CLR strings use replacement UTF-8 decoding and preserve escaped UTF-16 code units; raw byte APIs retain source bytes.
+Current writers preserve non-ASCII byte payloads and escape lone CLR surrogates.
+The old Unicode prevalidation is removed, not hidden behind an optimization or strictness flag.
+
+### Historical validation optimization
+
+The former policy checked control bytes, malformed UTF-8, and unpaired surrogate escapes, including segmented input.
 Printable ASCII can be checked without invoking the general segmented UTF-8 validator for every byte.
 Paired warm CPU traces and Tier-1 disassembly identified this per-byte dispatch in both property-name lookup and string-value reading after segmented input was introduced.
 
@@ -45,7 +53,7 @@ The small-object candidate distributions and some baseline runs were noisy; reta
 On .NET 8 and later, contiguous string-byte validation also uses the runtime's vectorized ASCII range search before an outlined strict fallback.
 Two medium runs measured wide reads at 1446/1413 ns, versus 1589/1592/1605 ns for the preceding scalar ASCII validation; small reads were 413/410 ns, with the preceding results varying from 412 to 445 ns.
 The wide-object improvement repeated, while the incremental small-object timing overlapped the preceding variation.
-Older targets retain scalar validation, and no target relaxes malformed UTF-8, control-byte, or surrogate checks.
+At that historical checkpoint, older targets retained scalar validation and all targets checked malformed UTF-8, control bytes, and surrogates.
 
 Caching the immutable input length and outlining segmented token slicing and delimiter search further reduced contiguous wrapper work without duplicating the parser.
 Two medium runs measured small reads at 379/357 ns and wide reads at 1237/1278 ns; read allocations stayed at 200/664 B and both writes stayed allocation-free.
@@ -65,7 +73,32 @@ The full 64-case skip matrix also completed at the same medium job and affinity,
 It reported 0–1 B per contiguous operation and 104–107 B per segmented operation across those payload sizes, consistent with bounded navigation state rather than payload materialization; the small differences within those ranges were not separately attributed.
 These final-only skip measurements do not establish a paired skip-throughput improvement.
 
-## Final Linux Medium comparison
+## User-directed Unicode policy (2026-10-21)
+
+A fresh `a225be3` baseline and policy-only candidate used the Windows/runtime/SDK/job/affinity settings above, serially, with normal tiering and dynamic PGO.
+This is an intentional data-policy change, not a semantics-preserving optimization.
+There is no general Unicode prevalidation on reads or UTF-8 string writes.
+JSON quotes, escapes, control bytes, numeric grammar, depth, cancellation, and document-framing contracts are unchanged.
+
+| Operation | Revision | Mean, ns | Error, ns | SD, ns | Median, ns | B/op |
+|---|---|---:|---:|---:|---:|---:|
+| Small read | `a225be3` | 373.8 | 15.54 | 21.27 | 385.4 | 200 |
+| Small read | Policy only | 373.7 | 4.85 | 6.95 | 373.9 | 200 |
+| Wide read | `a225be3` | 1270.7 | 29.36 | 41.15 | 1266 | 664 |
+| Wide read | Policy only | 1244.8 | 24.22 | 34.73 | 1237 | 664 |
+| Small write | `a225be3` | 183.0 | 5.61 | 8.22 | 180.1 | 0 |
+| Small write | Policy only | 183.0 | 4.97 | 7.28 | 182.1 | 0 |
+| Wide write | `a225be3` | 484.8 | 10.92 | 15.30 | 478.9 | 0 |
+| Wide write | Policy only | 495.8 | 6.92 | 10.35 | 494.6 | 0 |
+
+Object throughput changes overlap noise; no isolated object speedup is claimed.
+The segmented unescaped Unicode string moved from 3.632 +/- 0.0515 us to 3.243 +/- 0.1056 us, with unchanged 1496 B/op.
+The escaped-string measurements were highly variable (baseline 10.569 +/- 1.572 us, candidate 11.577 +/- 1.767 us); their timing is inconclusive, not a demonstrated regression or improvement.
+The new `SegmentedTokenBenchmarks` holds number, property-name, escaped-string, and unescaped-string inputs outside measurement so subsequent scratch-storage work has its own allocation baseline.
+Its split-number and property-name policy-only results are 11.768 +/- 0.1387 us at 1384 B/op and 6.109 +/- 0.1742 us at 2024 B/op.
+Full logs, CSVs, and distributions are retained outside source control in session `37e160af-a898-413e-9aab-72e6a566cbe9`, `files\decoder-perf`, under `baseline`, `baseline-tokens`, and `policy`.
+
+## Historical Linux Medium comparison
 
 An isolated WSL Ubuntu 26.04 Linux-native checkout measured the frozen original `f64da69` and current `7ea67c8` with SDK 10.0.402, .NET 9.0.21, BDN 0.15.8, Release, affinity mask 2, default tiering, two launches, ten warmups, and fifteen iterations.
 The runs were serial with no other builds.

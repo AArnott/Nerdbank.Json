@@ -6,7 +6,6 @@
 using System.Buffers;
 using System.Buffers.Text;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Nerdbank.Json;
@@ -14,6 +13,11 @@ namespace Nerdbank.Json;
 /// <summary>
 /// Reads JSON values from a UTF-8 byte buffer.
 /// </summary>
+/// <remarks>
+/// String boundaries, escapes, and unescaped control bytes are checked, but Unicode well-formedness is not.
+/// CLR strings use UTF-8 replacement fallback and preserve each escaped UTF-16 code unit.
+/// Unescaped byte views and raw JSON preserve the original bytes, including invalid UTF-8.
+/// </remarks>
 public ref struct JsonReader
 {
 	private readonly bool allowTrailingCommas;
@@ -268,7 +272,7 @@ public ref struct JsonReader
 		if (escaped)
 		{
 			this.utf8Json.RestoreCursor(cursor);
-			return new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(this.ReadRequiredString()));
+			return this.ReadEscapedStringBytes(start, length);
 		}
 
 		this.position = peek.position;
@@ -638,21 +642,6 @@ public ref struct JsonReader
 		return decimal.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Float, CultureInfo.InvariantCulture);
 	}
 
-	/// <summary>Validates decoded UTF-8 string content before writing it.</summary>
-	/// <param name="bytes">The decoded string bytes, which may include control characters.</param>
-	internal static void ValidateUtf8String(ReadOnlySpan<byte> bytes) => ValidateStringBytes(bytes, allowControlCharacters: true);
-
-	/// <summary>Validates decoded, possibly segmented UTF-8 string content before writing it.</summary>
-	/// <param name="bytes">The decoded string bytes, which may include control characters.</param>
-	internal static void ValidateUtf8String(scoped in ReadOnlySequence<byte> bytes)
-	{
-		JsonReader validator = new(bytes);
-		while (!validator.End)
-		{
-			validator.ValidateStringByte(validator.utf8Json[validator.position++], allowControlCharacters: true);
-		}
-	}
-
 	internal string? ReadString(StringInterning? stringInterning)
 	{
 		if (this.TryReadNull())
@@ -730,74 +719,57 @@ public ref struct JsonReader
 			_ => throw new FormatException("Invalid hex digit in JSON unicode escape sequence."),
 		};
 
-	private static void ValidateStringBytes(ReadOnlySpan<byte> bytes, bool allowControlCharacters = false)
+	private static void ValidateStringBytes(ReadOnlySpan<byte> bytes)
 	{
 #if NET8_0_OR_GREATER
-		int index = bytes.IndexOfAnyExceptInRange(allowControlCharacters ? (byte)0 : (byte)0x20, (byte)0x7F);
-		if (index < 0)
-		{
-			return;
-		}
-
-		bytes = bytes[index..];
-#endif
-		ValidateStringBytesSlow(bytes, allowControlCharacters);
-	}
-
-	[MethodImpl(MethodImplOptions.NoInlining)]
-	private static void ValidateStringBytesSlow(ReadOnlySpan<byte> bytes, bool allowControlCharacters)
-	{
-		for (int index = 0; index < bytes.Length; index++)
-		{
-			byte first = bytes[index];
-			if (first < 0x20 && !allowControlCharacters)
-			{
-				throw new FormatException("Unescaped control character in JSON string.");
-			}
-
-			if (first >= 0x80)
-			{
-				JsonInput input = new(bytes);
-				long position = index + 1;
-				ValidateStringByte(in input, ref position, first, allowControlCharacters);
-				index = checked((int)position) - 1;
-			}
-		}
-	}
-
-	private static void ValidateStringByte(scoped in JsonInput input, ref long position, byte first, bool allowControlCharacters)
-	{
-		if (first < 0x20 && !allowControlCharacters)
+		if (bytes.IndexOfAnyInRange((byte)0, (byte)0x1F) >= 0)
 		{
 			throw new FormatException("Unescaped control character in JSON string.");
 		}
-
-		if (first < 0x80)
+#else
+		for (int index = 0; index < bytes.Length; index++)
 		{
-			return;
+			if (bytes[index] < 0x20)
+			{
+				throw new FormatException("Unescaped control character in JSON string.");
+			}
 		}
+#endif
+	}
 
-		int continuation = first switch
+	private ReadOnlySequence<byte> ReadEscapedStringBytes(long start, long length)
+	{
+		byte[] decoded = new byte[checked((int)length)];
+		int written = 0;
+		Span<char> escape = stackalloc char[2];
+		this.position = start;
+		while (true)
 		{
-			>= 0xC2 and <= 0xDF => 1,
-			>= 0xE0 and <= 0xEF => 2,
-			>= 0xF0 and <= 0xF4 => 3,
-			_ => throw new FormatException("Invalid UTF-8 in JSON string."),
-		};
-		for (int i = 0; i < continuation; i++)
-		{
-			if (position >= input.Length)
+			long delimiter = this.utf8Json.IndexOfDelimiter(this.position);
+			ReadOnlySpan<byte> run = this.utf8Json.Slice(this.position, delimiter - this.position);
+			run.CopyTo(decoded.AsSpan(written));
+			written += run.Length;
+			this.position = delimiter + 1;
+			if (this.utf8Json[delimiter] == (byte)'"')
 			{
-				throw new FormatException("Incomplete UTF-8 in JSON string.");
+				return new(decoded.AsMemory(0, written));
 			}
 
-			byte next = input[position++];
-			if (next is < 0x80 or > 0xBF
-				|| (i == 0 && ((first == 0xE0 && next < 0xA0) || (first == 0xED && next >= 0xA0)
-					|| (first == 0xF0 && next < 0x90) || (first == 0xF4 && next >= 0x90))))
+			escape[0] = (char)this.ReadEscapeSequenceUtf8();
+			int count = 1;
+			if (char.IsHighSurrogate(escape[0]) && this.utf8Json.Matches(this.position, "\\u"u8))
 			{
-				throw new FormatException("Invalid UTF-8 in JSON string.");
+				JsonReader peek = this;
+				peek.position += 2;
+				char low = (char)peek.ReadHexQuadUtf8();
+				if (char.IsLowSurrogate(low))
+				{
+					escape[count++] = low;
+					this.position = peek.position;
+				}
 			}
+
+			written += Encoding.UTF8.GetBytes(escape[..count], decoded.AsSpan(written));
 		}
 	}
 
@@ -821,9 +793,9 @@ public ref struct JsonReader
 				return this.ReadEscapedUtf8String(segmentStart, stringInterning);
 			}
 
-			if (ch < 0x20 || ch >= 0x80)
+			if (ch < 0x20)
 			{
-				this.ValidateStringByte(ch);
+				throw new FormatException("Unescaped control character in JSON string.");
 			}
 		}
 
@@ -878,17 +850,7 @@ public ref struct JsonReader
 					return stringInterning?.Intern(value) ?? value.ToString();
 				}
 
-				int scalar = this.ReadEscapeSequenceUtf8();
-				if (scalar <= char.MaxValue)
-				{
-					characters[written++] = (char)scalar;
-				}
-				else
-				{
-					scalar -= 0x10000;
-					characters[written++] = (char)(0xD800 + (scalar >> 10));
-					characters[written++] = (char)(0xDC00 + (scalar & 0x3FF));
-				}
+				characters[written++] = (char)this.ReadEscapeSequenceUtf8();
 
 				segmentStart = this.position;
 				long delimiter = this.utf8Json.IndexOfDelimiter(segmentStart);
@@ -1033,17 +995,6 @@ public ref struct JsonReader
 		return false;
 	}
 
-	private bool TryConsume(byte expected)
-	{
-		if (this.position < this.utf8Json.Length && this.utf8Json[this.position] == expected)
-		{
-			this.position++;
-			return true;
-		}
-
-		return false;
-	}
-
 	private int ReadEscapeSequenceUtf8()
 	{
 		if (this.position >= this.utf8Json.Length)
@@ -1062,31 +1013,9 @@ public ref struct JsonReader
 			(byte)'n' => '\n',
 			(byte)'r' => '\r',
 			(byte)'t' => '\t',
-			(byte)'u' => this.ReadUnicodeScalarUtf8(),
+			(byte)'u' => this.ReadHexQuadUtf8(),
 			_ => throw new FormatException($"Unsupported JSON escape sequence '\\{(char)ch}'."),
 		};
-	}
-
-	private int ReadUnicodeScalarUtf8()
-	{
-		int value = this.ReadHexQuadUtf8();
-		if (value is >= 0xD800 and <= 0xDBFF)
-		{
-			if (!this.TryConsume((byte)'\\') || !this.TryConsume((byte)'u'))
-			{
-				throw new FormatException("A high surrogate must be followed by a low surrogate escape.");
-			}
-
-			int low = this.ReadHexQuadUtf8();
-			if (low is < 0xDC00 or > 0xDFFF)
-			{
-				throw new FormatException("Invalid low surrogate escape.");
-			}
-
-			return 0x10000 + ((value - 0xD800) << 10) + low - 0xDC00;
-		}
-
-		return value is >= 0xDC00 and <= 0xDFFF ? throw new FormatException("Unpaired low surrogate escape.") : value;
 	}
 
 	private int ReadHexQuadUtf8()
@@ -1179,17 +1108,14 @@ public ref struct JsonReader
 				escaped = true;
 				this.ReadEscapeSequenceUtf8();
 			}
-			else if (ch < 0x20 || ch >= 0x80)
+			else if (ch < 0x20)
 			{
-				this.ValidateStringByte(ch);
+				throw new FormatException("Unescaped control character in JSON string.");
 			}
 		}
 
 		throw new FormatException("Unterminated JSON string.");
 	}
-
-	private void ValidateStringByte(byte first, bool allowControlCharacters = false)
-		=> ValidateStringByte(in this.utf8Json, ref this.position, first, allowControlCharacters);
 
 	private void RequireCurrent(byte expected)
 	{

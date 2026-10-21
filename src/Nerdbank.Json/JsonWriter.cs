@@ -215,10 +215,9 @@ public ref struct JsonWriter
 
 	/// <summary>Writes decoded UTF-8 content as a JSON string, escaping quotes, backslashes, and control bytes.</summary>
 	/// <param name="value">Decoded UTF-8 bytes, not an already-escaped JSON token.</param>
-	/// <exception cref="FormatException">The input is not valid UTF-8.</exception>
+	/// <remarks>Non-ASCII bytes are preserved without Unicode validation or transcoding.</remarks>
 	public void WriteString(ReadOnlySpan<byte> value)
 	{
-		JsonReader.ValidateUtf8String(value);
 		this.BeforeValueToken();
 		this.WriteByte((byte)'"');
 		this.WriteEscapedUtf8(value);
@@ -227,10 +226,9 @@ public ref struct JsonWriter
 
 	/// <summary>Writes decoded, possibly segmented UTF-8 content as a JSON string.</summary>
 	/// <param name="value">Decoded UTF-8 bytes. UTF-8 code points may span segments.</param>
-	/// <exception cref="FormatException">The input is not valid UTF-8.</exception>
+	/// <remarks>Non-ASCII bytes are preserved without Unicode validation or transcoding.</remarks>
 	public void WriteString(scoped in ReadOnlySequence<byte> value)
 	{
-		JsonReader.ValidateUtf8String(value);
 		this.BeforeValueToken();
 		this.WriteByte((byte)'"');
 		foreach (ReadOnlyMemory<byte> segment in value)
@@ -802,8 +800,7 @@ public ref struct JsonWriter
 #if NET8_0_OR_GREATER
 		// Fast path: bulk-copy runs of 7-bit ASCII (the common case for property names and typical
 		// string content) using a vectorized narrowing conversion instead of writing one byte at a time.
-		// Any non-ASCII content (including surrogate pairs) falls through to the char-by-char path below,
-		// which preserves the exact surrogate-validation and multi-byte UTF-8 encoding behavior.
+		// Non-ASCII content falls through to UTF-8 encoding and isolated-surrogate escaping below.
 		if (Ascii.IsValid(value))
 		{
 			Span<byte> buffer = this.writer.GetSpan(value.Length);
@@ -824,7 +821,8 @@ public ref struct JsonWriter
 
 			if (!char.IsHighSurrogate(ch) || i + 1 >= value.Length || !char.IsLowSurrogate(value[i + 1]))
 			{
-				throw new ArgumentException("The value contains an unmatched surrogate code point.", nameof(value));
+				this.WriteUnicodeEscape(ch);
+				continue;
 			}
 
 			int scalar = char.ConvertToUtf32(ch, value[++i]);

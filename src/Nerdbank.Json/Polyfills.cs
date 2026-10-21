@@ -11,6 +11,22 @@ namespace Nerdbank.Json;
 internal static class Polyfills
 {
 #if !NET
+	/// <summary>Encodes characters into caller-provided UTF-8 storage.</summary>
+	/// <param name="encoding">The encoding to use.</param>
+	/// <param name="characters">The characters to encode.</param>
+	/// <param name="bytes">The destination.</param>
+	/// <returns>The number of bytes written.</returns>
+	internal static unsafe int GetBytes(this Encoding encoding, ReadOnlySpan<char> characters, Span<byte> bytes)
+	{
+		fixed (char* pCharacters = characters)
+		{
+			fixed (byte* pBytes = bytes)
+			{
+				return encoding.GetBytes(pCharacters, characters.Length, pBytes, bytes.Length);
+			}
+		}
+	}
+
 	/// <summary>
 	/// Decodes bytes into a caller-provided character buffer.
 	/// </summary>

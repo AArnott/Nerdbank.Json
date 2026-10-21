@@ -212,6 +212,8 @@ On each OS, NativeAOT core tests on .NET 9 and 10 total **1,892 passes, zero fai
 Only NativeAOT creation of non-zero-lower-bound array inputs skips; managed normalization assertions remain intact.
 The final source also passed DocFX with zero warnings/errors and formatting verification.
 MVC retains strict single-JSON-body validation.
+String tokens enforce JSON lexical grammar rather than Unicode well-formedness: CLR reads use UTF-8 replacement fallback and preserve `\uXXXX` code units, including lone surrogates.
+Raw JSON and unescaped UTF-8 views preserve source bytes; UTF-8 string writes escape quotes, backslashes, and controls without validating non-ASCII payloads, while CLR writes escape lone surrogates.
 
 Matched Medium performance evidence, causal fixes, exact native sizes, and artifact locations are recorded in [TODO.md](TODO.md) and the [benchmark guide](docfx/docs/benchmarking.md).
 Original object allocation parity is preserved, but full speed restoration is **not** claimed: final Windows small/wide reads remain about 12%/18% slower than the accepted pre-low-level reader.

@@ -116,7 +116,7 @@ public partial class RawJsonTests
 	[Arguments("true false")]
 	[Arguments("[1,]")]
 	[Arguments("\"\\q\"")]
-	[Arguments("\"\\uD800\"")]
+	[Arguments("\"\\uD80X\"")]
 	[Arguments("/*comment*/null")]
 	[Arguments("\uFEFFnull")]
 	public void InvalidPayloadCannotBeWritten(string json)

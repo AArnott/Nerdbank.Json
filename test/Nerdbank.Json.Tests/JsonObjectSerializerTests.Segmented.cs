@@ -96,12 +96,11 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
-	public void SegmentedInvalidPropertyUtf8AndControlsCannotBypassLookupValidation()
+	public void SegmentedPropertyControlsCannotBypassLookupValidation()
 	{
 		foreach (byte[] bytes in new[]
 		{
 			"{\"bad\nname\":1}"u8.ToArray(),
-			new byte[] { (byte)'{', (byte)'"', 0xC0, 0xAF, (byte)'"', (byte)':', (byte)'1', (byte)'}' },
 		})
 		{
 			foreach (ReadOnlySequence<byte> sequence in EverySplit(bytes))

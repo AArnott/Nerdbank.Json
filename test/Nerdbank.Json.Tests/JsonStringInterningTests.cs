@@ -14,6 +14,9 @@ public partial class JsonStringInterningTests
 	[Arguments("""["\u0000","\u0000"]""", "\0")]
 	[Arguments("[\"\\u00E9\\uD83D\\uDE00\",\"\u00e9\U0001F600\"]", "\u00e9\U0001F600")]
 	[Arguments("""["\uD800\uDC00","\ud800\udc00"]""", "\U00010000")]
+	[Arguments("""["\uD800","\ud800"]""", "\uD800")]
+	[Arguments("""["\uDC00","\udc00"]""", "\uDC00")]
+	[Arguments("""["\uD800\u0041","\ud800A"]""", "\uD800A")]
 	public void EquivalentEscapesShareInstances(string json, string expected)
 	{
 		JsonSerializer serializer = new() { InternStrings = true };
@@ -59,9 +62,6 @@ public partial class JsonStringInterningTests
 	[Arguments("\"abc\\u12xz\"")]
 	[Arguments("\"abc\\n")]
 	[Arguments("\"abc\\\"")]
-	[Arguments("\"\\uD800\"")]
-	[Arguments("\"\\uDC00\"")]
-	[Arguments("\"\\uD800\\u0041\"")]
 	public void MalformedEscapesStillThrow(string json)
 	{
 		foreach (bool intern in new[] { false, true })
