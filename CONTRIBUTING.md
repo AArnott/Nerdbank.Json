@@ -67,6 +67,7 @@ The separate `AotSizeTest` measures a minimal reachable serialization image and 
 Its report is explicitly uncalibrated and does not replace the broad application's size guard.
 Recalibrate baselines only from native images measured on each target OS after reviewing intentional code-size changes; a measurement on Windows does not calibrate Linux or macOS.
 CI uploads both measurements and reports the broad size guard separately from the minimal image report.
+Compiler `.mstat` and dependency reports for both native-size fixtures are retained even when a size guard fails, so platform-specific growth can be attributed without disabling or relaxing the guard.
 
 ## Releases
 
