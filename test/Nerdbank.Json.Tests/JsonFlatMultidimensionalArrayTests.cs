@@ -73,10 +73,17 @@ public partial class JsonMultidimensionalArrayTests
 	[Arguments(false)]
 	[Arguments(true)]
 #if NET
-	[System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = "Both int[,] and int[,,] are statically referenced by generated shapes.")]
+	[System.Diagnostics.CodeAnalysis.UnconditionalSuppressMessage("AOT", "IL3050", Justification = "This managed-only test skips when dynamic code is not compiled because NativeAOT cannot create arrays with non-zero lower bounds, even for statically referenced ranks.")]
 #endif
 	public async Task Flat_NonZeroLowerBounds_AreNormalized(bool async)
 	{
+#if NET
+		if (!System.Runtime.CompilerServices.RuntimeFeature.IsDynamicCodeCompiled)
+		{
+			Skip.Test("NativeAOT does not support Array.CreateInstance with non-zero lower bounds; test-input creation requires a managed runtime.");
+		}
+#endif
+
 		this.UseFlatFormat();
 		int[,] rank2 = (int[,])Array.CreateInstance(typeof(int), [2, 2], [-2, 3]);
 		rank2[-2, 3] = 1;

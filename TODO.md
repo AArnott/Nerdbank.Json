@@ -177,9 +177,13 @@ All four native fixtures publish for Windows x64 with `-warnaserror`, **zero war
 Nested records and arrays no longer FAILFAST; the broad model fixture prints `Success`.
 No obsolete union type was restored, and only the existing root-all compatibility fixture roots shipping assemblies.
 The final full core NativeAOT suite was published for net10.0/win-x64 with `NativeAOT=true`, `--no-restore`, and `-warnaserror`, with zero warnings/errors.
-Execution exits 2: **780 succeeded, 2 failed, 0 skipped, 782 total**.
+The historical execution exited 2: **780 succeeded, 2 failed, 0 skipped, 782 total**; the platform guard below supersedes these test-input failures.
 Both `JsonMultidimensionalArrayTests.Flat_NonZeroLowerBounds_AreNormalized(False/True)` failures occur at test-input creation in `Array.CreateInstance(Type, Int32[], Int32[])`, with `PlatformNotSupportedException: Arrays with non-zero lower bounds are not supported.`
-The tests were not weakened, skipped, or given new suppressions.
+These two cases now use TUnit's runtime `Skip.Test` guard when `RuntimeFeature.IsDynamicCodeCompiled` is false, explicitly identifying NativeAOT's inability to create non-zero-lower-bound arrays.
+All managed round-trip assertions remain intact, including both arguments on net8.0/net9.0/net10.0/net472; all other native array tests remain enabled.
+The existing IL3050 suppression now explains this managed-only input requirement; statically referenced ranks do not enable NativeAOT lower-bound support.
+The targeted managed flat-test build/run was attempted after priming, but command approval was denied in the non-interactive session, so it did not execute.
+The coordinator must rerun the full managed and native suites to verify this correction; no post-correction native pass is claimed.
 All new navigation and converter-association tests pass natively, including read-only dynamic dictionary access.
 The broader multi-project/multi-framework native traversal was not run.
 
