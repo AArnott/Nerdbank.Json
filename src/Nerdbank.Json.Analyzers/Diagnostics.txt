@@ -1,0 +1,26 @@
+NBJson020 (Usage, Error): A JsonConverterAttribute must name a non-abstract
+JsonConverter<T> for the annotated type, field, property or parameter. An open
+generic converter is closed using the annotated type's generic arguments.
+For example, a converter for string cannot be assigned to an int property.
+Use a matching converter or remove the attribute.
+
+NBJson021 (Usage, Error): Attributed converters are activated at runtime and need
+a public parameterless constructor. Private constructors and constructors with
+optional parameters do not qualify. Supply a parameterless constructor or
+register a configured converter instance on the serializer instead.
+
+NBJson030 (Usage, Warning): A converter must not construct or call JsonSerializer.
+Doing so starts a new serialization operation, losing the parent context's
+depth limits and reference tracking. Obtain a nested converter through the
+SerializationContext and call that converter with the existing reader/writer
+and context. Calls outside converters are not diagnosed.
+
+NBJson032 (Usage, Info): A concrete converter should override GetJsonSchema.
+An inherited implementation also satisfies this rule. Without a schema override,
+the schema generator cannot describe the converter's wire representation.
+Implement an accurate schema; a permissive schema may be appropriate for a
+converter that intentionally accepts any JSON value. Abstract converters and
+unrelated methods named GetJsonSchema are not implementations of this contract.
+
+Generated code is excluded. Standard #pragma warning directives and .editorconfig
+severity settings can suppress these rules where the design is intentional.
