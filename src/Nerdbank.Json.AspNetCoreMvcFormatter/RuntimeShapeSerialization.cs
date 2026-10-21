@@ -5,7 +5,7 @@ using System.IO.Pipelines;
 using PolyType;
 using PolyType.Abstractions;
 
-namespace Nerdbank.Json.AspNetCore;
+namespace Nerdbank.Json.AspNetCoreMvcFormatter;
 
 /// <summary>
 /// Bridges a runtime <see cref="Type"/> to the strongly typed, source-generated serialization APIs on

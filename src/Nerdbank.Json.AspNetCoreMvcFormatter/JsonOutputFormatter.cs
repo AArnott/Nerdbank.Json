@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Formatters;
 using PolyType;
 
-namespace Nerdbank.Json.AspNetCore;
+namespace Nerdbank.Json.AspNetCoreMvcFormatter;
 
 /// <summary>
 /// An MVC output formatter that serializes responses with <see cref="JsonSerializer"/> using an explicitly supplied,
@@ -18,7 +18,7 @@ namespace Nerdbank.Json.AspNetCore;
 /// graphs are streamed without buffering the whole payload, honors <see cref="HttpContext.RequestAborted"/>, and never
 /// uses reflection or roots <c>System.Text.Json</c>, keeping it trimming- and NativeAOT-safe.
 /// </remarks>
-public class NerdbankJsonOutputFormatter : TextOutputFormatter
+public class JsonOutputFormatter : TextOutputFormatter
 {
 	private static readonly StreamPipeWriterOptions LeaveOpenPipeWriterOptions = new(leaveOpen: true);
 
@@ -26,11 +26,20 @@ public class NerdbankJsonOutputFormatter : TextOutputFormatter
 	private readonly ITypeShapeProvider shapeProvider;
 
 	/// <summary>
-	/// Initializes a new instance of the <see cref="NerdbankJsonOutputFormatter"/> class.
+	/// Initializes a new instance of the <see cref="JsonOutputFormatter"/> class with a default serializer.
 	/// </summary>
-	/// <param name="serializer">The serializer used to write responses.</param>
 	/// <param name="shapeProvider">The shape provider that describes every serializable model type.</param>
-	public NerdbankJsonOutputFormatter(JsonSerializer serializer, ITypeShapeProvider shapeProvider)
+	public JsonOutputFormatter(ITypeShapeProvider shapeProvider)
+		: this(shapeProvider, new JsonSerializer())
+	{
+	}
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="JsonOutputFormatter"/> class.
+	/// </summary>
+	/// <param name="shapeProvider">The shape provider that describes every serializable model type.</param>
+	/// <param name="serializer">The serializer used to write responses.</param>
+	public JsonOutputFormatter(ITypeShapeProvider shapeProvider, JsonSerializer serializer)
 	{
 		ArgumentNullException.ThrowIfNull(serializer);
 		ArgumentNullException.ThrowIfNull(shapeProvider);

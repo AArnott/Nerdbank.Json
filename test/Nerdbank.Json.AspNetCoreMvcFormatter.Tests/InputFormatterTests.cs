@@ -4,11 +4,19 @@
 using System.Text;
 using Microsoft.AspNetCore.Mvc.Formatters;
 
-namespace Nerdbank.Json.AspNetCore.Tests;
+namespace Nerdbank.Json.AspNetCoreMvcFormatter.Tests;
 
 public class InputFormatterTests : FormatterTestBase
 {
-	private readonly NerdbankJsonInputFormatter formatter = new(new JsonSerializer(), Provider);
+	private readonly JsonInputFormatter formatter = new(Provider);
+
+	[Test]
+	public void Constructors_ValidateArguments()
+	{
+		Assert.Throws<ArgumentNullException>(() => new JsonInputFormatter(null!));
+		Assert.Throws<ArgumentNullException>(() => new JsonInputFormatter(null!, new JsonSerializer()));
+		Assert.Throws<ArgumentNullException>(() => new JsonInputFormatter(Provider, null!));
+	}
 
 	[Test]
 	public async Task ReadAsync_DeserializesModel()

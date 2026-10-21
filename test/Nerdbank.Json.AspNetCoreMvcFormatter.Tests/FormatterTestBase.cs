@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Metadata;
 using PolyType;
 
-namespace Nerdbank.Json.AspNetCore.Tests;
+namespace Nerdbank.Json.AspNetCoreMvcFormatter.Tests;
 
 /// <summary>
 /// Shared helpers for building the MVC formatter context objects that the framework would normally hand to a formatter.

@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Formatters;
 using PolyType;
 
-namespace Nerdbank.Json.AspNetCore;
+namespace Nerdbank.Json.AspNetCoreMvcFormatter;
 
 /// <summary>
 /// An MVC input formatter that deserializes request bodies with <see cref="JsonSerializer"/> using an explicitly
@@ -18,17 +18,26 @@ namespace Nerdbank.Json.AspNetCore;
 /// full, honors <see cref="HttpContext.RequestAborted"/>, and never uses reflection or roots <c>System.Text.Json</c>,
 /// keeping it trimming- and NativeAOT-safe.
 /// </remarks>
-public class NerdbankJsonInputFormatter : TextInputFormatter
+public class JsonInputFormatter : TextInputFormatter
 {
 	private readonly JsonSerializer serializer;
 	private readonly ITypeShapeProvider shapeProvider;
 
 	/// <summary>
-	/// Initializes a new instance of the <see cref="NerdbankJsonInputFormatter"/> class.
+	/// Initializes a new instance of the <see cref="JsonInputFormatter"/> class with a default serializer.
 	/// </summary>
-	/// <param name="serializer">The serializer used to read request bodies.</param>
 	/// <param name="shapeProvider">The shape provider that describes every deserializable model type.</param>
-	public NerdbankJsonInputFormatter(JsonSerializer serializer, ITypeShapeProvider shapeProvider)
+	public JsonInputFormatter(ITypeShapeProvider shapeProvider)
+		: this(shapeProvider, new JsonSerializer())
+	{
+	}
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="JsonInputFormatter"/> class.
+	/// </summary>
+	/// <param name="shapeProvider">The shape provider that describes every deserializable model type.</param>
+	/// <param name="serializer">The serializer used to read request bodies.</param>
+	public JsonInputFormatter(ITypeShapeProvider shapeProvider, JsonSerializer serializer)
 	{
 		ArgumentNullException.ThrowIfNull(serializer);
 		ArgumentNullException.ThrowIfNull(shapeProvider);

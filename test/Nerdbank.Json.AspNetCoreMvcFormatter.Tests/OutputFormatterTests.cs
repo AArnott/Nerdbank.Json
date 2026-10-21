@@ -4,11 +4,19 @@
 using System.Text;
 using Microsoft.AspNetCore.Mvc.Formatters;
 
-namespace Nerdbank.Json.AspNetCore.Tests;
+namespace Nerdbank.Json.AspNetCoreMvcFormatter.Tests;
 
 public class OutputFormatterTests : FormatterTestBase
 {
-	private readonly NerdbankJsonOutputFormatter formatter = new(new JsonSerializer(), Provider);
+	private readonly JsonOutputFormatter formatter = new(Provider);
+
+	[Test]
+	public void Constructors_ValidateArguments()
+	{
+		Assert.Throws<ArgumentNullException>(() => new JsonOutputFormatter(null!));
+		Assert.Throws<ArgumentNullException>(() => new JsonOutputFormatter(null!, new JsonSerializer()));
+		Assert.Throws<ArgumentNullException>(() => new JsonOutputFormatter(Provider, null!));
+	}
 
 	[Test]
 	public async Task WriteAsync_SerializesModel()
@@ -43,7 +51,7 @@ public class OutputFormatterTests : FormatterTestBase
 	[Test]
 	public async Task WriteAsync_HonorsSerializerOptions()
 	{
-		NerdbankJsonOutputFormatter indenting = new(new JsonSerializer { WriteIndented = true }, Provider);
+		JsonOutputFormatter indenting = new(Provider, new JsonSerializer { WriteIndented = true });
 		(OutputFormatterWriteContext context, MemoryStream body) = CreateOutputContext(typeof(Person), new Person("Ada", 36));
 
 		await indenting.WriteAsync(context);

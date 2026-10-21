@@ -13,7 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using PolyType;
 
-namespace Nerdbank.Json.AspNetCore.Tests;
+namespace Nerdbank.Json.AspNetCoreMvcFormatter.Tests;
 
 public class IntegrationTests
 {
