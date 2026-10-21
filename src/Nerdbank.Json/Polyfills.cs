@@ -11,6 +11,23 @@ namespace Nerdbank.Json;
 internal static class Polyfills
 {
 #if !NET
+	/// <summary>Decodes a segment while retaining decoder state until the final segment.</summary>
+	/// <param name="decoder">The stateful decoder.</param>
+	/// <param name="bytes">The input bytes.</param>
+	/// <param name="characters">The destination.</param>
+	/// <param name="flush">Whether this completes the input.</param>
+	/// <returns>The number of characters written.</returns>
+	internal static unsafe int GetChars(this Decoder decoder, ReadOnlySpan<byte> bytes, Span<char> characters, bool flush)
+	{
+		fixed (byte* pBytes = bytes)
+		{
+			fixed (char* pCharacters = characters)
+			{
+				return decoder.GetChars(pBytes, bytes.Length, pCharacters, characters.Length, flush);
+			}
+		}
+	}
+
 	/// <summary>Encodes characters into caller-provided UTF-8 storage.</summary>
 	/// <param name="encoding">The encoding to use.</param>
 	/// <param name="characters">The characters to encode.</param>

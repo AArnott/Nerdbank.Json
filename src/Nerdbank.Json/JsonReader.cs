@@ -6,6 +6,7 @@
 using System.Buffers;
 using System.Buffers.Text;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Nerdbank.Json;
@@ -87,7 +88,7 @@ public ref struct JsonReader
 		{
 			if (this.sequence is not { } result)
 			{
-				result = new(this.utf8Json.Slice(0, this.utf8Json.Length).ToArray());
+				result = new(this.utf8Json.ToArray(0, this.utf8Json.Length));
 				this.sequence = result;
 			}
 
@@ -298,7 +299,11 @@ public ref struct JsonReader
 	/// Reads the next JSON number token without converting it to a numeric type.
 	/// </summary>
 	/// <returns>The raw number token as text.</returns>
-	public string ReadNumberToken() => Encoding.UTF8.GetString(this.ReadNumberTokenUtf8Core());
+	public string ReadNumberToken()
+	{
+		ReadOnlySpan<byte> token = this.ReadNumberTokenUtf8Core(out long start, out long length);
+		return !token.IsEmpty ? Encoding.UTF8.GetString(token) : this.ReadSegmentedString(start, length, null);
+	}
 
 	/// <summary>
 	/// Reads a base64-encoded JSON string value that may be <see langword="null"/>.
@@ -434,7 +439,7 @@ public ref struct JsonReader
 
 				break;
 			default:
-				this.ReadNumberTokenUtf8Core(context.CancellationToken, materialize: false);
+				this.ReadNumberTokenUtf8Core(out _, out _, context.CancellationToken);
 				break;
 		}
 	}
@@ -457,7 +462,10 @@ public ref struct JsonReader
 		this.SkipWhiteSpaceUtf8(context.CancellationToken);
 		long utf8Start = this.position;
 		this.Skip(context);
-		return Encoding.UTF8.GetString(this.utf8Json.Slice(utf8Start, this.position - utf8Start));
+		long length = this.position - utf8Start;
+		return this.utf8Json.TryGetSpan(utf8Start, length, out ReadOnlySpan<byte> bytes)
+			? Encoding.UTF8.GetString(bytes)
+			: this.ReadSegmentedString(utf8Start, length, null);
 	}
 
 	/// <summary>Reads the next JSON value as exact UTF-8 bytes using the active operation's limits.</summary>
@@ -503,143 +511,88 @@ public ref struct JsonReader
 	/// <returns>The parsed value.</returns>
 	public byte ReadByte()
 	{
-		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
-		if (Utf8Parser.TryParse(utf8Token, out byte utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
-		{
-			return utf8Value;
-		}
-
-		return byte.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		ReadOnlySpan<byte> token = this.ReadNumberTokenUtf8Core(out long start, out long length);
+		return !token.IsEmpty ? ParseByte(token) : this.ReadByteSegmented(start, length);
 	}
 
 	/// <summary>Reads a JSON number as a signed 8-bit integer.</summary>
 	/// <returns>The parsed value.</returns>
 	public sbyte ReadSByte()
 	{
-		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
-		if (Utf8Parser.TryParse(utf8Token, out sbyte utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
-		{
-			return utf8Value;
-		}
-
-		return sbyte.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		ReadOnlySpan<byte> token = this.ReadNumberTokenUtf8Core(out long start, out long length);
+		return !token.IsEmpty ? ParseSByte(token) : this.ReadSByteSegmented(start, length);
 	}
 
 	/// <summary>Reads a JSON number as a signed 16-bit integer.</summary>
 	/// <returns>The parsed value.</returns>
 	public short ReadInt16()
 	{
-		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
-		if (Utf8Parser.TryParse(utf8Token, out short utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
-		{
-			return utf8Value;
-		}
-
-		return short.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		ReadOnlySpan<byte> token = this.ReadNumberTokenUtf8Core(out long start, out long length);
+		return !token.IsEmpty ? ParseInt16(token) : this.ReadInt16Segmented(start, length);
 	}
 
 	/// <summary>Reads a JSON number as an unsigned 16-bit integer.</summary>
 	/// <returns>The parsed value.</returns>
 	public ushort ReadUInt16()
 	{
-		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
-		if (Utf8Parser.TryParse(utf8Token, out ushort utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
-		{
-			return utf8Value;
-		}
-
-		return ushort.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		ReadOnlySpan<byte> token = this.ReadNumberTokenUtf8Core(out long start, out long length);
+		return !token.IsEmpty ? ParseUInt16(token) : this.ReadUInt16Segmented(start, length);
 	}
 
 	/// <summary>Reads a JSON number as a signed 32-bit integer.</summary>
 	/// <returns>The parsed value.</returns>
 	public int ReadInt32()
 	{
-		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
-		if (Utf8Parser.TryParse(utf8Token, out int utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
-		{
-			return utf8Value;
-		}
-
-		return int.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		ReadOnlySpan<byte> token = this.ReadNumberTokenUtf8Core(out long start, out long length);
+		return !token.IsEmpty ? ParseInt32(token) : this.ReadInt32Segmented(start, length);
 	}
 
 	/// <summary>Reads a JSON number as an unsigned 32-bit integer.</summary>
 	/// <returns>The parsed value.</returns>
 	public uint ReadUInt32()
 	{
-		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
-		if (Utf8Parser.TryParse(utf8Token, out uint utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
-		{
-			return utf8Value;
-		}
-
-		return uint.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		ReadOnlySpan<byte> token = this.ReadNumberTokenUtf8Core(out long start, out long length);
+		return !token.IsEmpty ? ParseUInt32(token) : this.ReadUInt32Segmented(start, length);
 	}
 
 	/// <summary>Reads a JSON number as a signed 64-bit integer.</summary>
 	/// <returns>The parsed value.</returns>
 	public long ReadInt64()
 	{
-		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
-		if (Utf8Parser.TryParse(utf8Token, out long utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
-		{
-			return utf8Value;
-		}
-
-		return long.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		ReadOnlySpan<byte> token = this.ReadNumberTokenUtf8Core(out long start, out long length);
+		return !token.IsEmpty ? ParseInt64(token) : this.ReadInt64Segmented(start, length);
 	}
 
 	/// <summary>Reads a JSON number as an unsigned 64-bit integer.</summary>
 	/// <returns>The parsed value.</returns>
 	public ulong ReadUInt64()
 	{
-		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
-		if (Utf8Parser.TryParse(utf8Token, out ulong utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
-		{
-			return utf8Value;
-		}
-
-		return ulong.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		ReadOnlySpan<byte> token = this.ReadNumberTokenUtf8Core(out long start, out long length);
+		return !token.IsEmpty ? ParseUInt64(token) : this.ReadUInt64Segmented(start, length);
 	}
 
 	/// <summary>Reads a JSON number as a finite single-precision floating-point value.</summary>
 	/// <returns>The parsed value.</returns>
 	public float ReadSingle()
 	{
-		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
-		if (Utf8Parser.TryParse(utf8Token, out float utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
-		{
-			return !float.IsInfinity(utf8Value) ? utf8Value : throw new OverflowException("The JSON number exceeds the range of Single.");
-		}
-
-		return float.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Float, CultureInfo.InvariantCulture);
+		ReadOnlySpan<byte> token = this.ReadNumberTokenUtf8Core(out long start, out long length);
+		return !token.IsEmpty ? ParseSingle(token) : this.ReadSingleSegmented(start, length);
 	}
 
 	/// <summary>Reads a JSON number as a finite double-precision floating-point value.</summary>
 	/// <returns>The parsed value.</returns>
 	public double ReadDouble()
 	{
-		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
-		if (Utf8Parser.TryParse(utf8Token, out double utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
-		{
-			return !double.IsInfinity(utf8Value) ? utf8Value : throw new OverflowException("The JSON number exceeds the range of Double.");
-		}
-
-		return double.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Float, CultureInfo.InvariantCulture);
+		ReadOnlySpan<byte> token = this.ReadNumberTokenUtf8Core(out long start, out long length);
+		return !token.IsEmpty ? ParseDouble(token) : this.ReadDoubleSegmented(start, length);
 	}
 
 	/// <summary>Reads a JSON number as a decimal value.</summary>
 	/// <returns>The parsed value.</returns>
 	public decimal ReadDecimal()
 	{
-		ReadOnlySpan<byte> utf8Token = this.ReadNumberTokenUtf8Core();
-		if (Utf8Parser.TryParse(utf8Token, out decimal utf8Value, out int bytesConsumed) && bytesConsumed == utf8Token.Length)
-		{
-			return utf8Value;
-		}
-
-		return decimal.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Float, CultureInfo.InvariantCulture);
+		ReadOnlySpan<byte> token = this.ReadNumberTokenUtf8Core(out long start, out long length);
+		return !token.IsEmpty ? ParseDecimal(token) : this.ReadDecimalSegmented(start, length);
 	}
 
 	internal string? ReadString(StringInterning? stringInterning)
@@ -681,9 +634,32 @@ public ref struct JsonReader
 		return (char)this.utf8Json[this.position];
 	}
 
-	internal bool TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> token)
+	/// <summary>Copies a known split token within the consuming caller's scratch lifetime.</summary>
+	/// <param name="start">The token offset.</param>
+	/// <param name="length">The token length.</param>
+	/// <param name="scratch">The caller-owned short-token buffer.</param>
+	/// <returns>A token that the consuming caller must dispose.</returns>
+	internal readonly JsonInput.Token CopyToken(long start, long length, Span<byte> scratch) => this.utf8Json.CopyToken(start, length, scratch);
+
+	/// <summary>Validates and consumes a split unescaped string after its caller obtains contiguous scratch storage.</summary>
+	/// <param name="start">The opening quote offset.</param>
+	/// <param name="length">The token length including quotes.</param>
+	/// <param name="token">The copied token, including quotes.</param>
+	internal void ConsumeStringToken(long start, long length, scoped ReadOnlySpan<byte> token)
+	{
+		ValidateStringBytes(token[1..^1]);
+		this.position = start + length;
+	}
+
+	/// <summary>Finds an unescaped property-name token, consuming it immediately only when contiguous.</summary>
+	/// <param name="token">The borrowed contiguous token, or an empty span for split input.</param>
+	/// <param name="start">The opening quote offset.</param>
+	/// <param name="length">The token length including quotes.</param>
+	/// <returns>False for escaped input without advancing; otherwise true. Split tokens must be copied and passed to <see cref="ConsumeStringToken"/> before continuing.</returns>
+	internal bool TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> token, out long start, out long length)
 	{
 		token = default;
+		start = length = 0;
 		(ReadOnlyMemory<byte> Memory, SequencePosition Next, long Start) cursor = this.utf8Json.SaveCursor();
 		long index = this.SkipInsignificantCharactersUtf8(this.position);
 		if (index >= this.utf8Json.Length || this.utf8Json[index] != (byte)'"')
@@ -691,15 +667,19 @@ public ref struct JsonReader
 			throw new FormatException("Expected a JSON string.");
 		}
 
-		long start = index;
+		start = index;
 		index = this.utf8Json.IndexOfDelimiter(index + 1);
 		if (index >= 0)
 		{
 			if (this.utf8Json[index] == (byte)'"')
 			{
-				token = this.utf8Json.Slice(start, index + 1 - start);
-				ValidateStringBytes(token[1..^1]);
-				this.position = index + 1;
+				length = index + 1 - start;
+				if (this.utf8Json.TryGetSpan(start, length, out token))
+				{
+					ValidateStringBytes(token[1..^1]);
+					this.position = index + 1;
+				}
+
 				return true;
 			}
 
@@ -737,6 +717,157 @@ public ref struct JsonReader
 #endif
 	}
 
+	private static byte ParseByte(ReadOnlySpan<byte> token)
+	{
+		return Utf8Parser.TryParse(token, out byte value, out int consumed) && consumed == token.Length
+			? value : byte.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
+
+	private static sbyte ParseSByte(ReadOnlySpan<byte> token)
+	{
+		return Utf8Parser.TryParse(token, out sbyte value, out int consumed) && consumed == token.Length
+			? value : sbyte.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
+
+	private static short ParseInt16(ReadOnlySpan<byte> token)
+	{
+		return Utf8Parser.TryParse(token, out short value, out int consumed) && consumed == token.Length
+			? value : short.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
+
+	private static ushort ParseUInt16(ReadOnlySpan<byte> token)
+	{
+		return Utf8Parser.TryParse(token, out ushort value, out int consumed) && consumed == token.Length
+			? value : ushort.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
+
+	private static int ParseInt32(ReadOnlySpan<byte> token)
+	{
+		return Utf8Parser.TryParse(token, out int value, out int consumed) && consumed == token.Length
+			? value : int.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
+
+	private static uint ParseUInt32(ReadOnlySpan<byte> token)
+	{
+		return Utf8Parser.TryParse(token, out uint value, out int consumed) && consumed == token.Length
+			? value : uint.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
+
+	private static long ParseInt64(ReadOnlySpan<byte> token)
+	{
+		return Utf8Parser.TryParse(token, out long value, out int consumed) && consumed == token.Length
+			? value : long.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
+
+	private static ulong ParseUInt64(ReadOnlySpan<byte> token)
+	{
+		return Utf8Parser.TryParse(token, out ulong value, out int consumed) && consumed == token.Length
+			? value : ulong.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+	}
+
+	private static float ParseSingle(ReadOnlySpan<byte> token)
+	{
+		if (Utf8Parser.TryParse(token, out float value, out int consumed) && consumed == token.Length)
+		{
+			return !float.IsInfinity(value) ? value : throw new OverflowException("The JSON number exceeds the range of Single.");
+		}
+
+		return float.Parse(Encoding.UTF8.GetString(token), NumberStyles.Float, CultureInfo.InvariantCulture);
+	}
+
+	private static double ParseDouble(ReadOnlySpan<byte> token)
+	{
+		if (Utf8Parser.TryParse(token, out double value, out int consumed) && consumed == token.Length)
+		{
+			return !double.IsInfinity(value) ? value : throw new OverflowException("The JSON number exceeds the range of Double.");
+		}
+
+		return double.Parse(Encoding.UTF8.GetString(token), NumberStyles.Float, CultureInfo.InvariantCulture);
+	}
+
+	private static decimal ParseDecimal(ReadOnlySpan<byte> token)
+	{
+		return Utf8Parser.TryParse(token, out decimal value, out int consumed) && consumed == token.Length
+			? value : decimal.Parse(Encoding.UTF8.GetString(token), NumberStyles.Float, CultureInfo.InvariantCulture);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private byte ReadByteSegmented(long start, long length)
+	{
+		using JsonInput.Token token = this.utf8Json.CopyToken(start, length, stackalloc byte[128]);
+		return ParseByte(token.Span);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private sbyte ReadSByteSegmented(long start, long length)
+	{
+		using JsonInput.Token token = this.utf8Json.CopyToken(start, length, stackalloc byte[128]);
+		return ParseSByte(token.Span);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private short ReadInt16Segmented(long start, long length)
+	{
+		using JsonInput.Token token = this.utf8Json.CopyToken(start, length, stackalloc byte[128]);
+		return ParseInt16(token.Span);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private ushort ReadUInt16Segmented(long start, long length)
+	{
+		using JsonInput.Token token = this.utf8Json.CopyToken(start, length, stackalloc byte[128]);
+		return ParseUInt16(token.Span);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private int ReadInt32Segmented(long start, long length)
+	{
+		using JsonInput.Token token = this.utf8Json.CopyToken(start, length, stackalloc byte[128]);
+		return ParseInt32(token.Span);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private uint ReadUInt32Segmented(long start, long length)
+	{
+		using JsonInput.Token token = this.utf8Json.CopyToken(start, length, stackalloc byte[128]);
+		return ParseUInt32(token.Span);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private long ReadInt64Segmented(long start, long length)
+	{
+		using JsonInput.Token token = this.utf8Json.CopyToken(start, length, stackalloc byte[128]);
+		return ParseInt64(token.Span);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private ulong ReadUInt64Segmented(long start, long length)
+	{
+		using JsonInput.Token token = this.utf8Json.CopyToken(start, length, stackalloc byte[128]);
+		return ParseUInt64(token.Span);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private float ReadSingleSegmented(long start, long length)
+	{
+		using JsonInput.Token token = this.utf8Json.CopyToken(start, length, stackalloc byte[128]);
+		return ParseSingle(token.Span);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private double ReadDoubleSegmented(long start, long length)
+	{
+		using JsonInput.Token token = this.utf8Json.CopyToken(start, length, stackalloc byte[128]);
+		return ParseDouble(token.Span);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private decimal ReadDecimalSegmented(long start, long length)
+	{
+		using JsonInput.Token token = this.utf8Json.CopyToken(start, length, stackalloc byte[128]);
+		return ParseDecimal(token.Span);
+	}
+
 	private ReadOnlySequence<byte> ReadEscapedStringBytes(long start, long length)
 	{
 		byte[] decoded = new byte[checked((int)length)];
@@ -746,9 +877,9 @@ public ref struct JsonReader
 		while (true)
 		{
 			long delimiter = this.utf8Json.IndexOfDelimiter(this.position);
-			ReadOnlySpan<byte> run = this.utf8Json.Slice(this.position, delimiter - this.position);
-			run.CopyTo(decoded.AsSpan(written));
-			written += run.Length;
+			int runLength = checked((int)(delimiter - this.position));
+			this.utf8Json.CopyTo(this.position, decoded.AsSpan(written, runLength));
+			written += runLength;
 			this.position = delimiter + 1;
 			if (this.utf8Json[delimiter] == (byte)'"')
 			{
@@ -784,8 +915,10 @@ public ref struct JsonReader
 			byte ch = this.utf8Json[this.position++];
 			if (ch == (byte)'"')
 			{
-				ReadOnlySpan<byte> rawValue = this.utf8Json.Slice(segmentStart, this.position - 1 - segmentStart);
-				return stringInterning?.GetOrAddUtf8(rawValue) ?? Encoding.UTF8.GetString(rawValue);
+				long length = this.position - 1 - segmentStart;
+				return this.utf8Json.TryGetSpan(segmentStart, length, out ReadOnlySpan<byte> rawValue)
+					? stringInterning?.GetOrAddUtf8(rawValue) ?? Encoding.UTF8.GetString(rawValue)
+					: this.ReadSegmentedString(segmentStart, length, stringInterning);
 			}
 
 			if (ch == (byte)'\\')
@@ -839,11 +972,10 @@ public ref struct JsonReader
 		{
 			Span<char> characters = rented ?? stackalloc char[byteLength];
 			int written = 0;
+			Decoder? decoder = null;
 			while (true)
 			{
-				ReadOnlySpan<byte> bytes = this.utf8Json.Slice(segmentStart, this.position - 1 - segmentStart);
-				ValidateStringBytes(bytes);
-				written += Encoding.UTF8.GetChars(bytes, characters[written..]);
+				written += this.DecodeStringBytes(segmentStart, this.position - 1 - segmentStart, characters[written..], ref decoder, validateControls: true);
 				if (this.utf8Json[this.position - 1] == (byte)'"')
 				{
 					ReadOnlySpan<char> value = characters[..written];
@@ -871,17 +1003,109 @@ public ref struct JsonReader
 		}
 	}
 
-	private ReadOnlySpan<byte> ReadNumberTokenUtf8Core(CancellationToken cancellationToken = default, bool materialize = true)
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private string ReadSegmentedString(long start, long length, StringInterning? stringInterning)
+	{
+		if (length <= 128)
+		{
+			Span<byte> bytes = stackalloc byte[128];
+			bytes = bytes[..checked((int)length)];
+			this.utf8Json.CopyTo(start, bytes);
+			return stringInterning?.GetOrAddUtf8(bytes) ?? Encoding.UTF8.GetString(bytes);
+		}
+
+		int count = checked((int)length);
+		char[]? rented = count > 4096 ? ArrayPool<char>.Shared.Rent(count) : null;
+		try
+		{
+			Span<char> characters = rented ?? stackalloc char[count];
+			Decoder? decoder = null;
+			int written = this.DecodeStringBytes(start, length, characters, ref decoder);
+			return stringInterning?.Intern(characters[..written]) ?? characters[..written].ToString();
+		}
+		finally
+		{
+			if (rented is not null)
+			{
+				ArrayPool<char>.Shared.Return(rented);
+			}
+		}
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private int DecodeStringBytes(long start, long length, scoped Span<char> characters, ref Decoder? decoder, bool validateControls = false)
+	{
+		if (this.utf8Json.TryGetSpan(start, length, out ReadOnlySpan<byte> bytes))
+		{
+			if (validateControls)
+			{
+				ValidateStringBytes(bytes);
+			}
+
+			return Encoding.UTF8.GetChars(bytes, characters);
+		}
+
+		ReadOnlySequence<byte> sequence = this.utf8Json.SliceSequence(start, length)!.Value;
+		if (validateControls)
+		{
+			foreach (ReadOnlyMemory<byte> memory in sequence)
+			{
+				ValidateStringBytes(memory.Span);
+			}
+		}
+
+		if (length <= 128)
+		{
+			Span<byte> scratch = stackalloc byte[128];
+			scratch = scratch[..checked((int)length)];
+			sequence.CopyTo(scratch);
+			return Encoding.UTF8.GetChars(scratch, characters);
+		}
+
+		decoder ??= Encoding.UTF8.GetDecoder();
+		Span<byte> batch = stackalloc byte[256];
+		int buffered = 0;
+		int written = 0;
+		long remaining = length;
+		foreach (ReadOnlyMemory<byte> memory in sequence)
+		{
+			ReadOnlySpan<byte> segment = memory.Span;
+			while (!segment.IsEmpty)
+			{
+				if (buffered == 0 && segment.Length >= batch.Length)
+				{
+					remaining -= segment.Length;
+					written += decoder.GetChars(segment, characters[written..], flush: remaining == 0);
+					break;
+				}
+
+				int count = Math.Min(batch.Length - buffered, segment.Length);
+				segment[..count].CopyTo(batch[buffered..]);
+				buffered += count;
+				remaining -= count;
+				segment = segment[count..];
+				if (buffered == batch.Length || remaining == 0)
+				{
+					written += decoder.GetChars(batch[..buffered], characters[written..], flush: remaining == 0);
+					buffered = 0;
+				}
+			}
+		}
+
+		return written;
+	}
+
+	private ReadOnlySpan<byte> ReadNumberTokenUtf8Core(out long start, out long length, CancellationToken cancellationToken = default)
 	{
 		this.SkipWhiteSpaceUtf8(cancellationToken);
-		long start = this.position;
-		if (JsonPrimitives.TryReadNumberToken(in this.utf8Json, start, isFinalBlock: true, out long length, cancellationToken) != JsonPrimitives.DecodeResult.Success)
+		start = this.position;
+		if (JsonPrimitives.TryReadNumberToken(in this.utf8Json, start, isFinalBlock: true, out length, cancellationToken) != JsonPrimitives.DecodeResult.Success)
 		{
 			throw new FormatException("Expected a complete, valid JSON number.");
 		}
 
 		this.position += length;
-		return materialize ? this.utf8Json.Slice(start, length) : default;
+		return this.utf8Json.TryGetSpan(start, length, out ReadOnlySpan<byte> token) ? token : default;
 	}
 
 	private readonly void ValidateScalarTerminator()
@@ -1129,6 +1353,6 @@ public ref struct JsonReader
 	{
 		return this.sequenceInput
 			? new(this.utf8Json.SliceSequence(start, length) ?? this.sequence!.Value.Slice(start, length))
-			: new(new ReadOnlySequence<byte>(this.utf8Json.Slice(start, length).ToArray())) { IsOwned = true };
+			: new(new ReadOnlySequence<byte>(this.utf8Json.ToArray(start, length))) { IsOwned = true };
 	}
 }

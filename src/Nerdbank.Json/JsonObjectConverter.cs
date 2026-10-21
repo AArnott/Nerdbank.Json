@@ -140,16 +140,24 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		{
 			string? propertyName = null;
 			JsonProperty<T>? property = null;
-			if (this.utf8PropertiesByName is not null && reader.TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> utf8PropertyName))
+			if (this.utf8PropertiesByName is not null && reader.TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> utf8PropertyName, out long start, out long length))
 			{
-				if (this.utf8PropertiesByName.TryGetValue(utf8PropertyName, out property))
+				if (utf8PropertyName.IsEmpty)
 				{
-					collisionDetection.MarkAsRead(property!.Index, property.Name);
+					property = this.FindSplitProperty(ref reader, start, length, out propertyName);
+				}
+				else if (!this.utf8PropertiesByName.TryGetValue(utf8PropertyName, out property))
+				{
+					propertyName = Encoding.UTF8.GetString(utf8PropertyName[1..^1]);
+				}
+
+				if (property is not null)
+				{
+					collisionDetection.MarkAsRead(property.Index, property.Name);
 				}
 				else
 				{
-					propertyName = Encoding.UTF8.GetString(utf8PropertyName[1..^1]);
-					collisionDetection.MarkAsRead(propertyName);
+					collisionDetection.MarkAsRead(propertyName!);
 				}
 			}
 			else
@@ -207,6 +215,20 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	public async ValueTask<T> PopulateReferenceAsync(JsonAsyncReader reader, T instance, SerializationContext context)
 		=> await this.PopulateAsyncCore(reader, instance, context).ConfigureAwait(false);
+
+	private JsonProperty<T>? FindSplitProperty(ref JsonReader reader, long start, long length, out string? propertyName)
+	{
+		using JsonInput.Token token = reader.CopyToken(start, length, stackalloc byte[256]);
+		reader.ConsumeStringToken(start, length, token.Span);
+		if (this.utf8PropertiesByName!.TryGetValue(token.Span, out JsonProperty<T>? property))
+		{
+			propertyName = null;
+			return property;
+		}
+
+		propertyName = Encoding.UTF8.GetString(token.Span[1..^1]);
+		return null;
+	}
 
 	private async ValueTask<T> PopulateAsyncCore(JsonAsyncReader reader, T result, SerializationContext context)
 	{

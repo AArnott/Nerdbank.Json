@@ -48,19 +48,15 @@ internal readonly ref struct JsonInput
 		get => this.segments is null ? this.span[checked((int)index)] : this.segments.GetByte(index);
 	}
 
-	/// <summary>Gets contiguous token storage, allocating only when the token spans segments.</summary>
+	/// <summary>Copies a range into independently owned storage.</summary>
 	/// <param name="start">The token offset.</param>
 	/// <param name="length">The token length.</param>
-	/// <returns>Borrowed storage or a GC-owned token copy, never pooled storage.</returns>
-	[MethodImpl(MethodImplOptions.AggressiveInlining)]
-	internal ReadOnlySpan<byte> Slice(long start, long length)
+	/// <returns>A GC-owned copy for an ownership-bearing API, never pooled storage.</returns>
+	internal byte[] ToArray(long start, long length)
 	{
-		if (this.segments is null)
-		{
-			return this.span.Slice(checked((int)start), checked((int)length));
-		}
-
-		return SliceSegmented(this.segments, start, length);
+		byte[] copy = new byte[checked((int)length)];
+		this.CopyTo(start, copy);
+		return copy;
 	}
 
 	/// <summary>Compares a short literal without copying segmented input or disturbing the token-slice cursor.</summary>
@@ -95,6 +91,7 @@ internal readonly ref struct JsonInput
 	/// <param name="length">The range length.</param>
 	/// <param name="value">Receives the borrowed span.</param>
 	/// <returns>Whether no copy is required.</returns>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal bool TryGetSpan(long start, long length, out ReadOnlySpan<byte> value)
 	{
 		if (this.segments is null)
@@ -103,9 +100,40 @@ internal readonly ref struct JsonInput
 			return true;
 		}
 
-		ReadOnlySequence<byte> slice = this.segments.Slice(start, length);
-		value = slice.IsSingleSegment ? slice.First.Span : default;
-		return slice.IsSingleSegment;
+		return TryGetSegmentedSpan(this.segments, start, length, out value);
+	}
+
+	/// <summary>Copies a range into caller-owned storage without materializing a token array.</summary>
+	/// <param name="start">The range offset.</param>
+	/// <param name="destination">The destination, whose length specifies the range length.</param>
+	internal void CopyTo(long start, Span<byte> destination)
+	{
+		if (this.segments is null)
+		{
+			this.span.Slice(checked((int)start), destination.Length).CopyTo(destination);
+		}
+		else
+		{
+			this.segments.Slice(start, destination.Length).CopyTo(destination);
+		}
+	}
+
+	/// <summary>Copies a known split token into caller scratch or a rented buffer.</summary>
+	/// <param name="start">The token offset.</param>
+	/// <param name="length">The token length.</param>
+	/// <param name="scratch">Caller-owned storage for short tokens.</param>
+	/// <returns>A token that must be disposed by the consuming caller before its scratch goes out of scope.</returns>
+	internal Token CopyToken(long start, long length, Span<byte> scratch)
+	{
+		int count = checked((int)length);
+		if (count > scratch.Length)
+		{
+			return this.CopyLargeToken(start, count);
+		}
+
+		Span<byte> destination = scratch[..count];
+		this.CopyTo(start, destination);
+		return new(destination, null);
 	}
 
 	/// <summary>Slices segmented input using its cached sequence cursor.</summary>
@@ -142,10 +170,32 @@ internal readonly ref struct JsonInput
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
-	private static ReadOnlySpan<byte> SliceSegmented(Segments segments, long start, long length)
+	private static bool TryGetSegmentedSpan(Segments segments, long start, long length, out ReadOnlySpan<byte> value)
 	{
-		ReadOnlySequence<byte> token = segments.Slice(start, length);
-		return token.IsSingleSegment ? token.First.Span : token.ToArray();
+		ReadOnlySequence<byte> slice = segments.Slice(start, length);
+		value = slice.IsSingleSegment ? slice.First.Span : default;
+		return slice.IsSingleSegment;
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private Token CopyLargeToken(long start, int length)
+	{
+		byte[] rented = ArrayPool<byte>.Shared.Rent(length);
+		bool copied = false;
+		try
+		{
+			Span<byte> destination = rented.AsSpan(0, length);
+			this.CopyTo(start, destination);
+			copied = true;
+			return new(destination, rented);
+		}
+		finally
+		{
+			if (!copied)
+			{
+				ArrayPool<byte>.Shared.Return(rented);
+			}
+		}
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -160,6 +210,33 @@ internal readonly ref struct JsonInput
 		}
 
 		return -1;
+	}
+
+	/// <summary>A borrowed or temporarily rented token, consumed within its caller's scratch lifetime.</summary>
+	internal readonly ref struct Token
+	{
+		private readonly byte[]? rented;
+
+		/// <summary>Initializes a new instance of the <see cref="Token"/> struct.</summary>
+		/// <param name="span">The token bytes.</param>
+		/// <param name="rented">Storage to return, or null for borrowed input or scratch.</param>
+		internal Token(ReadOnlySpan<byte> span, byte[]? rented)
+		{
+			this.Span = span;
+			this.rented = rented;
+		}
+
+		/// <summary>Gets the token bytes until disposal.</summary>
+		internal ReadOnlySpan<byte> Span { get; }
+
+		/// <summary>Returns any rented storage after the caller finishes consuming the token.</summary>
+		public void Dispose()
+		{
+			if (this.rented is not null)
+			{
+				ArrayPool<byte>.Shared.Return(this.rented);
+			}
+		}
 	}
 
 	/// <summary>Caches forward segment and token-slice cursors without owning or flattening input storage.</summary>

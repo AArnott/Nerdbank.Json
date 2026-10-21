@@ -80,10 +80,19 @@ internal static class JsonTargetedNavigator
 
 	private static bool MatchName(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
 	{
-		if (!options.IgnoreCase && reader.TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> token))
+		Span<byte> scratch = stackalloc byte[256];
+		if (!options.IgnoreCase && reader.TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> bytes, out long start, out long length))
 		{
-			reader.ReadNameSeparator();
-			return token.Length >= 2 && token[1..^1].SequenceEqual(segment.Utf8Name);
+			using (JsonInput.Token token = !bytes.IsEmpty ? new(bytes, null) : reader.CopyToken(start, length, scratch))
+			{
+				if (bytes.IsEmpty)
+				{
+					reader.ConsumeStringToken(start, length, token.Span);
+				}
+
+				reader.ReadNameSeparator();
+				return token.Span.Length >= 2 && token.Span[1..^1].SequenceEqual(segment.Utf8Name);
+			}
 		}
 
 		string name = reader.ReadRequiredString();
