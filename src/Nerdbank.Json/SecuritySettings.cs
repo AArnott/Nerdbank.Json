@@ -27,7 +27,11 @@ public record SecuritySettings
 	/// <remarks>
 	/// This value is optimized for high performance assuming the data is trustworthy, and should not be used with untrusted data.
 	/// </remarks>
-	public static readonly SecuritySettings TrustedData = new();
+	public static readonly SecuritySettings TrustedData = new()
+	{
+		ExpandoObjectMaxPropertyCount = int.MaxValue,
+		MaxObjectMemberCount = int.MaxValue,
+	};
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="SecuritySettings"/> class
@@ -35,6 +39,8 @@ public record SecuritySettings
 	/// </summary>
 	public SecuritySettings()
 	{
+		this.MaxObjectMemberCount = 1_000_000;
+		this.ExpandoObjectMaxPropertyCount = 128;
 	}
 
 	/// <summary>
@@ -46,5 +52,33 @@ public record SecuritySettings
 	/// This bounds memory and, for structures whose insertion cost grows with size, CPU when processing untrusted data.
 	/// It applies only to the optional untyped and dynamic converters; strongly typed objects have a fixed member set.
 	/// </remarks>
-	public int MaxObjectMemberCount { get; init; } = 1_000_000;
+	public int MaxObjectMemberCount
+	{
+		get => field;
+		init
+		{
+			Requires.Range(value > 0, nameof(value), "Value must be positive.");
+			field = value;
+		}
+	}
+
+	/// <summary>
+	/// Gets the maximum number of properties permitted on a <see cref="System.Dynamic.ExpandoObject"/>
+	/// during serialization and deserialization.
+	/// </summary>
+	/// <value>The default value is 128.</value>
+	/// <remarks>
+	/// ExpandoObject insertion has quadratic complexity. The limit also applies when writing so an
+	/// oversized object fails early rather than producing output that cannot be read with the same settings.
+	/// Deserialization also honors <see cref="MaxObjectMemberCount"/>.
+	/// </remarks>
+	public int ExpandoObjectMaxPropertyCount
+	{
+		get => field;
+		init
+		{
+			Requires.Range(value > 0, nameof(value), "Value must be positive.");
+			field = value;
+		}
+	}
 }

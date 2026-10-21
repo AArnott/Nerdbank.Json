@@ -1,7 +1,12 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-public class SecuritySettingsTests
+using System.Dynamic;
+using System.Text;
+using PolyType.Abstractions;
+
+[GenerateShapeFor<ExpandoObject>]
+public partial class SecuritySettingsTests
 {
 	[Test]
 	public void DefaultCtorMatchesUntrustedData()
@@ -12,6 +17,65 @@ public class SecuritySettingsTests
 	[Test]
 	public void TrustedDataExists()
 	{
-		Assert.NotNull(SecuritySettings.TrustedData);
+		Assert.Equal(int.MaxValue, SecuritySettings.TrustedData.ExpandoObjectMaxPropertyCount);
+		Assert.Equal(int.MaxValue, SecuritySettings.TrustedData.MaxObjectMemberCount);
+		Assert.Equal(128, SecuritySettings.UntrustedData.ExpandoObjectMaxPropertyCount);
+	}
+
+	[Test]
+	[Arguments(0)]
+	[Arguments(-1)]
+	public void LimitsMustBePositive(int value)
+	{
+		Assert.Throws<ArgumentOutOfRangeException>(() => new SecuritySettings { ExpandoObjectMaxPropertyCount = value });
+		Assert.Throws<ArgumentOutOfRangeException>(() => new SecuritySettings { MaxObjectMemberCount = value });
+	}
+
+	[Test]
+	[Arguments(128)]
+	[Arguments(129)]
+	public async Task ExpandoLimit_AppliesToReadAndWrite(int count)
+	{
+		JsonSerializer trusted = new JsonSerializer
+		{
+			StartingContext = new() { Security = SecuritySettings.TrustedData },
+		}.WithUntypedConverters();
+		JsonSerializer untrusted = new JsonSerializer().WithUntypedConverters();
+		ExpandoObject value = new();
+		IDictionary<string, object?> members = value;
+		for (int i = 0; i < count; i++)
+		{
+			members.Add("p" + i, i);
+		}
+
+		string json = trusted.Serialize<ExpandoObject, SecuritySettingsTests>(value);
+		using MemoryStream input = new(Encoding.UTF8.GetBytes(json));
+		using MemoryStream output = new();
+		ITypeShape<ExpandoObject> shape = TypeShapeResolver.ResolveDynamicOrThrow<ExpandoObject, SecuritySettingsTests>();
+		if (count == 128)
+		{
+			Assert.Equal(count, ((IDictionary<string, object?>)untrusted.Deserialize(json, shape)!).Count);
+			Assert.Equal(count, ((IDictionary<string, object?>)(await untrusted.DeserializeAsync(input, shape))!).Count);
+			await untrusted.SerializeAsync(output, value, shape);
+			Assert.Equal(json, Encoding.UTF8.GetString(output.ToArray()));
+		}
+		else
+		{
+			Assert.Throws<JsonSerializationException>(() => untrusted.Deserialize(json, shape));
+			await Assert.ThrowsAsync<FormatException>(async () => await untrusted.DeserializeAsync(input, shape));
+			Assert.Throws<JsonSerializationException>(() => untrusted.Serialize(value, shape));
+			await Assert.ThrowsAsync<FormatException>(async () => await untrusted.SerializeAsync(output, value, shape));
+		}
+	}
+
+	[Test]
+	public void Expando_DuplicatesAndNestedDepthAreStillRejected()
+	{
+		JsonSerializer serializer = new JsonSerializer
+		{
+			StartingContext = new() { MaxDepth = 2 },
+		}.WithUntypedConverters();
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<ExpandoObject, SecuritySettingsTests>("""{"a":1,"a":2}"""));
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<ExpandoObject, SecuritySettingsTests>("""{"a":{"b":{"c":1}}}"""));
 	}
 }

@@ -137,7 +137,7 @@ internal sealed class ObjectConverter : JsonConverter<object>
 /// <remarks>
 /// Reconstructing an <see cref="ExpandoObject"/> from JSON is an O(n²) operation because <see cref="ExpandoObject"/>
 /// stores members in a manner that requires a linear scan for each insertion. Prefer <see cref="JsonObject"/> for large
-/// payloads. The configured <see cref="SecuritySettings.MaxObjectMemberCount"/> bounds the worst case.
+/// payloads. The configured <see cref="SecuritySettings.ExpandoObjectMaxPropertyCount"/> bounds the worst case.
 /// </remarks>
 internal sealed class ExpandoObjectConverter : JsonConverter<ExpandoObject>
 {
@@ -151,7 +151,7 @@ internal sealed class ExpandoObjectConverter : JsonConverter<ExpandoObject>
 		}
 
 		context.DepthStep();
-		int maxMembers = context.Security.MaxObjectMemberCount;
+		int maxMembers = Math.Min(context.Security.ExpandoObjectMaxPropertyCount, context.Security.MaxObjectMemberCount);
 		PropertyCollisionDetection collision = new(StringComparer.Ordinal);
 		ExpandoObject result = new();
 		IDictionary<string, object?> members = result;
@@ -192,6 +192,11 @@ internal sealed class ExpandoObjectConverter : JsonConverter<ExpandoObject>
 		}
 
 		context.DepthStep();
+		if (((IDictionary<string, object?>)value).Count > context.Security.ExpandoObjectMaxPropertyCount)
+		{
+			throw new FormatException($"The ExpandoObject exceeds the configured maximum of {context.Security.ExpandoObjectMaxPropertyCount} properties.");
+		}
+
 		writer.WriteStartObject();
 		bool first = true;
 		foreach (KeyValuePair<string, object?> member in (IDictionary<string, object?>)value)
