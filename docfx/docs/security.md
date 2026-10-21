@@ -11,6 +11,12 @@ In some cases secure defaults can impact required functionality.
 For the built-in converters in Nerdbank.Json, the primary knobs are <xref:Nerdbank.Json.SerializationContext.MaxDepth>, <xref:Nerdbank.Json.SerializationContext.Security>, and <xref:Nerdbank.Json.JsonSerializer.ComparerProvider?displayProperty=nameWithType>.
 The <xref:Nerdbank.Json.SecuritySettings> instance carried on <xref:Nerdbank.Json.SerializationContext> is also available for custom converters that want to honor additional application-specific policy.
 
+The optional ExpandoObject converter honors <xref:Nerdbank.Json.SecuritySettings.ExpandoObjectMaxPropertyCount>, which defaults to 128, on both reads and writes.
+This bounds the quadratic insertion cost of <xref:System.Dynamic.ExpandoObject> and prevents writing objects that cannot round-trip under the same limit.
+The separate <xref:Nerdbank.Json.SecuritySettings.MaxObjectMemberCount> limit defaults to 1,000,000 and bounds untyped object reads, including the native DOM.
+Both limits must be positive; <xref:Nerdbank.Json.SecuritySettings.TrustedData> lifts them to <xref:System.Int32.MaxValue>.
+JSON has no collection count headers, so collections grow incrementally rather than preallocating from an untrusted declared count.
+
 In this example, the serializer is configured with a custom depth limit while preserving the secure comparer behavior used for hash-based collections:
 
 [!code-csharp[](../../samples/cs/Security.cs#SetSecuritySettings_Custom)]
@@ -50,6 +56,10 @@ Doing so dramatically increases the cost to the attacker to carry out this attac
 
 Nerdbank.Json protects against such attacks by using a collision resistant hash function for all hash-based collections that accept an <xref:System.Collections.Generic.IEqualityComparer`1> during construction.
 Collision resistant hashing comes at a small perf cost during deserialization.
+
+Enabling <xref:Nerdbank.Json.JsonSerializer.InternStrings> does not bypass collision protection.
+Its operation-local cache uses randomized ordinal string hashing on modern .NET.
+On legacy runtimes, excessive deterministic hash collisions trigger a switch to collision-resistant hashing.
 
 This secure-by-default behavior may be overridden by setting the <xref:Nerdbank.Json.JsonSerializer.ComparerProvider?displayProperty=nameWithType> property.
 This property may be cleared of its default value to improve performance when deserializing trusted data, or you may wish to provide your own object that is aware of the particular hashing/equality needs of your data types.
