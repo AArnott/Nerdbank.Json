@@ -11,6 +11,7 @@ Diagnostics include errors, warnings, and informational guidance.
 | [NBJson020](NBJson020.md) | Usage | Error | Attribute converter must be concrete and compatible with the decorated value type |
 | [NBJson021](NBJson021.md) | Usage | Error | Attribute converter requires a public parameterless constructor |
 | [NBJson030](NBJson030.md) | Usage | Warning | Do not construct or call the top-level serializer from a converter |
+| [NBJson031](NBJson031.md) | Usage | Warning | Synchronous converters must consume or produce one complete JSON value |
 | [NBJson032](NBJson032.md) | Usage | Info | Concrete converters should describe their JSON schema |
 | [NBJson033](NBJson033.md) | Usage | Error | Return the `JsonWriter` before awaiting, calling the `JsonAsyncWriter` again, or returning |
 | [NBJson034](NBJson034.md) | Usage | Error | Do not reuse a `JsonWriter` after returning it |

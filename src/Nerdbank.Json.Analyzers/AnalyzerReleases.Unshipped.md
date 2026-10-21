@@ -11,6 +11,7 @@ NBJson003 | Usage | Warning | UseComparer attribute must target a dictionary or 
 NBJson020 | Usage | Error | Converter attributes require a compatible non-abstract converter type
 NBJson021 | Usage | Error | Attributed converters require a public parameterless constructor
 NBJson030 | Usage | Warning | Converters must use SerializationContext instead of top-level JsonSerializer calls
+NBJson031 | Usage | Warning | Synchronous converters must consume or produce exactly one complete JSON value
 NBJson032 | Usage | Info | Concrete converters should override GetJsonSchema
 NBJson033 | Usage | Error | Async converters should return the JsonWriter before awaiting, calling the JsonAsyncWriter again, or returning
 NBJson034 | Usage | Error | Async converters should not reuse a JsonWriter after returning it
