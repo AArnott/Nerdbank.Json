@@ -131,7 +131,6 @@ public class InputFormatterTests : FormatterTestBase
 	[Test]
 	[Arguments(false)]
 	[Arguments(true)]
-	[Skip("Core JsonAsyncReader.EnsureFullyConsumedAsync accepts unterminated trailing block comments; requires a core fix outside MVC scope.")]
 	public async Task ReadAsync_CommentsEnabled_UnterminatedTrailingComment_AddsModelError(bool utf16)
 	{
 		Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;

@@ -557,7 +557,7 @@ public sealed class JsonAsyncReader : IDisposable
 	/// </summary>
 	/// <param name="context">The serialization context.</param>
 	/// <returns>A task that completes when the check passes.</returns>
-	/// <exception cref="FormatException">Thrown if trailing data is present.</exception>
+	/// <exception cref="FormatException">Thrown if trailing data or an unterminated block comment is present.</exception>
 	public async ValueTask EnsureFullyConsumedAsync(SerializationContext context)
 	{
 		int next = await this.PeekNextByteAsync().ConfigureAwait(false);
@@ -889,6 +889,11 @@ public sealed class JsonAsyncReader : IDisposable
 			}
 
 			offset += span.Length;
+		}
+
+		if (this.isCompleted && this.skipState is SkipState.BlockComment or SkipState.BlockCommentStar)
+		{
+			throw new FormatException("Unterminated JSON block comment.");
 		}
 
 		if (this.skipState == SkipState.Slash)
