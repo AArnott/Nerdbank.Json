@@ -5,6 +5,8 @@ items:
     href: benchmarking.md
   - name: Getting Started
     href: getting-started.md
+  - name: F# Contracts
+    href: fsharp.md
   - name: Unions
     href: unions.md
   - name: Runtime Union Configuration

@@ -75,6 +75,7 @@ converters are registered only when you ask for them, the default serializer kee
 
 ## NativeAOT
 
-The native `JsonValue` DOM and the `object`/`ExpandoObject` converters are fully NativeAOT- and
-trimming-safe. The `System.Text.Json` interop opt-in is safe to use under NativeAOT as well; it
-simply brings `System.Text.Json` into the app when enabled.
+The native DOM and the object and expando converters avoid reflection-based contract discovery.
+Supply source-generated shapes for any runtime-shaped objects written through the object converter.
+The System.Text.Json interop opt-in additionally brings that assembly into the application.
+Use the [native validation fixtures](benchmarking.md#native-image-size) to verify the integrated application; a minimal size report alone does not establish broad NativeAOT compatibility.

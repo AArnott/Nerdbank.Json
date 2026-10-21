@@ -25,3 +25,17 @@ dotnet run --project .\test\Benchmarks\Benchmarks.csproj --no-build -c Release -
 ```
 
 BenchmarkDotNet reports elapsed time and allocated bytes separately. Results from a shared or thermally unstable machine can be multimodal; compare repeated runs with the same runtime, affinity, and job before treating a time ratio as a regression or improvement.
+
+## Native image size
+
+Native executable size is a separate measurement from throughput and managed allocations.
+The minimal [AotSizeTest fixture](https://github.com/AArnott/Nerdbank.Json/blob/main/test/AotSizeTest/Program.cs) round-trips a generated record/array contract and enables compiler `.mstat` and dependency reports.
+It measures reachable code for that small workload, not the entire serializer feature surface.
+The [measurement script](https://github.com/AArnott/Nerdbank.Json/blob/main/tools/Measure-AotImage.ps1) executes the published image and records its exact byte count, RID, and successful exit status.
+A successful report alone does not establish a calibrated size budget or broad runtime compatibility.
+
+Compare sizes only for the same fixture, RID, SDK, and publish configuration.
+The minimal size report must supplement rather than replace the broader [AotNativeConsole fixture](https://github.com/AArnott/Nerdbank.Json/blob/main/test/AotNativeConsole/Program.cs) and the runtime and size regression guard for that workload.
+The root-all [AotCompatibilityTest fixture](https://github.com/AArnott/Nerdbank.Json/blob/main/test/AotCompatibilityTest/Program.cs) serves a different purpose: checking the shipping API surface with the native compiler.
+Do not root the entire shipping assembly in the minimal size fixture, because doing so would change the measurement.
+These fixtures describe the validation surfaces; native execution and size results must be verified for the integrated code before claiming they pass.
