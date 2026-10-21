@@ -446,11 +446,11 @@ internal sealed class CoordConverter : JsonConverter<Coord>
 		return new Coord(x, y);
 	}
 
-	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	public override bool SkipToPropertyValue(ref JsonReader reader, IPropertyShape propertyShape, SerializationContext context)
 	{
 		int index =
-			options.NameComparer.Equals(segment.Name, "x") ? 0 :
-			options.NameComparer.Equals(segment.Name, "y") ? 1 : -1;
+			propertyShape.Name == "X" ? 0 :
+			propertyShape.Name == "Y" ? 1 : -1;
 		if (index < 0)
 		{
 			return false;

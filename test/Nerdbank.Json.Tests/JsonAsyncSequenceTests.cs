@@ -11,6 +11,17 @@ using PolyType.Abstractions;
 public partial class JsonAsyncSequenceTests : TestBase
 {
 	[Test]
+	public async Task IndexHook_CustomEnvelope_TracksOpenContainers()
+	{
+		JsonSerializer serializer = new() { Converters = new ConverterCollection([new WrappedArrayConverter()]) };
+		const string json = """{"groups":{"data":[{"items":[1]},{"items":[2,3]}],"tail":true},"tail":42}""";
+		using ChunkedStream stream = new(Encoding.UTF8.GetBytes(json), 1);
+		JsonSerializer.StreamingEnumerationOptions<GroupEnvelope, int> options = new(x => x.Groups[1].Items);
+		Assert.Equal([2, 3], await CollectAsync(serializer.DeserializePathEnumerableAsync(stream, Shape<GroupEnvelope, GroupEnvelope>(), options)));
+		Assert.Equal(3, serializer.DeserializePath(json, Shape<GroupEnvelope, GroupEnvelope>(), new JsonSerializer.DeserializePathOptions<GroupEnvelope, int>(x => x.Groups[1].Items[1])));
+	}
+
+	[Test]
 	[Arguments(JsonSequenceFormat.NDJson, "1\n2\n3\n")]
 	[Arguments(JsonSequenceFormat.JsonArray, "[1,2,3]")]
 	public async Task Enumerable_Options_RoundTrip(JsonSequenceFormat format, string expected)
@@ -412,6 +423,31 @@ public partial class JsonAsyncSequenceTests : TestBase
 	internal partial record Inner(int[] Items);
 
 	[GenerateShape]
+	internal partial record GroupEnvelope(Inner[] Groups);
+
+	private sealed class WrappedArrayConverter : JsonConverter<Inner[]>
+	{
+		public override void Write(ref JsonWriter writer, Inner[]? value, SerializationContext context) => throw new NotSupportedException();
+
+		public override Inner[]? Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();
+
+		public override bool SkipToIndexValue(ref JsonReader reader, object? index, SerializationContext context)
+		{
+			reader.ReadStartObject();
+			Assert.Equal("data", reader.ReadRequiredString());
+			reader.ReadNameSeparator();
+			return base.SkipToIndexValue(ref reader, index, context);
+		}
+
+		public override async ValueTask<bool> SkipToIndexValueAsync(JsonAsyncReader reader, object? index, SerializationContext context)
+		{
+			await reader.ReadStartObjectAsync(context);
+			Assert.Equal("data", await reader.ReadPropertyNameAsync(context));
+			return await base.SkipToIndexValueAsync(reader, index, context);
+		}
+	}
+
+	[GenerateShape]
 	[DerivedTypeShape(typeof(Cat))]
 	internal partial record Animal(string[] Toys);
 
@@ -479,16 +515,16 @@ public partial class JsonAsyncSequenceTests : TestBase
 			return new CustomList(values.ToArray());
 		}
 
-		public override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		public override async ValueTask<bool> SkipToPropertyValueAsync(JsonAsyncReader reader, IPropertyShape propertyShape, SerializationContext context)
 		{
 			await reader.ReadStartObjectAsync(context);
 			string name = await reader.ReadPropertyNameAsync(context);
-			if (name == "v" && options.NameComparer.Equals(segment.Name, "values"))
+			if (name == "v" && propertyShape.Name == "Values")
 			{
-				return 1;
+				return true;
 			}
 
-			return -1;
+			return false;
 		}
 	}
 

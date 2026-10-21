@@ -74,6 +74,9 @@ public sealed class JsonAsyncReader : IDisposable
 	/// </summary>
 	public required CancellationToken CancellationToken { get; init; }
 
+	/// <summary>Gets the net number of containers entered through structural reader methods.</summary>
+	internal int NavigationDepth { get; private set; }
+
 	/// <summary>
 	/// Buffers the next complete JSON value from the pipe, fetching more bytes as needed.
 	/// </summary>
@@ -563,7 +566,7 @@ public sealed class JsonAsyncReader : IDisposable
 		// (for example a malformed-value FormatException), and throwing here would mask the original error.
 		if (this.hasBufferedRead)
 		{
-			this.pipeReader.AdvanceTo(this.buffer.Start, this.buffer.End);
+			this.pipeReader.AdvanceTo(this.buffer.Start, this.buffer.Start);
 			this.hasBufferedRead = false;
 		}
 	}
@@ -577,6 +580,10 @@ public sealed class JsonAsyncReader : IDisposable
 		}
 
 		this.buffer = this.buffer.Slice(1);
+		if (expected is (byte)'[' or (byte)'{')
+		{
+			this.NavigationDepth++;
+		}
 	}
 
 	private async ValueTask<bool> TryReadStructuralAsync(byte expected, SerializationContext context)
@@ -597,6 +604,7 @@ public sealed class JsonAsyncReader : IDisposable
 		if (first == endToken)
 		{
 			this.buffer = this.buffer.Slice(1);
+			this.NavigationDepth--;
 			return true;
 		}
 
@@ -616,6 +624,7 @@ public sealed class JsonAsyncReader : IDisposable
 					if (matched)
 					{
 						this.buffer = this.buffer.Slice(consumedThrough);
+						this.NavigationDepth--;
 						return true;
 					}
 

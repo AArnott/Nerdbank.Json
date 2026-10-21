@@ -16,12 +16,14 @@ internal enum JsonPathSegmentKind
 
 internal readonly struct JsonPathSegment
 {
-	private JsonPathSegment(JsonPathSegmentKind kind, string? name, byte[]? utf8Name, int index)
+	private JsonPathSegment(JsonPathSegmentKind kind, string? name, byte[]? utf8Name, int index, IPropertyShape? propertyShape = null, object? key = null)
 	{
 		this.Kind = kind;
 		this.Name = name;
 		this.Utf8Name = utf8Name;
 		this.Index = index;
+		this.PropertyShape = propertyShape;
+		this.Key = key;
 	}
 
 	internal JsonPathSegmentKind Kind { get; }
@@ -32,7 +34,13 @@ internal readonly struct JsonPathSegment
 
 	internal int Index { get; }
 
-	internal static JsonPathSegment ForMember(string name) => new(JsonPathSegmentKind.Member, name, Encoding.UTF8.GetBytes(name), 0);
+	/// <summary>Gets the logical property for expression-based navigation.</summary>
+	internal IPropertyShape? PropertyShape { get; }
+
+	/// <summary>Gets the untransformed dictionary key for expression-based navigation.</summary>
+	internal object? Key { get; }
+
+	internal static JsonPathSegment ForMember(string name, IPropertyShape? propertyShape = null, object? key = null) => new(JsonPathSegmentKind.Member, name, Encoding.UTF8.GetBytes(name), 0, propertyShape, key);
 
 	internal static JsonPathSegment ForIndex(int index) => new(JsonPathSegmentKind.Index, null, null, index);
 }

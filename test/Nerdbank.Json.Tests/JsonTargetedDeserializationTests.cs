@@ -256,7 +256,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 		JsonNamingPolicy policy = JsonNamingPolicy.CamelCase;
 		JsonSerializer serializer = new()
 		{
-			Converters = ConverterCollection.Create([new Point3Converter(policy)]),
+			Converters = [new Point3Converter()],
 			PropertyNamingPolicy = policy,
 		};
 
@@ -275,7 +275,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 		JsonNamingPolicy policy = JsonNamingPolicy.CamelCase;
 		JsonSerializer serializer = new()
 		{
-			Converters = ConverterCollection.Create([new Point3Converter(policy)]),
+			Converters = [new Point3Converter()],
 			PropertyNamingPolicy = policy,
 		};
 
@@ -348,7 +348,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	[GenerateShapeFor<string>]
 	internal partial class Witness;
 
-	private sealed class Point3Converter(JsonNamingPolicy policy) : JsonConverter<Point3>
+	private sealed class Point3Converter : JsonConverter<Point3>
 	{
 		public override void Write(ref JsonWriter writer, in Point3? value, SerializationContext context)
 		{
@@ -369,16 +369,11 @@ public partial class JsonTargetedDeserializationTests : TestBase
 			return new Point3(x, y);
 		}
 
-		public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+		public override bool SkipToPropertyValue(ref JsonReader reader, IPropertyShape propertyShape, SerializationContext context)
 		{
-			if (segment.IsIndex)
-			{
-				return false;
-			}
-
 			int target =
-				options.NameComparer.Equals(segment.Name, policy.ConvertName("X")) ? 0 :
-				options.NameComparer.Equals(segment.Name, policy.ConvertName("Y")) ? 1 : -1;
+				propertyShape.Name == "X" ? 0 :
+				propertyShape.Name == "Y" ? 1 : -1;
 			if (target < 0)
 			{
 				return false;

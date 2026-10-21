@@ -8,7 +8,7 @@ namespace Nerdbank.Json;
 /// <summary>
 /// Navigates a <see cref="JsonAsyncReader"/> through a <see cref="JsonPath"/> incrementally, without buffering the
 /// enclosing document, leaving the reader positioned at the selected value. Per-segment converters supply their
-/// <see cref="JsonConverter.TryNavigateAsync(JsonAsyncReader, JsonNavigationSegment, JsonNavigationOptions, SerializationContext)"/>
+/// <see cref="JsonConverter.SkipToPropertyValueAsync"/>
 /// hook so navigation can traverse through unions and custom representations.
 /// </summary>
 /// <remarks>
@@ -32,7 +32,7 @@ internal static class JsonAsyncTargetedNavigator
 			JsonNavigationSegment segment = new(in segments[i]);
 			JsonConverter? converter = converters is not null ? converters[i] : null;
 			int opened = converter is not null
-				? await converter.TryNavigateAsync(reader, segment, options, context).ConfigureAwait(false)
+				? await converter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false)
 				: await NavigateRawTokenAsync(reader, segment, options, context).ConfigureAwait(false);
 			if (opened < 0)
 			{

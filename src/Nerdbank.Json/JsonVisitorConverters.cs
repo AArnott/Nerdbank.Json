@@ -307,7 +307,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		return value;
 	}
 
-	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	internal override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
 		if (this.objectEnvelope is not null)
 		{
@@ -334,10 +334,10 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 
 		reader.ReadValueSeparator();
-		return converter.TryNavigate(ref reader, in segment, options);
+		return converter.SkipToValue(ref reader, in segment, context);
 	}
 
-	public override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+	internal override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
 		if (this.objectEnvelope is not null)
 		{
@@ -366,7 +366,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 
 		await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
-		int inner = await converter.TryNavigateAsync(reader, segment, options, context).ConfigureAwait(false);
+		int inner = await converter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
 		return inner < 0 ? -1 : inner + 1;
 	}
 
@@ -421,11 +421,11 @@ internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter
 	public override TUnion? Read(ref JsonReader reader, SerializationContext context)
 		=> this.marshaler.Marshal(this.inner.Read(ref reader, context));
 
-	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
-		=> this.inner.TryNavigate(ref reader, in segment, options);
+	internal override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> this.inner.SkipToValue(ref reader, in segment, context);
 
-	public override ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
-		=> this.inner.TryNavigateAsync(reader, segment, options, context);
+	internal override ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> this.inner.SkipToValueAsync(reader, segment, context);
 }
 
 internal sealed class JsonConstructorVisitorState<TDeclaring>

@@ -29,11 +29,11 @@ internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase
 	public override TBase? Read(ref JsonReader reader, SerializationContext context)
 		=> (TBase?)this.inner.ReadObject(ref reader, context);
 
-	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
-		=> this.inner.TryNavigate(ref reader, in segment, options);
+	internal override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> this.inner.SkipToValue(ref reader, in segment, context);
 
-	public override ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
-		=> this.inner.TryNavigateAsync(reader, segment, options, context);
+	internal override ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> this.inner.SkipToValueAsync(reader, segment, context);
 }
 
 internal readonly struct RuntimeUnionCaseEntry<TBase>
@@ -189,7 +189,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		return value;
 	}
 
-	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	internal override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
 		if (this.objectEnvelope is not null)
 		{
@@ -217,10 +217,10 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		}
 
 		reader.ReadValueSeparator();
-		return converter.TryNavigate(ref reader, in segment, options);
+		return converter.SkipToValue(ref reader, in segment, context);
 	}
 
-	public override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+	internal override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
 		if (this.objectEnvelope is not null)
 		{
@@ -250,7 +250,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		}
 
 		await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
-		int inner = await converter.TryNavigateAsync(reader, segment, options, context).ConfigureAwait(false);
+		int inner = await converter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
 		return inner < 0 ? -1 : inner + 1;
 	}
 

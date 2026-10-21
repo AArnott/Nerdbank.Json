@@ -45,7 +45,7 @@ public partial record Sensor(Point Position);
 public partial record Point(int X, int Y);
 
 // <NavigationHook>
-// A custom converter that stores a Point as the positional array [x, y] overrides TryNavigate so a
+// A custom converter that stores a Point as the positional array [x, y] overrides SkipToPropertyValue so a
 // path such as s => s.Position.Y can traverse *through* the converter's representation. Without the
 // override the navigator would only understand plain objects and arrays.
 public sealed class PointConverter : JsonConverter<Point>
@@ -69,12 +69,11 @@ public sealed class PointConverter : JsonConverter<Point>
 		return new Point(x, y);
 	}
 
-	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	public override bool SkipToPropertyValue(ref JsonReader reader, PolyType.Abstractions.IPropertyShape propertyShape, SerializationContext context)
 	{
-		// The segment carries the serialized member name (naming policy already applied).
 		int index =
-			options.NameComparer.Equals(segment.Name, "x") ? 0 :
-			options.NameComparer.Equals(segment.Name, "y") ? 1 : -1;
+			propertyShape.Name == "X" ? 0 :
+			propertyShape.Name == "Y" ? 1 : -1;
 		if (index < 0)
 		{
 			return false;

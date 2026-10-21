@@ -8,7 +8,7 @@ namespace Nerdbank.Json;
 /// <summary>
 /// Navigates a <see cref="JsonReader"/> through a <see cref="JsonPath"/>, skipping unrelated JSON and leaving the
 /// reader positioned at the selected value. When a per-segment converter is available, its
-/// <see cref="JsonConverter.TryNavigate(ref JsonReader, in JsonNavigationSegment, JsonNavigationOptions)"/> hook is
+/// <see cref="JsonConverter.SkipToPropertyValue"/> hook is
 /// used so navigation can traverse through unions and custom representations.
 /// </summary>
 internal static class JsonTargetedNavigator
@@ -27,7 +27,7 @@ internal static class JsonTargetedNavigator
 			JsonNavigationSegment segment = new(in segments[i]);
 			JsonConverter? converter = converters is not null ? converters[i] : null;
 			bool found = converter is not null
-				? converter.TryNavigate(ref reader, in segment, options)
+				? converter.SkipToValue(ref reader, in segment, context)
 				: NavigateRawToken(ref reader, in segment, options);
 			if (!found)
 			{

@@ -31,6 +31,9 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 	internal JsonNamingPolicy? PropertyNamingPolicy => this.configuration.PropertyNamingPolicy;
 
+	/// <summary>Gets the policy used for serialized dictionary keys.</summary>
+	internal JsonNamingPolicy? DictionaryKeyNamingPolicy => this.configuration.DictionaryKeyNamingPolicy;
+
 	internal MessagePack.IComparerProvider? ComparerProvider => this.configuration.ComparerProvider;
 
 	internal bool HasRuntimeConverters => this.configuration.Converters.Count > 0 || this.configuration.ConverterTypes.Count > 0 || this.configuration.ConverterFactories.Length > 0;
