@@ -51,6 +51,9 @@ Tentative UTF-8 string reads use allocation-free cursor checkpoints.
 
 ## UTF-8 strings and token inspection
 
+String reading and skipping validate UTF-8, control characters, and Unicode escape pairs.
+Unpaired surrogate escapes are rejected, including when string interning is enabled; earlier versions accepted these escapes as isolated UTF-16 code units.
+
 <xref:Nerdbank.Json.JsonReader.NextJsonType?displayProperty=nameWithType> uses the same <xref:Nerdbank.Json.JsonValueKind> vocabulary as the DOM.
 <xref:Nerdbank.Json.JsonReader.NextCode?displayProperty=nameWithType> exposes the next significant UTF-8 byte, while <xref:Nerdbank.Json.JsonReader.IsNull?displayProperty=nameWithType> and <xref:Nerdbank.Json.JsonReader.ReadNull?displayProperty=nameWithType> support explicit null handling.
 Inspection skips permitted insignificant input but does not validate an entire value.
