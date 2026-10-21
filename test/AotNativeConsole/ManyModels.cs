@@ -130,7 +130,7 @@ internal static class ManyModels
 		DeviceSnapshot snapshot = CreateSnapshot();
 		string json = serializer.Serialize(snapshot);
 
-		string? name = serializer.DeserializePath<DeviceSnapshot, string>(json, x => x.Name);
+		string? name = serializer.DeserializePath<DeviceSnapshot, string>(json, new JsonSerializer.DeserializePathOptions<DeviceSnapshot, string>(x => x.Name));
 		int cell = serializer.DeserializePath<int, IntWitness>(json, JsonPath.Root.Member("grid").Index(1).Index(2));
 
 		if (name != "Weather station" || cell != 6)
@@ -143,7 +143,7 @@ internal static class ManyModels
 			Converters = ConverterCollection.Create([new CoordConverter()]),
 		};
 		string trackJson = customSerializer.Serialize(new Track(new Coord(3, 7)));
-		int y = customSerializer.DeserializePath<Track, int>(trackJson, t => t.Position.Y);
+		int y = customSerializer.DeserializePath<Track, int>(trackJson, new JsonSerializer.DeserializePathOptions<Track, int>(t => t.Position.Y));
 		if (y != 7)
 		{
 			throw new InvalidOperationException("Navigation through a custom converter did not select the expected value.");

@@ -10,6 +10,34 @@ public partial record JsonSerializer
 {
 #if NET
 	/// <inheritdoc cref="DeserializePathEnumerableAsync{TRoot, TElement}(System.IO.Pipelines.PipeReader, ITypeShape{TRoot}, StreamingEnumerationOptions{TRoot, TElement}, CancellationToken)"/>
+	public IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement, TProvider>(System.IO.Pipelines.PipeReader reader, StreamingEnumerationOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
+		where TProvider : IShapeable<TRoot> => this.DeserializePathEnumerableAsync(reader, TProvider.GetTypeShape(), options, cancellationToken);
+
+	/// <inheritdoc cref="DeserializePathEnumerableAsync{TRoot, TElement}(Stream, ITypeShape{TRoot}, StreamingEnumerationOptions{TRoot, TElement}, CancellationToken)"/>
+	public IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement, TProvider>(Stream stream, StreamingEnumerationOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
+		where TProvider : IShapeable<TRoot> => this.DeserializePathEnumerableAsync(stream, TProvider.GetTypeShape(), options, cancellationToken);
+
+	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(ref JsonReader, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)"/>
+	public TElement? DeserializePath<TRoot, TElement, TProvider>(ref JsonReader reader, in DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
+		where TProvider : IShapeable<TRoot> => this.DeserializePath(ref reader, TProvider.GetTypeShape(), options, cancellationToken);
+
+	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(ReadOnlyMemory{byte}, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)"/>
+	public TElement? DeserializePath<TRoot, TElement, TProvider>(ReadOnlyMemory<byte> utf8Json, in DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
+		where TProvider : IShapeable<TRoot> => this.DeserializePath(utf8Json, TProvider.GetTypeShape(), options, cancellationToken);
+
+	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(in ReadOnlySequence{byte}, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)"/>
+	public TElement? DeserializePath<TRoot, TElement, TProvider>(scoped in ReadOnlySequence<byte> utf8Json, in DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
+		where TProvider : IShapeable<TRoot> => this.DeserializePath(utf8Json, TProvider.GetTypeShape(), options, cancellationToken);
+
+	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(Stream, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)"/>
+	public TElement? DeserializePath<TRoot, TElement, TProvider>(Stream stream, in DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
+		where TProvider : IShapeable<TRoot> => this.DeserializePath(stream, TProvider.GetTypeShape(), options, cancellationToken);
+
+	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(string, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)"/>
+	public TElement? DeserializePath<TRoot, TElement, TProvider>(string json, in DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
+		where TProvider : IShapeable<TRoot> => this.DeserializePath(json, TProvider.GetTypeShape(), options, cancellationToken);
+
+	/// <inheritdoc cref="DeserializePathEnumerableAsync{TRoot, TElement}(System.IO.Pipelines.PipeReader, ITypeShape{TRoot}, StreamingEnumerationOptions{TRoot, TElement}, CancellationToken)"/>
 	public IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement>(System.IO.Pipelines.PipeReader reader, StreamingEnumerationOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		where TRoot : IShapeable<TRoot> => this.DeserializePathEnumerableAsync(reader, TRoot.GetTypeShape(), options, cancellationToken);
 

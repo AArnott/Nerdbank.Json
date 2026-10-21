@@ -19,14 +19,14 @@ string json =
 
 // Ergonomic expression overload: parsed but never compiled, so it is NativeAOT-safe.
 // CLR member names are translated to serialized names automatically.
-string city = serializer.DeserializePath<Weather, string>(json, w => w.Location.City)!;
+string city = serializer.DeserializePath<Weather, string>(json, new JsonSerializer.DeserializePathOptions<Weather, string>(w => w.Location.City))!;
 
 // Pre-parsed path: build once, reuse on hot paths. Names are the serialized (wire) names.
 JsonPath secondReadingValue = JsonPath.Root.Member("readings").Index(1).Member("value");
 double humidity = serializer.DeserializePath<double, Weather>(json, secondReadingValue);
 
 // A missing path can throw or return the default value.
-string? missing = serializer.DeserializePath<Weather, string>(json, w => w.Location.Country, MissingPathBehavior.ReturnDefault);
+string? missing = serializer.DeserializePath<Weather, string>(json, new JsonSerializer.DeserializePathOptions<Weather, string>(w => w.Location.Country) { DefaultForUndiscoverablePath = true });
 // </TargetedDeserialization>
 System.Console.WriteLine($"{city} {humidity} {missing}");
 
@@ -35,7 +35,7 @@ JsonSerializer pointSerializer = new()
 	Converters = ConverterCollection.Create([new PointConverter()]),
 };
 string pointJson = pointSerializer.Serialize(new Sensor(new Point(3, 7)), Sensor.GetTypeShape());
-int y = pointSerializer.DeserializePath<Sensor, int>(pointJson, s => s.Position.Y);
+int y = pointSerializer.DeserializePath<Sensor, int>(pointJson, new JsonSerializer.DeserializePathOptions<Sensor, int>(s => s.Position.Y));
 System.Console.WriteLine($"{pointJson} y={y}");
 
 [GenerateShape]

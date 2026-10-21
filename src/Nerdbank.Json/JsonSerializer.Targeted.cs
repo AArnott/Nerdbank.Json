@@ -140,31 +140,22 @@ public partial record JsonSerializer
 		return this.DeserializePathCore(ref reader, path, null, targetShape, missingBehavior, cancellationToken);
 	}
 
-	/// <summary>
-	/// Deserializes only the value selected by a member-access expression, skipping unrelated JSON.
-	/// </summary>
-	/// <typeparam name="TRoot">The type of the root document.</typeparam>
-	/// <typeparam name="TValue">The type of the selected value.</typeparam>
-	/// <param name="json">The JSON document.</param>
-	/// <param name="path">An expression such as <c>x =&gt; x.Items[3].Name</c> that selects the value.</param>
-	/// <param name="rootShape">The shape of <typeparamref name="TRoot"/>.</param>
-	/// <param name="missingBehavior">Controls behavior when the path is not found.</param>
+	/// <summary>Deserializes a raw JSON path from a stream.</summary>
+	/// <typeparam name="TValue">The selected value type.</typeparam>
+	/// <param name="stream">The document stream, which is read to its end and remains open.</param>
+	/// <param name="path">The raw JSON path.</param>
+	/// <param name="targetShape">The selected value shape.</param>
+	/// <param name="missingBehavior">The behavior for a missing path.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-	/// <returns>The deserialized value.</returns>
-	/// <remarks>
-	/// The expression is parsed but never compiled, so this overload is NativeAOT-safe. CLR member names are translated
-	/// to serialized names using the configured naming policies. Array and dictionary indices must be compile-time
-	/// constants; unsupported expressions are rejected before any JSON is read.
-	/// </remarks>
-	public TValue? DeserializePath<TRoot, TValue>(string json, Expression<Func<TRoot, TValue>> path, ITypeShape<TRoot> rootShape, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
+	/// <returns>The selected value.</returns>
+	public TValue? DeserializePath<TValue>(Stream stream, JsonPath path, ITypeShape<TValue> targetShape, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
 	{
-		Requires.NotNull(json);
-		Requires.NotNull(path);
-		Requires.NotNull(rootShape);
-		(JsonPath parsedPath, JsonConverter?[] converters, ITypeShape<TValue> targetShape) = JsonPathExpressionParser.Parse(path, rootShape, this.ConverterCache, this.DictionaryKeyNamingPolicy);
-		byte[] utf8Json = Encoding.UTF8.GetBytes(json);
-		JsonReader reader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
-		return this.DeserializePathCore(ref reader, parsedPath, converters, targetShape, missingBehavior, cancellationToken);
+		Requires.NotNull(stream);
+		cancellationToken.ThrowIfCancellationRequested();
+		using MemoryStream buffer = new();
+		stream.CopyTo(buffer);
+		cancellationToken.ThrowIfCancellationRequested();
+		return this.DeserializePath(buffer.GetBuffer().AsMemory(0, checked((int)buffer.Length)), path, targetShape, missingBehavior, cancellationToken);
 	}
 
 #if NET
@@ -193,18 +184,6 @@ public partial record JsonSerializer
 	public TValue? DeserializePath<TValue, TProvider>(string json, JsonPath path, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
 		where TProvider : IShapeable<TValue> => this.DeserializePath(json, path, TProvider.GetTypeShape(), missingBehavior, cancellationToken);
 
-	/// <summary>
-	/// Deserializes only the value selected by a member-access expression, using the root type's own shape.
-	/// </summary>
-	/// <typeparam name="TRoot">The type of the root document.</typeparam>
-	/// <typeparam name="TValue">The type of the selected value.</typeparam>
-	/// <param name="json">The JSON document.</param>
-	/// <param name="path">An expression such as <c>x =&gt; x.Items[3].Name</c> that selects the value.</param>
-	/// <param name="missingBehavior">Controls behavior when the path is not found.</param>
-	/// <param name="cancellationToken">A cancellation token.</param>
-	/// <returns>The deserialized value.</returns>
-	public TValue? DeserializePath<TRoot, TValue>(string json, Expression<Func<TRoot, TValue>> path, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
-		where TRoot : IShapeable<TRoot> => this.DeserializePath(json, path, TRoot.GetTypeShape(), missingBehavior, cancellationToken);
 #endif
 
 	private TValue? DeserializePathCore<TValue>(ref JsonReader reader, JsonPath path, JsonConverter?[]? converters, ITypeShape<TValue> targetShape, MissingPathBehavior missingBehavior, CancellationToken cancellationToken)
@@ -232,6 +211,7 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>Options for selecting a value within a JSON document.</summary>
+	/// <remarks>The expression is parsed without compilation. Member names honor the naming policy; indices must be constants. Use <see cref="JsonPath"/> for dynamic indices.</remarks>
 	/// <typeparam name="TRoot">The root document type.</typeparam>
 	/// <typeparam name="TElement">The selected value type.</typeparam>
 	/// <param name="Path">The expression selecting the value.</param>

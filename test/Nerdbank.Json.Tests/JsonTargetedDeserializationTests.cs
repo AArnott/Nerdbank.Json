@@ -28,7 +28,37 @@ public partial class JsonTargetedDeserializationTests : TestBase
 		Assert.Equal(20, this.Serializer.DeserializePath(stream, Shape<Root, Root>(), options));
 		Assert.True(stream.CanRead);
 		Assert.Equal(20, this.Serializer.DeserializePath<Root, int, Root>(bytes.AsMemory(), options));
+		Assert.Equal(20, this.Serializer.DeserializePath<Root, int, Root>(sequence, options));
+		Assert.Equal(20, this.Serializer.DeserializePath<Root, int, Root>(Document, options));
+		stream.Position = 0;
+		Assert.Equal(20, this.Serializer.DeserializePath<Root, int, Root>(stream, options));
+		reader = new(bytes);
+		Assert.Equal(20, this.Serializer.DeserializePath<Root, int, Root>(ref reader, options));
 		Assert.Equal(20, this.Serializer.DeserializePath<Root, int>(Document, options));
+	}
+
+	[Test]
+	public void RawPath_WitnessAndLegacyInputForms()
+	{
+		JsonPath path = JsonPath.Root.Member("numbers").Index(2);
+		byte[] bytes = System.Text.Encoding.UTF8.GetBytes(Document);
+		ReadOnlySequence<byte> sequence = CreateSequence(bytes.AsMemory(0, 25), bytes.AsMemory(25));
+		JsonReader reader = new(bytes);
+		Assert.Equal(30, this.Serializer.DeserializePath<int, Witness>(ref reader, path));
+		Assert.Equal(30, this.Serializer.DeserializePath<int, Witness>(bytes.AsMemory(), path));
+		Assert.Equal(30, this.Serializer.DeserializePath<int, Witness>(sequence, path));
+		Assert.Equal(30, this.Serializer.DeserializePath<int, Witness>(Document, path));
+		using MemoryStream stream = new(bytes);
+		Assert.Equal(30, this.Serializer.DeserializePath<int, Witness>(stream, path));
+		Assert.True(stream.CanRead);
+		path = JsonPath.Root.Member("inner");
+		Assert.Equal(new Inner("hi", 3), JsonSerializerExtensions.DeserializePath<Inner>(this.Serializer, Document, path));
+		Assert.Equal(new Inner("hi", 3), JsonSerializerExtensions.DeserializePath<Inner>(this.Serializer, bytes.AsMemory(), path));
+		Assert.Equal(new Inner("hi", 3), JsonSerializerExtensions.DeserializePath<Inner>(this.Serializer, sequence, path));
+		stream.Position = 0;
+		Assert.Equal(new Inner("hi", 3), JsonSerializerExtensions.DeserializePath<Inner>(this.Serializer, stream, path));
+		reader = new(bytes);
+		Assert.Equal(new Inner("hi", 3), JsonSerializerExtensions.DeserializePath<Inner>(this.Serializer, ref reader, path));
 	}
 
 	[Test]
@@ -71,21 +101,21 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	[Test]
 	public void Expression_Property_TranslatesNamingPolicy()
 	{
-		string? label = this.Serializer.DeserializePath<Root, string>(Document, x => x.Inner.Label, Shape<Root, Root>());
+		string? label = this.Serializer.DeserializePath<Root, string>(Document, Shape<Root, Root>(), new(x => x.Inner.Label));
 		Assert.Equal("hi", label);
 	}
 
 	[Test]
 	public void Expression_ArrayIndex()
 	{
-		int value = this.Serializer.DeserializePath<Root, int>(Document, x => x.Numbers[2], Shape<Root, Root>());
+		int value = this.Serializer.DeserializePath<Root, int>(Document, Shape<Root, Root>(), new(x => x.Numbers[2]));
 		Assert.Equal(30, value);
 	}
 
 	[Test]
 	public void Expression_DictionaryKey()
 	{
-		int value = this.Serializer.DeserializePath<Root, int>(Document, x => x.Map["a"], Shape<Root, Root>());
+		int value = this.Serializer.DeserializePath<Root, int>(Document, Shape<Root, Root>(), new(x => x.Map["a"]));
 		Assert.Equal(1, value);
 	}
 
@@ -165,7 +195,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	public void Expression_UnsupportedMethodCall_ThrowsEarly()
 	{
 		Assert.Throws<NotSupportedException>(
-			() => this.Serializer.DeserializePath<Root, string>(Document, x => x.Name.Trim(), Shape<Root, Root>()));
+			() => this.Serializer.DeserializePath<Root, string>(Document, Shape<Root, Root>(), new(x => x.Name.Trim())));
 	}
 
 	[Test]
@@ -173,7 +203,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	{
 		int i = 1;
 		Assert.Throws<NotSupportedException>(
-			() => this.Serializer.DeserializePath<Root, int>(Document, x => x.Numbers[i], Shape<Root, Root>()));
+			() => this.Serializer.DeserializePath<Root, int>(Document, Shape<Root, Root>(), new(x => x.Numbers[i])));
 	}
 
 	[Test]
@@ -201,7 +231,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	{
 		JsonSerializer serializer = this.Serializer with { UseDiscriminatorObjects = useObjects };
 		string json = useObjects ? """{"pet":{"Cat":{"lives":9,"name":"Milo"}}}""" : Document;
-		string? name = serializer.DeserializePath<Root, string>(json, x => x.Pet.Name, Shape<Root, Root>());
+		string? name = serializer.DeserializePath<Root, string>(json, Shape<Root, Root>(), new(x => x.Pet.Name));
 		Assert.Equal("Milo", name);
 	}
 
@@ -209,7 +239,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	public void Expression_ThroughGeneratedUnion_MissingMember_ReturnsDefault()
 	{
 		string json = """{"inner":{"label":"hi","count":3},"numbers":[],"map":{},"name":"root","pet":["Cat",{"lives":9}]}""";
-		string? name = this.Serializer.DeserializePath<Root, string>(json, x => x.Pet.Name, Shape<Root, Root>(), MissingPathBehavior.ReturnDefault);
+		string? name = this.Serializer.DeserializePath<Root, string>(json, Shape<Root, Root>(), new(x => x.Pet.Name) { DefaultForUndiscoverablePath = true });
 		Assert.Null(name);
 	}
 
@@ -233,7 +263,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 		};
 
 		string json = useObjects ? """{"shape":{"circle":{"kind":"c","radius":2.5}}}""" : """{"shape":["circle",{"kind":"c","radius":2.5}]}""";
-		string? kind = serializer.DeserializePath<RuntimeHolder, string>(json, h => h.Shape.Kind, Shape<RuntimeHolder, RuntimeHolder>());
+		string? kind = serializer.DeserializePath<RuntimeHolder, string>(json, Shape<RuntimeHolder, RuntimeHolder>(), new(h => h.Shape.Kind));
 		Assert.Equal("c", kind);
 	}
 
@@ -246,7 +276,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 		};
 
 		string json = """{"shape":{"kind":"c","radius":2.5}}""";
-		string? kind = serializer.DeserializePath<RuntimeHolder, string>(json, h => h.Shape.Kind, Shape<RuntimeHolder, RuntimeHolder>());
+		string? kind = serializer.DeserializePath<RuntimeHolder, string>(json, Shape<RuntimeHolder, RuntimeHolder>(), new(h => h.Shape.Kind));
 		Assert.Equal("c", kind);
 	}
 
@@ -263,8 +293,8 @@ public partial class JsonTargetedDeserializationTests : TestBase
 		string json = serializer.Serialize(new CustomRoot(new Point3(3, 7)), Shape<CustomRoot, CustomRoot>());
 		Assert.Equal("""{"point":[3,7]}""", json);
 
-		int y = serializer.DeserializePath<CustomRoot, int>(json, r => r.Point.Y, Shape<CustomRoot, CustomRoot>());
-		int x = serializer.DeserializePath<CustomRoot, int>(json, r => r.Point.X, Shape<CustomRoot, CustomRoot>());
+		int y = serializer.DeserializePath<CustomRoot, int>(json, Shape<CustomRoot, CustomRoot>(), new(r => r.Point.Y));
+		int x = serializer.DeserializePath<CustomRoot, int>(json, Shape<CustomRoot, CustomRoot>(), new(r => r.Point.X));
 		Assert.Equal(7, y);
 		Assert.Equal(3, x);
 	}
@@ -280,7 +310,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 		};
 
 		string json = """{"point":[]}""";
-		int y = serializer.DeserializePath<CustomRoot, int>(json, r => r.Point.Y, Shape<CustomRoot, CustomRoot>(), MissingPathBehavior.ReturnDefault);
+		int y = serializer.DeserializePath<CustomRoot, int>(json, Shape<CustomRoot, CustomRoot>(), new(r => r.Point.Y) { DefaultForUndiscoverablePath = true });
 		Assert.Equal(0, y);
 	}
 

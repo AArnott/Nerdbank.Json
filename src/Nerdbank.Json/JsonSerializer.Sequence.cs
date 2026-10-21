@@ -248,59 +248,6 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
-	/// Asynchronously streams the elements of a JSON array selected by a member-access expression inside an object or
-	/// array envelope. The expression is parsed but never compiled, so this overload is NativeAOT-safe and can traverse
-	/// intermediate union or custom-converter representations.
-	/// </summary>
-	/// <typeparam name="TRoot">The root document type.</typeparam>
-	/// <typeparam name="TElement">The element type.</typeparam>
-	/// <param name="reader">The pipe to read from. It is advanced but never completed by this method.</param>
-	/// <param name="path">An expression such as <c>x =&gt; x.Items</c> selecting an <see cref="IEnumerable{T}"/>.</param>
-	/// <param name="rootShape">The shape of <typeparamref name="TRoot"/>.</param>
-	/// <param name="missingBehavior">Controls behavior when the path is not found.</param>
-	/// <param name="cancellationToken">A cancellation token.</param>
-	/// <returns>An asynchronous sequence of elements.</returns>
-	public IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement>(PipeReader reader, Expression<Func<TRoot, IEnumerable<TElement>>> path, ITypeShape<TRoot> rootShape, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
-	{
-		Requires.NotNull(reader);
-		Requires.NotNull(path);
-		Requires.NotNull(rootShape);
-		(JsonPath parsedPath, JsonConverter?[] converters, ITypeShape<TElement> elementShape) = JsonPathExpressionParser.ParseSequence(path, rootShape, this.ConverterCache, this.DictionaryKeyNamingPolicy);
-		return this.DeserializePathEnumerableCoreAsync(reader, parsedPath, converters, elementShape, missingBehavior, cancellationToken);
-	}
-
-	/// <summary>
-	/// Asynchronously streams the elements of a JSON array selected by a member-access expression from a stream.
-	/// </summary>
-	/// <typeparam name="TRoot">The root document type.</typeparam>
-	/// <typeparam name="TElement">The element type.</typeparam>
-	/// <param name="stream">The stream to read from. It is read but not disposed or closed by this method.</param>
-	/// <param name="path">An expression selecting an <see cref="IEnumerable{T}"/>.</param>
-	/// <param name="rootShape">The shape of <typeparamref name="TRoot"/>.</param>
-	/// <param name="missingBehavior">Controls behavior when the path is not found.</param>
-	/// <param name="cancellationToken">A cancellation token.</param>
-	/// <returns>An asynchronous sequence of elements.</returns>
-	public async IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement>(Stream stream, Expression<Func<TRoot, IEnumerable<TElement>>> path, ITypeShape<TRoot> rootShape, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-	{
-		Requires.NotNull(stream);
-		Requires.NotNull(path);
-		Requires.NotNull(rootShape);
-		(JsonPath parsedPath, JsonConverter?[] converters, ITypeShape<TElement> elementShape) = JsonPathExpressionParser.ParseSequence(path, rootShape, this.ConverterCache, this.DictionaryKeyNamingPolicy);
-		PipeReader reader = PipeReader.Create(stream, StreamPipeReaderOptions);
-		try
-		{
-			await foreach (TElement? element in this.DeserializePathEnumerableCoreAsync(reader, parsedPath, converters, elementShape, missingBehavior, cancellationToken).ConfigureAwait(false))
-			{
-				yield return element;
-			}
-		}
-		finally
-		{
-			await reader.CompleteAsync().ConfigureAwait(false);
-		}
-	}
-
-	/// <summary>
 	/// Asynchronously serializes an <see cref="IAsyncEnumerable{T}"/> as a top-level JSON array, writing elements as they
 	/// are produced with bounded memory and backpressure.
 	/// </summary>
@@ -528,14 +475,6 @@ public partial record JsonSerializer
 	/// <inheritdoc cref="DeserializeEnumerableAsync{T}(Stream, ITypeShape{T}, SequenceOptions, CancellationToken)"/>
 	public IAsyncEnumerable<T?> DeserializeEnumerableAsync<T>(Stream stream, SequenceOptions options = default, CancellationToken cancellationToken = default)
 		where T : IShapeable<T> => this.DeserializeEnumerableAsync(stream, T.GetTypeShape(), options, cancellationToken);
-
-	/// <inheritdoc cref="DeserializePathEnumerableAsync{TRoot, TElement}(PipeReader, Expression{Func{TRoot, IEnumerable{TElement}}}, ITypeShape{TRoot}, MissingPathBehavior, CancellationToken)"/>
-	public IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement>(PipeReader reader, Expression<Func<TRoot, IEnumerable<TElement>>> path, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
-		where TRoot : IShapeable<TRoot> => this.DeserializePathEnumerableAsync(reader, path, TRoot.GetTypeShape(), missingBehavior, cancellationToken);
-
-	/// <inheritdoc cref="DeserializePathEnumerableAsync{TRoot, TElement}(Stream, Expression{Func{TRoot, IEnumerable{TElement}}}, ITypeShape{TRoot}, MissingPathBehavior, CancellationToken)"/>
-	public IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement>(Stream stream, Expression<Func<TRoot, IEnumerable<TElement>>> path, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
-		where TRoot : IShapeable<TRoot> => this.DeserializePathEnumerableAsync(stream, path, TRoot.GetTypeShape(), missingBehavior, cancellationToken);
 
 	/// <inheritdoc cref="SerializeArrayAsync{T}(PipeWriter, IAsyncEnumerable{T}, ITypeShape{T}, CancellationToken)"/>
 	public ValueTask SerializeArrayAsync<T>(PipeWriter writer, IAsyncEnumerable<T> values, CancellationToken cancellationToken = default)

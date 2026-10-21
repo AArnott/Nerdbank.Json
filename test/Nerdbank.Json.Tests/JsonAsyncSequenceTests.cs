@@ -11,6 +11,39 @@ using PolyType.Abstractions;
 public partial class JsonAsyncSequenceTests : TestBase
 {
 	[Test]
+	public async Task RawPath_WitnessOverloads()
+	{
+		byte[] bytes = Encoding.UTF8.GetBytes("""{"items":[1,2]}""");
+		using MemoryStream stream = new(bytes);
+		JsonPath path = JsonPath.Root.Member("items");
+		Assert.Equal([1, 2], await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<int, Witness>(stream, path)));
+		Pipe pipe = new();
+		await WriteAsync(pipe.Writer, """{"items":[1,2]}""");
+		await pipe.Writer.CompleteAsync();
+		Assert.Equal([1, 2], await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<int, Witness>(pipe.Reader, path)));
+		await pipe.Reader.CompleteAsync();
+	}
+
+	[Test]
+	public async Task PathOptions_EarlyDisposal_DoesNotMarkUnreadBytesExamined()
+	{
+		Pipe pipe = new();
+		await WriteAsync(pipe.Writer, """{"inner":{"items":[1,2,3]}}""");
+		JsonSerializer.StreamingEnumerationOptions<Envelope, int> options = new(x => x.Inner.Items) { LeaveOpen = true };
+		await foreach (int value in this.Serializer.DeserializePathEnumerableAsync<Envelope, int, Envelope>(pipe.Reader, options))
+		{
+			Assert.Equal(1, value);
+			break;
+		}
+
+		Assert.True(pipe.Reader.TryRead(out ReadResult remaining));
+		Assert.Equal(",2,3]}}", Encoding.UTF8.GetString(remaining.Buffer.ToArray()));
+		pipe.Reader.AdvanceTo(remaining.Buffer.End);
+		await pipe.Writer.CompleteAsync();
+		await pipe.Reader.CompleteAsync();
+	}
+
+	[Test]
 	public async Task IndexHook_CustomEnvelope_TracksOpenContainers()
 	{
 		JsonSerializer serializer = new() { Converters = new ConverterCollection([new WrappedArrayConverter()]) };
@@ -317,7 +350,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"inner":{"items":[7,8,9]},"trailing":true}""");
 		using ChunkedStream stream = new(utf8, 2);
-		List<int> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<Envelope, int>(stream, e => e.Inner.Items, Shape<Envelope, Envelope>()));
+		List<int> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<Envelope, int>(stream, Shape<Envelope, Envelope>(), new(e => e.Inner.Items)));
 		Assert.Equal([7, 8, 9], result);
 	}
 
@@ -326,7 +359,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"pet":["Cat",{"toys":["ball","mouse"],"lives":9}]}""");
 		using ChunkedStream stream = new(utf8, 3);
-		List<string> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<UnionEnvelope, string>(stream, e => e.Pet.Toys, Shape<UnionEnvelope, UnionEnvelope>()));
+		List<string> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<UnionEnvelope, string>(stream, Shape<UnionEnvelope, UnionEnvelope>(), new(e => e.Pet.Toys)));
 		Assert.Equal(["ball", "mouse"], result);
 	}
 
@@ -336,7 +369,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 		JsonSerializer serializer = new() { Converters = ConverterCollection.Create([new CustomListConverter()]) };
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"list":{"v":[1,2,3]}}""");
 		using ChunkedStream stream = new(utf8, 2);
-		List<int> result = await CollectAsync(serializer.DeserializePathEnumerableAsync<CustomEnvelope, int>(stream, e => e.List.Values, Shape<CustomEnvelope, CustomEnvelope>()));
+		List<int> result = await CollectAsync(serializer.DeserializePathEnumerableAsync<CustomEnvelope, int>(stream, Shape<CustomEnvelope, CustomEnvelope>(), new(e => e.List.Values)));
 		Assert.Equal([1, 2, 3], result);
 	}
 
