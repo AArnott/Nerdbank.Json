@@ -26,6 +26,10 @@ dotnet run --project .\test\Benchmarks\Benchmarks.csproj --no-build -c Release -
 
 BenchmarkDotNet reports elapsed time and allocated bytes separately. Results from a shared or thermally unstable machine can be multimodal; compare repeated runs with the same runtime, affinity, and job before treating a time ratio as a regression or improvement.
 
+Cached object serialization into a reused, sufficiently large buffer should allocate no managed memory when reference preservation is off.
+`JsonObjectSerializerTests.Serialize_CachedObjectGraph_DoesNotAllocate` guards this warmed path, including converter lookup with a generated object shape.
+NativeAOT converter lookup uses a static state factory so its fallback does not introduce a closure allocation on either managed or native cache hits.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.

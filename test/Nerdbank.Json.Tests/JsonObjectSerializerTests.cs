@@ -7,6 +7,39 @@ using PolyType.Abstractions;
 
 public partial class JsonObjectSerializerTests : TestBase
 {
+#if NET
+	[Test]
+	public void Serialize_CachedObjectGraph_DoesNotAllocate()
+	{
+		Person value = new()
+		{
+			Name = "Ada",
+			Age = 37,
+			Address = new Address { City = "Seattle", PostalCode = 98101 },
+		};
+		ITypeShape<Person> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<Person>()!;
+		ArrayBufferWriter<byte> buffer = new();
+		const string ExpectedJson = """{"name":"Ada","age":37,"address":{"city":"Seattle","postalCode":98101}}""";
+		for (int i = 0; i < 1000; i++)
+		{
+			buffer.Clear();
+			this.Serializer.Serialize(buffer, value, shape);
+		}
+
+		Assert.Equal(ExpectedJson, Encoding.UTF8.GetString(buffer.WrittenSpan));
+		long before = GC.GetAllocatedBytesForCurrentThread();
+		for (int i = 0; i < 1000; i++)
+		{
+			buffer.Clear();
+			this.Serializer.Serialize(buffer, value, shape);
+		}
+
+		long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+		Assert.Equal(0L, allocated);
+		Assert.Equal(ExpectedJson, Encoding.UTF8.GetString(buffer.WrittenSpan));
+	}
+#endif
+
 	[Test]
 	public void Deserialize_ObjectGraph_FromMultiSegmentUtf8Sequence()
 	{

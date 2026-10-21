@@ -80,13 +80,17 @@ internal sealed class ConverterCache : ITypeShapeFunc
 #if NET
 		if (!RuntimeFeature.IsDynamicCodeSupported)
 		{
-			return (JsonConverter<T>)this.nativeAotResolvedConverters.GetOrAdd(shape, _ =>
-			{
-				JsonConverter<T> converter = this.TryGetProfferedConverter(shape, visitor: null, out JsonConverter<T>? profferedConverter)
-					? profferedConverter
-					: (JsonConverter<T>)this.NativeAotCachedConverters.GetOrAdd(shape)!;
-				return this.WrapWithReferencePreservation(converter);
-			});
+			return (JsonConverter<T>)this.nativeAotResolvedConverters.GetOrAdd(
+				shape,
+				static (key, cache) =>
+				{
+					ITypeShape<T> typedShape = (ITypeShape<T>)key;
+					JsonConverter<T> converter = cache.TryGetProfferedConverter(typedShape, visitor: null, out JsonConverter<T>? profferedConverter)
+						? profferedConverter
+						: (JsonConverter<T>)cache.NativeAotCachedConverters.GetOrAdd(typedShape)!;
+					return cache.WrapWithReferencePreservation(converter);
+				},
+				this);
 		}
 #endif
 
