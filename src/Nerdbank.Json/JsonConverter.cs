@@ -135,9 +135,9 @@ public abstract class JsonConverter
 	/// </returns>
 	/// <remarks>
 	/// The default implementation navigates a self-describing JSON object or array using raw token skipping. Converters
-	/// whose representation is not a plain object or array (such as unions that emit a <c>[discriminator, payload]</c>
-	/// envelope, or custom converters that remap members) should override this method to translate the segment into a
-	/// navigation over their representation, typically by delegating to the converter of the underlying value.
+	/// whose representation is not a plain object or array should expose logical navigation by overriding
+	/// <see cref="SkipToPropertyValue"/> and <see cref="SkipToIndexValue"/>.
+	/// This internal dispatcher supplies raw-token navigation for built-in representations.
 	/// </remarks>
 	internal virtual bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 		=> JsonTargetedNavigator.NavigateRawToken(ref reader, in segment, options);
@@ -156,9 +156,9 @@ public abstract class JsonConverter
 	/// </returns>
 	/// <remarks>
 	/// The default implementation navigates a self-describing JSON object or array using the asynchronous reader.
-	/// Converters whose representation is a union envelope or a custom shape should override this method to translate the
-	/// segment into a navigation over their representation, typically by delegating to the converter of the underlying
-	/// value and adding the number of containers they themselves opened.
+	/// Custom converters expose asynchronous logical navigation through <see cref="SkipToPropertyValueAsync"/> and
+	/// <see cref="SkipToIndexValueAsync"/>, using the reader's structural methods to track opened containers.
+	/// This internal dispatcher accounts for built-in representations.
 	/// </remarks>
 	internal virtual ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 		=> JsonAsyncTargetedNavigator.NavigateRawTokenAsync(reader, segment, options, context);

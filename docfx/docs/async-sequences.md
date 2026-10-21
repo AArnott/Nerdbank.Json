@@ -11,7 +11,7 @@ to produce each element on demand.
 <xref:Nerdbank.Json.JsonSerializer.DeserializeEnumerableAsync*> accepts <xref:Nerdbank.Json.JsonSerializer.SequenceOptions> to select framing through its <xref:Nerdbank.Json.JsonSerializer.SequenceOptions.Format> property:
 
 * **Newline-delimited JSON (NDJSON / JSON Lines)** is the default, <xref:Nerdbank.Json.JsonSequenceFormat.NDJson>.
-  It requires a line terminator between values; two values on one line are rejected with a <xref:System.FormatException>.
+  It requires a line terminator between values; two values on one line are rejected with a <xref:Nerdbank.Json.JsonSerializationException> whose cause is a <xref:System.FormatException>.
 * **Top-level JSON array**, <xref:Nerdbank.Json.JsonSequenceFormat.JsonArray>, streams each element of a `[ ... ]` document.
   A top-level `null` yields an empty sequence.
   The dedicated JSON-specific <xref:Nerdbank.Json.JsonSerializer.DeserializeArrayAsync*> API remains available.

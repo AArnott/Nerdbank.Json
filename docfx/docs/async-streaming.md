@@ -33,7 +33,7 @@ that arrays, maps, and objects stream member-by-member with bounded memory. A to
 elements is read one element at a time; a large object is read one property at a time — including
 objects that are constructed from constructor parameters — so processing begins before the closing
 brace arrives. Only an individual value that a custom converter reads with the default buffering hook,
-a raw extension-data value, or a single constructor argument is materialized at a time — never the
+a raw retained unknown-member value, or a single constructor argument is materialized at a time — never the
 enclosing document.
 
 ### Asynchronous enumerable contracts
@@ -52,15 +52,23 @@ Deserialization accepts a JSON `null` but cannot construct an asynchronous enume
   disposed or completed by the serializer. You remain responsible for their lifetime.
 * **Cancellation** is honored throughout; a canceled token surfaces as an
   <xref:System.OperationCanceledException>.
-* **Trailing data** after the top-level value is rejected with a <xref:System.FormatException>, just
-  like the synchronous API. Trailing whitespace (and comments, when
-  <xref:Nerdbank.Json.JsonCommentHandling.Skip> is configured) is allowed.
+* **Caller-owned pipes** deserialize the first value and leave prefetched bytes unread and unexamined for the next operation.
+  Scalars require a token delimiter or end of input, and invalid scalar prefixes such as `truefalse` and `01` are rejected.
+* **Asynchronous streams** remain strict single-document inputs and reject trailing data.
+  Their temporary pipe can prefetch beyond the value, so completing it after a first-value read could discard bytes needed by a subsequent operation.
+  Use a caller-owned pipe for repeated first-value reads.
+* **String inputs** also require a complete document.
+  UTF-8 buffer and sequence overloads return the first value.
+  Synchronous stream overloads return the first value after buffering the stream to its end; they do not preserve a position for the next document.
+* **Operation failures** surface as <xref:Nerdbank.Json.JsonSerializationException>, retaining the causal exception.
+  Existing serialization exceptions retain their instance and error code.
+  Argument validation remains an argument error, and actual operation cancellation is not wrapped.
 * **Reference preservation** streams incrementally for built-in mutable objects, collections, and
   dictionaries, so an optional `$id`/`$value` envelope does not reintroduce whole-document buffering.
   Early registration still enables `AllowCycles` back-references. A custom converter that relies on the
   default asynchronous read is a clear, bounded fallback: only that one preserved value is buffered.
 * **Exact synchronous semantics are preserved:** duplicate-property detection, required and
-  non-nullable validation, extension data, lifecycle callbacks (including early cycle registration
+  non-nullable validation, retained unknown members, lifecycle callbacks (including early cycle registration
   ordering), comments, and trailing commas all behave identically to the synchronous API.
 
 ## Writing a streaming custom converter

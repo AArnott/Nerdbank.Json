@@ -79,6 +79,8 @@ To use your converter wherever a type appears, apply <xref:Nerdbank.Json.JsonCon
 
 [!code-csharp[](../../samples/cs/CustomConverters.cs#CustomConverterByAttribute)]
 
+The converter's generic argument must match the attributed type; this example applies `FooConverter : JsonConverter<Foo>` to `Foo` itself.
+
 You may also apply <xref:Nerdbank.Json.JsonConverterAttribute> to a property or constructor parameter to affect only that serialized slot:
 
 [!code-csharp[](../../samples/cs/CustomConverters.cs#CustomConverterByAttributeOnMember)]
@@ -94,6 +96,8 @@ Open generic converter types may be registered with <xref:Nerdbank.Json.JsonSeri
 [!code-csharp[](../../samples/cs/CustomConverters.cs#CustomOpenGenericConverterRegisteredAtRuntime)]
 
 <xref:Nerdbank.Json.ConverterTypeCollection> is immutable and supports collection expressions through its collection builder, as well as explicit calls to <xref:Nerdbank.Json.ConverterTypeCollection.Create*>.
+Associate an open generic converter with its model using `AssociatedTypeShapeAttribute`, and generate a shape for the closed model through a witness type.
+The `Envelope<T>` sample uses this pattern; applying `GenerateShapeAttribute` directly to an open generic model is not supported by PolyType.
 
 ### Converter factories
 
@@ -104,6 +108,7 @@ When one converter pattern applies to many types, implement <xref:Nerdbank.Json.
 While a factory is creating a converter, it can use <xref:Nerdbank.Json.ConverterContext> to resolve supporting converters.
 Both converter contexts expose the active shape provider and support typed shapes, untyped shapes, witness types, and runtime-type lookup.
 Factories implementing <xref:PolyType.Abstractions.ITypeShapeFunc> can use <xref:Nerdbank.Json.JsonConverterFactoryExtensions.Invoke*> to enter a generic context without reflection-based generic activation.
+The `EnvelopeConverterFactory` sample uses reflective activation and is exercised only by the managed sample tests; prefer shape-based generic dispatch for NativeAOT.
 
 ## Reference cycles in custom converters
 
@@ -111,6 +116,13 @@ Call <xref:Nerdbank.Json.SerializationContext.ReportObjectConstructed*> after co
 When cycle-preserving deserialization is enabled, nested references can then resolve to that instance before the converter returns.
 Return the same instance that was reported.
 The call has no effect when cycle preservation is not active.
+
+## Targeted navigation in custom representations
+
+Override <xref:Nerdbank.Json.JsonConverter.SkipToPropertyValue*> and <xref:Nerdbank.Json.JsonConverter.SkipToIndexValue*> when a custom representation remaps logical members, array indices, or dictionary keys.
+The corresponding asynchronous hooks return whether the selected value was found.
+Use the asynchronous reader's structural methods when entering containers so the serializer can drain the enclosing envelope correctly.
+These are public converter hooks; the internal navigation dispatchers are not extension points.
 
 ## Version compatibility
 

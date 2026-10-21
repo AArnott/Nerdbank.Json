@@ -1,46 +1,56 @@
+// Copyright (c) Andrew Arnott. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
 using System;
 using Nerdbank.Json;
 using PolyType;
 
-partial class CustomConvertersSamples
+public partial class CustomConvertersSamples
 {
 	// <CustomConverterRegisteredAtRuntime>
-	void CustomConverterRegisteredAtRuntime()
+	private void CustomConverterRegisteredAtRuntime()
 	{
 		JsonSerializer serializer = new()
 		{
 			Converters = ConverterCollection.Create([new FooConverter()]),
 		};
 	}
+
 	// </CustomConverterRegisteredAtRuntime>
 
 	// <CustomOpenGenericConverterRegisteredAtRuntime>
-	void CustomOpenGenericConverterRegisteredAtRuntime()
+	private void CustomOpenGenericConverterRegisteredAtRuntime()
 	{
 		JsonSerializer genericSerializer = new()
 		{
 			ConverterTypes = ConverterTypeCollection.Create([typeof(EnvelopeConverter<>)]),
 		};
 	}
+
 	// </CustomOpenGenericConverterRegisteredAtRuntime>
 
 	// <CustomConverterFactory>
-	void CustomConverterFactory()
+	private void CustomConverterFactory()
 	{
 		JsonSerializer factorySerializer = new()
 		{
 			ConverterFactories = [new EnvelopeConverterFactory()],
 		};
 	}
+
 	// </CustomConverterFactory>
 }
 
 // <YourOwnConverter>
+// <CustomConverterByAttribute>
 [GenerateShape]
+[JsonConverter(typeof(FooConverter))]
 public partial class Foo
 {
 	public string? Name { get; set; }
 }
+
+// </CustomConverterByAttribute>
 
 public sealed class FooConverter : JsonConverter<Foo>
 {
@@ -71,7 +81,10 @@ public sealed class FooConverter : JsonConverter<Foo>
 		string propertyName = reader.ReadRequiredString();
 		reader.ReadNameSeparator();
 		string? name = reader.ReadString();
-		reader.ReadEndObject();
+		if (!reader.TryReadEndObject())
+		{
+			throw new JsonSerializationException("Expected the end of the object.");
+		}
 
 		if (!string.Equals(propertyName, "name", StringComparison.Ordinal))
 		{
@@ -84,6 +97,7 @@ public sealed class FooConverter : JsonConverter<Foo>
 		return new Foo { Name = name?.ToLowerInvariant() };
 	}
 }
+
 // </YourOwnConverter>
 
 // <DelegateSubValues>
@@ -110,7 +124,7 @@ public sealed class WrapperConverter : JsonConverter<Wrapper>
 		}
 
 		context.DepthStep();
-		JsonConverter<Inner> innerConverter = context.GetConverter(Inner.GetTypeShape());
+		JsonConverter<Inner> innerConverter = context.GetConverter<Inner>();
 		writer.WriteStartObject();
 		writer.WritePropertyName("value");
 		innerConverter.Write(ref writer, value.Value, context);
@@ -125,25 +139,21 @@ public sealed class WrapperConverter : JsonConverter<Wrapper>
 		}
 
 		context.DepthStep();
-		JsonConverter<Inner> innerConverter = context.GetConverter(Inner.GetTypeShape());
+		JsonConverter<Inner> innerConverter = context.GetConverter<Inner>();
 		reader.ReadStartObject();
 		reader.ReadRequiredString();
 		reader.ReadNameSeparator();
 		Inner? value = innerConverter.Read(ref reader, context);
-		reader.ReadEndObject();
+		if (!reader.TryReadEndObject())
+		{
+			throw new JsonSerializationException("Expected the end of the object.");
+		}
+
 		return new Wrapper { Value = value };
 	}
 }
-// </DelegateSubValues>
 
-// <CustomConverterByAttribute>
-[GenerateShape]
-[JsonConverter(typeof(FooConverter))]
-public partial class FooByAttribute
-{
-	public string? Name { get; set; }
-}
-// </CustomConverterByAttribute>
+// </DelegateSubValues>
 
 // <CustomConverterByAttributeOnMember>
 [GenerateShape]
@@ -154,13 +164,14 @@ public partial class MemberAttributedContainer
 }
 
 [GenerateShape]
-public partial class ParameterAttributedContainer([property: JsonConverter(typeof(FooConverter))] Foo? value)
+public partial class ParameterAttributedContainer([JsonConverter(typeof(FooConverter))] Foo? value)
 {
 	public Foo? Value { get; } = value;
 }
+
 // </CustomConverterByAttributeOnMember>
 
-[GenerateShape]
+[AssociatedTypeShape(typeof(EnvelopeConverter<>))]
 public partial class Envelope<T>
 {
 	public T? Value { get; set; }
@@ -196,7 +207,11 @@ public sealed class EnvelopeConverter<T> : JsonConverter<Envelope<T>>
 		reader.ReadRequiredString();
 		reader.ReadNameSeparator();
 		T? value = context.GetConverter(T.GetTypeShape()).Read(ref reader, context);
-		reader.ReadEndObject();
+		if (!reader.TryReadEndObject())
+		{
+			throw new JsonSerializationException("Expected the end of the object.");
+		}
+
 		return new Envelope<T> { Value = value };
 	}
 }
@@ -205,6 +220,7 @@ public sealed class EnvelopeConverterFactory : IJsonConverterFactory
 {
 	public JsonConverter? CreateConverter(Type type, ITypeShape? shape, in ConverterContext context)
 	{
+		ArgumentNullException.ThrowIfNull(type);
 		if (!type.IsGenericType || type.GetGenericTypeDefinition() != typeof(Envelope<>))
 		{
 			return null;
@@ -247,7 +263,11 @@ public sealed class EnvelopeConverterFactory : IJsonConverterFactory
 			reader.ReadRequiredString();
 			reader.ReadNameSeparator();
 			T? value = this.valueConverter.Read(ref reader, serializationContext);
-			reader.ReadEndObject();
+			if (!reader.TryReadEndObject())
+			{
+				throw new JsonSerializationException("Expected the end of the object.");
+			}
+
 			return new Envelope<T> { Value = value };
 		}
 	}
