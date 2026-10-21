@@ -1,13 +1,13 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-[assembly: TypeShapeExtension(typeof(string), AssociatedTypes = new[] { typeof(JsonObjectSerializerTests.UpperCaseStringConverter) })]
-
 [GenerateShapeFor<string>]
 [GenerateShapeFor<char>]
 [GenerateShapeFor<List<char>>]
 [GenerateShapeFor<AttributedStringWrapper>]
 [GenerateShapeFor<GenericValue<string>>]
+[GenerateShapeFor<GenericAttributedValue<int>>]
+[GenerateShapeFor<GenericAttributedValue<string>>]
 public partial class JsonObjectSerializerTests
 {
 	[Test]
@@ -75,6 +75,29 @@ public partial class JsonObjectSerializerTests
 	}
 
 	[Test]
+	public void AttributedConverters_GenerateConstructorAssociations()
+	{
+		ITypeShape<AttributedStringWrapper> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<AttributedStringWrapper>()!;
+		Assert.NotNull(shape.GetAssociatedTypeShape(typeof(AttributedStringWrapperConverter)));
+		ITypeShape<string> stringShape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<string>()!;
+		Assert.NotNull(stringShape.GetAssociatedTypeShape(typeof(UpperCaseStringConverter)));
+	}
+
+	[Test]
+	public void GenericAttributedConverters_GenerateClosedAssociationsAndRoundTrip()
+	{
+		ITypeShape<GenericAttributedValue<int>> intShape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<GenericAttributedValue<int>>()!;
+		ITypeShape<GenericAttributedValue<string>> stringShape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<GenericAttributedValue<string>>()!;
+		Assert.Equal(typeof(GenericAttributedValueConverter<int>), intShape.GetAssociatedTypeShape(typeof(GenericAttributedValueConverter<>))?.Type);
+		Assert.Equal(typeof(GenericAttributedValueConverter<string>), stringShape.GetAssociatedTypeShape(typeof(GenericAttributedValueConverter<>))?.Type);
+		JsonSerializer serializer = new();
+		Assert.Equal("42", serializer.Serialize(new GenericAttributedValue<int>(41), intShape));
+		Assert.Equal(new GenericAttributedValue<int>(41), serializer.Deserialize("42", intShape));
+		Assert.Equal("8", serializer.Serialize(new GenericAttributedValue<string>(7), stringShape));
+		Assert.Equal(new GenericAttributedValue<string>(7), serializer.Deserialize("8", stringShape));
+	}
+
+	[Test]
 	public void SerializeDeserialize_CanUsePropertyAttributedConverter()
 	{
 		JsonSerializer serializer = new();
@@ -129,7 +152,6 @@ public partial class JsonObjectSerializerTests
 		}
 	}
 
-	[AssociatedTypeShape(typeof(AttributedStringWrapperConverter))]
 	[JsonConverter(typeof(AttributedStringWrapperConverter))]
 	internal sealed partial class AttributedStringWrapper
 	{
@@ -211,6 +233,16 @@ public partial class JsonObjectSerializerTests
 				Value = value?.TrimEnd('!'),
 			};
 		}
+	}
+
+	[JsonConverter(typeof(GenericAttributedValueConverter<>))]
+	internal sealed record GenericAttributedValue<T>(int Number);
+
+	internal sealed class GenericAttributedValueConverter<T> : JsonConverter<GenericAttributedValue<T>>
+	{
+		public override GenericAttributedValue<T> Read(ref JsonReader reader, SerializationContext context) => new(reader.ReadInt32() - 1);
+
+		public override void Write(ref JsonWriter writer, in GenericAttributedValue<T>? value, SerializationContext context) => writer.Write(value!.Number + 1);
 	}
 
 	private sealed class CharListWrapperFactory : IJsonConverterFactory

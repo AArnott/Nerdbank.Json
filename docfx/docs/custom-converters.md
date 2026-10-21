@@ -80,6 +80,8 @@ To use your converter wherever a type appears, apply <xref:Nerdbank.Json.JsonCon
 [!code-csharp[](../../samples/cs/CustomConverters.cs#CustomConverterByAttribute)]
 
 The converter's generic argument must match the attributed type; this example applies `FooConverter : JsonConverter<Foo>` to `Foo` itself.
+The attribute automatically asks PolyType to generate the associated converter constructor, so no separate <xref:PolyType.AssociatedTypeShapeAttribute> is required for attributed converters.
+Open generic converter types are supported on generic model types; generate shapes for the closed models through a witness type so their closed converter constructors are available under NativeAOT.
 
 You may also apply <xref:Nerdbank.Json.JsonConverterAttribute> to a property or constructor parameter to affect only that serialized slot:
 
@@ -96,7 +98,7 @@ Open generic converter types may be registered with <xref:Nerdbank.Json.JsonSeri
 [!code-csharp[](../../samples/cs/CustomConverters.cs#CustomOpenGenericConverterRegisteredAtRuntime)]
 
 <xref:Nerdbank.Json.ConverterTypeCollection> is immutable and supports collection expressions through its collection builder, as well as explicit calls to <xref:Nerdbank.Json.ConverterTypeCollection.Create*>.
-Associate an open generic converter with its model using `AssociatedTypeShapeAttribute`, and generate a shape for the closed model through a witness type.
+For runtime registration without a converter attribute, associate an open generic converter with its model using <xref:PolyType.AssociatedTypeShapeAttribute>, and generate a shape for the closed model through a witness type.
 The `Envelope<T>` sample uses this pattern; applying `GenerateShapeAttribute` directly to an open generic model is not supported by PolyType.
 
 ### Converter factories
