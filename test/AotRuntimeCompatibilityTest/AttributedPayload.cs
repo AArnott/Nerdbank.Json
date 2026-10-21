@@ -1,6 +1,8 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+#pragma warning disable SA1402 // Keep the attributed converter regression models and constructors together.
+
 using Nerdbank.Json;
 using PolyType;
 

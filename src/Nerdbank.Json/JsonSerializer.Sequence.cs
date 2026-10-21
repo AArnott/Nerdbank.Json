@@ -28,7 +28,7 @@ public partial record JsonSerializer
 		return this.DeserializeOwnedPathEnumerableAsync(reader, path, converters, elementShape, options.EmptySequenceForUndiscoverablePath, options.LeaveOpen, cancellationToken);
 	}
 
-	/// <inheritdoc cref="DeserializePathEnumerableAsync{TRoot, TElement}(PipeReader, ITypeShape{TRoot}, StreamingEnumerationOptions{TRoot, TElement}, CancellationToken)"/>
+	/// <inheritdoc cref="DeserializePathEnumerableAsync{TRoot, TElement}(PipeReader, ITypeShape{TRoot}, StreamingEnumerationOptions{TRoot, TElement}, CancellationToken)" path="/*[not(self::param)]"/>
 	/// <param name="stream">The input stream, which remains open.</param>
 	/// <param name="shape">The root type shape.</param>
 	/// <param name="options">The path and enumeration options. The internally created pipe is always completed.</param>

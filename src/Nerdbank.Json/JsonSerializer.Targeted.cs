@@ -26,7 +26,7 @@ public partial record JsonSerializer
 		return this.DeserializePathCore(ref reader, path, converters, targetShape, options.DefaultForUndiscoverablePath ? MissingPathBehavior.ReturnDefault : MissingPathBehavior.Throw, cancellationToken);
 	}
 
-	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(ref JsonReader, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)"/>
+	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(ref JsonReader, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)" path="/*[not(self::param)]"/>
 	/// <param name="utf8Json">The UTF-8 document.</param>
 	/// <param name="shape">The root type shape.</param>
 	/// <param name="options">The selection options.</param>
@@ -37,7 +37,7 @@ public partial record JsonSerializer
 		return this.DeserializePath(ref reader, shape, options, cancellationToken);
 	}
 
-	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(ref JsonReader, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)"/>
+	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(ref JsonReader, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)" path="/*[not(self::param)]"/>
 	/// <param name="utf8Json">The possibly segmented UTF-8 document.</param>
 	/// <param name="shape">The root type shape.</param>
 	/// <param name="options">The selection options.</param>
@@ -48,7 +48,7 @@ public partial record JsonSerializer
 		return this.DeserializePath(ref reader, shape, options, cancellationToken);
 	}
 
-	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(ref JsonReader, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)"/>
+	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(ref JsonReader, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)" path="/*[not(self::param)]"/>
 	/// <param name="json">The JSON document.</param>
 	/// <param name="shape">The root type shape.</param>
 	/// <param name="options">The selection options.</param>
@@ -59,7 +59,7 @@ public partial record JsonSerializer
 		return this.DeserializePath(Encoding.UTF8.GetBytes(json).AsMemory(), shape, options, cancellationToken);
 	}
 
-	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(ref JsonReader, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)"/>
+	/// <inheritdoc cref="DeserializePath{TRoot, TElement}(ref JsonReader, ITypeShape{TRoot}, in DeserializePathOptions{TRoot, TElement}, CancellationToken)" path="/*[not(self::param)]"/>
 	/// <param name="stream">The document stream, which remains open. The stream is read to its end.</param>
 	/// <param name="shape">The root type shape.</param>
 	/// <param name="options">The selection options.</param>
