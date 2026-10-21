@@ -694,6 +694,7 @@ public ref struct JsonReader
 	internal bool TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> token)
 	{
 		token = default;
+		(ReadOnlyMemory<byte> Memory, SequencePosition Next, long Start) cursor = this.utf8Json.SaveCursor();
 		long index = this.SkipInsignificantCharactersUtf8(this.position);
 		if (index >= this.utf8Json.Length || this.utf8Json[index] != (byte)'"')
 		{
@@ -712,6 +713,7 @@ public ref struct JsonReader
 				return true;
 			}
 
+			this.utf8Json.RestoreCursor(cursor);
 			return false;
 		}
 
@@ -802,6 +804,7 @@ public ref struct JsonReader
 	private string ReadEscapedUtf8String(long segmentStart, StringInterning? stringInterning)
 	{
 		const int MaxStackStringByteLength = 4096;
+		(ReadOnlyMemory<byte> Memory, SequencePosition Next, long Start) cursor = this.utf8Json.SaveCursor();
 
 		// The token's UTF-8 byte length bounds its decoded UTF-16 length. Do not size the buffer to the
 		// remainder of the document, which may be much larger than this string.
@@ -828,6 +831,7 @@ public ref struct JsonReader
 			throw new FormatException("Unterminated JSON string.");
 		}
 
+		this.utf8Json.RestoreCursor(cursor);
 		int byteLength = checked((int)(tokenEnd - segmentStart));
 		char[]? rented = byteLength > MaxStackStringByteLength ? ArrayPool<char>.Shared.Rent(byteLength) : null;
 		try

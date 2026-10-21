@@ -7,6 +7,41 @@ using System.Text;
 public partial class JsonObjectSerializerTests
 {
 	[Test]
+	[Arguments(1)]
+	[Arguments(64)]
+	[Arguments(4096)]
+	public void SegmentedEscapedPropertyFallbackAndStringLookaheadKeepForwardReaderState(int segmentSize)
+	{
+		const int Count = 256;
+		byte[] bytes = Encoding.UTF8.GetBytes("[" + string.Join(",", Enumerable.Repeat("""{"\u006eame":"é\uD83D\uDE00","age":37,"address":null}""", Count)) + "]");
+		ReadOnlyMemory<byte>[] segments = Enumerable.Range(0, (bytes.Length + segmentSize - 1) / segmentSize)
+			.Select(i => bytes.AsMemory(i * segmentSize, Math.Min(segmentSize, bytes.Length - (i * segmentSize))))
+			.Select(memory => (ReadOnlyMemory<byte>)memory)
+			.ToArray();
+		ReadOnlySequence<byte> sequence = CreateSequence(segments);
+		ITypeShape<Person> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<Person>()!;
+		JsonReader reader = new(sequence);
+		reader.ReadStartArray();
+		for (int i = 0; i < Count; i++)
+		{
+			JsonReader peek = reader.CreatePeekReader();
+			peek.Skip(new());
+			Person person = this.Serializer.Deserialize(ref reader, shape)!;
+			Assert.Equal("é😀", person.Name);
+			Assert.Equal(37, person.Age);
+			Assert.Equal(peek.Consumed, reader.Consumed);
+			if (i < Count - 1)
+			{
+				reader.ReadValueSeparator();
+			}
+		}
+
+		reader.ReadEndArray();
+		Assert.True(reader.End);
+		Assert.Equal(sequence.End, reader.Position);
+	}
+
+	[Test]
 	public void SegmentedConstructorUnionAndUnknownRetention_AllBoundaries()
 	{
 		byte[] constructor = """{"name":"é\uD83D\uDE00","age":37}"""u8.ToArray();

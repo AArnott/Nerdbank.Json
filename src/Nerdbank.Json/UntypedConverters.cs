@@ -214,7 +214,7 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 	{
 		if (context.ReferenceTracker is not null && reader.PeekValueToken() == '{')
 		{
-			JsonReader peek = reader;
+			JsonReader peek = reader.CreatePeekReader();
 			peek.ReadStartObject();
 			if (!peek.TryReadEndObject() && peek.ReadRequiredString() is "$id" or "$ref")
 			{
