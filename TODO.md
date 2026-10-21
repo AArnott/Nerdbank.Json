@@ -60,22 +60,96 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 
 ## Integration QA
 
-- [ ] Audit all remaining public APIs against the local reference and remove superseded APIs without aliases.
+- [x] Complete the public-API audit for this checkpoint and remove superseded APIs without aliases; remaining low-level breadth is explicitly deferred, not a claim of perfect binary parity.
 - [x] Update affected samples and documentation for the integrated snapshot, including compiled and executed custom-converter examples.
 - [x] Verify the Release solution build on all targets, all configured managed test frameworks, and the self-checking F# sample after fixed-snapshot integration.
 - [x] Publish and execute the four NativeAOT fixtures after the integrated platform and dynamic-dictionary fixes; successful native linking alone is insufficient.
-- [ ] Compare performance and allocations with the baseline after concurrent builds stop.
-- [ ] Explain approved differences and authorized breaking/no-obsolete-alias policy in the final PR.
+- [x] Compare performance and allocations with the frozen baseline in matched runs; final accepted results and the remaining elapsed-time regression are recorded below.
+- [ ] Explain approved differences and authorized breaking/no-obsolete-alias policy in the eventual PR (future handoff, not a blocker for this completed checkpoint; no PR requested this run).
 - [x] Normalize asynchronous operation failures as `JsonSerializationException`, retaining causes, existing exception instances/codes, and actual cancellation.
 - [x] Verify first-value behavior across generic, object-based, native DOM, buffer/sequence, synchronous stream, and caller-pipe entry points, with documented strict string/async-stream/NDJSON boundaries.
 - [x] Update root README snippets and the feature overview to final navigation, sequence, converter, `UnusedDataPacket`, and flat-array names.
 - [x] Complete the requested navigation/attribute API and XML reconciliation; warnings-as-errors DocFX reports zero warnings.
-- [x] Verify formatting without restoring, and attempt the complete native net10.0 core suite without weakening unsupported test cases.
-- [ ] Implement the deferred zero-copy parser work.
-- [ ] Design the deferred stateless raw-wrapper API.
+- [x] Verify formatting without restoring and execute the complete native net10.0 core suite; explicitly skip only unsupported lower-bound-array input creation, preserving all managed assertions.
+- [ ] Implement the deferred zero-copy segmented parser work.
+- [ ] Design the deferred direct stateless raw-wrapper API.
 - [ ] Address deferred analyzer rules NBJson031 and NBJson051.
+- [ ] Address the explicitly deferred remaining low-level API breadth.
+- [ ] Investigate and optimize the remaining object elapsed-time regression without sacrificing allocation parity, safety, or correctness.
+- [ ] Execute Linux/macOS validation; do not infer results or recalibrate their budgets from Windows measurements.
+
+## Final accepted checkpoint (2026-10-20, code `13bc811`)
+
+**This is the authoritative final result.** It supersedes the earlier managed counts, native input-creation failures, size measurements, pending benchmark comparison, and unverified platform-guard notes retained below as historical evidence.
+The accepted implementation is `13bc811`; the rejected provider-local experiment is not included.
+The branch remains `aarnott-miniature-engine`; this documentation checkpoint creates no branch or PR, pushes nothing, and amends nothing.
+Approved differences above are unchanged. Breaking cleanup remains authorized, with no obsolete aliases restored.
+The eventual PR must explain that policy; creating it is future work, not part of this run.
+
+### Final correctness and compatibility evidence
+
+* All **3,467 managed tests pass, zero failures and zero skips**: core on .NET 8/9/10/net472, MVC on .NET 8/9/10, and analyzers on .NET 8. This includes the new warmed object-allocation regression test.
+* The Release solution builds all configured target frameworks with **zero warnings and zero errors**.
+* The complete Windows net10.0 native core suite has **807 total: 805 passed, zero failed, two explicitly skipped**. Only `Flat_NonZeroLowerBounds_AreNormalized(false/true)` is skipped because NativeAOT cannot create those array inputs before entering the serializer. All managed variants still fully assert normalization. The earlier two failures are superseded platform-input results, not existing serialization bugs or a remaining CI test failure.
+* All four NativeAOT fixtures publish with `-warnaserror`, zero warnings/errors, and execute the final code: minimal `AotSizeTest`; `AotRuntimeCompatibilityTest` covering nested records, arrays, dynamic dictionaries, and automatic ordinary/open-generic converter associations; broad `AotNativeConsole`, which prints `Success`; and root-all shipping `AotCompatibilityTest`.
+* MVC commits `9fd8126` and `e4562e7` wire the public object async APIs while preserving strict single-JSON HTTP bodies, UTF-8/UTF-16, split reads, BOM handling, ownership, and ModelState/400 behavior. Unterminated trailing block comments are rejected; no MVC test skips remain.
+* DocFX with warnings as errors finishes with zero warnings/errors; `dotnet format` verification exits 0; the F# self-check executes successfully.
+* The public-API audit and removed-API declaration/usage scan are complete for this checkpoint. JSON-specific `AsyncReader.SkipValueAsync` is not an obsolete `SkipValue` alias. Remaining low-level breadth is explicitly deferred; perfect binary parity is not claimed.
+
+Final Windows native image measurements:
+
+| Native image | Bytes | MiB | Size result |
+|---|---:|---:|---|
+| Minimal `AotSizeTest` | 2,771,456 | 2.64306640625 | Uncalibrated report |
+| Broad `AotNativeConsole` | 6,159,360 | 5.8740234375 | PASS: unchanged Windows 5.79 +/- 0.2 MiB guard |
+
+Historical Linux 5.88 +/- 0.2 MiB and macOS 5.40 +/- 0.2 MiB broad budgets are preserved; neither OS was locally executed or recalibrated.
+Final validation artifacts retained outside the checkout include `accepted-native-core-tests.log`, `accepted-broad-size.json`, `accepted-minimal-size.json`, `accepted-docfx.log`, and `closure-fixed-managed-tests.log`.
+
+### Completed matched performance comparison
+
+BenchmarkDotNet 0.15.8, .NET 9.0.21, SDK 10.0.402, Windows 11, Threadripper 7995WX, Release: five warmups, ten iterations, 250 ms iteration time, one launch.
+The frozen original `f64` and accepted `13bc811` use matched jobs.
+Intervals below are mean +/- 99.9% confidence-interval half-width; repeat means are the original rerun after the candidate.
+
+| Object operation | Original mean (ns) | Accepted mean (ns) | Original repeat mean (ns) | Original and accepted allocations |
+|---|---:|---:|---:|---:|
+| DeserializeSmall | 302.6 +/- 1.94 | 362.6 +/- 6.38 | 297.8 | 200 B |
+| DeserializeWide | 1053.4 +/- 3.74 | 1191.8 +/- 22.84 | 1020.1 | 664 B |
+| SerializeSmall | 180.1 +/- 0.66 | 222.6 +/- 1.77 | 177.9 | 0 B |
+| SerializeWide | 494.1 +/- 2.37 | 556.9 +/- 6.73 | 478.6 | 0 B |
+
+Object allocation parity is restored, but elapsed cost remains roughly **13-24% higher** in these four microbenchmarks.
+The original repeat confirms the original timing range with modest drift; this is not full speed restoration.
+No exact causal split between feature/safety work and other costs is claimed.
+Elapsed-time optimization remains an explicit unchecked follow-up above.
+
+All **24 final scenarios completed**: four objects, eight interning, and twelve skipping.
+All twelve skip scenarios allocate **0 B**. Interner allocations match the original.
+Large escaped interned input improved from 801.616 us original to 642.214 us accepted in the matched run, but other string cases were mostly slower; this is not an overall performance-win claim.
+Raw baseline, candidate, final accepted, and original-repeat reports are retained outside the checkout by the coordinator as `perf-comparison-baseline`, `perf-comparison-candidate`, `perf-final-accepted`, and `perf-original-repeat`.
+
+**Accepted allocation fix (`13bc811`):** IL attributed the measured +32 B/op regression to unconditional allocation of `<>c__DisplayClass38_0<T>`, capturing `this` and `shape` in `GetOrAddConverter<T>`.
+The static state factory removes that 32 B/op, restoring exact allocation parity while preserving atomic cache publication.
+The build and full managed/native correctness checks above verify the accepted code.
+
+**Rejected/inconclusive provider-local experiment:** an operation-local provider-assignment mutator eliminated two 80-byte `BulkMoveWithWriteBarrier` copies from each synchronous Core method in disassembly.
+Its candidate passed 3,503 managed tests, but wide serialization measured 608.3 versus 522.2 ns across two identical runs, and the baseline also drifted.
+The candidate was surgically reverted; accepted `13bc811` is unchanged, and its extra 36 tests are not included in the final 3,467 count.
+Patch/evidence remains outside the checkout in child session `9ea17ac4-60dd-4182-ba35-c0d060ada2a2`, under `files/provider-local-experiment`.
+This is not an accepted optimization.
+
+### Remaining boundaries and deferrals
+
+Zero-copy segmented parsing, the direct raw stateless wrapper, remaining low-level breadth, NBJson031/NBJson051, elapsed-time optimization, and Linux/macOS execution remain deferred as tracked above.
+NBJson001/NBJson002 remain descriptor-only inactive diagnostics, as documented.
+Experimental duck typing does not have identical constructor-time validation semantics in every case.
+Async-stream first-value reads cannot preserve prefetched bytes when disposing the temporary pipe; use a caller-owned pipe instead.
+Supported JSON dictionary-key limits and immutable/constructor-bound cycle limits remain intentional feature constraints, not unimplemented promises.
 
 ## Fixed-snapshot integration checkpoint
+
+The sections below preserve historical integration evidence. Their counts, failures, pending work, and verification limitations are superseded where explicitly resolved by the final accepted checkpoint above.
 
 The coordinator branch remains `aarnott-miniature-engine`; no branch was created or renamed, and nothing was pushed.
 Contracts through `6014701`, platform through original `135e9bf` (integrated `f744a3f`), the seven foundations commits in `9cd49c2..05ec767` (integrated through `04df7ba`), and the five unions/schema commits in `9cd49c2..78c1a8f` (integrated through `477c28d`) are integrated as individual logical commits.
@@ -154,7 +228,7 @@ Tests assert generated ordinary and closed-generic associations without manual m
 The JSON DOM modifiers are unchanged.
 `fa409fa` restricts XML inheritance to appropriate nodes and documents the actual overload parameters, eliminating all 75 duplicate-parameter warnings without suppressions or lost summaries/ownership documentation.
 
-### Current verification and deferrals (2026-10-20)
+### Historical verification and deferrals (2026-10-20, superseded)
 
 `dotnet build Nerdbank.Json.slnx -c Release --no-restore -warnaserror` builds all configured targets with **zero warnings and zero errors**.
 `dotnet test --no-build -c Release` passes all **3,269 managed tests**, with zero failures or skips:

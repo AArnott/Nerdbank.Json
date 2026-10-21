@@ -201,19 +201,19 @@ Set `JsonSerializer.MultiDimensionalArrayFormat` to `MultiDimensionalArrayFormat
 ## Status
 
 The implemented feature surface is described in the [feature guide](docfx/docs/features.md), with dedicated guides for streaming, unions, schema generation, reference preservation, and MVC integration.
-API parity work with Nerdbank.MessagePack remains in progress; the capabilities above are implemented, not a future roadmap.
+The public-API audit is complete for this checkpoint, with remaining low-level breadth explicitly deferred; this is not a claim of perfect binary parity with Nerdbank.MessagePack.
 Dictionary keys are limited to supported simple types, collections without construction support are serialization-only, and getter-only scalar or immutable properties require constructor binding to be populated.
 
-The 2026-10-20 Windows integration checkpoint builds all Release targets without warnings and passes all 3,269 configured managed tests plus the self-checking F# sample.
-All four NativeAOT fixtures publish with warnings treated as errors and execute successfully, including root-all shipping compatibility and nested-record/array/dynamic-dictionary regressions.
-Ordinary and open-generic attributed converters execute natively without manual associated-shape annotations.
-The minimal native image is 2,770,432 bytes (2.642 MiB, uncalibrated); the broad image is 6,155,776 bytes (5.871 MiB), passing the original Windows 5.79 +/- 0.2 MiB guard.
-Linux/macOS thresholds are unchanged and were not locally recalibrated.
-The full native net10.0 core suite publishes without warnings and passes 780 of 782 tests; the two existing non-zero-lower-bound array cases fail because NativeAOT does not support creating those arrays.
+The final accepted code checkpoint `13bc811` (2026-10-20) builds all Release targets with zero warnings/errors and passes all **3,467 managed tests**, with zero failures/skips.
+The Windows net10.0 native core suite has **805 passes, zero failures, and two explicit platform skips**: NativeAOT cannot create the non-zero-lower-bound array inputs; managed normalization assertions remain intact.
+All four NativeAOT fixtures publish with warnings treated as errors and execute successfully.
+The broad image is 6,159,360 bytes (5.874 MiB), passing the unchanged Windows 5.79 +/- 0.2 MiB guard; the minimal image is 2,771,456 bytes (2.643 MiB, uncalibrated).
+Linux/macOS budgets are preserved but were not locally tested or recalibrated.
+MVC uses the public object async APIs while retaining strict single-JSON-body validation, with no MVC test skips.
+DocFX, formatting verification, and the self-checking F# sample also succeed.
 
-Context-aware navigation/skipping and converter-association integration are complete.
-Zero-copy parsing, the stateless raw-wrapper API, NBJson031/NBJson051, the remaining broader public-API audit, and stable benchmark comparison remain deferred.
-Asynchronous stream first-value reads remain blocked by temporary-pipe read-ahead ownership; use caller-owned pipes instead.
-NBJson001/NBJson002 currently declare descriptors but do not report diagnostics.
-DocFX builds with warnings treated as errors and zero warnings; `dotnet format --verify-no-changes --no-restore` succeeds.
-Context-aware skipping adds depth checks and periodic cancellation checks; the twelve skip benchmark scenarios compile, but no throughput or allocation results are claimed for this final snapshot.
+The matched benchmark comparison is complete: object allocations match the original baseline (200/664/0/0 B), and all twelve skipping scenarios allocate 0 B, but the four object microbenchmarks remain roughly **13-24% slower**; full speed restoration is not claimed.
+Zero-copy segmented parsing, the direct stateless raw-wrapper API, remaining low-level breadth, NBJson031/NBJson051, and elapsed-time optimization remain deferred.
+NBJson001/NBJson002 remain inactive; experimental duck typing does not guarantee identical constructor-time validation.
+Async-stream first-value reads cannot safely retain prefetch; use caller-owned pipes.
+See [TODO.md](TODO.md) for final evidence, constraints, and superseded checkpoints.
