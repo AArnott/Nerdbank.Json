@@ -424,6 +424,11 @@ public ref struct JsonWriter
 		}
 	}
 
+	/// <summary>Writes one raw JSON value after validating its syntax and the default depth limit.</summary>
+	/// <param name="value">The raw JSON value. An empty or default payload is invalid.</param>
+	/// <remarks>Preserves the exact UTF-8 bytes. Raw values must use strict JSON without comments or trailing commas.</remarks>
+	public void Write(RawJson value) => RawJsonConverter.Instance.Write(ref this, value, new());
+
 	/// <summary>
 	/// Flushes any uncommitted bytes to the underlying <see cref="IBufferWriter{T}"/> and returns the written bytes as a string.
 	/// </summary>

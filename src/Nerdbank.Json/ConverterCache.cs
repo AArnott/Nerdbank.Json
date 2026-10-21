@@ -212,6 +212,12 @@ internal sealed class ConverterCache : ITypeShapeFunc
 			return true;
 		}
 
+		if (typeof(T) == typeof(RawJson))
+		{
+			converter = (JsonConverter<T>)(object)RawJsonConverter.Instance;
+			return true;
+		}
+
 		if (BuiltInJsonConverters.IsSupported(shape.Type))
 		{
 			converter = new BuiltInJsonConverter<T>();

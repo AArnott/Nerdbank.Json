@@ -21,6 +21,27 @@ JSON container methods such as <xref:Nerdbank.Json.JsonWriter.WriteStartObject> 
 If you have more than one field to serialize, wrap them in one JSON object or one JSON array.
 If the value may be `null`, handle that explicitly before reading or writing the surrounding structure.
 
+## Borrowing and retaining raw JSON
+
+Use <xref:Nerdbank.Json.RawJson> for a model member whose JSON should be decoded separately from its envelope.
+The built-in converter is automatic, preserves exact numeric and string token spelling, and always returns owned storage.
+No DOM registration is necessary.
+
+<xref:Nerdbank.Json.JsonReader.ReadRaw(Nerdbank.Json.SerializationContext)?displayProperty=nameWithType> validates and skips one value using the active depth and cancellation limits.
+Sequence-backed readers return a zero-copy borrowed slice; span-backed readers copy only the captured value into owned storage.
+Borrowed slices are valid only while their input buffers remain alive and unchanged.
+Call <xref:Nerdbank.Json.RawJson.ToOwned?displayProperty=nameWithType> before returning a pipe buffer or recycling application-owned memory.
+The method retains its owned copy when called on a mutable instance, so subsequent calls do not copy again.
+
+<xref:Nerdbank.Json.JsonWriter.Write(Nerdbank.Json.RawJson)?displayProperty=nameWithType> and the built-in converter validate exactly one strict JSON value before writing its UTF-8 bytes directly.
+This does not normalize numbers, decode and re-escape strings, or apply indentation within the raw payload.
+Comments, trailing commas, multiple values, and empty or default payloads are rejected.
+For explicitly unvalidated output, use <xref:Nerdbank.Json.JsonWriter.WriteRaw*> only with already trusted JSON.
+
+Sequence-backed <xref:Nerdbank.Json.JsonReader> instances parse the original segments rather than flattening the document.
+Only individual scalar tokens that cross segment boundaries may need temporary GC-owned storage.
+Peeking copies reader position, not input ownership; advancing a peek reader does not advance the original.
+
 ## Security considerations
 
 Any custom converter that reads or writes nested JSON structures should call <xref:Nerdbank.Json.SerializationContext.DepthStep?displayProperty=nameWithType> on the provided <xref:Nerdbank.Json.SerializationContext> before processing the structure.

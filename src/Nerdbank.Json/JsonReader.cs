@@ -17,6 +17,7 @@ public ref struct JsonReader
 {
 	private readonly bool allowTrailingCommas;
 	private readonly JsonCommentHandling commentHandling;
+	private readonly bool sequenceInput;
 	private readonly JsonInput utf8Json;
 	private ReadOnlySequence<byte>? sequence;
 	private long position;
@@ -48,6 +49,7 @@ public ref struct JsonReader
 		this.allowTrailingCommas = allowTrailingCommas;
 		this.commentHandling = commentHandling;
 		this.sequence = jsonUtf8;
+		this.sequenceInput = true;
 		this.utf8Json = new(jsonUtf8);
 
 		this.position = 0;
@@ -327,6 +329,40 @@ public ref struct JsonReader
 		long utf8Start = this.position;
 		this.Skip(context);
 		return Encoding.UTF8.GetString(this.utf8Json.Slice(utf8Start, this.position - utf8Start));
+	}
+
+	/// <summary>Reads the next JSON value as exact UTF-8 bytes using the active operation's limits.</summary>
+	/// <param name="context">The active depth and cancellation limits.</param>
+	/// <returns>A borrowed sequence slice, or an owned copy when this reader was constructed from a span.</returns>
+	/// <remarks>Borrowed results must not outlive the input buffers. Use <see cref="RawJson.ToOwned"/> to retain them.</remarks>
+	public RawJson ReadRaw(SerializationContext context)
+	{
+		context.CancellationToken.ThrowIfCancellationRequested();
+		this.SkipWhiteSpaceUtf8(context.CancellationToken);
+		long start = this.position;
+		this.Skip(context);
+		return this.CaptureRaw(start, this.position - start);
+	}
+
+	/// <summary>Reads exactly the specified number of bytes as one complete JSON value.</summary>
+	/// <param name="length">The byte length, including any surrounding whitespace.</param>
+	/// <returns>The exact bytes, borrowed for sequence input and owned for span input.</returns>
+	/// <remarks>Validates with the default depth limit. Use <see cref="ReadRaw(SerializationContext)"/> to preserve active operation limits.</remarks>
+	/// <exception cref="ArgumentOutOfRangeException">The length is negative or exceeds the remaining input.</exception>
+	/// <exception cref="FormatException">The slice does not contain exactly one JSON value.</exception>
+	public RawJson ReadRaw(long length)
+	{
+		if (length < 0 || length > this.utf8Json.Length - this.position)
+		{
+			throw new ArgumentOutOfRangeException(nameof(length));
+		}
+
+		RawJson raw = this.CaptureRaw(this.position, length);
+		JsonReader validation = new(raw.Json, this.allowTrailingCommas, this.commentHandling);
+		validation.Skip(new());
+		validation.EnsureFullyConsumed();
+		this.position += length;
+		return raw;
 	}
 
 	/// <summary>Reads a JSON number as an unsigned 8-bit integer.</summary>
@@ -1014,5 +1050,12 @@ public ref struct JsonReader
 		{
 			throw new FormatException($"Expected '{(char)expected}' in JSON input.");
 		}
+	}
+
+	private readonly RawJson CaptureRaw(long start, long length)
+	{
+		return this.sequenceInput
+			? new(this.sequence!.Value.Slice(start, length))
+			: new(new ReadOnlySequence<byte>(this.utf8Json.Slice(start, length).ToArray())) { IsOwned = true };
 	}
 }
