@@ -31,7 +31,7 @@ Draft 4 and Draft 7 use an array-valued `items` keyword for tuples and `addition
   (a string `enum` honoring the naming policy), otherwise an integer.
 * **Objects** — `properties` and `additionalProperties: false`. A type with an <xref:Nerdbank.Json.UnusedDataPacket> member instead
   reports `additionalProperties: true`.
-* **Arrays** — `type: array` with `items`; rectangular multidimensional arrays nest `items` per rank.
+* **Arrays** — `type: array` with `items`; rectangular multidimensional arrays nest `items` per rank by default, or use a dimensions/data tuple when <xref:Nerdbank.Json.JsonSerializer.MultiDimensionalArrayFormat> is <xref:Nerdbank.Json.MultiDimensionalArrayFormat.Flat>.
 * **Dictionaries** — `type: object` with `additionalProperties` describing the value type.
 * **Unions** — generated and runtime envelope unions produce a `oneOf` of two-element `[discriminator, payload]`
   tuples (using `const` in Draft 7 and Draft 2020-12 and single-value `enum` in Draft 4).

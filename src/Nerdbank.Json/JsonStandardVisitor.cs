@@ -43,7 +43,12 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 
 		if (enumerableShape.Type.IsArray && enumerableShape.Rank > 1)
 		{
-			return new JsonMultidimensionalArrayConverter<TEnumerable, TElement>(elementConverter, enumerableShape.Rank);
+			return owner.MultiDimensionalArrayFormat switch
+			{
+				MultiDimensionalArrayFormat.Nested => new JsonMultidimensionalArrayConverter<TEnumerable, TElement>(elementConverter, enumerableShape.Rank),
+				MultiDimensionalArrayFormat.Flat => new JsonFlattenedArrayConverter<TEnumerable, TElement>(elementConverter, enumerableShape.Rank),
+				_ => throw new NotSupportedException($"Unrecognized multidimensional array format: {owner.MultiDimensionalArrayFormat}."),
+			};
 		}
 
 		Func<TEnumerable, IEnumerable<TElement>> getEnumerable = enumerableShape.GetGetEnumerable();

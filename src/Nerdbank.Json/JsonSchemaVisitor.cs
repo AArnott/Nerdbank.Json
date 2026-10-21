@@ -114,6 +114,15 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 		JsonSchemaObject element = this.context.GetJsonSchema(enumerableShape.ElementType);
 		if (enumerableShape.Type.IsArray && enumerableShape.Rank > 1)
 		{
+			if (this.owner.MultiDimensionalArrayFormat == MultiDimensionalArrayFormat.Flat)
+			{
+				JsonSchemaObject dimensions = new JsonSchemaObject().Set("type", "array")
+					.Set("minItems", enumerableShape.Rank).Set("maxItems", enumerableShape.Rank)
+					.Set("items", new JsonSchemaObject().Set("type", "integer").Set("minimum", 0).Set("maximum", int.MaxValue));
+				JsonSchemaObject data = new JsonSchemaObject().Set("type", "array").Set("items", element);
+				return this.context.CreateTupleSchema([dimensions, data]).Set("minItems", 2).Set("maxItems", 2);
+			}
+
 			JsonSchemaObject nested = element;
 			for (int i = 0; i < enumerableShape.Rank; i++)
 			{

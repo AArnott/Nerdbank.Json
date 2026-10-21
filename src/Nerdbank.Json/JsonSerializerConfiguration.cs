@@ -23,6 +23,7 @@ internal record JsonSerializerConfiguration
 	private JsonNamingPolicy? propertyNamingPolicy = JsonNamingPolicy.CamelCase;
 	private JsonCommentHandling readCommentHandling;
 	private bool internStrings;
+	private MultiDimensionalArrayFormat multiDimensionalArrayFormat = MultiDimensionalArrayFormat.Nested;
 	private ReferencePreservationMode preserveReferences;
 	private DerivedTypeUnionCollection derivedTypeUnions = [];
 	private bool serializeEnumValuesByName;
@@ -31,6 +32,25 @@ internal record JsonSerializerConfiguration
 	private bool useDiscriminatorObjects;
 
 	internal ConverterCache ConverterCache => Volatile.Read(ref this.converterCache) ?? LazyInitializer.EnsureInitialized(ref this.converterCache, () => new(this))!;
+
+	/// <summary>
+	/// Gets the format to use when serializing multi-dimensional arrays.
+	/// </summary>
+	/// <value>The default is <see cref="MultiDimensionalArrayFormat.Nested"/>.</value>
+	internal MultiDimensionalArrayFormat MultiDimensionalArrayFormat
+	{
+		get => this.multiDimensionalArrayFormat;
+		init
+		{
+			if (value is not MultiDimensionalArrayFormat.Nested and not MultiDimensionalArrayFormat.Flat)
+			{
+				throw new ArgumentOutOfRangeException(nameof(value));
+			}
+
+			this.multiDimensionalArrayFormat = value;
+			this.converterCache = null;
+		}
+	}
 
 	/// <summary>
 	/// Gets the runtime-registered converters that take precedence over built-in and shape-based converters.

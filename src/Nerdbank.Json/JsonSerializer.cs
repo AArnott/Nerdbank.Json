@@ -37,6 +37,13 @@ public partial record JsonSerializer
 	/// </summary>
 	public SerializationContext StartingContext { get; init; } = new();
 
+	/// <inheritdoc cref="JsonSerializerConfiguration.MultiDimensionalArrayFormat"/>
+	public MultiDimensionalArrayFormat MultiDimensionalArrayFormat
+	{
+		get => this.configuration.MultiDimensionalArrayFormat;
+		init => this.configuration = this.configuration with { MultiDimensionalArrayFormat = value };
+	}
+
 	/// <inheritdoc cref="JsonSerializerConfiguration.PropertyNamingPolicy"/>
 	public JsonNamingPolicy? PropertyNamingPolicy
 	{

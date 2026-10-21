@@ -29,6 +29,9 @@ internal sealed class ConverterCache : ITypeShapeFunc
 	/// <summary>Gets the policy determining whether required defaults are always written.</summary>
 	internal SerializeDefaultValuesPolicy SerializeDefaultValues => this.configuration.SerializeDefaultValues;
 
+	/// <summary>Gets the representation used for multidimensional arrays.</summary>
+	internal MultiDimensionalArrayFormat MultiDimensionalArrayFormat => this.configuration.MultiDimensionalArrayFormat;
+
 	internal JsonNamingPolicy? PropertyNamingPolicy => this.configuration.PropertyNamingPolicy;
 
 	/// <summary>Gets the policy used for serialized dictionary keys.</summary>
