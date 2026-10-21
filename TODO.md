@@ -110,7 +110,8 @@ Focused integration corrections:
 * `c4f2121` poisons returned pipe-pool buffers, forces collection, and verifies exact owned raw bytes and direct UTF-8 output; relaxed input settings do not relax raw-output validation.
 
 `dotnet build -c Release --no-restore -warnaserror` succeeds with zero warnings/errors.
-`dotnet test --no-build -c Release -- --report-trx --results-directory obj\integration-deferred-tests` actually executes **4,057 tests**, all passing, with zero skips:
+`dotnet test --solution Nerdbank.Json.slnx --no-build -c Release -- --report-trx --results-directory=obj\integration-deferred-tests` actually executes **4,057 tests**, all passing, with zero skips.
+The explicit solution and assignment-form report option avoid SDK command-line ambiguity when the results directory already exists.
 
 | Project | Framework | Passed |
 |---|---|---:|
