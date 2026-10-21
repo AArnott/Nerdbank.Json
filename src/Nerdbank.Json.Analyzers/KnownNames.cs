@@ -28,4 +28,13 @@ internal static class KnownNames
 
 	/// <summary>The mutable synchronous JSON writer.</summary>
 	internal const string Writer = "Nerdbank.Json.JsonWriter";
+
+	/// <summary>The marker for APIs with modern .NET alternatives.</summary>
+	internal const string PreferDotNetAlternative = "Nerdbank.Json.PreferDotNetAlternativeApiAttribute";
+
+	/// <summary>The runtime capability catalog.</summary>
+	internal const string RuntimeFeature = "System.Runtime.CompilerServices.RuntimeFeature";
+
+	/// <summary>The capability required by static abstract shape APIs.</summary>
+	internal const string VirtualStaticsInInterfaces = "VirtualStaticsInInterfaces";
 }

@@ -19,4 +19,5 @@ NBJson035 | Usage | Error | Async converters should return the JsonReader before
 NBJson036 | Usage | Error | Async converters should not reuse a JsonReader after returning it
 NBJson037 | Usage | Warning | Async converters should override PreferAsyncSerialization
 NBJson050 | Usage | Warning | JsonReader and JsonWriter parameters should be passed by ref
+NBJson051 | Usage | Warning | Prefer statically resolved shape APIs on modern .NET
 NBJson110 | Usage | Warning | Initialized members should declare DefaultValueAttribute

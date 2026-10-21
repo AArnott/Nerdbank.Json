@@ -19,6 +19,7 @@ Diagnostics include errors, warnings, and informational guidance.
 | [NBJson036](NBJson036.md) | Usage | Error | Do not reuse a `JsonReader` after returning it |
 | [NBJson037](NBJson037.md) | Usage | Warning | Async converters should override `PreferAsyncSerialization` |
 | [NBJson050](NBJson050.md) | Usage | Warning | Pass `JsonReader` and `JsonWriter` parameters by `ref` |
+| [NBJson051](NBJson051.md) | Usage | Warning | Prefer statically resolved shape APIs on modern .NET |
 | [NBJson110](NBJson110.md) | Usage | Warning | Describe initialized serializable defaults with `DefaultValueAttribute` |
 
 ## Converter and contract guidance

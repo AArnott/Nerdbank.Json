@@ -82,6 +82,7 @@ public class DerivedShapeMapping<TBase> : DerivedTypeUnion, IDerivedTypeMapping,
 	[RequiresDynamicCode(JsonSerializerExtensions.ResolveDynamicMessage)]
 #endif
 #if NET
+	[PreferDotNetAlternativeApi("Use Add<TDerived> instead, with a type that implements IShapeable<TDerived>.")]
 	[EditorBrowsable(EditorBrowsableState.Never)]
 #endif
 	public void AddSourceGenerated<TDerived>(DerivedTypeIdentifier alias)
@@ -101,6 +102,7 @@ public class DerivedShapeMapping<TBase> : DerivedTypeUnion, IDerivedTypeMapping,
 	[RequiresDynamicCode(JsonSerializerExtensions.ResolveDynamicMessage)]
 #endif
 #if NET
+	[PreferDotNetAlternativeApi("Use Add<TDerived, TProvider> instead, with a witness that implements IShapeable<TDerived>.")]
 	[EditorBrowsable(EditorBrowsableState.Never)]
 #endif
 	public void AddSourceGenerated<TDerived, TProvider>(DerivedTypeIdentifier alias)
