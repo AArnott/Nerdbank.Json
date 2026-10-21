@@ -17,7 +17,7 @@ public class JsonWriterBufferTests
 	public void Reservation_WritesOneExactRootValue(string json)
 	{
 		byte[] bytes = Encoding.UTF8.GetBytes(json);
-		ArrayBufferWriter<byte> buffer = new(bytes.Length);
+		TestBufferWriter buffer = new(bytes.Length);
 		JsonWriter writer = new(buffer);
 		Span<byte> span = writer.GetSpan(bytes.Length);
 		Assert.Equal(bytes.Length, span.Length);
@@ -38,7 +38,7 @@ public class JsonWriterBufferTests
 	[Arguments(true, 128)]
 	public void Reservation_MixesOpaqueValuesWithStructuredValues(bool indented, int capacity)
 	{
-		ArrayBufferWriter<byte> buffer = new(capacity);
+		TestBufferWriter buffer = new(capacity);
 		JsonWriter writer = new(buffer) { WriteIndented = indented };
 		writer.WriteStartArray();
 		WriteDirect(ref writer, "{\"x\":[1,2]}"u8);
@@ -61,26 +61,26 @@ public class JsonWriterBufferTests
 		string expected = indented
 			? "[\n  {\"x\":[1,2]},\n  {\n    \"raw\": [true,null],\n    \"normal\": \"ok\"\n  },\n  false,\n  123,\n  4\n]"
 			: "[{\"x\":[1,2]},{\"raw\":[true,null],\"normal\":\"ok\"},false,123,4]";
-		Assert.Equal(expected, Encoding.UTF8.GetString(buffer.WrittenSpan));
+		Assert.Equal(expected, Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()));
 	}
 
 	[Test]
 	public void Reservation_CanUseMoreThanTheRequestedMinimum()
 	{
-		ArrayBufferWriter<byte> buffer = new(4);
+		TestBufferWriter buffer = new(4);
 		JsonWriter writer = new(buffer);
 		Span<byte> span = writer.GetSpan(0);
 		Assert.Equal(4, span.Length);
 		"null"u8.CopyTo(span);
 		writer.Advance(4);
 		writer.Flush();
-		Assert.Equal("null", Encoding.UTF8.GetString(buffer.WrittenSpan));
+		Assert.Equal("null", Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()));
 	}
 
 	[Test]
 	public void Reservation_ExactBufferIncludesIndentationWithoutFlushing()
 	{
-		ArrayBufferWriter<byte> buffer = new(8);
+		TestBufferWriter buffer = new(8);
 		JsonWriter writer = new(buffer) { WriteIndented = true };
 		writer.WriteStartArray();
 		Span<byte> span = writer.GetSpan(4);
@@ -91,7 +91,7 @@ public class JsonWriterBufferTests
 		Assert.Equal(0, buffer.WrittenCount);
 		writer.WriteEndArray();
 		writer.Flush();
-		Assert.Equal("[\n  null\n]", Encoding.UTF8.GetString(buffer.WrittenSpan));
+		Assert.Equal("[\n  null\n]", Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()));
 	}
 
 	[Test]
@@ -99,8 +99,8 @@ public class JsonWriterBufferTests
 	[Arguments(12)]
 	public void Reservation_DeepIndentationMatchesWriteRaw(int depth)
 	{
-		ArrayBufferWriter<byte> buffer = new(1);
-		ArrayBufferWriter<byte> referenceBuffer = new(1);
+		TestBufferWriter buffer = new(1);
+		TestBufferWriter referenceBuffer = new(1);
 		JsonWriter writer = new(buffer) { WriteIndented = true };
 		JsonWriter reference = new(referenceBuffer) { WriteIndented = true };
 		for (int i = 0; i < depth; i++)
@@ -127,7 +127,7 @@ public class JsonWriterBufferTests
 	[Arguments(true)]
 	public void Reservation_RepeatedAndCancelledReservationsDoNotConsumeValues(bool propertyValue)
 	{
-		ArrayBufferWriter<byte> buffer = new(1);
+		TestBufferWriter buffer = new(1);
 		JsonWriter writer = new(buffer) { WriteIndented = true };
 		if (propertyValue)
 		{
@@ -156,13 +156,13 @@ public class JsonWriterBufferTests
 		}
 
 		writer.Flush();
-		Assert.Equal(propertyValue ? "{\n  \"x\": 1\n}" : "[\n  1\n]", Encoding.UTF8.GetString(buffer.WrittenSpan));
+		Assert.Equal(propertyValue ? "{\n  \"x\": 1\n}" : "[\n  1\n]", Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()));
 	}
 
 	[Test]
 	public void Reservation_RepeatedGetSpanUsesLatestCapacity()
 	{
-		ArrayBufferWriter<byte> buffer = new(1);
+		TestBufferWriter buffer = new(1);
 		JsonWriter writer = new(buffer) { WriteIndented = true };
 		writer.WriteStartArray();
 		writer.GetSpan(1)[0] = (byte)'?';
@@ -172,7 +172,7 @@ public class JsonWriterBufferTests
 		writer.Advance(4);
 		writer.WriteEndArray();
 		writer.Flush();
-		Assert.Equal("[\n  true\n]", Encoding.UTF8.GetString(buffer.WrittenSpan));
+		Assert.Equal("[\n  true\n]", Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()));
 	}
 
 	[Test]
@@ -182,7 +182,7 @@ public class JsonWriterBufferTests
 	[Arguments(int.MaxValue, true)]
 	public void Reservation_InvalidLengthsPreserveBytesAndState(int invalidLength, bool propertyValue)
 	{
-		ArrayBufferWriter<byte> buffer = new(64);
+		TestBufferWriter buffer = new(64);
 		JsonWriter writer = new(buffer) { WriteIndented = true };
 		if (propertyValue)
 		{
@@ -225,7 +225,7 @@ public class JsonWriterBufferTests
 		}
 
 		writer.Flush();
-		Assert.Equal(propertyValue ? "{\n  \"x\": null,\n  \"y\": true\n}" : "[\n  null,\n  true\n]", Encoding.UTF8.GetString(buffer.WrittenSpan));
+		Assert.Equal(propertyValue ? "{\n  \"x\": null,\n  \"y\": true\n}" : "[\n  null,\n  true\n]", Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()));
 	}
 
 	[Test]
@@ -242,7 +242,7 @@ public class JsonWriterBufferTests
 	[Arguments("endObject")]
 	public void Advance_RequiresAnUnconsumedReservation(string invalidation)
 	{
-		ArrayBufferWriter<byte> buffer = new(128);
+		TestBufferWriter buffer = new(128);
 		JsonWriter writer = new(buffer);
 		if (invalidation == "endObject")
 		{
@@ -348,17 +348,17 @@ public class JsonWriterBufferTests
 			"endObject" => "{}",
 			_ => "[false]",
 		};
-		Assert.Equal(expected, Encoding.UTF8.GetString(buffer.WrittenSpan));
+		Assert.Equal(expected, Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()));
 	}
 
 	[Test]
 	public void Reservation_CloneHasIndependentStateAndDoesNotInvalidateOriginal()
 	{
-		ArrayBufferWriter<byte> buffer = new(64);
+		TestBufferWriter buffer = new(64);
 		JsonWriter writer = new(buffer) { WriteIndented = true };
 		writer.WriteStartArray();
 		"null"u8.CopyTo(writer.GetSpan(4));
-		ArrayBufferWriter<byte> cloneBuffer = new();
+		TestBufferWriter cloneBuffer = new();
 		JsonWriter clone = writer.Clone(cloneBuffer);
 		Assert.True(clone.WriteIndented);
 		try
@@ -375,8 +375,8 @@ public class JsonWriterBufferTests
 		writer.Advance(4);
 		writer.WriteEndArray();
 		writer.Flush();
-		Assert.Equal("{\"x\":1}", Encoding.UTF8.GetString(cloneBuffer.WrittenSpan));
-		Assert.Equal("[\n  null\n]", Encoding.UTF8.GetString(buffer.WrittenSpan));
+		Assert.Equal("{\"x\":1}", Encoding.UTF8.GetString(cloneBuffer.WrittenSpan.ToArray()));
+		Assert.Equal("[\n  null\n]", Encoding.UTF8.GetString(buffer.WrittenSpan.ToArray()));
 	}
 
 	[Test]
@@ -426,5 +426,42 @@ public class JsonWriterBufferTests
 		catch (ArgumentOutOfRangeException)
 		{
 		}
+	}
+
+	private sealed class TestBufferWriter(int initialCapacity = 256) : IBufferWriter<byte>
+	{
+		private byte[] buffer = new byte[initialCapacity];
+
+		public int WrittenCount { get; private set; }
+
+		public ReadOnlySpan<byte> WrittenSpan => this.buffer.AsSpan(0, this.WrittenCount);
+
+		public void Advance(int count)
+		{
+			if ((uint)count > (uint)(this.buffer.Length - this.WrittenCount))
+			{
+				throw new ArgumentOutOfRangeException(nameof(count));
+			}
+
+			this.WrittenCount += count;
+		}
+
+		public Memory<byte> GetMemory(int sizeHint = 0)
+		{
+			if (sizeHint < 0)
+			{
+				throw new ArgumentOutOfRangeException(nameof(sizeHint));
+			}
+
+			sizeHint = Math.Max(sizeHint, 1);
+			if (sizeHint > this.buffer.Length - this.WrittenCount)
+			{
+				Array.Resize(ref this.buffer, Math.Max(this.buffer.Length * 2, checked(this.WrittenCount + sizeHint)));
+			}
+
+			return this.buffer.AsMemory(this.WrittenCount);
+		}
+
+		public Span<byte> GetSpan(int sizeHint = 0) => this.GetMemory(sizeHint).Span;
 	}
 }
