@@ -71,6 +71,23 @@ Deserialization accepts a JSON `null` but cannot construct an asynchronous enume
   non-nullable validation, retained unknown members, lifecycle callbacks (including early cycle registration
   ordering), comments, and trailing commas all behave identically to the synchronous API.
 
+### Reading successive values from a stream
+
+Create one caller-owned <xref:System.IO.Pipelines.PipeReader> over the stream and retain it for all reads.
+The existing pipe overloads return the first value and preserve prefetched bytes for the next call, even on a non-seekable stream.
+After creating the reader, access the input only through that reader, not directly through the underlying stream.
+Complete the reader only when all intended reads are finished; `leaveOpen: true` keeps the stream open, but does not transfer unread bytes back to it.
+
+[!code-csharp[](../../samples/cs/AsyncStreaming.cs#CallerOwnedReader)]
+
+The asynchronous `Stream` overloads intentionally do not provide this first-value behavior.
+They own a temporary pipe whose buffer may contain bytes beyond the current JSON value.
+Completing that pipe discards its unread bytes, and the `Stream` contract provides no general pushback operation to restore them.
+Rewinding would work only for some seekable streams, making behavior depend on the stream implementation rather than the serialization contract.
+Nerdbank.MessagePack documents possible read-ahead loss on its `Stream` overload; JSON instead keeps strict single-document validation rather than silently accepting that loss.
+No additional reader API or hidden per-stream cache is needed: the caller-owned pipe already supplies the required lifetime and buffering ownership.
+Strict HTTP request-body validation is unchanged: additional values, trailing garbage, and unterminated trailing comments remain invalid.
+
 ## Writing a streaming custom converter
 
 Custom converters that may handle very large values can override

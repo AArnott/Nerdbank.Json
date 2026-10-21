@@ -147,6 +147,11 @@ public partial record JsonSerializer
 	/// <param name="shape">The type shape describing <typeparamref name="T"/>.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>A task whose result is the deserialized value.</returns>
+	/// <remarks>
+	/// Requires a complete JSON document and validates trailing trivia through the end of the stream.
+	/// To read successive values without losing prefetched bytes, create and retain a caller-owned <see cref="PipeReader"/>
+	/// and use the pipe overloads for all subsequent reads instead of reading the underlying stream directly.
+	/// </remarks>
 	public async ValueTask<T?> DeserializeAsync<T>(Stream stream, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(stream);
@@ -244,6 +249,10 @@ public partial record JsonSerializer
 	/// <param name="shape">The shape describing the value.</param>
 	/// <param name="startingContext">The inactive starting context.</param>
 	/// <returns>The deserialized value.</returns>
+	/// <remarks>
+	/// Requires a complete JSON document and validates trailing trivia through the end of the stream.
+	/// Use a retained caller-owned <see cref="PipeReader"/> for successive first-value reads.
+	/// </remarks>
 	[OverloadResolutionPriority(-1)]
 	public async ValueTask<T?> DeserializeAsync<T>(Stream stream, ITypeShape<T> shape, SerializationContext startingContext)
 	{

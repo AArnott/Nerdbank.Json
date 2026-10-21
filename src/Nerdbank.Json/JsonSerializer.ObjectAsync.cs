@@ -96,6 +96,10 @@ public partial record JsonSerializer
 	/// <param name="shape">The shape describing the value.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>The deserialized value.</returns>
+	/// <remarks>
+	/// Requires a complete JSON document and validates trailing trivia through the end of the stream.
+	/// Use a retained caller-owned <see cref="PipeReader"/> for successive first-value reads.
+	/// </remarks>
 	public async ValueTask<object?> DeserializeObjectAsync(Stream stream, ITypeShape shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(stream);
@@ -116,6 +120,10 @@ public partial record JsonSerializer
 	/// <param name="shape">The shape describing the value.</param>
 	/// <param name="startingContext">The inactive starting context for this operation.</param>
 	/// <returns>The deserialized value.</returns>
+	/// <remarks>
+	/// Requires a complete JSON document and validates trailing trivia through the end of the stream.
+	/// Use a retained caller-owned <see cref="PipeReader"/> for successive first-value reads.
+	/// </remarks>
 	[OverloadResolutionPriority(-1)]
 	public async ValueTask<object?> DeserializeObjectAsync(Stream stream, ITypeShape shape, SerializationContext startingContext)
 	{

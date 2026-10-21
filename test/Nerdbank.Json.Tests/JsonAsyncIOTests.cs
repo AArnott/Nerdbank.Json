@@ -177,6 +177,109 @@ public partial class JsonAsyncIOTests : TestBase
 	}
 
 	[Test]
+	[Arguments(false, false)]
+	[Arguments(false, true)]
+	[Arguments(true, false)]
+	[Arguments(true, true)]
+	public async Task Deserialize_CallerOwnedStreamPipe_PreservesSuccessiveValues(bool untyped, bool useStartingContext)
+	{
+		const string first = """{"name":"first","age":1,"values":[]}""";
+		const string second = """{"name":"second","age":2,"values":[]}""";
+		const string suffix = " /* unexamined trailing bytes";
+		byte[] input = Encoding.UTF8.GetBytes(first + " " + second + suffix);
+		foreach (int chunkSize in new[] { 1, 3, int.MaxValue })
+		{
+			using ChunkedStream stream = new(input, chunkSize);
+			PipeReader reader = PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: true));
+			using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(10));
+			SerializationContext context = new() { CancellationToken = cancellation.Token };
+			try
+			{
+				AssertRecord(new Record("first", 1, []), await ReadNextAsync());
+				if (chunkSize == int.MaxValue)
+				{
+					Assert.True(stream.Position > Encoding.UTF8.GetByteCount(first));
+				}
+
+				AssertRecord(new Record("second", 2, []), await ReadNextAsync());
+				using MemoryStream remaining = new();
+				await reader.CopyToAsync(remaining, cancellation.Token);
+				Assert.Equal(suffix, Encoding.UTF8.GetString(remaining.ToArray()));
+			}
+			finally
+			{
+				await reader.CompleteAsync();
+			}
+
+			Assert.True(stream.CanRead);
+
+			async ValueTask<Record?> ReadNextAsync()
+			{
+				if (untyped)
+				{
+					return (Record?)(useStartingContext
+						? await this.Serializer.DeserializeObjectAsync(reader, Shape<Record, Record>(), context)
+						: await this.Serializer.DeserializeObjectAsync(reader, Shape<Record, Record>(), cancellation.Token));
+				}
+
+				return useStartingContext
+					? await this.Serializer.DeserializeAsync(reader, Shape<Record, Record>(), context)
+					: await this.Serializer.DeserializeAsync(reader, Shape<Record, Record>(), cancellation.Token);
+			}
+		}
+	}
+
+	[Test]
+	[Arguments(false, false)]
+	[Arguments(false, true)]
+	[Arguments(true, false)]
+	[Arguments(true, true)]
+	public async Task Deserialize_StreamOverloads_RejectAdditionalValuesRegardlessOfSeekability(bool untyped, bool useStartingContext)
+	{
+		byte[] input = Encoding.UTF8.GetBytes("""{"name":"first","age":1,"values":[]} {"name":"second","age":2,"values":[]}""");
+		foreach (Stream stream in new Stream[] { new MemoryStream(input), new ChunkedStream(input, 1), new ChunkedStream(input, int.MaxValue) })
+		{
+			using (stream)
+			{
+				JsonSerializationException error = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
+				{
+					if (untyped)
+					{
+						if (useStartingContext)
+						{
+							await this.Serializer.DeserializeObjectAsync(stream, Shape<Record, Record>(), new SerializationContext());
+						}
+						else
+						{
+							await this.Serializer.DeserializeObjectAsync(stream, Shape<Record, Record>());
+						}
+					}
+					else if (useStartingContext)
+					{
+						await this.Serializer.DeserializeAsync(stream, Shape<Record, Record>(), new SerializationContext());
+					}
+					else
+					{
+						await this.Serializer.DeserializeAsync(stream, Shape<Record, Record>());
+					}
+				});
+				Assert.IsType<FormatException>(error.InnerException);
+				Assert.True(stream.CanRead);
+			}
+		}
+	}
+
+#if NET8_0
+	[Test]
+	public async Task Deserialize_CallerOwnedStreamPipe_DocumentationSample()
+	{
+		using ChunkedStream stream = new(Encoding.UTF8.GetBytes("""{"kind":"temperature","value":1} {"kind":"humidity","value":2}"""), int.MaxValue);
+		await StreamFirstValuesSample.ReadTwoValuesAsync(stream);
+		Assert.True(stream.CanRead);
+	}
+#endif
+
+	[Test]
 	[Arguments("/*")]
 	[Arguments("/* body")]
 	[Arguments("/**")]
