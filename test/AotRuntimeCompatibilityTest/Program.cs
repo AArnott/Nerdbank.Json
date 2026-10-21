@@ -27,9 +27,9 @@ JsonReader utf8Reader = new(segmented);
 if (utf8Reader.NextJsonType != JsonValueKind.String
 	|| !utf8Reader.ReadStringSpan().SequenceEqual("é😀\n"u8)
 	|| !utf8Reader.End
-	|| JsonPrimitives.TryReadInt64("-123"u8, out long scalar, out int consumed) != JsonPrimitives.DecodeResult.Success
+	|| JsonPrimitives.TryRead("-123"u8, out long scalar, out int consumed) != JsonPrimitives.DecodeResult.Success
 	|| scalar != -123 || consumed != 4
-	|| JsonPrimitives.TryReadDouble("1e+"u8, out _, out _, isFinalBlock: false) != JsonPrimitives.DecodeResult.InsufficientBuffer)
+	|| JsonPrimitives.TryRead("1e+"u8, out double _, out _, isFinalBlock: false) != JsonPrimitives.DecodeResult.InsufficientBuffer)
 {
 	throw new InvalidOperationException("The low-level segmented reader or scalar primitives failed.");
 }

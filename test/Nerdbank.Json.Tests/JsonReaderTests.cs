@@ -215,7 +215,7 @@ public partial class JsonReaderTests
 			reader.ReadValueSeparator();
 			reader.ReadStringSpan();
 			reader.ReadEndArray();
-			JsonPrimitives.TryReadDouble("1.5"u8, out _, out _);
+			JsonPrimitives.TryRead("1.5"u8, out double _, out _);
 			Span<byte> buffer = stackalloc byte[32];
 			JsonPrimitives.TryWrite(buffer, 1.5, out _);
 			return sum;
