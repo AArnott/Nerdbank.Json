@@ -4,7 +4,6 @@
 #pragma warning disable CS1591 // Public analyzer types are intentionally undocumented in-source.
 #pragma warning disable SA1600 // Public analyzer types are intentionally undocumented in-source.
 
-using System.Collections.Frozen;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -45,15 +44,13 @@ public class RefParametersForRefStructsAnalyzer : DiagnosticAnalyzer
 				return;
 			}
 
-			FrozenSet<ISymbol> guardedRefStructs = [jsonWriter];
-
 			compilationStartContext.RegisterSymbolAction(
 				symbolContext =>
 				{
 					var method = (IMethodSymbol)symbolContext.Symbol;
 					foreach (IParameterSymbol parameter in method.Parameters)
 					{
-						if (parameter.RefKind == RefKind.None && guardedRefStructs.Contains(parameter.Type))
+						if (parameter.RefKind == RefKind.None && SymbolEqualityComparer.Default.Equals(parameter.Type, jsonWriter))
 						{
 							Location? location = (
 								(ParameterSyntax?)parameter.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax(symbolContext.CancellationToken))?.Type?.GetLocation()

@@ -24,3 +24,13 @@ unrelated methods named GetJsonSchema are not implementations of this contract.
 
 Generated code is excluded. Standard #pragma warning directives and .editorconfig
 severity settings can suppress these rules where the design is intentional.
+
+NBJson110 (Usage, Warning): A serializable primitive or enum member initialized in
+source should declare System.ComponentModel.DefaultValueAttribute. For example,
+use [DefaultValue(42)] on a property initialized to 42 so default-value omission
+and schema generation know that value. The rule follows PolyType-generated shape
+roots, witness attributes, wildcard witnesses and reachable nested types. Ignored
+and unsupported members are excluded. Customized shape roots are not inferred.
+The code fix adds a fully qualified [DefaultValue(...)] for constant initializers
+and preserves primitive conversions. It deliberately does not fix computed
+initializers or shared multi-variable fields, since either could change behavior.

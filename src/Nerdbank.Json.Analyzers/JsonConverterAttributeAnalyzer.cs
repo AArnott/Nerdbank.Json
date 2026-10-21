@@ -123,7 +123,7 @@ public sealed class JsonConverterAttributeAnalyzer : DiagnosticAnalyzer
 					}
 				}
 			},
-			SymbolKind.NamedType);
+				SymbolKind.NamedType);
 		});
 	}
 }

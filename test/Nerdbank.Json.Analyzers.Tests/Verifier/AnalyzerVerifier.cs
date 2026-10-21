@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 #pragma warning disable SA1649 // Helper verifier file name intentionally differs from type name.
+#pragma warning disable SA1402 // Keep the analyzer-only and code-fix verifier arities together.
 
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
@@ -10,14 +11,20 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace Nerdbank.Json.Analyzers.Tests.Verifier;
 
-internal class AnalyzerVerifier<TAnalyzer>
+internal class AnalyzerVerifier<TAnalyzer> : AnalyzerVerifier<TAnalyzer, EmptyCodeFixProvider>
 	where TAnalyzer : DiagnosticAnalyzer, new()
 {
+}
+
+internal class AnalyzerVerifier<TAnalyzer, TCodeFix>
+	where TAnalyzer : DiagnosticAnalyzer, new()
+	where TCodeFix : CodeFixProvider, new()
+{
 	public static DiagnosticResult Diagnostic()
-		=> CSharpCodeFixVerifier<TAnalyzer, EmptyCodeFixProvider, DefaultVerifier>.Diagnostic();
+		=> CSharpCodeFixVerifier<TAnalyzer, TCodeFix, DefaultVerifier>.Diagnostic();
 
 	public static DiagnosticResult Diagnostic(string diagnosticId)
-		=> CSharpCodeFixVerifier<TAnalyzer, EmptyCodeFixProvider, DefaultVerifier>.Diagnostic(diagnosticId);
+		=> CSharpCodeFixVerifier<TAnalyzer, TCodeFix, DefaultVerifier>.Diagnostic(diagnosticId);
 
 	public static DiagnosticResult Diagnostic(DiagnosticDescriptor descriptor)
 		=> new(descriptor);
@@ -34,12 +41,28 @@ internal class AnalyzerVerifier<TAnalyzer>
 		return test.RunAsync();
 	}
 
-	internal class Test : CSharpCodeFixTest<TAnalyzer, EmptyCodeFixProvider, DefaultVerifier>
+	public static Task VerifyCodeFixAsync([StringSyntax("c#-test")] string source, [StringSyntax("c#-test")] string fixedSource)
+		=> new Test
+		{
+			TestCode = source,
+			FixedCode = fixedSource,
+			TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,
+		}.RunAsync();
+
+	internal class Test : CSharpCodeFixTest<TAnalyzer, TCodeFix, DefaultVerifier>
 	{
 		internal Test()
 		{
 			this.ReferenceAssemblies = ReferenceAssemblies.Net.Net80;
 			this.CompilerDiagnostics = CompilerDiagnostics.Warnings;
+			this.TestState.AnalyzerConfigFiles.Add(("/.editorconfig", """
+				root = true
+
+				[*.cs]
+				indent_style = tab
+				indent_size = 4
+				tab_width = 4
+				"""));
 			this.TestState.AdditionalReferences.AddRange(ReferencesHelper.GetReferences());
 			this.TestState.AdditionalFilesFactories.Add(() =>
 			{

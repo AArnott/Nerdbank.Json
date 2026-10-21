@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\Analyzers.props" />
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" PrivateAssets="all" />
+    <ProjectReference Include="..\Nerdbank.Json.Analyzers\Nerdbank.Json.Analyzers.csproj" />
+  </ItemGroup>
+</Project>

@@ -32,7 +32,10 @@
     <Service Include="{508349b6-6b84-4df5-91f0-309beebad82d}" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Supply the analyzer's shape-model dependency without changing application framework asset selection. -->
+    <PackageDownload Include="PolyType.Roslyn" Version="[$(PolyTypeVersion)-unstable]" />
     <AnalyzerProjectReference Include="..\Nerdbank.Json.Analyzers\Nerdbank.Json.Analyzers.csproj" />
+    <AnalyzerProjectReference Include="..\Nerdbank.Json.Analyzers.CodeFixes\Nerdbank.Json.Analyzers.CodeFixes.csproj" />
     <ProjectReference Include="@(AnalyzerProjectReference)">
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <OutputItemType>AnalyzerAssembly</OutputItemType>
@@ -43,12 +46,14 @@
   <Target Name="ConsumeAnalyzersDirectly" AfterTargets="ResolveProjectReferences">
     <ItemGroup>
       <Analyzer Include="%(AnalyzerAssembly.Identity)" />
+      <Analyzer Include="$(NuGetPackageRoot)\polytype.roslyn\$(PolyTypeVersion)-unstable\lib\netstandard2.0\PolyType.Roslyn.dll" />
     </ItemGroup>
   </Target>
 
   <Target Name="PackAnalyzers" DependsOnTargets="ResolveProjectReferences;DebugSymbolsProjectOutputGroup" Condition="'$(TargetFramework)'=='netstandard2.0'">
     <ItemGroup>
       <TfmSpecificPackageFile Include="%(AnalyzerAssembly.Identity)" PackagePath="analyzers\cs\" />
+      <TfmSpecificPackageFile Include="$(NuGetPackageRoot)\polytype.roslyn\$(PolyTypeVersion)-unstable\lib\netstandard2.0\PolyType.Roslyn.dll" PackagePath="analyzers\cs\" />
     </ItemGroup>
   </Target>
 </Project>

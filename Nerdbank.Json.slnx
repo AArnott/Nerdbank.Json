@@ -25,6 +25,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Nerdbank.Json.Analyzers/Nerdbank.Json.Analyzers.csproj" />
+    <Project Path="src/Nerdbank.Json.Analyzers.CodeFixes/Nerdbank.Json.Analyzers.CodeFixes.csproj" />
     <Project Path="src/Nerdbank.Json.AspNetCoreMvcFormatter/Nerdbank.Json.AspNetCoreMvcFormatter.csproj" />
     <Project Path="src/Nerdbank.Json/Nerdbank.Json.csproj" />
   </Folder>

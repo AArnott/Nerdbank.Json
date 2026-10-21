@@ -4,6 +4,10 @@
 	"labels": ["dependencies"],
 	"packageRules": [
 		{
+			"matchFileNames": ["Directory.Packages.Analyzers.props"],
+			"enabled": false
+		},
+		{
 			"matchPackageNames": ["nbgv", "nerdbank.gitversioning"],
 			"groupName": "nbgv and nerdbank.gitversioning updates"
 		},

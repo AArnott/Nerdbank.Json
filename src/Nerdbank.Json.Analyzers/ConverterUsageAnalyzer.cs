@@ -86,8 +86,8 @@ public sealed class ConverterUsageAnalyzer : DiagnosticAnalyzer
 						context.ReportDiagnostic(Diagnostic.Create(CallbackToTopLevelSerializer, context.Operation.Syntax.GetLocation()));
 					}
 				},
-				OperationKind.ObjectCreation,
-				OperationKind.Invocation);
+					OperationKind.ObjectCreation,
+					OperationKind.Invocation);
 
 				if (!type.IsAbstract && !type.GetAllMembers().OfType<IMethodSymbol>().Any(method => OverridesSchema(method, schemaBase)))
 				{
@@ -98,7 +98,7 @@ public sealed class ConverterUsageAnalyzer : DiagnosticAnalyzer
 					});
 				}
 			},
-			SymbolKind.NamedType);
+				SymbolKind.NamedType);
 		});
 	}
 
