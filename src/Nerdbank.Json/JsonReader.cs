@@ -17,10 +17,9 @@ public ref struct JsonReader
 {
 	private readonly bool allowTrailingCommas;
 	private readonly JsonCommentHandling commentHandling;
-	private readonly byte[]? utf8Buffer;
-	private readonly ReadOnlySpan<byte> utf8Json;
+	private readonly JsonInput utf8Json;
 	private ReadOnlySequence<byte>? sequence;
-	private int position;
+	private long position;
 	private int navigationDepth;
 
 	/// <summary>
@@ -33,8 +32,7 @@ public ref struct JsonReader
 	{
 		this.allowTrailingCommas = allowTrailingCommas;
 		this.commentHandling = commentHandling;
-		this.utf8Buffer = null;
-		this.utf8Json = jsonUtf8;
+		this.utf8Json = new(jsonUtf8);
 		this.sequence = null;
 		this.position = 0;
 		this.navigationDepth = 0;
@@ -44,22 +42,13 @@ public ref struct JsonReader
 	/// <param name="jsonUtf8">The UTF-8 document.</param>
 	/// <param name="allowTrailingCommas">Whether trailing commas are accepted.</param>
 	/// <param name="commentHandling">The policy for JSON comments.</param>
-	/// <remarks>Multi-segment input is currently copied into a contiguous parsing buffer. Positions refer to the original sequence.</remarks>
+	/// <remarks>The input is borrowed for the lifetime of the reader. Only individual tokens that span segments may be copied.</remarks>
 	public JsonReader(scoped in ReadOnlySequence<byte> jsonUtf8, bool allowTrailingCommas = false, JsonCommentHandling commentHandling = JsonCommentHandling.Disallow)
 	{
 		this.allowTrailingCommas = allowTrailingCommas;
 		this.commentHandling = commentHandling;
 		this.sequence = jsonUtf8;
-		if (jsonUtf8.IsSingleSegment)
-		{
-			this.utf8Buffer = null;
-			this.utf8Json = jsonUtf8.First.Span;
-		}
-		else
-		{
-			this.utf8Buffer = jsonUtf8.ToArray();
-			this.utf8Json = this.utf8Buffer;
-		}
+		this.utf8Json = new(jsonUtf8);
 
 		this.position = 0;
 		this.navigationDepth = 0;
@@ -73,7 +62,7 @@ public ref struct JsonReader
 		{
 			if (this.sequence is not { } result)
 			{
-				result = new(this.utf8Json.ToArray());
+				result = new(this.utf8Json.Slice(0, this.utf8Json.Length).ToArray());
 				this.sequence = result;
 			}
 
@@ -91,7 +80,7 @@ public ref struct JsonReader
 	public readonly bool End => this.position == this.utf8Json.Length;
 
 	/// <summary>Gets the number of bytes consumed from the input buffer.</summary>
-	internal readonly int BytesConsumed => this.position;
+	internal readonly long BytesConsumed => this.position;
 
 	/// <summary>Gets the net number of containers entered through structural reader methods.</summary>
 	internal readonly int NavigationDepth => this.navigationDepth;
@@ -314,7 +303,7 @@ public ref struct JsonReader
 
 				break;
 			default:
-				this.ReadNumberTokenUtf8Core(context.CancellationToken);
+				this.ReadNumberTokenUtf8Core(context.CancellationToken, materialize: false);
 				break;
 		}
 	}
@@ -335,9 +324,9 @@ public ref struct JsonReader
 	{
 		context.CancellationToken.ThrowIfCancellationRequested();
 		this.SkipWhiteSpaceUtf8(context.CancellationToken);
-		int utf8Start = this.position;
+		long utf8Start = this.position;
 		this.Skip(context);
-		return Encoding.UTF8.GetString(this.utf8Json[utf8Start..this.position]);
+		return Encoding.UTF8.GetString(this.utf8Json.Slice(utf8Start, this.position - utf8Start));
 	}
 
 	/// <summary>Reads a JSON number as an unsigned 8-bit integer.</summary>
@@ -525,26 +514,26 @@ public ref struct JsonReader
 	internal bool TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> token)
 	{
 		token = default;
-		int index = this.SkipInsignificantCharactersUtf8(this.position);
+		long index = this.SkipInsignificantCharactersUtf8(this.position);
 		if (index >= this.utf8Json.Length || this.utf8Json[index] != (byte)'"')
 		{
 			throw new FormatException("Expected a JSON string.");
 		}
 
-		int start = index;
-		ReadOnlySpan<byte> remaining = this.utf8Json[(index + 1)..];
-		int relativeEnd = remaining.IndexOfAny((byte)'"', (byte)'\\');
-		if (relativeEnd >= 0)
+		long start = index++;
+		while (index < this.utf8Json.Length)
 		{
-			index += relativeEnd + 1;
 			if (this.utf8Json[index] == (byte)'"')
 			{
-				token = this.utf8Json[start..(index + 1)];
+				token = this.utf8Json.Slice(start, index + 1 - start);
 				this.position = index + 1;
 				return true;
 			}
 
-			return false;
+			if (this.utf8Json[index++] == (byte)'\\')
+			{
+				return false;
+			}
 		}
 
 		throw new FormatException("Unterminated JSON string.");
@@ -559,18 +548,27 @@ public ref struct JsonReader
 			_ => throw new FormatException("Invalid hex digit in JSON unicode escape sequence."),
 		};
 
+	private static void ValidateStringBytes(ReadOnlySpan<byte> bytes)
+	{
+		JsonReader validator = new(bytes);
+		while (!validator.End)
+		{
+			validator.ValidateStringByte(validator.utf8Json[validator.position++]);
+		}
+	}
+
 	private string ReadRequiredUtf8String(StringInterning? stringInterning)
 	{
 		this.SkipWhiteSpaceUtf8();
 		this.RequireCurrent((byte)'"');
 		this.position++;
-		int segmentStart = this.position;
+		long segmentStart = this.position;
 		while (this.position < this.utf8Json.Length)
 		{
 			byte ch = this.utf8Json[this.position++];
 			if (ch == (byte)'"')
 			{
-				ReadOnlySpan<byte> rawValue = this.utf8Json[segmentStart..(this.position - 1)];
+				ReadOnlySpan<byte> rawValue = this.utf8Json.Slice(segmentStart, this.position - 1 - segmentStart);
 				return stringInterning?.GetOrAddUtf8(rawValue) ?? Encoding.UTF8.GetString(rawValue);
 			}
 
@@ -578,27 +576,29 @@ public ref struct JsonReader
 			{
 				return this.ReadEscapedUtf8String(segmentStart, stringInterning);
 			}
+
+			this.ValidateStringByte(ch);
 		}
 
 		throw new FormatException("Unterminated JSON string.");
 	}
 
-	private string ReadEscapedUtf8String(int segmentStart, StringInterning? stringInterning)
+	private string ReadEscapedUtf8String(long segmentStart, StringInterning? stringInterning)
 	{
 		const int MaxStackStringByteLength = 4096;
 
 		// The token's UTF-8 byte length bounds its decoded UTF-16 length. Do not size the buffer to the
 		// remainder of the document, which may be much larger than this string.
-		int tokenEnd = this.position + 1;
+		long tokenEnd = this.position + 1;
 		while (tokenEnd < this.utf8Json.Length)
 		{
-			int delimiter = this.utf8Json[tokenEnd..].IndexOfAny((byte)'"', (byte)'\\');
+			long delimiter = this.utf8Json.IndexOfDelimiter(tokenEnd);
 			if (delimiter < 0)
 			{
 				throw new FormatException("Unterminated JSON string.");
 			}
 
-			tokenEnd += delimiter;
+			tokenEnd = delimiter;
 			if (this.utf8Json[tokenEnd] == (byte)'"')
 			{
 				break;
@@ -612,7 +612,7 @@ public ref struct JsonReader
 			throw new FormatException("Unterminated JSON string.");
 		}
 
-		int byteLength = tokenEnd - segmentStart;
+		int byteLength = checked((int)(tokenEnd - segmentStart));
 		char[]? rented = byteLength > MaxStackStringByteLength ? ArrayPool<char>.Shared.Rent(byteLength) : null;
 		try
 		{
@@ -620,22 +620,35 @@ public ref struct JsonReader
 			int written = 0;
 			while (true)
 			{
-				written += Encoding.UTF8.GetChars(this.utf8Json[segmentStart..(this.position - 1)], characters[written..]);
+				ReadOnlySpan<byte> bytes = this.utf8Json.Slice(segmentStart, this.position - 1 - segmentStart);
+				ValidateStringBytes(bytes);
+				written += Encoding.UTF8.GetChars(bytes, characters[written..]);
 				if (this.utf8Json[this.position - 1] == (byte)'"')
 				{
 					ReadOnlySpan<char> value = characters[..written];
 					return stringInterning?.Intern(value) ?? value.ToString();
 				}
 
-				characters[written++] = this.ReadEscapeSequenceUtf8();
+				int scalar = this.ReadEscapeSequenceUtf8();
+				if (scalar <= char.MaxValue)
+				{
+					characters[written++] = (char)scalar;
+				}
+				else
+				{
+					scalar -= 0x10000;
+					characters[written++] = (char)(0xD800 + (scalar >> 10));
+					characters[written++] = (char)(0xDC00 + (scalar & 0x3FF));
+				}
+
 				segmentStart = this.position;
-				int delimiter = this.utf8Json[segmentStart..].IndexOfAny((byte)'"', (byte)'\\');
+				long delimiter = this.utf8Json.IndexOfDelimiter(segmentStart);
 				if (delimiter < 0)
 				{
 					throw new FormatException("Unterminated JSON string.");
 				}
 
-				this.position += delimiter + 1;
+				this.position = delimiter + 1;
 			}
 		}
 		finally
@@ -647,15 +660,15 @@ public ref struct JsonReader
 		}
 	}
 
-	private ReadOnlySpan<byte> ReadNumberTokenUtf8Core(CancellationToken cancellationToken = default)
+	private ReadOnlySpan<byte> ReadNumberTokenUtf8Core(CancellationToken cancellationToken = default, bool materialize = true)
 	{
 		this.SkipWhiteSpaceUtf8(cancellationToken);
-		int start = this.position;
+		long start = this.position;
 		if (this.TryConsume((byte)'-'))
 		{
 		}
 
-		int integerStart = this.position;
+		long integerStart = this.position;
 		this.ReadDigitsUtf8(requireAtLeastOne: true, cancellationToken);
 		if (this.position - integerStart > 1 && this.utf8Json[integerStart] == (byte)'0')
 		{
@@ -678,7 +691,7 @@ public ref struct JsonReader
 		}
 
 		this.ValidateScalarTerminator();
-		return this.utf8Json[start..this.position];
+		return materialize ? this.utf8Json.Slice(start, this.position - start) : default;
 	}
 
 	private readonly void ValidateScalarTerminator()
@@ -694,7 +707,7 @@ public ref struct JsonReader
 		this.position = this.SkipInsignificantCharactersUtf8(this.position, cancellationToken);
 	}
 
-	private int SkipInsignificantCharactersUtf8(int index, CancellationToken cancellationToken = default)
+	private long SkipInsignificantCharactersUtf8(long index, CancellationToken cancellationToken = default)
 	{
 		while (index < this.utf8Json.Length)
 		{
@@ -770,7 +783,7 @@ public ref struct JsonReader
 
 	private bool TryReadEndToken(byte endToken, CancellationToken cancellationToken = default)
 	{
-		int index = this.SkipInsignificantCharactersUtf8(this.position, cancellationToken);
+		long index = this.SkipInsignificantCharactersUtf8(this.position, cancellationToken);
 		if (index < this.utf8Json.Length && this.utf8Json[index] == endToken)
 		{
 			this.position = index + 1;
@@ -780,7 +793,7 @@ public ref struct JsonReader
 
 		if (this.allowTrailingCommas && index < this.utf8Json.Length && this.utf8Json[index] == (byte)',')
 		{
-			int afterComma = this.SkipInsignificantCharactersUtf8(index + 1, cancellationToken);
+			long afterComma = this.SkipInsignificantCharactersUtf8(index + 1, cancellationToken);
 			if (afterComma < this.utf8Json.Length && this.utf8Json[afterComma] == endToken)
 			{
 				this.position = afterComma + 1;
@@ -805,7 +818,7 @@ public ref struct JsonReader
 
 	private void ReadDigitsUtf8(bool requireAtLeastOne, CancellationToken cancellationToken = default)
 	{
-		int start = this.position;
+		long start = this.position;
 		while (this.position < this.utf8Json.Length && this.utf8Json[this.position] is >= (byte)'0' and <= (byte)'9')
 		{
 			if ((this.position & 1023) == 0)
@@ -822,7 +835,7 @@ public ref struct JsonReader
 		}
 	}
 
-	private char ReadEscapeSequenceUtf8()
+	private int ReadEscapeSequenceUtf8()
 	{
 		if (this.position >= this.utf8Json.Length)
 		{
@@ -840,9 +853,31 @@ public ref struct JsonReader
 			(byte)'n' => '\n',
 			(byte)'r' => '\r',
 			(byte)'t' => '\t',
-			(byte)'u' => (char)this.ReadHexQuadUtf8(),
+			(byte)'u' => this.ReadUnicodeScalarUtf8(),
 			_ => throw new FormatException($"Unsupported JSON escape sequence '\\{(char)ch}'."),
 		};
+	}
+
+	private int ReadUnicodeScalarUtf8()
+	{
+		int value = this.ReadHexQuadUtf8();
+		if (value is >= 0xD800 and <= 0xDBFF)
+		{
+			if (!this.TryConsume((byte)'\\') || !this.TryConsume((byte)'u'))
+			{
+				throw new FormatException("A high surrogate must be followed by a low surrogate escape.");
+			}
+
+			int low = this.ReadHexQuadUtf8();
+			if (low is < 0xDC00 or > 0xDFFF)
+			{
+				throw new FormatException("Invalid low surrogate escape.");
+			}
+
+			return 0x10000 + ((value - 0xD800) << 10) + low - 0xDC00;
+		}
+
+		return value is >= 0xDC00 and <= 0xDFFF ? throw new FormatException("Unpaired low surrogate escape.") : value;
 	}
 
 	private int ReadHexQuadUtf8()
@@ -926,16 +961,51 @@ public ref struct JsonReader
 
 			if (ch == (byte)'\\')
 			{
-				if (this.position >= this.utf8Json.Length)
-				{
-					throw new FormatException("Unterminated JSON escape sequence.");
-				}
-
-				this.position++;
+				this.ReadEscapeSequenceUtf8();
+			}
+			else
+			{
+				this.ValidateStringByte(ch);
 			}
 		}
 
 		throw new FormatException("Unterminated JSON string.");
+	}
+
+	private void ValidateStringByte(byte first)
+	{
+		if (first < 0x20)
+		{
+			throw new FormatException("Unescaped control character in JSON string.");
+		}
+
+		if (first < 0x80)
+		{
+			return;
+		}
+
+		int continuation = first switch
+		{
+			>= 0xC2 and <= 0xDF => 1,
+			>= 0xE0 and <= 0xEF => 2,
+			>= 0xF0 and <= 0xF4 => 3,
+			_ => throw new FormatException("Invalid UTF-8 in JSON string."),
+		};
+		for (int i = 0; i < continuation; i++)
+		{
+			if (this.position >= this.utf8Json.Length)
+			{
+				throw new FormatException("Incomplete UTF-8 in JSON string.");
+			}
+
+			byte next = this.utf8Json[this.position++];
+			if (next is < 0x80 or > 0xBF
+				|| (i == 0 && ((first == 0xE0 && next < 0xA0) || (first == 0xED && next >= 0xA0)
+					|| (first == 0xF0 && next < 0x90) || (first == 0xF4 && next >= 0x90))))
+			{
+				throw new FormatException("Invalid UTF-8 in JSON string.");
+			}
+		}
 	}
 
 	private void RequireCurrent(byte expected)

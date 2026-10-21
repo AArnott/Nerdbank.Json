@@ -96,6 +96,117 @@ public partial class JsonReaderTests
 	}
 
 	[Test]
+	[Arguments("""["a\uD83D\uDE00\né",true,null,-12.50e+2,{"x":[1,2]}]""")]
+	[Arguments("\uFEFF /* lead */ [\"é😀\",false,null,0,] // tail")]
+	public void Segmented_AllBoundaries(string json)
+	{
+		byte[] bytes = Encoding.UTF8.GetBytes(json);
+		for (int split = 0; split <= bytes.Length; split++)
+		{
+			Segment first = new(bytes.AsMemory(0, split));
+			Segment empty = first.Append(ReadOnlyMemory<byte>.Empty);
+			Segment last = empty.Append(bytes.AsMemory(split));
+			this.VerifySegmented(new(first, 0, last, last.Memory.Length), json);
+		}
+
+		Segment oneByteFirst = new(ReadOnlyMemory<byte>.Empty);
+		Segment oneByteLast = oneByteFirst;
+		for (int i = 0; i < bytes.Length; i++)
+		{
+			oneByteLast = oneByteLast.Append(bytes.AsMemory(i, 1)).Append(ReadOnlyMemory<byte>.Empty);
+		}
+
+		this.VerifySegmented(new(oneByteFirst, 0, oneByteLast, 0), json);
+	}
+
+	[Test]
+	public void Segmented_ConstructorBorrowsAndSkipDoesNotMaterializePayload()
+	{
+		byte[] payload = Encoding.UTF8.GetBytes("\"" + new string('a', 1_000_000) + "\"");
+		Segment first = new(payload.AsMemory(0, 500_000));
+		Segment last = first.Append(payload.AsMemory(500_000));
+		ReadOnlySequence<byte> sequence = new(first, 0, last, last.Memory.Length);
+		JsonReader warmup = new(sequence);
+		warmup.Skip(new());
+#if NET
+		long before = GC.GetAllocatedBytesForCurrentThread();
+#endif
+		JsonReader reader = new(sequence);
+		reader.Skip(new());
+		Assert.True(reader.End);
+#if NET
+		Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 1024);
+#endif
+
+		JsonReader borrowed = new(sequence);
+		payload[1] = (byte)'b';
+		Assert.StartsWith("b", borrowed.ReadRequiredString());
+	}
+
+	[Test]
+	[Arguments("\"\\uD800\"")]
+	[Arguments("\"\\uDC00\"")]
+	[Arguments("\"\\uD800\\u0041\"")]
+	[Arguments("\"\\q\"")]
+	[Arguments("\"line\nbreak\"")]
+	[Arguments("01")]
+	[Arguments("1e+")]
+	[Arguments("trueX")]
+	public void Segmented_InvalidTokensRejectedByReadAndSkip(string json)
+	{
+		byte[] bytes = Encoding.UTF8.GetBytes(json);
+		for (int split = 0; split <= bytes.Length; split++)
+		{
+			Segment first = new(bytes.AsMemory(0, split));
+			Segment last = first.Append(bytes.AsMemory(split));
+			ReadOnlySequence<byte> sequence = new(first, 0, last, last.Memory.Length);
+			Assert.Throws<FormatException>(() =>
+			{
+				JsonReader reader = new(sequence);
+				reader.Skip(new());
+			});
+			Assert.Throws<FormatException>(() =>
+			{
+				JsonReader reader = new(sequence);
+				if (json[0] == '"')
+				{
+					reader.ReadString();
+				}
+				else if (json[0] == 't')
+				{
+					reader.ReadBoolean();
+				}
+				else
+				{
+					reader.ReadDouble();
+				}
+			});
+		}
+	}
+
+	[Test]
+	[Arguments(0xC0, 0xAF)]
+	[Arguments(0xED, 0xA0)]
+	[Arguments(0xF4, 0x90)]
+	public void Segmented_InvalidUtf8Rejected(int firstByte, int secondByte)
+	{
+		byte[] bytes = [(byte)'"', (byte)firstByte, (byte)secondByte, 0x80, 0x80, (byte)'"'];
+		Segment first = new(bytes.AsMemory(0, 2));
+		Segment last = first.Append(bytes.AsMemory(2));
+		ReadOnlySequence<byte> sequence = new(first, 0, last, last.Memory.Length);
+		Assert.Throws<FormatException>(() =>
+		{
+			JsonReader reader = new(sequence);
+			reader.ReadString();
+		});
+		Assert.Throws<FormatException>(() =>
+		{
+			JsonReader reader = new(sequence);
+			reader.Skip(new());
+		});
+	}
+
+	[Test]
 	public void CreatePeekReader_ReturnsIndependentCopyAtCurrentPosition()
 	{
 		JsonReader reader = new("[1,2]"u8);
@@ -129,6 +240,35 @@ public partial class JsonReaderTests
 			"Decimal" => reader.ReadDecimal(),
 			_ => throw new ArgumentOutOfRangeException(nameof(type)),
 		};
+	}
+
+	private void VerifySegmented(ReadOnlySequence<byte> sequence, string json)
+	{
+		JsonReader reader = new(sequence, allowTrailingCommas: true, JsonCommentHandling.Skip);
+		JsonReader peek = reader.CreatePeekReader();
+		peek.Skip(new());
+		Assert.Equal(0, reader.Consumed);
+		Assert.Equal(sequence.Start, reader.Sequence.Start);
+		reader.ReadStartArray();
+		Assert.Equal(json.Contains("lead") ? "é😀" : "a😀\né", reader.ReadString());
+		reader.ReadValueSeparator();
+		Assert.Equal(!json.Contains("lead"), reader.ReadBoolean());
+		reader.ReadValueSeparator();
+		Assert.True(reader.TryReadNull());
+		reader.ReadValueSeparator();
+		Assert.Equal(json.Contains("lead") ? 0 : -1250, reader.ReadDouble());
+		if (!json.Contains("lead"))
+		{
+			reader.ReadValueSeparator();
+			Assert.Equal("""{"x":[1,2]}""", reader.ReadRawValue());
+		}
+
+		reader.ReadEndArray();
+		Assert.Equal(peek.Consumed, reader.Consumed);
+		reader.EnsureFullyConsumed();
+		Assert.Equal(sequence.Length, reader.Consumed);
+		Assert.True(reader.End);
+		Assert.True(sequence.Slice(reader.Position).IsEmpty);
 	}
 
 	private sealed class Segment : ReadOnlySequenceSegment<byte>
