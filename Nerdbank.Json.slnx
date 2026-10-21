@@ -40,5 +40,6 @@
   </Folder>
   <Folder Name="/samples/">
     <Project Path="samples/AspNetMvc/AspNetMvc.csproj" />
+    <Project Path="samples/fs/fs.fsproj" />
   </Folder>
 </Solution>

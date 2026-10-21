@@ -58,6 +58,8 @@ jobs:
     - name: 🧪 test
       run: tools/dotnet-test-cloud.ps1 -Configuration ${{ env.BUILDCONFIGURATION }} -Agent ${{ runner.os }} -IncludeNativeAOT
       shell: pwsh
+    - name: 🧪 Run F# JSON sample
+      run: dotnet run --project samples/fs --no-build --no-restore -c ${{ env.BUILDCONFIGURATION }}
     - name: 🏭 Measure and run minimal NativeAOT image
       run: |
         $extension = if ($IsWindows) { '.exe' } else { '' }

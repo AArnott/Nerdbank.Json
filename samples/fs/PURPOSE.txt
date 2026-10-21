@@ -1,0 +1,8 @@
+Run with: dotnet run --project samples\fs -c Release
+
+This self-checking managed F# sample uses PolyType's reflection provider to
+round-trip records, lists, options (Some and None) and discriminated unions.
+Nerdbank.Json writes JSON directly; no MessagePack-to-JSON conversion is needed.
+The build traversal compiles the sample and CI runs its round-trip assertions.
+It is not a NativeAOT example: reflection-based shape discovery requires dynamic
+code. The C# test/AotSizeTest fixture demonstrates source-generated AOT shapes.
