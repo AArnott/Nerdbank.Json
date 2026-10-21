@@ -22,7 +22,7 @@ It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`,
 * Optional case-insensitive property-name matching during deserialization.
 * Optional enum-name serialization with numeric fallback for unnamed values.
 * Runtime custom converter registration with immutable converter instance/type collections or converter factories using `ConverterContext`.
-* Attribute-driven custom converter registration on types, properties, and constructor parameters.
+* Attribute-driven custom converter registration on types, properties, and constructor parameters, with automatic generated constructor associations for ordinary and open-generic converters.
 * Optional unknown-member retention through a member of type `UnusedDataPacket`.
 * Built-in byte buffer handling using Base64 JSON strings.
 * Optional trailing-comma and comment skipping support during deserialization.
@@ -187,6 +187,7 @@ Set `JsonSerializer.MultiDimensionalArrayFormat` to `MultiDimensionalArrayFormat
 * Synchronous custom converters override `Write(ref JsonWriter writer, in T? value, SerializationContext context)`; public sealed object-method overrides support non-generic invocation.
 * Low-level scalar output uses `JsonWriter.Write`, `WriteNull`, and `WriteRaw`; typed numeric input uses methods such as `JsonReader.ReadInt32` and `ReadDouble`.
 * Custom representations expose logical navigation through `SkipToPropertyValue` and `SkipToIndexValue`, with corresponding asynchronous hooks.
+* Unknown-value skipping, raw capture, and targeted navigation preserve the active remaining-depth budget and cancellation token; `JsonReader.Skip(context)` does not consume siblings' budgets.
 * `JsonConverterAttribute` can override converter selection for a type, property, or constructor parameter.
 * A member of type `UnusedDataPacket` captures unknown JSON members as raw JSON text for forward-compatible round-tripping, without an extension-data attribute.
 * Deserialization can optionally skip comments and accept trailing commas.
@@ -203,11 +204,16 @@ The implemented feature surface is described in the [feature guide](docfx/docs/f
 API parity work with Nerdbank.MessagePack remains in progress; the capabilities above are implemented, not a future roadmap.
 Dictionary keys are limited to supported simple types, collections without construction support are serialization-only, and getter-only scalar or immutable properties require constructor binding to be populated.
 
-The 2026-10-20 Windows integration checkpoint builds all Release targets without warnings and passes all 3,033 configured managed tests plus the self-checking F# sample.
+The 2026-10-20 Windows integration checkpoint builds all Release targets without warnings and passes all 3,269 configured managed tests plus the self-checking F# sample.
 All four NativeAOT fixtures publish with warnings treated as errors and execute successfully, including root-all shipping compatibility and nested-record/array/dynamic-dictionary regressions.
-The minimal native image is 2,767,872 bytes (2.640 MiB, uncalibrated); the broad image is 6,145,024 bytes (5.860 MiB), passing the original Windows 5.79 +/- 0.2 MiB guard.
+Ordinary and open-generic attributed converters execute natively without manual associated-shape annotations.
+The minimal native image is 2,770,432 bytes (2.642 MiB, uncalibrated); the broad image is 6,155,776 bytes (5.871 MiB), passing the original Windows 5.79 +/- 0.2 MiB guard.
 Linux/macOS thresholds are unchanged and were not locally recalibrated.
+The full native net10.0 core suite publishes without warnings and passes 780 of 782 tests; the two existing non-zero-lower-bound array cases fail because NativeAOT does not support creating those arrays.
 
-Context-aware navigation/skipping integration, zero-copy parser work, NBJson031/NBJson051, the remaining public-API/XML audit, and benchmark comparison are pending.
+Context-aware navigation/skipping and converter-association integration are complete.
+Zero-copy parsing, the stateless raw-wrapper API, NBJson031/NBJson051, the remaining broader public-API audit, and stable benchmark comparison remain deferred.
+Asynchronous stream first-value reads remain blocked by temporary-pipe read-ahead ownership; use caller-owned pipes instead.
 NBJson001/NBJson002 currently declare descriptors but do not report diagnostics.
-DocFX builds successfully with 75 duplicate inherited-parameter warnings in existing navigation XML; these are separate from the warning-free managed and native builds.
+DocFX builds with warnings treated as errors and zero warnings; `dotnet format --verify-no-changes --no-restore` succeeds.
+Context-aware skipping adds depth checks and periodic cancellation checks; the twelve skip benchmark scenarios compile, but no throughput or allocation results are claimed for this final snapshot.
