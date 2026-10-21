@@ -6,6 +6,7 @@
 using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
 using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
 using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
+using JsonSchemaValue = System.Text.Json.Nodes.JsonValue;
 
 namespace Nerdbank.Json;
 
@@ -122,6 +123,26 @@ internal static class JsonSchemaExtensions
 
 		return result;
 	}
+
+	internal static JsonSchemaValue? CreatePrimitiveValue(object? value) => value switch
+	{
+		null => null,
+		string v => JsonSchemaValue.Create(v),
+		short v => JsonSchemaValue.Create(v),
+		int v => JsonSchemaValue.Create(v),
+		long v => JsonSchemaValue.Create(v),
+		float v => JsonSchemaValue.Create(v),
+		double v => JsonSchemaValue.Create(v),
+		decimal v => JsonSchemaValue.Create(v),
+		bool v => JsonSchemaValue.Create(v),
+		byte v => JsonSchemaValue.Create(v),
+		sbyte v => JsonSchemaValue.Create(v),
+		ushort v => JsonSchemaValue.Create(v),
+		uint v => JsonSchemaValue.Create(v),
+		ulong v => JsonSchemaValue.Create(v),
+		char v => JsonSchemaValue.Create(v),
+		_ => throw new NotSupportedException($"Unsupported object type: {value.GetType().FullName}"),
+	};
 
 	private static JsonSchemaObject SetNode(JsonSchemaObject schema, string keyword, JsonSchemaNode? value)
 	{

@@ -85,7 +85,7 @@ public partial class JsonSchemaTests
 	{
 		string schema = this.Serializer.GetJsonSchema(Shape<Person, Person>(), new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 }).ToJsonString();
 
-		Assert.Equal("""{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":-2147483648,"maximum":2147483647},"nickname":{"type":["string","null"]}},"required":["name","age"],"additionalProperties":false}""", schema);
+		Assert.Equal("""{"$schema":"http://json-schema.org/draft-07/schema#","type":["object","null"],"properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":-2147483648,"maximum":2147483647},"nickname":{"type":["string","null"]}},"required":["name","age"],"additionalProperties":false}""", schema);
 	}
 
 	[Test]

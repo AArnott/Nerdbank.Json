@@ -33,23 +33,5 @@ public abstract partial class JsonConverter<T>
 	/// <returns>The JSON value, or <see langword="null"/> if the input is null.</returns>
 	/// <exception cref="NotSupportedException">The value is not a supported primitive.</exception>
 	[return: NotNullIfNotNull(nameof(value))]
-	protected static JsonSchemaValue? CreateJsonValue(object? value) => value switch
-	{
-		null => null,
-		string v => JsonSchemaValue.Create(v),
-		short v => JsonSchemaValue.Create(v),
-		int v => JsonSchemaValue.Create(v),
-		long v => JsonSchemaValue.Create(v),
-		float v => JsonSchemaValue.Create(v),
-		double v => JsonSchemaValue.Create(v),
-		decimal v => JsonSchemaValue.Create(v),
-		bool v => JsonSchemaValue.Create(v),
-		byte v => JsonSchemaValue.Create(v),
-		sbyte v => JsonSchemaValue.Create(v),
-		ushort v => JsonSchemaValue.Create(v),
-		uint v => JsonSchemaValue.Create(v),
-		ulong v => JsonSchemaValue.Create(v),
-		char v => JsonSchemaValue.Create(v),
-		_ => throw new NotSupportedException($"Unsupported object type: {value.GetType().FullName}"),
-	};
+	protected static JsonSchemaValue? CreateJsonValue(object? value) => JsonSchemaExtensions.CreatePrimitiveValue(value);
 }

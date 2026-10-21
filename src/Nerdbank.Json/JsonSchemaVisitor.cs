@@ -8,6 +8,7 @@ using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
 #pragma warning disable SA1600 // Internal elements are intentionally undocumented in this file.
 
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 
@@ -34,10 +35,12 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 		bool hasExtensionData = false;
 
 		HashSet<string> requiredConstructorParameters = new(StringComparer.Ordinal);
+		Dictionary<string, IParameterShape> constructorParameters = new(StringComparer.OrdinalIgnoreCase);
 		if (objectShape.Constructor is { } constructor)
 		{
 			foreach (IParameterShape parameter in constructor.Parameters)
 			{
+				constructorParameters[parameter.Name] = parameter;
 				if (parameter.IsRequired)
 				{
 					requiredConstructorParameters.Add(parameter.Name);
@@ -59,12 +62,29 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 			}
 
 			string serializedName = this.owner.GetSerializedPropertyName(property.Name, property.AttributeProvider);
-			JsonSchemaObject propertySchema = this.context.GetJsonSchema(property.PropertyType);
+			JsonSchemaObject propertySchema = this.owner.TryGetMemberCustomConverter(property.PropertyType, property.AttributeProvider, out JsonConverter? custom) && custom is not null
+				? this.context.GetJsonSchema(property.PropertyType, custom)
+				: this.context.GetJsonSchema(property.PropertyType);
 			if (IsMemberNullable(property))
 			{
 				propertySchema = propertySchema.MakeNullable();
 			}
 
+			constructorParameters.TryGetValue(property.Name, out IParameterShape? parameter);
+			if (parameter?.HasDefaultValue is true)
+			{
+				propertySchema["default"] = JsonSchemaExtensions.CreatePrimitiveValue(parameter.DefaultValue);
+			}
+			else
+			{
+				foreach (DefaultValueAttribute attribute in property.AttributeProvider.GetCustomAttributes<DefaultValueAttribute>(inherit: false))
+				{
+					propertySchema["default"] = JsonSchemaExtensions.CreatePrimitiveValue(attribute.Value);
+					break;
+				}
+			}
+
+			ApplyDescription(property.AttributeProvider, propertySchema);
 			properties.Add(new(serializedName, propertySchema));
 
 			if (requiredConstructorParameters.Contains(property.Name) || HasRequiredMemberAttribute(property.MemberInfo))
@@ -79,12 +99,13 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 			schema.SetMap("properties", properties);
 		}
 
-		if (required.Count > 0)
+		if (required.Count > 0 && (this.owner.SerializeDefaultValues & SerializeDefaultValuesPolicy.Required) != 0)
 		{
 			schema.SetStrings("required", required);
 		}
 
 		schema.Set("additionalProperties", hasExtensionData);
+		ApplyDescription(objectShape.AttributeProvider, schema);
 		return schema;
 	}
 
@@ -134,7 +155,7 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 		foreach (IUnionCaseShape unionCase in unionShape.UnionCases)
 		{
 			object alias = unionCase.IsTagSpecified ? unionCase.Tag : unionCase.Name;
-			cases.Add((alias, this.context.GetJsonSchema(unionCase.UnionCaseType)));
+			cases.Add((alias, this.context.GetJsonSchema(unionCase.UnionCaseType, preserveReferences: false)));
 		}
 
 		JsonSchemaObject? baseSchema = RuntimeUnionBuilder.IsConstructible(unionShape.BaseType as IObjectTypeShape)
@@ -145,6 +166,15 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 
 	public override object? VisitFunction<TFunction, TArgumentState, TResult>(IFunctionTypeShape<TFunction, TArgumentState, TResult> functionShape, object? state = null)
 		=> throw new NotSupportedException($"JSON schema generation does not support delegate types such as {functionShape.Type.FullName}.");
+
+	private static void ApplyDescription(IGenericCustomAttributeProvider attributes, JsonSchemaObject schema)
+	{
+		foreach (DescriptionAttribute attribute in attributes.GetCustomAttributes<DescriptionAttribute>(inherit: false))
+		{
+			schema["description"] = attribute.Description;
+			break;
+		}
+	}
 
 	private static bool IsMemberNullable(IPropertyShape property)
 	{

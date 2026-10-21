@@ -25,11 +25,11 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 {
 	private readonly ConverterCache owner;
 	private readonly JsonSchemaVisitor visitor;
-	private readonly Dictionary<Type, string> references = new();
+	private readonly Dictionary<(Type Type, bool PreserveReferences), string> references = new();
 	private readonly Dictionary<string, JsonSchemaObject> definitions = new(StringComparer.Ordinal);
-	private readonly Dictionary<Type, string> definitionNames = new();
+	private readonly Dictionary<(Type Type, bool PreserveReferences), string> definitionNames = new();
 	private readonly HashSet<string> usedNames = new(StringComparer.Ordinal);
-	private readonly HashSet<Type> recursionGuard = new();
+	private readonly HashSet<(Type Type, bool PreserveReferences)> recursionGuard = new();
 
 	internal JsonSchemaContext(ConverterCache owner, JsonSchemaDialect dialect)
 	{
@@ -74,34 +74,40 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	/// </summary>
 	/// <param name="typeShape">The shape of the type.</param>
 	/// <returns>The schema, which may be a <c>$ref</c> to a shared definition.</returns>
-	public JsonSchemaObject GetJsonSchema(ITypeShape typeShape)
+	public JsonSchemaObject GetJsonSchema(ITypeShape typeShape) => this.GetJsonSchema(typeShape, preserveReferences: true);
+
+	/// <summary>Gets a schema with optional reference-envelope suppression at the current union payload.</summary>
+	/// <param name="typeShape">The type shape.</param>
+	/// <param name="preserveReferences">Whether the current value includes a reference envelope.</param>
+	/// <returns>The schema fragment.</returns>
+	internal JsonSchemaObject GetJsonSchema(ITypeShape typeShape, bool preserveReferences)
 	{
 		Requires.NotNull(typeShape);
 		Type type = typeShape.Type;
+		(Type Type, bool PreserveReferences) key = (type, preserveReferences && this.owner.ShouldPreserveReferences(type));
 
-		if (this.references.TryGetValue(type, out string? existing))
+		if (this.references.TryGetValue(key, out string? existing))
 		{
 			return Reference(existing);
 		}
 
-		if (JsonSchemaScalars.TryGetScalarSchema(type, this, out JsonSchemaObject scalar))
-		{
-			return scalar;
-		}
-
-		string defName = this.GetDefinitionName(type);
+		string defName = this.GetDefinitionName(key);
 		string refPath = "#/" + this.DefinitionsKeyword + "/" + defName;
-		if (!this.recursionGuard.Add(type))
+		if (!this.recursionGuard.Add(key))
 		{
-			this.references[type] = refPath;
+			this.references[key] = refPath;
 			return Reference(refPath);
 		}
 
 		JsonSchemaObject schema = (JsonSchemaObject)typeShape.Invoke(this)!;
-		schema = this.ApplyReferencePreservation(type, schema);
-		this.recursionGuard.Remove(type);
+		if (key.PreserveReferences)
+		{
+			schema = this.ApplyReferencePreservation(type, schema);
+		}
 
-		if (this.references.ContainsKey(type))
+		this.recursionGuard.Remove(key);
+
+		if (this.references.ContainsKey(key))
 		{
 			this.definitions[defName] = schema;
 			return Reference(refPath);
@@ -109,6 +115,13 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 
 		return schema;
 	}
+
+	/// <summary>Describes a member-specific converter without polluting the type's shared schema.</summary>
+	/// <param name="shape">The member type shape.</param>
+	/// <param name="converter">The member converter.</param>
+	/// <returns>The member schema fragment.</returns>
+	internal JsonSchemaObject GetJsonSchema(ITypeShape shape, JsonConverter converter)
+		=> this.ApplyReferencePreservation(shape.Type, converter.GetJsonSchema(this, shape) ?? CreateUndocumented(converter));
 
 	/// <summary>
 	/// Creates an array schema with positional constraints using the selected dialect.
@@ -192,6 +205,11 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			return this.BuildRuntimeUnionSchema(typeShape, entry);
 		}
 
+		if (JsonSchemaScalars.TryGetScalarSchema(typeof(T), this, out JsonSchemaObject scalar))
+		{
+			return scalar;
+		}
+
 		return typeShape.Accept(this.visitor)!;
 	}
 
@@ -200,6 +218,11 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	internal JsonSchemaObject GenerateDocument(ITypeShape rootShape)
 	{
 		JsonSchemaObject body = this.GetJsonSchema(rootShape);
+		if (!rootShape.Type.IsValueType || Nullable.GetUnderlyingType(rootShape.Type) is not null)
+		{
+			body = body.MakeNullable();
+		}
+
 		JsonSchemaObject document = new JsonSchemaObject().Set("$schema", this.SchemaUri);
 		document.Append(body);
 
@@ -293,7 +316,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			ITypeShape caseShape = pair.Value;
 			JsonSchemaObject caseSchema = caseShape.Type == typeof(T)
 				? (JsonSchemaObject)(shape is IUnionTypeShape union ? union.BaseType : shape).Accept(this.visitor)!
-				: this.GetJsonSchema(caseShape);
+				: this.GetJsonSchema(caseShape, preserveReferences: false);
 			cases.Add((alias.Type == DerivedTypeIdentifier.AliasType.Integer ? (object)alias.IntAlias : alias.StringAlias, caseSchema));
 		}
 
@@ -331,14 +354,14 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		return new JsonSchemaObject().SetSchemas("oneOf", [referenceForm, identityForm]);
 	}
 
-	private string GetDefinitionName(Type type)
+	private string GetDefinitionName((Type Type, bool PreserveReferences) key)
 	{
-		if (this.definitionNames.TryGetValue(type, out string? name))
+		if (this.definitionNames.TryGetValue(key, out string? name))
 		{
 			return name;
 		}
 
-		string baseName = SanitizeName(type);
+		string baseName = SanitizeName(key.Type);
 		string candidate = baseName;
 		int suffix = 2;
 		while (!this.usedNames.Add(candidate))
@@ -346,7 +369,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			candidate = baseName + suffix++;
 		}
 
-		this.definitionNames[type] = candidate;
+		this.definitionNames[key] = candidate;
 		return candidate;
 	}
 

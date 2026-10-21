@@ -158,6 +158,7 @@ public partial class JsonRuntimeUnionTests
 			DerivedTypeUnions = [new DerivedShapeMapping<Animal2> { { -12, Shape<Cat2, Cat2>() } }],
 		};
 		JsonSchemaObject schema = serializer.GetJsonSchema(Shape<Animal2, Animal2>(), new JsonSchemaOptions { Dialect = dialect });
+		schema = schema["anyOf"]![0]!.AsObject();
 		Assert.Equal("object", schema["oneOf"]![0]!["type"]!.GetValue<string>());
 		Assert.Equal("-12", schema["oneOf"]![0]!["required"]![0]!.GetValue<string>());
 		Assert.False(schema["oneOf"]![0]!["additionalProperties"]!.GetValue<bool>());

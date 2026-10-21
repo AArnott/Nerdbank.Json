@@ -184,11 +184,18 @@ internal static class ManyModels
 	private static void VerifySchema()
 	{
 		JsonSerializer serializer = new();
-		string schema = serializer.GetJsonSchema<DeviceSnapshot>().ToJsonString();
+		System.Text.Json.Nodes.JsonObject schema = serializer.GetJsonSchema<DeviceSnapshot>();
 
-		if (!schema.Contains("\"$schema\"") || !schema.Contains("\"type\":\"object\"") || !schema.Contains("\"deviceId\""))
+		if (schema["$schema"] is null || schema["type"]?[0]?.GetValue<string>() != "object" || schema["properties"]?["deviceId"] is null)
 		{
 			throw new InvalidOperationException("JSON schema export did not describe the model.");
+		}
+
+		JsonSerializer custom = new() { Converters = new ConverterCollection([new CoordConverter()]) };
+		System.Text.Json.Nodes.JsonObject customSchema = custom.GetJsonSchema<Coord>(new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 });
+		if (customSchema["items"] is null || customSchema["minItems"]?.GetValue<int>() != 2)
+		{
+			throw new InvalidOperationException("Custom converter tuple schema helpers did not honor the selected dialect.");
 		}
 	}
 
@@ -199,13 +206,23 @@ internal static class ManyModels
 			DerivedTypeUnions = [new DerivedShapeMapping<Payload> { { "text", ShapeOf<TextPayload>() }, { "number", ShapeOf<NumberPayload>() } }],
 		};
 
-		Payload value = new TextPayload("hello");
-		string json = serializer.Serialize<Payload>(value);
-		Payload roundTripped = serializer.Deserialize<Payload>(json)!;
-
-		if (roundTripped is not TextPayload { Text: "hello" })
+		foreach (bool useObjects in new[] { false, true })
 		{
-			throw new InvalidOperationException("Runtime union configuration did not round-trip.");
+			serializer = serializer with { UseDiscriminatorObjects = useObjects };
+			Payload value = new TextPayload("hello");
+			string json = serializer.Serialize<Payload>(value);
+			Payload roundTripped = serializer.Deserialize<Payload>(json)!;
+
+			if (roundTripped is not TextPayload { Text: "hello" })
+			{
+				throw new InvalidOperationException("Runtime union configuration did not round-trip.");
+			}
+
+			string schema = serializer.GetJsonSchema<Payload>().ToJsonString();
+			if (!schema.Contains(useObjects ? "\"required\":[\"text\"]" : "\"prefixItems\""))
+			{
+				throw new InvalidOperationException("Runtime union schema did not match the discriminator envelope.");
+			}
 		}
 	}
 
@@ -399,6 +416,17 @@ internal partial record Coord(int X, int Y);
 
 internal sealed class CoordConverter : JsonConverter<Coord>
 {
+	public override System.Text.Json.Nodes.JsonObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape)
+	{
+		System.Text.Json.Nodes.JsonObject schema = context.CreateTupleSchema(
+			new System.Text.Json.Nodes.JsonArray(
+				new System.Text.Json.Nodes.JsonObject { ["type"] = "integer" },
+				new System.Text.Json.Nodes.JsonObject { ["type"] = "integer" }));
+		schema["minItems"] = CreateJsonValue(2);
+		schema["maxItems"] = CreateJsonValue(2);
+		return schema;
+	}
+
 	public override void Write(ref JsonWriter writer, in Coord? value, SerializationContext context)
 	{
 		writer.WriteStartArray();

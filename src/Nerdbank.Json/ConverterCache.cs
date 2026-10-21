@@ -26,6 +26,9 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 	internal bool SerializeEnumValuesByName => this.configuration.SerializeEnumValuesByName;
 
+	/// <summary>Gets the policy determining whether required defaults are always written.</summary>
+	internal SerializeDefaultValuesPolicy SerializeDefaultValues => this.configuration.SerializeDefaultValues;
+
 	internal JsonNamingPolicy? PropertyNamingPolicy => this.configuration.PropertyNamingPolicy;
 
 	internal MessagePack.IComparerProvider? ComparerProvider => this.configuration.ComparerProvider;
@@ -253,6 +256,14 @@ internal sealed class ConverterCache : ITypeShapeFunc
 	}
 
 	internal bool ShouldPreserveReferences(Type type) => this.configuration.PreserveReferences != ReferencePreservationMode.Off && RequiresReferencePreservation(type);
+
+	/// <summary>Gets a converter applied directly to a member, if present.</summary>
+	/// <param name="shape">The member type shape.</param>
+	/// <param name="attributes">The member attributes.</param>
+	/// <param name="converter">Receives the converter.</param>
+	/// <returns>Whether a member-specific converter was found.</returns>
+	internal bool TryGetMemberCustomConverter(ITypeShape shape, IGenericCustomAttributeProvider attributes, out JsonConverter? converter)
+		=> TryGetConverterFromAttribute(shape.Type, shape, attributes, out converter);
 
 	internal bool TryGetCustomConverter(ITypeShape shape, out JsonConverter? converter)
 	{
