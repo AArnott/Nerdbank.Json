@@ -19,7 +19,7 @@ type Farm = {
 let serializer = JsonSerializer()
 let shape = ReflectionTypeShapeProvider.Default.GetTypeShapeOrThrow<Farm>()
 
-let roundTrip farm =
+let roundTrip (farm: Farm) =
     // The explicit PolyType provider supports F# records, options and discriminated unions.
     // Reflection shapes are appropriate for this managed sample, not NativeAOT apps.
     let json = serializer.Serialize(&farm, shape)
@@ -27,7 +27,7 @@ let roundTrip farm =
     let restored =
         match serializer.Deserialize(json, shape) with
         | null -> failwith "The farm was null."
-        | value -> nonNull value
+        | value -> value
     if restored <> farm then
         failwith "The farm did not round-trip."
     restored
