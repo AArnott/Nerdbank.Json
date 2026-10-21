@@ -6,7 +6,9 @@
 #pragma warning disable SA1649 // File name should match first type name
 
 using System.Text.Json;
-using System.Text.Json.Nodes;
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
 
 namespace Nerdbank.Json;
 
@@ -46,20 +48,20 @@ internal sealed class SystemTextJsonElementConverter : JsonConverter<JsonElement
 		writer.WriteRawValue(value.GetRawText());
 	}
 
-	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
+	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 }
 
 /// <summary>
-/// Bridges the mutable <see cref="JsonNode"/> object model to the wire by round-tripping through raw JSON text.
+/// Bridges the mutable <see cref="JsonSchemaNode"/> object model to the wire by round-tripping through raw JSON text.
 /// </summary>
-internal sealed class SystemTextJsonNodeConverter : JsonConverter<JsonNode>
+internal sealed class SystemTextJsonNodeConverter : JsonConverter<JsonSchemaNode>
 {
 	internal static readonly SystemTextJsonNodeConverter Instance = new();
 
-	public override JsonNode? Read(ref JsonReader reader, SerializationContext context)
-		=> JsonNode.Parse(reader.ReadRawValue(), nodeOptions: null, SystemTextJsonInterop.DocumentOptions);
+	public override JsonSchemaNode? Read(ref JsonReader reader, SerializationContext context)
+		=> JsonSchemaNode.Parse(reader.ReadRawValue(), nodeOptions: null, SystemTextJsonInterop.DocumentOptions);
 
-	public override void Write(ref JsonWriter writer, in JsonNode? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in JsonSchemaNode? value, SerializationContext context)
 	{
 		if (value is null)
 		{
@@ -70,7 +72,7 @@ internal sealed class SystemTextJsonNodeConverter : JsonConverter<JsonNode>
 		writer.WriteRawValue(value.ToJsonString());
 	}
 
-	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
+	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 }
 
 /// <summary>
@@ -94,5 +96,5 @@ internal sealed class SystemTextJsonDocumentConverter : JsonConverter<JsonDocume
 		writer.WriteRawValue(value.RootElement.GetRawText());
 	}
 
-	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
+	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 }

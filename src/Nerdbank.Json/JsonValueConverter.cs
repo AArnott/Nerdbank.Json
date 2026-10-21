@@ -1,6 +1,10 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
+
 #pragma warning disable SA1600 // Internal converter members are intentionally undocumented in this file.
 
 namespace Nerdbank.Json;
@@ -117,7 +121,7 @@ internal sealed class JsonValueConverter : JsonConverter<JsonValue>
 		}
 	}
 
-	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
+	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 
 	private JsonObject ReadJsonObject(ref JsonReader reader, SerializationContext context)
 	{

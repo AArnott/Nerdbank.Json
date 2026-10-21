@@ -1,6 +1,10 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
+
 #pragma warning disable SA1204 // Static ordering relaxed for this schema orchestration type.
 #pragma warning disable SA1202 // Public converter APIs precede internal schema orchestration details.
 #pragma warning disable SA1600 // Internal schema orchestration members are intentionally undocumented in this file.
@@ -21,7 +25,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	private readonly ConverterCache owner;
 	private readonly JsonSchemaVisitor visitor;
 	private readonly Dictionary<Type, string> references = new();
-	private readonly Dictionary<string, JsonSchema> definitions = new(StringComparer.Ordinal);
+	private readonly Dictionary<string, JsonSchemaObject> definitions = new(StringComparer.Ordinal);
 	private readonly Dictionary<Type, string> definitionNames = new();
 	private readonly HashSet<string> usedNames = new(StringComparer.Ordinal);
 	private readonly HashSet<Type> recursionGuard = new();
@@ -69,7 +73,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	/// </summary>
 	/// <param name="typeShape">The shape of the type.</param>
 	/// <returns>The schema, which may be a <c>$ref</c> to a shared definition.</returns>
-	public JsonSchema GetSchema(ITypeShape typeShape)
+	public JsonSchemaObject GetJsonSchema(ITypeShape typeShape)
 	{
 		Requires.NotNull(typeShape);
 		Type type = typeShape.Type;
@@ -79,7 +83,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			return Reference(existing);
 		}
 
-		if (JsonSchemaScalars.TryGetScalarSchema(type, this, out JsonSchema scalar))
+		if (JsonSchemaScalars.TryGetScalarSchema(type, this, out JsonSchemaObject scalar))
 		{
 			return scalar;
 		}
@@ -92,7 +96,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			return Reference(refPath);
 		}
 
-		JsonSchema schema = (JsonSchema)typeShape.Invoke(this)!;
+		JsonSchemaObject schema = (JsonSchemaObject)typeShape.Invoke(this)!;
 		schema = this.ApplyReferencePreservation(type, schema);
 		this.recursionGuard.Remove(type);
 
@@ -112,9 +116,9 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	/// <param name="additionalItemsSchema">The schema for positions after those in <paramref name="items"/>, if permitted.</param>
 	/// <returns>An array schema with the specified positional constraints.</returns>
 	/// <exception cref="ArgumentException"><paramref name="items"/> is empty.</exception>
-	public JsonSchema CreateTupleSchema(IReadOnlyList<JsonSchema> items, JsonSchema? additionalItemsSchema = null)
+	internal JsonSchemaObject CreateTupleSchema(IReadOnlyList<JsonSchemaObject> items, JsonSchemaObject? additionalItemsSchema = null)
 	{
-		JsonSchema schema = new JsonSchema().Set("type", "array");
+		JsonSchemaObject schema = new JsonSchemaObject().Set("type", "array");
 		this.ApplyTupleSchema(schema, items, additionalItemsSchema);
 		return schema;
 	}
@@ -126,7 +130,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	/// <param name="items">The schema for each successive array position.</param>
 	/// <param name="additionalItemsSchema">The schema for positions after those in <paramref name="items"/>, if permitted.</param>
 	/// <exception cref="ArgumentException"><paramref name="items"/> is empty.</exception>
-	public void ApplyTupleSchema(JsonSchema schema, IReadOnlyList<JsonSchema> items, JsonSchema? additionalItemsSchema = null)
+	internal void ApplyTupleSchema(JsonSchemaObject schema, IReadOnlyList<JsonSchemaObject> items, JsonSchemaObject? additionalItemsSchema = null)
 	{
 		Requires.NotNull(schema);
 		Requires.NotNull(items);
@@ -154,6 +158,27 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		}
 	}
 
+	/// <summary>Creates a schema for a positional array in the selected dialect.</summary>
+	/// <param name="items">The positional schemas. Ownership transfers to the result.</param>
+	/// <returns>The array schema, without length constraints.</returns>
+	public JsonSchemaObject CreateTupleSchema(JsonSchemaArray items)
+	{
+		JsonSchemaObject schema = new() { ["type"] = "array" };
+		this.ApplyTupleSchema(schema, items);
+		return schema;
+	}
+
+	/// <summary>Adds positional constraints to a schema in the selected dialect.</summary>
+	/// <param name="schema">The schema to modify.</param>
+	/// <param name="items">The positional schemas. Ownership transfers to the schema.</param>
+	public void ApplyTupleSchema(JsonSchemaObject schema, JsonSchemaArray items)
+	{
+		Requires.NotNull(schema);
+		Requires.NotNull(items);
+		Requires.Argument(items.Count > 0, nameof(items), "At least one positional schema is required.");
+		schema[this.Dialect is JsonSchemaDialect.Draft4 or JsonSchemaDialect.Draft7 ? "items" : "prefixItems"] = items;
+	}
+
 	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state)
 	{
 		if (this.owner.TryGetCustomConverter(typeShape, out JsonConverter? custom) && custom is not null)
@@ -169,17 +194,17 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		return typeShape.Accept(this.visitor)!;
 	}
 
-	internal static JsonSchema Reference(string path) => new JsonSchema().Set("$ref", path);
+	internal static JsonSchemaObject Reference(string path) => new JsonSchemaObject().Set("$ref", path);
 
-	internal JsonSchema GenerateDocument(ITypeShape rootShape)
+	internal JsonSchemaObject GenerateDocument(ITypeShape rootShape)
 	{
-		JsonSchema body = this.GetSchema(rootShape);
-		JsonSchema document = new JsonSchema().Set("$schema", this.SchemaUri);
+		JsonSchemaObject body = this.GetJsonSchema(rootShape);
+		JsonSchemaObject document = new JsonSchemaObject().Set("$schema", this.SchemaUri);
 		document.Append(body);
 
 		if (this.definitions.Count > 0)
 		{
-			List<KeyValuePair<string, JsonSchema>> sorted = this.definitions
+			List<KeyValuePair<string, JsonSchemaObject>> sorted = this.definitions
 				.OrderBy(pair => pair.Key, StringComparer.Ordinal)
 				.ToList();
 			document.SetMap(this.DefinitionsKeyword, sorted);
@@ -188,12 +213,12 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		return document;
 	}
 
-	internal JsonSchema CreateUnionEnvelope(IReadOnlyList<(object? Alias, JsonSchema CaseSchema)> cases, JsonSchema? baseSchema)
+	internal JsonSchemaObject CreateUnionEnvelope(IReadOnlyList<(object? Alias, JsonSchemaObject CaseSchema)> cases, JsonSchemaObject? baseSchema)
 	{
-		List<JsonSchema> options = new(cases.Count + (baseSchema is null ? 0 : 1));
-		foreach ((object? alias, JsonSchema caseSchema) in cases)
+		List<JsonSchemaObject> options = new(cases.Count + (baseSchema is null ? 0 : 1));
+		foreach ((object? alias, JsonSchemaObject caseSchema) in cases)
 		{
-			JsonSchema discriminator = new();
+			JsonSchemaObject discriminator = new();
 			if (alias is int tag)
 			{
 				if (this.Dialect == JsonSchemaDialect.Draft4)
@@ -223,69 +248,69 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 
 		if (baseSchema is not null)
 		{
-			options.Add(this.CreateTupleSchema([new JsonSchema().Set("type", "null"), baseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
+			options.Add(this.CreateTupleSchema([new JsonSchemaObject().Set("type", "null"), baseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
 		}
 
-		return new JsonSchema().SetSchemas("oneOf", options);
+		return new JsonSchemaObject().SetSchemas("oneOf", options);
 	}
 
-	private static JsonSchema CreateUndocumented(JsonConverter converter) => new JsonSchema()
+	private static JsonSchemaObject CreateUndocumented(JsonConverter converter) => new JsonSchemaObject()
 		.Set("$comment", $"No JSON schema is available for the custom converter '{converter.GetType().FullName}'; any JSON value is permitted here.");
 
-	private JsonSchema BuildRuntimeUnionSchema<T>(ITypeShape<T> shape, object entry)
+	private JsonSchemaObject BuildRuntimeUnionSchema<T>(ITypeShape<T> shape, object entry)
 	{
 		if (ReferenceEquals(entry, JsonUnionConfiguration.DisabledSentinel))
 		{
 			ITypeShape baseShape = shape is IUnionTypeShape disabledUnion ? disabledUnion.BaseType : shape;
-			return (JsonSchema)baseShape.Accept(this.visitor)!;
+			return (JsonSchemaObject)baseShape.Accept(this.visitor)!;
 		}
 
 		var definition = (JsonUnion<T>)entry;
-		List<(object? Alias, JsonSchema CaseSchema)> cases = [];
+		List<(object? Alias, JsonSchemaObject CaseSchema)> cases = [];
 
 		if (definition.IncludeGeneratedCases && shape is IUnionTypeShape unionShape)
 		{
 			foreach (IUnionCaseShape unionCase in unionShape.UnionCases)
 			{
 				object alias = unionCase.IsTagSpecified ? unionCase.Tag : unionCase.Name;
-				cases.Add((alias, this.GetSchema(unionCase.UnionCaseType)));
+				cases.Add((alias, this.GetJsonSchema(unionCase.UnionCaseType)));
 			}
 		}
 
 		foreach (RuntimeUnionCase<T> runtimeCase in definition.Cases)
 		{
 			object alias = runtimeCase.Tag is int tag ? tag : runtimeCase.Name!;
-			cases.Add((alias, this.GetSchema(runtimeCase.GetCaseShape())));
+			cases.Add((alias, this.GetJsonSchema(runtimeCase.GetCaseShape())));
 		}
 
 		if (definition.DuckTyping)
 		{
-			return new JsonSchema().SetSchemas("oneOf", [.. cases.Select(c => c.CaseSchema)]);
+			return new JsonSchemaObject().SetSchemas("oneOf", [.. cases.Select(c => c.CaseSchema)]);
 		}
 
 		return this.CreateUnionEnvelope(cases, baseSchema: null);
 	}
 
-	private JsonSchema ApplyReferencePreservation(Type type, JsonSchema schema)
+	private JsonSchemaObject ApplyReferencePreservation(Type type, JsonSchemaObject schema)
 	{
 		if (!this.owner.ShouldPreserveReferences(type))
 		{
 			return schema;
 		}
 
-		JsonSchema referenceForm = new JsonSchema()
+		JsonSchemaObject referenceForm = new JsonSchemaObject()
 			.Set("type", "object")
-			.SetMap("properties", [new("$ref", new JsonSchema().Set("type", "integer"))])
+			.SetMap("properties", [new("$ref", new JsonSchemaObject().Set("type", "integer"))])
 			.SetStrings("required", ["$ref"])
 			.Set("additionalProperties", false);
 
-		JsonSchema identityForm = new JsonSchema()
+		JsonSchemaObject identityForm = new JsonSchemaObject()
 			.Set("type", "object")
-			.SetMap("properties", [new("$id", new JsonSchema().Set("type", "integer")), new("$value", schema)])
+			.SetMap("properties", [new("$id", new JsonSchemaObject().Set("type", "integer")), new("$value", schema)])
 			.SetStrings("required", ["$id", "$value"])
 			.Set("additionalProperties", false);
 
-		return new JsonSchema().SetSchemas("oneOf", [referenceForm, identityForm]);
+		return new JsonSchemaObject().SetSchemas("oneOf", [referenceForm, identityForm]);
 	}
 
 	private string GetDefinitionName(Type type)

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using PolyType.Abstractions;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
 
 public partial class JsonSchemaTests : TestBase
 {
@@ -13,25 +14,34 @@ public partial class JsonSchemaTests : TestBase
 	}
 
 	[Test]
+	public void Schema_IsMutableJsonObject_IndependentAcrossCalls()
+	{
+		JsonSchemaObject first = this.Serializer.GetJsonSchema(Shape<Person, Person>());
+		first["title"] = "Changed";
+		Assert.Null(this.Serializer.GetJsonSchema(Shape<Person, Person>())["title"]);
+		Assert.Equal("object", first["type"]!.GetValue<string>());
+	}
+
+	[Test]
 	public void Scalar_Int_HasRange()
 	{
-		string schema = this.Serializer.GetJsonSchema(Shape<int, Witness>());
+		string schema = this.Serializer.GetJsonSchema(Shape<int, Witness>()).ToJsonString();
 		Assert.Equal("""{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"integer","minimum":-2147483648,"maximum":2147483647}""", schema);
 	}
 
 	[Test]
 	public void Scalar_Formats()
 	{
-		Assert.Contains("\"type\":\"string\",\"format\":\"uuid\"", this.Serializer.GetJsonSchema(Shape<Guid, Witness>()), StringComparison.Ordinal);
-		Assert.Contains("\"type\":\"string\",\"format\":\"date-time\"", this.Serializer.GetJsonSchema(Shape<DateTime, Witness>()), StringComparison.Ordinal);
-		Assert.Contains("\"type\":\"string\",\"contentEncoding\":\"base64\"", this.Serializer.GetJsonSchema(Shape<byte[], Witness>()), StringComparison.Ordinal);
-		Assert.Contains("\"type\":\"boolean\"", this.Serializer.GetJsonSchema(Shape<bool, Witness>()), StringComparison.Ordinal);
+		Assert.Contains("\"type\":\"string\",\"format\":\"uuid\"", this.Serializer.GetJsonSchema(Shape<Guid, Witness>()).ToJsonString(), StringComparison.Ordinal);
+		Assert.Contains("\"type\":\"string\",\"format\":\"date-time\"", this.Serializer.GetJsonSchema(Shape<DateTime, Witness>()).ToJsonString(), StringComparison.Ordinal);
+		Assert.Contains("\"type\":\"string\",\"contentEncoding\":\"base64\"", this.Serializer.GetJsonSchema(Shape<byte[], Witness>()).ToJsonString(), StringComparison.Ordinal);
+		Assert.Contains("\"type\":\"boolean\"", this.Serializer.GetJsonSchema(Shape<bool, Witness>()).ToJsonString(), StringComparison.Ordinal);
 	}
 
 	[Test]
 	public void Object_NamingPolicy_Required_Nullable()
 	{
-		string schema = this.Serializer.GetJsonSchema(Shape<Person, Person>());
+		string schema = this.Serializer.GetJsonSchema(Shape<Person, Person>()).ToJsonString();
 		Assert.Equal("""{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{"name":{"type":"string"},"age":{"type":"integer","minimum":-2147483648,"maximum":2147483647},"nickname":{"type":["string","null"]}},"required":["name","age"],"additionalProperties":false}""", schema);
 	}
 
@@ -39,14 +49,14 @@ public partial class JsonSchemaTests : TestBase
 	public void Object_NamingPolicyNull_UsesClrNames()
 	{
 		JsonSerializer serializer = new() { PropertyNamingPolicy = null };
-		string schema = serializer.GetJsonSchema(Shape<Person, Person>());
+		string schema = serializer.GetJsonSchema(Shape<Person, Person>()).ToJsonString();
 		Assert.Contains("\"properties\":{\"Name\":", schema, StringComparison.Ordinal);
 	}
 
 	[Test]
 	public void Enum_ByValue_IsInteger()
 	{
-		string schema = this.Serializer.GetJsonSchema(Shape<Fruit, Witness>());
+		string schema = this.Serializer.GetJsonSchema(Shape<Fruit, Witness>()).ToJsonString();
 		Assert.Contains("\"type\":\"integer\"", schema, StringComparison.Ordinal);
 	}
 
@@ -54,42 +64,42 @@ public partial class JsonSchemaTests : TestBase
 	public void Enum_ByName_UsesStringEnum()
 	{
 		JsonSerializer serializer = new() { SerializeEnumValuesByName = true };
-		string schema = serializer.GetJsonSchema(Shape<Fruit, Witness>());
+		string schema = serializer.GetJsonSchema(Shape<Fruit, Witness>()).ToJsonString();
 		Assert.Contains("\"type\":\"string\",\"enum\":[\"apple\",\"banana\"]", schema, StringComparison.Ordinal);
 	}
 
 	[Test]
 	public void Array_HasItems()
 	{
-		string schema = this.Serializer.GetJsonSchema(Shape<int[], Witness>());
+		string schema = this.Serializer.GetJsonSchema(Shape<int[], Witness>()).ToJsonString();
 		Assert.Contains("\"type\":\"array\",\"items\":{\"type\":\"integer\"", schema, StringComparison.Ordinal);
 	}
 
 	[Test]
 	public void MultidimensionalArray_NestsItems()
 	{
-		string schema = this.Serializer.GetJsonSchema(Shape<int[,], Witness>());
+		string schema = this.Serializer.GetJsonSchema(Shape<int[,], Witness>()).ToJsonString();
 		Assert.Contains("\"type\":\"array\",\"items\":{\"type\":\"array\",\"items\":{\"type\":\"integer\"", schema, StringComparison.Ordinal);
 	}
 
 	[Test]
 	public void Dictionary_UsesAdditionalProperties()
 	{
-		string schema = this.Serializer.GetJsonSchema(Shape<Dictionary<string, int>, Witness>());
+		string schema = this.Serializer.GetJsonSchema(Shape<Dictionary<string, int>, Witness>()).ToJsonString();
 		Assert.Contains("\"type\":\"object\",\"additionalProperties\":{\"type\":\"integer\"", schema, StringComparison.Ordinal);
 	}
 
 	[Test]
 	public void ExtensionData_AllowsAdditionalProperties()
 	{
-		string schema = this.Serializer.GetJsonSchema(Shape<WithExtensionData, WithExtensionData>());
+		string schema = this.Serializer.GetJsonSchema(Shape<WithExtensionData, WithExtensionData>()).ToJsonString();
 		Assert.Contains("\"additionalProperties\":true", schema, StringComparison.Ordinal);
 	}
 
 	[Test]
 	public void GeneratedUnion_ProducesOneOfEnvelope()
 	{
-		string schema = this.Serializer.GetJsonSchema(Shape<Animal, Animal>());
+		string schema = this.Serializer.GetJsonSchema(Shape<Animal, Animal>()).ToJsonString();
 		Assert.Contains("\"oneOf\":", schema, StringComparison.Ordinal);
 		Assert.Contains("\"const\":\"Cat\"", schema, StringComparison.Ordinal);
 		Assert.Contains("\"prefixItems\":", schema, StringComparison.Ordinal);
@@ -104,7 +114,7 @@ public partial class JsonSchemaTests : TestBase
 				JsonUnion<Animal>.Create().AddCase(7, Shape<Cat, Cat>())),
 		};
 
-		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>());
+		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>()).ToJsonString();
 		Assert.Contains("\"const\":7", schema, StringComparison.Ordinal);
 	}
 
@@ -117,7 +127,7 @@ public partial class JsonSchemaTests : TestBase
 				JsonUnion<Animal>.Create().AddCase("cat", Shape<Cat, Cat>()).UseDuckTyping()),
 		};
 
-		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>());
+		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>()).ToJsonString();
 		Assert.Contains("\"oneOf\":[{\"type\":\"object\"", schema, StringComparison.Ordinal);
 		Assert.DoesNotContain("prefixItems", schema, StringComparison.Ordinal);
 	}
@@ -126,7 +136,7 @@ public partial class JsonSchemaTests : TestBase
 	public void ReferencePreservation_DescribesEnvelope()
 	{
 		JsonSerializer serializer = new() { PreserveReferences = ReferencePreservationMode.RejectCycles };
-		string schema = serializer.GetJsonSchema(Shape<Person, Person>());
+		string schema = serializer.GetJsonSchema(Shape<Person, Person>()).ToJsonString();
 		Assert.Contains("\"$ref\":{\"type\":\"integer\"}", schema, StringComparison.Ordinal);
 		Assert.Contains("\"$id\":{\"type\":\"integer\"}", schema, StringComparison.Ordinal);
 		Assert.Contains("$value", schema, StringComparison.Ordinal);
@@ -135,7 +145,7 @@ public partial class JsonSchemaTests : TestBase
 	[Test]
 	public void RecursiveType_UsesDefsAndRef()
 	{
-		string schema = this.Serializer.GetJsonSchema(Shape<TreeNode, TreeNode>());
+		string schema = this.Serializer.GetJsonSchema(Shape<TreeNode, TreeNode>()).ToJsonString();
 		Assert.Contains("\"$defs\":", schema, StringComparison.Ordinal);
 		Assert.Contains("#/$defs/", schema, StringComparison.Ordinal);
 	}
@@ -148,7 +158,7 @@ public partial class JsonSchemaTests : TestBase
 			Converters = ConverterCollection.Create([new MoneyConverter()]),
 		};
 
-		string schema = serializer.GetJsonSchema(Shape<Money, Money>());
+		string schema = serializer.GetJsonSchema(Shape<Money, Money>()).ToJsonString();
 		Assert.Contains("\"type\":\"string\",\"pattern\"", schema, StringComparison.Ordinal);
 	}
 
@@ -160,7 +170,7 @@ public partial class JsonSchemaTests : TestBase
 			Converters = ConverterCollection.Create([new OpaqueConverter()]),
 		};
 
-		string schema = serializer.GetJsonSchema(Shape<Opaque, Opaque>());
+		string schema = serializer.GetJsonSchema(Shape<Opaque, Opaque>()).ToJsonString();
 		Assert.Contains("$comment", schema, StringComparison.Ordinal);
 		Assert.Contains("No JSON schema is available", schema, StringComparison.Ordinal);
 	}
@@ -168,8 +178,8 @@ public partial class JsonSchemaTests : TestBase
 	[Test]
 	public void Output_IsDeterministic()
 	{
-		string first = this.Serializer.GetJsonSchema(Shape<Person, Person>());
-		string second = this.Serializer.GetJsonSchema(Shape<Person, Person>());
+		string first = this.Serializer.GetJsonSchema(Shape<Person, Person>()).ToJsonString();
+		string second = this.Serializer.GetJsonSchema(Shape<Person, Person>()).ToJsonString();
 		Assert.Equal(first, second);
 	}
 
@@ -221,8 +231,8 @@ public partial class JsonSchemaTests : TestBase
 
 		public override Money? Read(ref JsonReader reader, SerializationContext context) => new(decimal.Parse(reader.ReadString()!));
 
-		public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape)
-			=> new JsonSchema().Set("type", "string").Set("pattern", "^-?[0-9]+(\\.[0-9]+)?$");
+		public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape)
+			=> new() { ["type"] = "string", ["pattern"] = "^-?[0-9]+(\\.[0-9]+)?$" };
 	}
 
 	[GenerateShape]

@@ -1,6 +1,10 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
+
 #pragma warning disable SA1402 // File may only contain a single type
 #pragma warning disable SA1600 // Internal helper elements are intentionally undocumented in this file.
 
@@ -37,7 +41,7 @@ public abstract class JsonConverter
 	/// <see langword="null"/> is returned, the exporter emits a permissive schema annotated with a conspicuous
 	/// comment rather than pretending to know the representation.
 	/// </returns>
-	public virtual JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => null;
+	public virtual JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => null;
 
 	/// <summary>
 	/// Advances the reader from this converter's value to the child value selected by a targeted-deserialization segment.

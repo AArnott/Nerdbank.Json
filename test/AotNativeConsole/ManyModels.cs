@@ -184,7 +184,7 @@ internal static class ManyModels
 	private static void VerifySchema()
 	{
 		JsonSerializer serializer = new();
-		string schema = serializer.GetJsonSchema<DeviceSnapshot>();
+		string schema = serializer.GetJsonSchema<DeviceSnapshot>().ToJsonString();
 
 		if (!schema.Contains("\"$schema\"") || !schema.Contains("\"type\":\"object\"") || !schema.Contains("\"deviceId\""))
 		{

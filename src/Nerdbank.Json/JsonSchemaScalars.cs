@@ -1,6 +1,10 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
+
 #pragma warning disable SA1600 // Internal schema helpers are intentionally undocumented in this file.
 
 using System.Drawing;
@@ -15,9 +19,9 @@ namespace Nerdbank.Json;
 /// </summary>
 internal static class JsonSchemaScalars
 {
-	internal static bool TryGetScalarSchema(Type type, JsonSchemaContext context, out JsonSchema schema)
+	internal static bool TryGetScalarSchema(Type type, JsonSchemaContext context, out JsonSchemaObject schema)
 	{
-		schema = new JsonSchema();
+		schema = new JsonSchemaObject();
 #if NET8_0_OR_GREATER
 		if (type == typeof(Half))
 		{
@@ -117,8 +121,8 @@ internal static class JsonSchemaScalars
 		else if (type == typeof(Point))
 		{
 			schema = context.CreateTupleSchema(
-				[new JsonSchema().Set("type", "integer"), new JsonSchema().Set("type", "integer")],
-				new JsonSchema().Set("type", "integer"))
+				[new JsonSchemaObject().Set("type", "integer"), new JsonSchemaObject().Set("type", "integer")],
+				new JsonSchemaObject().Set("type", "integer"))
 				.Set("minItems", 2L)
 				.Set("maxItems", 2L);
 		}
@@ -130,7 +134,7 @@ internal static class JsonSchemaScalars
 		return true;
 	}
 
-	private static void IntegerSchema(JsonSchema schema, long min, long max)
+	private static void IntegerSchema(JsonSchemaObject schema, long min, long max)
 	{
 		schema.Set("type", "integer").Set("minimum", min).Set("maximum", max);
 	}

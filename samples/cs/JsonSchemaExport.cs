@@ -1,3 +1,7 @@
+
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
 using Nerdbank.Json;
 using PolyType;
 using PolyType.Abstractions;
@@ -12,12 +16,12 @@ public partial record Product(string Name, decimal Price)
 JsonSerializer serializer = new();
 
 // Produces a JSON Schema (draft 2020-12) document describing the wire representation.
-string schema = serializer.GetJsonSchema<Product>();
+string schema = serializer.GetJsonSchema<Product>().ToJsonString();
 // </JsonSchemaExport>
 
 // <JsonSchemaDraft7>
 string draft7Schema = serializer.GetJsonSchema<Product>(
-	new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 });
+	new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 }).ToJsonString();
 // </JsonSchemaDraft7>
 
 // <JsonSchemaCustomConverter>
@@ -30,8 +34,8 @@ public sealed class TemperatureConverter : JsonConverter<Temperature>
 	public override Temperature? Read(ref JsonReader reader, SerializationContext context)
 		=> new(double.Parse(reader.ReadNumberToken()));
 
-	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape)
-		=> new JsonSchema().Set("type", "number").Set("description", "Temperature in degrees Celsius.");
+	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape)
+		=> new() { ["type"] = "number", ["description"] = "Temperature in degrees Celsius." };
 }
 
 [GenerateShape]

@@ -1,6 +1,10 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
+
 #pragma warning disable SA1402 // File may only contain a single type
 #pragma warning disable SA1600 // Internal converter members are intentionally undocumented.
 #pragma warning disable SA1649 // File name should match first type name
@@ -182,7 +186,7 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 		return base.WriteAsync(writer, value, context);
 	}
 
-	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
+	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 
 	private static bool TryWriteBoxedPrimitive(ref JsonWriter writer, object value)
 	{
@@ -369,7 +373,7 @@ internal sealed class ExpandoObjectConverter : JsonConverter<ExpandoObject>
 		writer.WriteEndObject();
 	}
 
-	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
+	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 }
 
 internal sealed class JsonDomConverter<T> : JsonConverter<T>
