@@ -165,6 +165,19 @@ public partial record JsonSerializer
 		init => this.configuration = this.configuration with { DerivedTypeUnions = value };
 	}
 
+	/// <summary>Gets a value indicating whether unions use single-property object envelopes instead of two-element arrays.</summary>
+	/// <value>The default is <see langword="false"/>.</value>
+	/// <remarks>
+	/// Integer aliases become invariant-culture property names. The reserved <c>$base</c> property identifies a base-contract fallback.
+	/// Aliases that collide as property names or use <c>$base</c> are rejected in object mode.
+	/// Reference preservation continues to use <c>$id</c>, <c>$ref</c>, and <c>$value</c>.
+	/// </remarks>
+	public bool UseDiscriminatorObjects
+	{
+		get => this.configuration.UseDiscriminatorObjects;
+		init => this.configuration = this.configuration with { UseDiscriminatorObjects = value };
+	}
+
 	/// <summary>
 	/// Gets the converter cache derived from this serializer's immutable configuration.
 	/// </summary>

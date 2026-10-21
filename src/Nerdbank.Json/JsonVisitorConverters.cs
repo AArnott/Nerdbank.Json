@@ -33,6 +33,8 @@ internal readonly struct JsonUnionCaseMetadata<TUnion>
 
 	internal JsonConverter Converter { get; }
 
+	internal string ObjectAlias => JsonUnionObjectEnvelope.GetAlias(this.usesIntegerAlias ? this.intAlias : null, this.stringAlias);
+
 	internal static JsonUnionCaseMetadata<TUnion> Create(string alias, JsonConverter converter) => new(alias, converter);
 
 	internal static JsonUnionCaseMetadata<TUnion> Create(int alias, JsonConverter converter) => new(alias, converter);
@@ -202,14 +204,23 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 	private readonly JsonUnionCaseMetadata<TUnion>[] serializers;
 	private readonly IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias;
 	private readonly IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias;
+	private readonly JsonUnionObjectEnvelope? objectEnvelope;
 
-	internal JsonUnionConverter(JsonConverter<TUnion>? baseConverter, Getter<TUnion, int> getUnionCaseIndex, JsonUnionCaseMetadata<TUnion>[] serializers, IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias, IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias)
+	internal JsonUnionConverter(JsonConverter<TUnion>? baseConverter, Getter<TUnion, int> getUnionCaseIndex, JsonUnionCaseMetadata<TUnion>[] serializers, IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias, IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias, bool useDiscriminatorObjects)
 	{
 		this.baseConverter = baseConverter;
 		this.getUnionCaseIndex = getUnionCaseIndex;
 		this.serializers = serializers;
 		this.deserializersByIntAlias = deserializersByIntAlias;
 		this.deserializersByStringAlias = deserializersByStringAlias;
+		if (useDiscriminatorObjects)
+		{
+			this.objectEnvelope = new(baseConverter);
+			foreach (JsonUnionCaseMetadata<TUnion> entry in serializers)
+			{
+				this.objectEnvelope.Add(entry.ObjectAlias, entry.Converter);
+			}
+		}
 	}
 
 	public override void Write(ref JsonWriter writer, in TUnion? value, SerializationContext context)
@@ -221,6 +232,26 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 
 		context.DepthStep();
+
+		if (this.objectEnvelope is not null)
+		{
+			writer.WriteStartObject();
+			JsonConverter objectConverter;
+			if (value is not null && this.TryGetSerializer(value, out JsonUnionCaseMetadata<TUnion> objectCase))
+			{
+				writer.WritePropertyName(objectCase.ObjectAlias);
+				objectConverter = objectCase.Converter;
+			}
+			else
+			{
+				writer.WritePropertyName(JsonUnionObjectEnvelope.BaseAlias);
+				objectConverter = this.baseConverter ?? throw new NotSupportedException($"The base union type '{typeof(TUnion).FullName}' cannot be serialized directly.");
+			}
+
+			objectConverter.WriteObject(ref writer, value, context);
+			writer.WriteEndObject();
+			return;
+		}
 
 		writer.WriteStartArray();
 		JsonConverter converter;
@@ -249,6 +280,14 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 
 		context.DepthStep();
 
+		if (this.objectEnvelope is not null)
+		{
+			JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader);
+			TUnion? objectValue = (TUnion?)objectConverter.ReadObject(ref reader, context);
+			JsonUnionObjectEnvelope.ReadEndObject(ref reader);
+			return objectValue;
+		}
+
 		reader.ReadStartArray();
 		JsonConverter converter;
 		if (reader.TryReadNull())
@@ -270,6 +309,11 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 
 	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
 	{
+		if (this.objectEnvelope is not null)
+		{
+			return this.objectEnvelope.ReadDiscriminator(ref reader).TryNavigate(ref reader, in segment, options);
+		}
+
 		reader.ReadStartArray();
 		JsonConverter? converter;
 		if (reader.TryReadNull())
@@ -295,6 +339,13 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 
 	public override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
+		if (this.objectEnvelope is not null)
+		{
+			JsonConverter objectConverter = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context).ConfigureAwait(false);
+			int objectInner = await objectConverter.TryNavigateAsync(reader, segment, options, context).ConfigureAwait(false);
+			return objectInner < 0 ? -1 : objectInner + 1;
+		}
+
 		await reader.ReadStartArrayAsync(context).ConfigureAwait(false);
 		JsonConverter? converter;
 		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))

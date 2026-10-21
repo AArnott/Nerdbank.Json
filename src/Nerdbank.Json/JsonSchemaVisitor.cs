@@ -137,7 +137,9 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 			cases.Add((alias, this.context.GetJsonSchema(unionCase.UnionCaseType)));
 		}
 
-		JsonSchemaObject baseSchema = (JsonSchemaObject)unionShape.BaseType.Accept(this)!;
+		JsonSchemaObject? baseSchema = RuntimeUnionBuilder.IsConstructible(unionShape.BaseType as IObjectTypeShape)
+			? (JsonSchemaObject)unionShape.BaseType.Accept(this)!
+			: null;
 		return this.context.CreateUnionEnvelope(cases, baseSchema);
 	}
 

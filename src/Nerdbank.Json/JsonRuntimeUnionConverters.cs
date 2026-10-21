@@ -14,19 +14,26 @@ using System.Text;
 
 namespace Nerdbank.Json;
 
-internal sealed class JsonRuntimeUnionCaseConverter<TBase>(JsonConverter inner) : JsonConverter<TBase>
+internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase>
 {
+	private readonly JsonConverter inner;
+
+	internal JsonRuntimeUnionCaseConverter(JsonConverter converter)
+	{
+		this.inner = converter is IJsonReferencePreservingWrapper wrapper ? wrapper.InnerConverter : converter;
+	}
+
 	public override void Write(ref JsonWriter writer, in TBase? value, SerializationContext context)
-		=> inner.WriteObject(ref writer, value, context);
+		=> this.inner.WriteObject(ref writer, value, context);
 
 	public override TBase? Read(ref JsonReader reader, SerializationContext context)
-		=> (TBase?)inner.ReadObject(ref reader, context);
+		=> (TBase?)this.inner.ReadObject(ref reader, context);
 
 	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
-		=> inner.TryNavigate(ref reader, in segment, options);
+		=> this.inner.TryNavigate(ref reader, in segment, options);
 
 	public override ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
-		=> inner.TryNavigateAsync(reader, segment, options, context);
+		=> this.inner.TryNavigateAsync(reader, segment, options, context);
 }
 
 internal readonly struct RuntimeUnionCaseEntry<TBase>
@@ -70,16 +77,19 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 	private readonly Dictionary<Type, int> byType;
 	private readonly Dictionary<int, int> byTag;
 	private readonly Dictionary<string, int> byName;
+	private readonly JsonUnionObjectEnvelope? objectEnvelope;
 
-	internal JsonRuntimeUnionConverter(JsonConverter<TBase>? baseConverter, RuntimeUnionCaseEntry<TBase>[] cases, StringComparer nameComparer)
+	internal JsonRuntimeUnionConverter(JsonConverter<TBase>? baseConverter, RuntimeUnionCaseEntry<TBase>[] cases, StringComparer nameComparer, bool useDiscriminatorObjects)
 	{
 		this.baseConverter = baseConverter;
 		this.cases = cases;
 		this.byType = new(cases.Length);
 		this.byTag = new(cases.Length);
 		this.byName = new(cases.Length, nameComparer);
+		this.objectEnvelope = useDiscriminatorObjects ? new(baseConverter) : null;
 		for (int i = 0; i < cases.Length; i++)
 		{
+			this.objectEnvelope?.Add(JsonUnionObjectEnvelope.GetAlias(cases[i].Tag, cases[i].Name), cases[i].Converter);
 			this.byType[cases[i].CaseType] = i;
 			if (cases[i].Tag is int tag)
 			{
@@ -101,6 +111,25 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		}
 
 		context.DepthStep();
+
+		if (this.objectEnvelope is not null)
+		{
+			writer.WriteStartObject();
+			if (value is not null && this.byType.TryGetValue(value.GetType(), out int objectIndex))
+			{
+				RuntimeUnionCaseEntry<TBase> entry = this.cases[objectIndex];
+				writer.WritePropertyName(JsonUnionObjectEnvelope.GetAlias(entry.Tag, entry.Name));
+				entry.Converter.Write(ref writer, value, context);
+			}
+			else
+			{
+				writer.WritePropertyName(JsonUnionObjectEnvelope.BaseAlias);
+				this.WriteBase(ref writer, value, context);
+			}
+
+			writer.WriteEndObject();
+			return;
+		}
 
 		writer.WriteStartArray();
 		if (value is not null && this.byType.TryGetValue(value.GetType(), out int index))
@@ -129,6 +158,14 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 
 		context.DepthStep();
 
+		if (this.objectEnvelope is not null)
+		{
+			JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader);
+			TBase? objectValue = (TBase?)objectConverter.ReadObject(ref reader, context);
+			JsonUnionObjectEnvelope.ReadEndObject(ref reader);
+			return objectValue;
+		}
+
 		reader.ReadStartArray();
 		JsonConverter<TBase>? converter;
 		if (reader.TryReadNull())
@@ -154,6 +191,11 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 
 	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
 	{
+		if (this.objectEnvelope is not null)
+		{
+			return this.objectEnvelope.ReadDiscriminator(ref reader).TryNavigate(ref reader, in segment, options);
+		}
+
 		reader.ReadStartArray();
 		JsonConverter<TBase>? converter;
 		if (reader.TryReadNull())
@@ -180,6 +222,13 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 
 	public override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
+		if (this.objectEnvelope is not null)
+		{
+			JsonConverter objectConverter = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context).ConfigureAwait(false);
+			int objectInner = await objectConverter.TryNavigateAsync(reader, segment, options, context).ConfigureAwait(false);
+			return objectInner < 0 ? -1 : objectInner + 1;
+		}
+
 		await reader.ReadStartArrayAsync(context).ConfigureAwait(false);
 		JsonConverter<TBase>? converter;
 		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
@@ -372,7 +421,7 @@ internal static class RuntimeUnionBuilder
 
 		return entry is DerivedTypeDuckTyping
 			? new JsonDuckTypingUnionConverter<TBase>([.. caseEntries], nameComparer, owner.AllowTrailingCommas, owner.ReadCommentHandling)
-			: new JsonRuntimeUnionConverter<TBase>(baseConverter, [.. caseEntries], nameComparer);
+			: new JsonRuntimeUnionConverter<TBase>(baseConverter, [.. caseEntries], nameComparer, owner.UseDiscriminatorObjects);
 	}
 
 	internal static IEnumerable<KeyValuePair<DerivedTypeIdentifier, ITypeShape>> GetCases(DerivedTypeUnion entry)

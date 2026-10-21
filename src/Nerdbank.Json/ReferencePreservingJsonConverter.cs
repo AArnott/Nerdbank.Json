@@ -37,8 +37,17 @@ internal interface IJsonReferencePreservingConverter<T>
 	ValueTask<T> PopulateReferenceAsync(JsonAsyncReader reader, T instance, SerializationContext context);
 }
 
-internal sealed class ReferencePreservingJsonConverter<T>(JsonConverter<T> inner) : JsonConverter<T>
+/// <summary>Exposes a reference wrapper's payload converter for union dispatch.</summary>
+internal interface IJsonReferencePreservingWrapper
 {
+	/// <summary>Gets the converter for the identity envelope's payload.</summary>
+	JsonConverter InnerConverter { get; }
+}
+
+internal sealed class ReferencePreservingJsonConverter<T>(JsonConverter<T> inner) : JsonConverter<T>, IJsonReferencePreservingWrapper
+{
+	JsonConverter IJsonReferencePreservingWrapper.InnerConverter => inner;
+
 	public override bool PreferAsyncSerialization => inner.PreferAsyncSerialization;
 
 	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)

@@ -50,5 +50,12 @@ Duck typing has important constraints:
   settings, so comments and trailing commas inside a duck-typed object are handled exactly as they
   are for the outer document.
 
-A conventional single-property object discriminator is intentionally not introduced, because the
-two-element envelope remains the compatible default.
+## Discriminator objects
+
+Set <xref:Nerdbank.Json.JsonSerializer.UseDiscriminatorObjects> to write and read single-property envelopes such as `{"circle":{"radius":2.5}}` instead of `["circle",{"radius":2.5}]`.
+The two-element envelope remains the default.
+Integer discriminators use invariant-culture property text: discriminator `7` becomes property `"7"`.
+The reserved property `$base` identifies a base-contract fallback.
+Aliases that collide after conversion to property names, or use `$base`, are rejected.
+JSON Schema generation and expression-based targeted navigation honor this setting.
+Reference preservation still uses the idiomatic `$id`, `$ref`, and `$value` JSON metadata objects.

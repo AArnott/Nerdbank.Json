@@ -28,6 +28,7 @@ internal record JsonSerializerConfiguration
 	private bool serializeEnumValuesByName;
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
 	private bool writeIndented;
+	private bool useDiscriminatorObjects;
 
 	internal ConverterCache ConverterCache => this.converterCache ??= new(this);
 
@@ -229,6 +230,17 @@ internal record JsonSerializerConfiguration
 		init
 		{
 			this.derivedTypeUnions = value ?? throw new ArgumentNullException(nameof(value));
+			this.converterCache = null;
+		}
+	}
+
+	/// <summary>Gets a value indicating whether unions use single-property object envelopes instead of two-element arrays.</summary>
+	internal bool UseDiscriminatorObjects
+	{
+		get => this.useDiscriminatorObjects;
+		init
+		{
+			this.useDiscriminatorObjects = value;
 			this.converterCache = null;
 		}
 	}

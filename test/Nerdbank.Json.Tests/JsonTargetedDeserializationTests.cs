@@ -166,9 +166,13 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	}
 
 	[Test]
-	public void Expression_ThroughGeneratedUnion()
+	[Arguments(false)]
+	[Arguments(true)]
+	public void Expression_ThroughGeneratedUnion(bool useObjects)
 	{
-		string? name = this.Serializer.DeserializeAt<Root, string>(Document, x => x.Pet.Name, Shape<Root, Root>());
+		JsonSerializer serializer = this.Serializer with { UseDiscriminatorObjects = useObjects };
+		string json = useObjects ? """{"pet":{"Cat":{"lives":9,"name":"Milo"}}}""" : Document;
+		string? name = serializer.DeserializeAt<Root, string>(json, x => x.Pet.Name, Shape<Root, Root>());
 		Assert.Equal("Milo", name);
 	}
 
@@ -189,14 +193,17 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	}
 
 	[Test]
-	public void Expression_ThroughRuntimeUnion()
+	[Arguments(false)]
+	[Arguments(true)]
+	public void Expression_ThroughRuntimeUnion(bool useObjects)
 	{
 		JsonSerializer serializer = new()
 		{
+			UseDiscriminatorObjects = useObjects,
 			DerivedTypeUnions = [new DerivedShapeMapping<Shape2> { { "circle", Shape<Circle2, Circle2>() }, { "square", Shape<Square2, Square2>() } }],
 		};
 
-		string json = """{"shape":["circle",{"kind":"c","radius":2.5}]}""";
+		string json = useObjects ? """{"shape":{"circle":{"kind":"c","radius":2.5}}}""" : """{"shape":["circle",{"kind":"c","radius":2.5}]}""";
 		string? kind = serializer.DeserializeAt<RuntimeHolder, string>(json, h => h.Shape.Kind, Shape<RuntimeHolder, RuntimeHolder>());
 		Assert.Equal("c", kind);
 	}

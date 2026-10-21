@@ -217,8 +217,21 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	internal JsonSchemaObject CreateUnionEnvelope(IReadOnlyList<(object? Alias, JsonSchemaObject CaseSchema)> cases, JsonSchemaObject? baseSchema)
 	{
 		List<JsonSchemaObject> options = new(cases.Count + (baseSchema is null ? 0 : 1));
+		HashSet<string> objectAliases = new(StringComparer.Ordinal);
 		foreach ((object? alias, JsonSchemaObject caseSchema) in cases)
 		{
+			if (this.owner.UseDiscriminatorObjects)
+			{
+				string propertyName = JsonUnionObjectEnvelope.GetAlias(alias as int?, alias as string);
+				if (propertyName == JsonUnionObjectEnvelope.BaseAlias || !objectAliases.Add(propertyName))
+				{
+					throw new NotSupportedException($"The union discriminator '{propertyName}' is reserved or ambiguous in object format.");
+				}
+
+				options.Add(CreateObjectCase(propertyName, caseSchema));
+				continue;
+			}
+
 			JsonSchemaObject discriminator = new();
 			if (alias is int tag)
 			{
@@ -249,10 +262,18 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 
 		if (baseSchema is not null)
 		{
-			options.Add(this.CreateTupleSchema([new JsonSchemaObject().Set("type", "null"), baseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
+			options.Add(this.owner.UseDiscriminatorObjects
+				? CreateObjectCase(JsonUnionObjectEnvelope.BaseAlias, baseSchema)
+				: this.CreateTupleSchema([new JsonSchemaObject().Set("type", "null"), baseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
 		}
 
 		return new JsonSchemaObject().SetSchemas("oneOf", options);
+
+		static JsonSchemaObject CreateObjectCase(string alias, JsonSchemaObject schema) => new JsonSchemaObject()
+			.Set("type", "object")
+			.SetMap("properties", [new(alias, schema)])
+			.SetStrings("required", [alias])
+			.Set("additionalProperties", false);
 	}
 
 	private static JsonSchemaObject CreateUndocumented(JsonConverter converter) => new JsonSchemaObject()
@@ -282,7 +303,11 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			return new JsonSchemaObject().SetSchemas("oneOf", [.. cases.Select(c => c.CaseSchema)]);
 		}
 
-		return this.CreateUnionEnvelope(cases, baseSchema: null);
+		ITypeShape baseShapeForFallback = shape is IUnionTypeShape fallbackUnion ? fallbackUnion.BaseType : shape;
+		JsonSchemaObject? baseSchema = RuntimeUnionBuilder.IsConstructible(baseShapeForFallback as IObjectTypeShape)
+			? (JsonSchemaObject)baseShapeForFallback.Accept(this.visitor)!
+			: null;
+		return this.CreateUnionEnvelope(cases, baseSchema);
 	}
 
 	private JsonSchemaObject ApplyReferencePreservation(Type type, JsonSchemaObject schema)

@@ -42,6 +42,8 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 	internal DerivedTypeUnionCollection DerivedTypeUnions => this.configuration.DerivedTypeUnions;
 
+	internal bool UseDiscriminatorObjects => this.configuration.UseDiscriminatorObjects;
+
 	private MultiProviderTypeCache CachedConverters
 	{
 		get
