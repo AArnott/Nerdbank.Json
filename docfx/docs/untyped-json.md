@@ -57,6 +57,12 @@ Call <xref:Nerdbank.Json.OptionalConverters.WithJsonValueConverter*> to register
 This preserves the native hierarchy and exact number tokens independently of the object and expando opt-ins.
 Each registration returns an immutable serializer copy and rejects duplicate converter registrations.
 
+## Name/value collections
+
+Call <xref:Nerdbank.Json.OptionalConverters.WithNameValueCollectionConverter*> to enable <xref:System.Collections.Specialized.NameValueCollection>.
+Each JSON property holds null, a single string, or an array of strings, and the configured string converter processes its values.
+Null collection keys are rejected because JSON property names must be strings.
+
 ## System.Text.Json interop
 
 Call <xref:Nerdbank.Json.OptionalConverters.WithSystemTextJsonConverters*> to register converters

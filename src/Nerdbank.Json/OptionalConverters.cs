@@ -81,4 +81,19 @@ public static class OptionalConverters
 			],
 		};
 	}
+
+	/// <summary>Adds a converter for <see cref="System.Collections.Specialized.NameValueCollection"/>.</summary>
+	/// <param name="serializer">The serializer to configure.</param>
+	/// <returns>A new serializer with the converter registered.</returns>
+	/// <remarks>Values are represented as null, a single string, or an array of strings. Null keys are not representable in a JSON object.</remarks>
+	public static JsonSerializer WithNameValueCollectionConverter(this JsonSerializer serializer)
+	{
+		Requires.NotNull(serializer);
+		if (serializer.ConverterFactories.Any(static factory => factory is NameValueCollectionConverterFactory))
+		{
+			throw new ArgumentException("The NameValueCollection converter has already been added.", nameof(serializer));
+		}
+
+		return serializer with { ConverterFactories = [.. serializer.ConverterFactories, new NameValueCollectionConverterFactory()] };
+	}
 }
