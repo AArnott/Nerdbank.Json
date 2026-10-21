@@ -185,6 +185,44 @@ public partial class RawJsonTests
 		Assert.Equal(Text(streamed), Encoding.UTF8.GetString(output.ToArray()));
 	}
 
+	[Test]
+	public async Task OwnedRawJsonSurvivesPipeBufferRecyclingAndCollection()
+	{
+		const string Expected = """{"n":1.2300e+02,"s":"\u0061"}""";
+		using RecyclingPool pool = new();
+		Pipe pipe = new(new PipeOptions(pool: pool, minimumSegmentSize: 1));
+		await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes(Expected));
+		await pipe.Writer.CompleteAsync();
+		RawJson raw = await new JsonSerializer().DeserializeAsync<RawJson>(pipe.Reader);
+		await pipe.Reader.CompleteAsync();
+		Assert.True(pool.ReturnedBuffers > 0);
+		Assert.True(raw.IsOwned);
+		GC.Collect();
+		GC.WaitForPendingFinalizers();
+		GC.Collect();
+		Assert.Equal(Expected, Text(raw));
+		Pipe output = new();
+		new JsonSerializer { AllowTrailingCommas = true, ReadCommentHandling = JsonCommentHandling.Skip }.Serialize(output.Writer, raw);
+		await output.Writer.CompleteAsync();
+		ReadResult result = await output.Reader.ReadAsync();
+		Assert.Equal(Expected, Encoding.UTF8.GetString(result.Buffer.ToArray()));
+		output.Reader.AdvanceTo(result.Buffer.End);
+		await output.Reader.CompleteAsync();
+	}
+
+	[Test]
+	public void RelaxedInputOptionsDoNotRelaxRawOutputValidation()
+	{
+		JsonSerializer serializer = new() { AllowTrailingCommas = true, ReadCommentHandling = JsonCommentHandling.Skip };
+		foreach (string json in new[] { "/*comment*/null", "[1,]", "true false" })
+		{
+			RawJson raw = (RawJson)Encoding.UTF8.GetBytes(json);
+			Assert.Throws<JsonSerializationException>(() => serializer.Serialize(raw));
+		}
+
+		Assert.Throws<JsonSerializationException>(() => serializer.Serialize(default(RawJson)));
+	}
+
 	private static string Text(RawJson raw) => Encoding.UTF8.GetString(raw.Json.ToArray());
 
 	[GenerateShape]
@@ -204,6 +242,36 @@ public partial class RawJsonTests
 			Segment next = new(memory) { RunningIndex = this.RunningIndex + this.Memory.Length };
 			this.Next = next;
 			return next;
+		}
+	}
+
+	private sealed class RecyclingPool : MemoryPool<byte>
+	{
+		public override int MaxBufferSize => int.MaxValue;
+
+		internal int ReturnedBuffers { get; private set; }
+
+		public override IMemoryOwner<byte> Rent(int minBufferSize = -1) => new Owner(this, Math.Max(1, minBufferSize));
+
+		protected override void Dispose(bool disposing)
+		{
+		}
+
+		private sealed class Owner(RecyclingPool pool, int size) : IMemoryOwner<byte>
+		{
+			private byte[]? buffer = new byte[size];
+
+			public Memory<byte> Memory => this.buffer ?? throw new ObjectDisposedException(nameof(Owner));
+
+			public void Dispose()
+			{
+				if (this.buffer is { } returned)
+				{
+					returned.AsSpan().Fill(0xCC);
+					this.buffer = null;
+					pool.ReturnedBuffers++;
+				}
+			}
 		}
 	}
 }
