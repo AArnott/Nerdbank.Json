@@ -415,8 +415,9 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 	private readonly bool deserializeIntoExistingInstance;
 	private readonly bool isRequired;
 	private readonly bool isNonNullableReferenceType;
+	private readonly TProperty? defaultValue;
 
-	internal JsonProperty(string name, string memberName, Getter<TDeclaring, TProperty>? getter, Setter<TDeclaring, TProperty>? setter, JsonConverter<TProperty> converter, bool deserializeIntoExistingInstance = false, bool isRequired = false, bool isNonNullableReferenceType = false)
+	internal JsonProperty(string name, string memberName, Getter<TDeclaring, TProperty>? getter, Setter<TDeclaring, TProperty>? setter, JsonConverter<TProperty> converter, bool deserializeIntoExistingInstance = false, bool isRequired = false, bool isNonNullableReferenceType = false, TProperty? defaultValue = default)
 		: base(name)
 	{
 		this.memberName = memberName;
@@ -426,6 +427,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		this.deserializeIntoExistingInstance = deserializeIntoExistingInstance;
 		this.isRequired = isRequired;
 		this.isNonNullableReferenceType = isNonNullableReferenceType;
+		this.defaultValue = defaultValue;
 	}
 
 	internal override bool CanSerialize => this.getter is not null;
@@ -556,7 +558,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 			return true;
 		}
 
-		if (!EqualityComparer<TProperty>.Default.Equals(value!, default!))
+		if (!EqualityComparer<TProperty>.Default.Equals(value!, this.defaultValue!))
 		{
 			return true;
 		}
@@ -564,11 +566,6 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		if (this.isRequired && (policy & SerializeDefaultValuesPolicy.Required) == SerializeDefaultValuesPolicy.Required)
 		{
 			return true;
-		}
-
-		if (value is null)
-		{
-			return (policy & SerializeDefaultValuesPolicy.ReferenceTypes) == SerializeDefaultValuesPolicy.ReferenceTypes;
 		}
 
 		if (typeof(TProperty).IsValueType)

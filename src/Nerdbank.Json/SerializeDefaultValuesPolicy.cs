@@ -6,6 +6,11 @@ namespace Nerdbank.Json;
 /// <summary>
 /// Specifies the policy for serializing default values.
 /// </summary>
+/// <remarks>
+/// A property's default is its matching constructor parameter's declared default, when available,
+/// otherwise its <see cref="System.ComponentModel.DefaultValueAttribute"/> value, otherwise the CLR default.
+/// Property initializers alone do not declare a serialization default.
+/// </remarks>
 [Flags]
 public enum SerializeDefaultValuesPolicy
 {
@@ -18,8 +23,8 @@ public enum SerializeDefaultValuesPolicy
 	/// Serialize default values when they are required by the contract.
 	/// </summary>
 	/// <remarks>
-	/// Properties are considered required when they have the <c>required</c> modifier on them
-	/// or they correspond to required constructor parameters.
+	/// Requiredness follows the type shape's constructor parameter metadata, including property
+	/// initializers and explicit <see cref="PropertyShapeAttribute"/> overrides.
 	/// </remarks>
 	Required = 0x1,
 

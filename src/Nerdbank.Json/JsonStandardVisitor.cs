@@ -4,6 +4,7 @@
 #pragma warning disable SA1600 // Elements should be documented
 
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Reflection;
 using PolyType.Utilities;
 
@@ -78,18 +79,6 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		List<JsonProperty<T>> properties = [];
 		JsonExtensionData<T>? extensionData = null;
 		Dictionary<string, string> serializedPropertyNamesByClrName = new(StringComparer.OrdinalIgnoreCase);
-		HashSet<string> requiredProperties = new(StringComparer.OrdinalIgnoreCase);
-		if (objectShape.Constructor is not null)
-		{
-			foreach (IParameterShape parameter in objectShape.Constructor.Parameters)
-			{
-				if (parameter.IsRequired)
-				{
-					requiredProperties.Add(parameter.Name);
-				}
-			}
-		}
-
 		foreach (IPropertyShape property in objectShape.Properties)
 		{
 			if (HasExtensionDataAttribute(property.AttributeProvider))
@@ -105,8 +94,17 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			}
 
 			serializedPropertyNamesByClrName[property.Name] = owner.GetSerializedPropertyName(property.Name, property.AttributeProvider);
-			bool isRequired = requiredProperties.Contains(property.Name) || HasRequiredMemberAttribute(property.MemberInfo);
-			if (property.Accept(this, isRequired) is JsonProperty<T> jsonProperty)
+			IParameterShape? matchingParameter = objectShape.Constructor?.Parameters.FirstOrDefault(p => p.Name == property.Name);
+			if (matchingParameter is null && objectShape.Constructor is { } constructor)
+			{
+				IParameterShape[] candidates = constructor.Parameters.Where(p => StringComparer.OrdinalIgnoreCase.Equals(p.Name, property.Name)).ToArray();
+				if (candidates.Length == 1)
+				{
+					matchingParameter = candidates[0];
+				}
+			}
+
+			if (property.Accept(this, matchingParameter) is JsonProperty<T> jsonProperty)
 			{
 				properties.Add(jsonProperty);
 			}
@@ -195,19 +193,32 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			return new JsonExtensionData<TDeclaringType, TPropertyType>(extensionGetter, extensionSetter);
 		}
 
-		bool isRequired = state is bool required && required;
+		IParameterShape? constructorParameter = state as IParameterShape;
+		bool isRequired = constructorParameter?.IsRequired
+			?? propertyShape.AttributeProvider?.GetCustomAttributes<PropertyShapeAttribute>(inherit: true).FirstOrDefault()?.IsRequired
+			?? HasRequiredMemberAttribute(propertyShape.MemberInfo);
 		Getter<TDeclaringType, TPropertyType>? getter = propertyShape.HasGetter ? propertyShape.GetGetter() : null;
 		Setter<TDeclaringType, TPropertyType>? setter = propertyShape.HasSetter ? propertyShape.GetSetter() : null;
 		JsonConverter<TPropertyType> converter = this.GetConverter(propertyShape.PropertyType, propertyShape.AttributeProvider);
 		bool deserializeIntoExistingInstance = getter is not null && setter is null && converter is IJsonDeserializeInto<TPropertyType>;
-		if (getter is null && setter is null && !deserializeIntoExistingInstance)
+		if (setter is null && !deserializeIntoExistingInstance && constructorParameter is null)
 		{
 			return null;
 		}
 
 		string propertyName = owner.GetSerializedPropertyName(propertyShape.Name, propertyShape.AttributeProvider);
 		bool isNonNullableReferenceType = !typeof(TPropertyType).IsValueType && (propertyShape.IsSetterNonNullable || (!propertyShape.HasSetter && propertyShape.IsGetterNonNullable));
-		return new JsonProperty<TDeclaringType, TPropertyType>(propertyName, propertyShape.Name, getter, setter, converter, deserializeIntoExistingInstance, isRequired, isNonNullableReferenceType);
+		TPropertyType? defaultValue = default;
+		if (constructorParameter?.HasDefaultValue is true)
+		{
+			defaultValue = (TPropertyType?)constructorParameter.DefaultValue;
+		}
+		else if (propertyShape.AttributeProvider?.GetCustomAttributes<DefaultValueAttribute>(inherit: true).FirstOrDefault() is { Value: TPropertyType attributeDefault })
+		{
+			defaultValue = attributeDefault;
+		}
+
+		return new JsonProperty<TDeclaringType, TPropertyType>(propertyName, propertyShape.Name, getter, setter, converter, deserializeIntoExistingInstance, isRequired, isNonNullableReferenceType, defaultValue);
 	}
 
 	public override object? VisitSurrogate<T, TSurrogate>(ISurrogateTypeShape<T, TSurrogate> surrogateShape, object? state = null)
