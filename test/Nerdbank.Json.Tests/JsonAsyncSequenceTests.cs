@@ -1,6 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text;
@@ -9,6 +10,72 @@ using PolyType.Abstractions;
 
 public partial class JsonAsyncSequenceTests : TestBase
 {
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task PathOptions_OwnsPipeUnlessLeaveOpen(bool leaveOpen)
+	{
+		Pipe pipe = new();
+		await WriteAsync(pipe.Writer, """{"inner":{"items":[1,2]},"tail":true}""");
+		await pipe.Writer.CompleteAsync();
+		JsonSerializer.StreamingEnumerationOptions<Envelope, int> options = new(x => x.Inner.Items) { LeaveOpen = leaveOpen };
+		Assert.Equal([1, 2], await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(pipe.Reader, Shape<Envelope, Envelope>(), options)));
+		if (leaveOpen)
+		{
+			ReadResult remaining = await pipe.Reader.ReadAsync();
+			Assert.True(remaining.IsCompleted);
+			Assert.True(remaining.Buffer.IsEmpty);
+			pipe.Reader.AdvanceTo(remaining.Buffer.End);
+			await pipe.Reader.CompleteAsync();
+		}
+		else
+		{
+			await Assert.ThrowsAsync<InvalidOperationException>(async () => await pipe.Reader.ReadAsync());
+		}
+	}
+
+	[Test]
+	[Arguments("""{"inner":{"items":null}}""")]
+	[Arguments("""{"inner":null}""")]
+	[Arguments("""{"inner":{}}""")]
+	public async Task PathOptions_MissingOrNull(string json)
+	{
+		JsonSerializer.StreamingEnumerationOptions<Envelope, int> options = new(x => x.Inner.Items);
+		using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+		await Assert.ThrowsAsync<JsonPathNotFoundException>(async () => await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, Shape<Envelope, Envelope>(), options)));
+		stream.Position = 0;
+		Assert.Empty(await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<Envelope, int, Envelope>(stream, options with { EmptySequenceForUndiscoverablePath = true })));
+		Assert.True(stream.CanRead);
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task PathOptions_EarlyDisposal(bool leaveOpen)
+	{
+		Pipe pipe = new();
+		await WriteAsync(pipe.Writer, """{"inner":{"items":[1,2,3]}}""");
+		await pipe.Writer.CompleteAsync();
+		JsonSerializer.StreamingEnumerationOptions<Envelope, int> options = new(x => x.Inner.Items) { LeaveOpen = leaveOpen };
+		await foreach (int value in this.Serializer.DeserializePathEnumerableAsync(pipe.Reader, Shape<Envelope, Envelope>(), options))
+		{
+			Assert.Equal(1, value);
+			break;
+		}
+
+		if (leaveOpen)
+		{
+			ReadResult remaining = await pipe.Reader.ReadAsync();
+			Assert.Equal(",2,3]}}", Encoding.UTF8.GetString(remaining.Buffer.ToArray()));
+			pipe.Reader.AdvanceTo(remaining.Buffer.End);
+			await pipe.Reader.CompleteAsync();
+		}
+		else
+		{
+			await Assert.ThrowsAsync<InvalidOperationException>(async () => await pipe.Reader.ReadAsync());
+		}
+	}
+
 	[Test]
 	public async Task Array_RoundTrips_Chunked()
 	{

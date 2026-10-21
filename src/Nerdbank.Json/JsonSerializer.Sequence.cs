@@ -9,6 +9,49 @@ namespace Nerdbank.Json;
 
 public partial record JsonSerializer
 {
+	/// <summary>Streams the array selected by a typed path, without buffering the enclosing document.</summary>
+	/// <typeparam name="TRoot">The root document type.</typeparam>
+	/// <typeparam name="TElement">The element type.</typeparam>
+	/// <param name="reader">The input pipe. Ownership is controlled by <paramref name="options"/>.</param>
+	/// <param name="shape">The root type shape.</param>
+	/// <param name="options">The path and enumeration options.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <returns>The selected array elements.</returns>
+	/// <remarks>Full enumeration drains the JSON envelope. Early disposal leaves the pipe at the last consumed token, not at a new JSON document.</remarks>
+	public IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement>(PipeReader reader, ITypeShape<TRoot> shape, StreamingEnumerationOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
+	{
+		Requires.NotNull(reader);
+		Requires.NotNull(shape);
+		Requires.NotNull(options);
+		Requires.NotNull(options.Path);
+		(JsonPath path, JsonConverter?[] converters, ITypeShape<TElement> elementShape) = JsonPathExpressionParser.ParseSequence(options.Path, shape, this.ConverterCache, this.DictionaryKeyNamingPolicy);
+		return this.DeserializeOwnedPathEnumerableAsync(reader, path, converters, elementShape, options.EmptySequenceForUndiscoverablePath, options.LeaveOpen, cancellationToken);
+	}
+
+	/// <inheritdoc cref="DeserializePathEnumerableAsync{TRoot, TElement}(PipeReader, ITypeShape{TRoot}, StreamingEnumerationOptions{TRoot, TElement}, CancellationToken)"/>
+	/// <param name="stream">The input stream, which remains open.</param>
+	/// <param name="shape">The root type shape.</param>
+	/// <param name="options">The path and enumeration options. The internally created pipe is always completed.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	public async IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement>(Stream stream, ITypeShape<TRoot> shape, StreamingEnumerationOptions<TRoot, TElement> options, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+	{
+		Requires.NotNull(stream);
+		Requires.NotNull(shape);
+		Requires.NotNull(options);
+		PipeReader reader = PipeReader.Create(stream, StreamPipeReaderOptions);
+		try
+		{
+			await foreach (TElement? element in this.DeserializePathEnumerableAsync(reader, shape, options with { LeaveOpen = true }, cancellationToken).ConfigureAwait(false))
+			{
+				yield return element;
+			}
+		}
+		finally
+		{
+			await reader.CompleteAsync().ConfigureAwait(false);
+		}
+	}
+
 	/// <summary>
 	/// Asynchronously streams the elements of a top-level JSON array, reading only enough to produce each element on demand.
 	/// </summary>
@@ -355,7 +398,7 @@ public partial record JsonSerializer
 	}
 
 #pragma warning disable SA1202 // Keep the private core enumerator adjacent to its public entry points.
-	private async IAsyncEnumerable<TElement?> DeserializePathEnumerableCoreAsync<TElement>(PipeReader reader, JsonPath path, JsonConverter?[]? converters, ITypeShape<TElement> elementShape, MissingPathBehavior missingBehavior, [EnumeratorCancellation] CancellationToken cancellationToken)
+	private async IAsyncEnumerable<TElement?> DeserializePathEnumerableCoreAsync<TElement>(PipeReader reader, JsonPath path, JsonConverter?[]? converters, ITypeShape<TElement> elementShape, MissingPathBehavior missingBehavior, [EnumeratorCancellation] CancellationToken cancellationToken, bool nullIsMissing = false)
 	{
 		this.ThrowIfSequenceStreamingUnsupported();
 
@@ -380,7 +423,14 @@ public partial record JsonSerializer
 			yield break;
 		}
 
-		if (!await asyncReader.TryReadNullAsync(context).ConfigureAwait(false))
+		if (await asyncReader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			if (nullIsMissing && missingBehavior == MissingPathBehavior.Throw)
+			{
+				throw new JsonPathNotFoundException(path.ToString());
+			}
+		}
+		else
 		{
 			await asyncReader.ReadStartArrayAsync(context).ConfigureAwait(false);
 			if (!await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
@@ -400,6 +450,24 @@ public partial record JsonSerializer
 
 		await asyncReader.CloseContainersAsync(openContainers, context).ConfigureAwait(false);
 		await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+	}
+
+	private async IAsyncEnumerable<TElement?> DeserializeOwnedPathEnumerableAsync<TElement>(PipeReader reader, JsonPath path, JsonConverter?[] converters, ITypeShape<TElement> shape, bool emptyForMissing, bool leaveOpen, [EnumeratorCancellation] CancellationToken cancellationToken)
+	{
+		try
+		{
+			await foreach (TElement? element in this.DeserializePathEnumerableCoreAsync(reader, path, converters, shape, emptyForMissing ? MissingPathBehavior.ReturnDefault : MissingPathBehavior.Throw, cancellationToken, nullIsMissing: true).ConfigureAwait(false))
+			{
+				yield return element;
+			}
+		}
+		finally
+		{
+			if (!leaveOpen)
+			{
+				await reader.CompleteAsync().ConfigureAwait(false);
+			}
+		}
 	}
 
 	private void ThrowIfSequenceStreamingUnsupported()
@@ -452,4 +520,17 @@ public partial record JsonSerializer
 		where T : IShapeable<T> => this.SerializeNewlineDelimitedAsync(stream, values, T.GetTypeShape(), cancellationToken);
 #endif
 #pragma warning restore SA1202
+
+	/// <summary>Options for streaming a selected JSON array.</summary>
+	/// <typeparam name="TRoot">The envelope type.</typeparam>
+	/// <typeparam name="TElement">The array element type.</typeparam>
+	/// <param name="Path">The expression selecting the array.</param>
+	public record StreamingEnumerationOptions<TRoot, TElement>(Expression<Func<TRoot, IEnumerable<TElement>>> Path)
+	{
+		/// <summary>Gets a value indicating whether the caller's pipe remains open after completion or early disposal.</summary>
+		public bool LeaveOpen { get; init; }
+
+		/// <summary>Gets a value indicating whether a missing or null array produces an empty sequence.</summary>
+		public bool EmptySequenceForUndiscoverablePath { get; init; }
+	}
 }
