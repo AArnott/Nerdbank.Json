@@ -66,7 +66,7 @@ See the [custom-converter samples](https://github.com/AArnott/Nerdbank.Json/blob
 To retain unknown members, declare a field or property of type `UnusedDataPacket`.
 For a private member, include it in the shape with PolyType's `PropertyShape` attribute.
 Retained payloads are re-emitted as raw JSON without introducing a property for the packet itself.
-See [retaining unknown members](https://aarnott.github.io/Nerdbank.Json/docs/unused-data.html).
+See [retaining unknown members](https://aarnott.github.io/Nerdbank.Json/docs/features.html#polytype-object-graphs).
 
 `SerializeDefaultValues` honors optional constructor defaults and `DefaultValueAttribute` when deciding whether to omit a property.
 The [feature guide](https://aarnott.github.io/Nerdbank.Json/docs/features.html) describes supported contracts and limitations.
