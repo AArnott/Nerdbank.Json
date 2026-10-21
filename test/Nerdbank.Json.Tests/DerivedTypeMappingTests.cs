@@ -7,6 +7,14 @@ using System.Text;
 
 public partial class DerivedTypeMappingTests
 {
+#if NET8_0
+	[Test]
+	public void AnalyzerGuidance_UsesStaticallyResolvedShapes()
+	{
+		Assert.Equal(2, AnalyzerGuidanceSamples.CreateMapping().Count);
+	}
+#endif
+
 	[Test]
 	public void Mapping_RejectsDuplicateAliasesAndTypes()
 	{

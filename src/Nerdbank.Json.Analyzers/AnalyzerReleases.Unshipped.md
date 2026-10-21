@@ -5,8 +5,8 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
-NBJson001 | Usage | Warning | Delegate-typed serializable members are not supported
-NBJson002 | Usage | Warning | Unsupported dictionary key types are not supported
+NBJson001 | Usage | Warning | Generated and directly reflected serialization contracts contain unsupported delegate values
+NBJson002 | Usage | Warning | Serialized dictionary keys must match the JSON property-name formatter
 NBJson003 | Usage | Warning | UseComparer attribute must target a dictionary or set with a compatible comparer type
 NBJson020 | Usage | Error | Converter attributes require a compatible non-abstract converter type
 NBJson021 | Usage | Error | Attributed converters require a public parameterless constructor

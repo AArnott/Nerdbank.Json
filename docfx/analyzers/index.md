@@ -5,8 +5,8 @@ Diagnostics include errors, warnings, and informational guidance.
 
 | Rule ID | Category | Severity | Summary |
 |---------|----------|----------|---------|
-| [NBJson001](NBJson001.md) | Usage | Warning | Delegate types are not supported; descriptor reserved but analysis is not implemented |
-| [NBJson002](NBJson002.md) | Usage | Warning | Unsupported dictionary key types; descriptor reserved but analysis is not implemented |
+| [NBJson001](NBJson001.md) | Usage | Warning | Serialized contracts contain unsupported delegate values |
+| [NBJson002](NBJson002.md) | Usage | Warning | Serialized dictionary keys cannot be represented as JSON property names |
 | [NBJson003](NBJson003.md) | Usage | Warning | `UseComparer` must target a dictionary or set with a compatible comparer or provider property |
 | [NBJson020](NBJson020.md) | Usage | Error | Attribute converter must be concrete and compatible with the decorated value type |
 | [NBJson021](NBJson021.md) | Usage | Error | Attribute converter requires a public parameterless constructor |
@@ -29,6 +29,25 @@ Diagnostics include errors, warnings, and informational guidance.
 [NBJson032](NBJson032.md) encourages schema customization without treating an undocumented format as an error.
 [NBJson110](NBJson110.md) identifies initialized defaults that shape metadata does not describe.
 Its code fix adds a matching <xref:System.ComponentModel.DefaultValueAttribute> for supported constant initializers without changing the initializer.
+
+## Shape contract analysis
+
+[NBJson001](NBJson001.md) and [NBJson002](NBJson002.md) analyze PolyType-generated roots, witnesses (including wildcard targets), and reachable object, collection, dictionary value, nullable, tuple, and declarative union graphs.
+Member diagnostics point to the member declaration and are deduplicated across roots.
+A directly unsupported witness target is diagnosed on its shape attribute.
+Direct <xref:Nerdbank.Json.JsonSerializer> calls using `ReflectionTypeShapeProvider.Default` or its directly obtained shapes are checked at the shape/provider argument instead.
+Creating a reflection shape for an unrelated purpose is not enough to trigger a warning.
+
+Explicit converters and recognizable closed marshalers change the wire contract and are respected.
+Ignored and nonpublic non-opted-in members are excluded.
+Read-only members require a known constructor binding or a recognizable mutable collection (a concrete collection with a public parameterless constructor).
+Constructor selection honors an explicit `[ConstructorShape]`, otherwise a public parameterless constructor or the sole public constructor.
+Ambiguous selection is not guessed; matching parameter converter overrides conservatively exclude the member even though serialization and deserialization can differ.
+Custom shape kinds, unrecognized or open marshalers, unsupported/inaccessible PolyType model nodes, and unknown generic arguments stop inference.
+
+The rules do not inspect arbitrary provider implementations, provider/shape values passed through locals or helpers, or runtime converter/union registrations.
+If runtime configuration deliberately supplies the missing representation, suppress the specific reviewed diagnostic rather than changing a valid contract.
+These conservative boundaries mean that absence of a warning is not proof of runtime support.
 
 ## Async converter safety (NBJson033–NBJson037)
 
