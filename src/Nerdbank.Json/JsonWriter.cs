@@ -92,6 +92,11 @@ public ref struct JsonWriter
 	/// </summary>
 	public void Flush() => this.writer.Commit();
 
+	/// <summary>Creates a writer for a new destination using this writer's formatting options.</summary>
+	/// <param name="writer">The new destination.</param>
+	/// <returns>An independent writer with no inherited container or pending-property state.</returns>
+	public readonly JsonWriter Clone(IBufferWriter<byte> writer) => new(writer) { WriteIndented = this.WriteIndented };
+
 	/// <summary>
 	/// Writes the JSON <see langword="null"/> literal.
 	/// </summary>
@@ -206,6 +211,34 @@ public ref struct JsonWriter
 	{
 		this.BeforeValueToken();
 		this.WriteQuotedString(value);
+	}
+
+	/// <summary>Writes decoded UTF-8 content as a JSON string, escaping quotes, backslashes, and control bytes.</summary>
+	/// <param name="value">Decoded UTF-8 bytes, not an already-escaped JSON token.</param>
+	/// <exception cref="FormatException">The input is not valid UTF-8.</exception>
+	public void WriteString(ReadOnlySpan<byte> value)
+	{
+		JsonReader.ValidateUtf8String(value);
+		this.BeforeValueToken();
+		this.WriteByte((byte)'"');
+		this.WriteEscapedUtf8(value);
+		this.WriteByte((byte)'"');
+	}
+
+	/// <summary>Writes decoded, possibly segmented UTF-8 content as a JSON string.</summary>
+	/// <param name="value">Decoded UTF-8 bytes. UTF-8 code points may span segments.</param>
+	/// <exception cref="FormatException">The input is not valid UTF-8.</exception>
+	public void WriteString(scoped in ReadOnlySequence<byte> value)
+	{
+		JsonReader.ValidateUtf8String(value);
+		this.BeforeValueToken();
+		this.WriteByte((byte)'"');
+		foreach (ReadOnlyMemory<byte> segment in value)
+		{
+			this.WriteEscapedUtf8(segment.Span);
+		}
+
+		this.WriteByte((byte)'"');
 	}
 
 	/// <summary>
@@ -705,6 +738,23 @@ public ref struct JsonWriter
 
 		this.WriteUtf8(value[copyStart..]);
 		this.WriteByte((byte)'"');
+	}
+
+	private void WriteEscapedUtf8(ReadOnlySpan<byte> value)
+	{
+		int start = 0;
+		for (int i = 0; i < value.Length; i++)
+		{
+			byte ch = value[i];
+			if (ch < 0x20 || ch is (byte)'"' or (byte)'\\')
+			{
+				this.WriteBytes(value[start..i]);
+				this.WriteEscapedChar((char)ch);
+				start = i + 1;
+			}
+		}
+
+		this.WriteBytes(value[start..]);
 	}
 
 	private static bool NeedsEscaping(char ch) => ch < 0x20 || ch is '"' or '\\';

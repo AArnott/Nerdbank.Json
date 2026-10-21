@@ -39,6 +39,24 @@ public ref struct JsonReader
 		this.navigationDepth = 0;
 	}
 
+	/// <summary>Initializes a new instance of the <see cref="JsonReader"/> struct over borrowed memory.</summary>
+	/// <param name="jsonUtf8">The borrowed UTF-8 document.</param>
+	/// <param name="allowTrailingCommas">Whether trailing commas are accepted.</param>
+	/// <param name="commentHandling">The policy for JSON comments.</param>
+	public JsonReader(ReadOnlyMemory<byte> jsonUtf8, bool allowTrailingCommas = false, JsonCommentHandling commentHandling = JsonCommentHandling.Disallow)
+		: this(new ReadOnlySequence<byte>(jsonUtf8), allowTrailingCommas, commentHandling)
+	{
+	}
+
+	/// <summary>Initializes a new instance of the <see cref="JsonReader"/> struct over a borrowed array.</summary>
+	/// <param name="jsonUtf8">The borrowed UTF-8 document.</param>
+	/// <param name="allowTrailingCommas">Whether trailing commas are accepted.</param>
+	/// <param name="commentHandling">The policy for JSON comments.</param>
+	public JsonReader(byte[] jsonUtf8, bool allowTrailingCommas = false, JsonCommentHandling commentHandling = JsonCommentHandling.Disallow)
+		: this((ReadOnlyMemory<byte>)Requires.NotNull(jsonUtf8), allowTrailingCommas, commentHandling)
+	{
+	}
+
 	/// <summary>Initializes a new instance of the <see cref="JsonReader"/> struct over a possibly segmented UTF-8 document.</summary>
 	/// <param name="jsonUtf8">The UTF-8 document.</param>
 	/// <param name="allowTrailingCommas">Whether trailing commas are accepted.</param>
@@ -81,6 +99,26 @@ public ref struct JsonReader
 	/// <summary>Gets a value indicating whether all input bytes have been consumed.</summary>
 	public readonly bool End => this.position == this.utf8Json.Length;
 
+	/// <summary>Gets the first byte of the next significant token, skipping whitespace and permitted comments.</summary>
+	/// <exception cref="FormatException">There is no next token.</exception>
+	public byte NextCode => (byte)this.PeekValueToken();
+
+	/// <summary>Gets the kind indicated by the next value's first significant byte.</summary>
+	/// <remarks>Inspection does not validate the whole value. Container terminators and separators are not values.</remarks>
+	public JsonValueKind NextJsonType => this.NextCode switch
+	{
+		(byte)'n' => JsonValueKind.Null,
+		(byte)'t' or (byte)'f' => JsonValueKind.Boolean,
+		(byte)'"' => JsonValueKind.String,
+		(byte)'[' => JsonValueKind.Array,
+		(byte)'{' => JsonValueKind.Object,
+		(byte)'-' or >= (byte)'0' and <= (byte)'9' => JsonValueKind.Number,
+		_ => throw new FormatException("Expected a JSON value."),
+	};
+
+	/// <summary>Gets a value indicating whether the next significant byte starts a null literal.</summary>
+	public bool IsNull => this.NextCode == (byte)'n';
+
 	/// <summary>Gets the number of bytes consumed from the input buffer.</summary>
 	internal readonly long BytesConsumed => this.position;
 
@@ -93,6 +131,21 @@ public ref struct JsonReader
 	/// <returns>A copy of this reader positioned at the same location.</returns>
 	/// <remarks>Advancing the returned reader does not affect this instance.</remarks>
 	public readonly JsonReader CreatePeekReader() => this;
+
+	/// <summary>Creates a reader over different input using this reader's syntax options.</summary>
+	/// <param name="jsonUtf8">The new borrowed input.</param>
+	/// <returns>A reader at the beginning of the new input, with no inherited navigation state.</returns>
+	public readonly JsonReader Clone(scoped in ReadOnlySequence<byte> jsonUtf8) => new(jsonUtf8, this.allowTrailingCommas, this.commentHandling);
+
+	/// <summary>Reads a required JSON null literal.</summary>
+	/// <exception cref="FormatException">The next value is not null.</exception>
+	public void ReadNull()
+	{
+		if (!this.TryReadNull())
+		{
+			throw new FormatException("Expected a JSON null literal.");
+		}
+	}
 
 	/// <summary>
 	/// Attempts to read a JSON <see langword="null"/> literal.
@@ -149,6 +202,64 @@ public ref struct JsonReader
 	/// </summary>
 	/// <returns>The decoded string value.</returns>
 	public string ReadRequiredString() => this.ReadRequiredString(stringInterning: null);
+
+	/// <summary>Attempts to read decoded UTF-8 string bytes without allocating.</summary>
+	/// <param name="span">Receives a borrowed view of the string's content, without quotes.</param>
+	/// <returns>Whether the next string is unescaped and contiguous. Null, escaped, or segmented strings return false without advancing.</returns>
+	/// <remarks>A successful span borrows the reader's input lifetime. Invalid JSON throws rather than returning false.</remarks>
+	public bool TryReadStringSpan(out ReadOnlySpan<byte> span)
+	{
+		span = default;
+		JsonReader peek = this;
+		if (peek.TryReadNull())
+		{
+			return false;
+		}
+
+		bool escaped = peek.ReadStringTokenUtf8(default, out long start, out long length);
+		if (!escaped && this.utf8Json.TryGetSpan(start, length, out span))
+		{
+			this.position = peek.position;
+			return true;
+		}
+
+		return false;
+	}
+
+	/// <summary>Reads decoded UTF-8 string bytes, without surrounding quotes.</summary>
+	/// <returns>A borrowed span for contiguous unescaped input, otherwise a GC-owned token copy.</returns>
+	/// <exception cref="FormatException">The next token is not a non-null JSON string.</exception>
+	public ReadOnlySpan<byte> ReadStringSpan()
+	{
+		if (this.TryReadStringSpan(out ReadOnlySpan<byte> span))
+		{
+			return span;
+		}
+
+		ReadOnlySequence<byte> value = this.ReadStringSequence() ?? throw new FormatException("Expected a non-null JSON string.");
+		return value.IsSingleSegment ? value.First.Span : value.ToArray();
+	}
+
+	/// <summary>Reads a nullable JSON string as decoded UTF-8 bytes, without quotes or JSON escapes.</summary>
+	/// <returns>Null for a null literal, a borrowed slice for unescaped sequence input, or GC-owned decoded storage.</returns>
+	/// <remarks>Escaped input is decoded, never returned as escaped text. Borrowed results must not outlive the input buffers.</remarks>
+	public ReadOnlySequence<byte>? ReadStringSequence()
+	{
+		if (this.TryReadNull())
+		{
+			return null;
+		}
+
+		JsonReader peek = this;
+		bool escaped = peek.ReadStringTokenUtf8(default, out long start, out long length);
+		if (escaped)
+		{
+			return new ReadOnlySequence<byte>(Encoding.UTF8.GetBytes(this.ReadRequiredString()));
+		}
+
+		this.position = peek.position;
+		return this.CaptureRaw(start, length).Json;
+	}
 
 	/// <summary>
 	/// Reads a JSON string that must contain exactly one character.
@@ -508,6 +619,21 @@ public ref struct JsonReader
 		return decimal.Parse(Encoding.UTF8.GetString(utf8Token), NumberStyles.Float, CultureInfo.InvariantCulture);
 	}
 
+	/// <summary>Validates decoded UTF-8 string content before writing it.</summary>
+	/// <param name="bytes">The decoded string bytes, which may include control characters.</param>
+	internal static void ValidateUtf8String(ReadOnlySpan<byte> bytes) => ValidateStringBytes(bytes, allowControlCharacters: true);
+
+	/// <summary>Validates decoded, possibly segmented UTF-8 string content before writing it.</summary>
+	/// <param name="bytes">The decoded string bytes, which may include control characters.</param>
+	internal static void ValidateUtf8String(scoped in ReadOnlySequence<byte> bytes)
+	{
+		JsonReader validator = new(bytes);
+		while (!validator.End)
+		{
+			validator.ValidateStringByte(validator.utf8Json[validator.position++], allowControlCharacters: true);
+		}
+	}
+
 	internal string? ReadString(StringInterning? stringInterning)
 	{
 		if (this.TryReadNull())
@@ -584,12 +710,12 @@ public ref struct JsonReader
 			_ => throw new FormatException("Invalid hex digit in JSON unicode escape sequence."),
 		};
 
-	private static void ValidateStringBytes(ReadOnlySpan<byte> bytes)
+	private static void ValidateStringBytes(ReadOnlySpan<byte> bytes, bool allowControlCharacters = false)
 	{
 		JsonReader validator = new(bytes);
 		while (!validator.End)
 		{
-			validator.ValidateStringByte(validator.utf8Json[validator.position++]);
+			validator.ValidateStringByte(validator.utf8Json[validator.position++], allowControlCharacters);
 		}
 	}
 
@@ -978,10 +1104,15 @@ public ref struct JsonReader
 	}
 
 	private void SkipStringUtf8(CancellationToken cancellationToken)
+		=> this.ReadStringTokenUtf8(cancellationToken, out _, out _);
+
+	private bool ReadStringTokenUtf8(CancellationToken cancellationToken, out long start, out long length)
 	{
 		this.SkipWhiteSpaceUtf8(cancellationToken);
 		this.RequireCurrent((byte)'"');
 		this.position++;
+		start = this.position;
+		bool escaped = false;
 		while (this.position < this.utf8Json.Length)
 		{
 			if ((this.position & 1023) <= 1)
@@ -992,11 +1123,13 @@ public ref struct JsonReader
 			byte ch = this.utf8Json[this.position++];
 			if (ch == (byte)'"')
 			{
-				return;
+				length = this.position - 1 - start;
+				return escaped;
 			}
 
 			if (ch == (byte)'\\')
 			{
+				escaped = true;
 				this.ReadEscapeSequenceUtf8();
 			}
 			else
@@ -1008,9 +1141,9 @@ public ref struct JsonReader
 		throw new FormatException("Unterminated JSON string.");
 	}
 
-	private void ValidateStringByte(byte first)
+	private void ValidateStringByte(byte first, bool allowControlCharacters = false)
 	{
-		if (first < 0x20)
+		if (first < 0x20 && !allowControlCharacters)
 		{
 			throw new FormatException("Unescaped control character in JSON string.");
 		}

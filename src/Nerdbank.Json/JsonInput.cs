@@ -50,6 +50,24 @@ internal readonly ref struct JsonInput
 		return token.IsSingleSegment ? token.First.Span : token.ToArray();
 	}
 
+	/// <summary>Gets a borrowed span only when the requested range is contiguous.</summary>
+	/// <param name="start">The range offset.</param>
+	/// <param name="length">The range length.</param>
+	/// <param name="value">Receives the borrowed span.</param>
+	/// <returns>Whether no copy is required.</returns>
+	internal bool TryGetSpan(long start, long length, out ReadOnlySpan<byte> value)
+	{
+		if (this.segments is null)
+		{
+			value = this.span.Slice(checked((int)start), checked((int)length));
+			return true;
+		}
+
+		ReadOnlySequence<byte> slice = this.segments.Slice(start, length);
+		value = slice.IsSingleSegment ? slice.First.Span : default;
+		return slice.IsSingleSegment;
+	}
+
 	/// <summary>Finds the next quote or backslash without materializing input.</summary>
 	/// <param name="start">The offset at which to start searching.</param>
 	/// <returns>The absolute delimiter offset, or -1.</returns>

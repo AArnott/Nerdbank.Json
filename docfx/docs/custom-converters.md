@@ -27,6 +27,8 @@ Use <xref:Nerdbank.Json.RawJson> for a model member whose JSON should be decoded
 The built-in converter is automatic, preserves exact numeric and string token spelling, and always returns owned storage.
 No DOM registration is necessary.
 
+[!code-csharp[](../../samples/cs/CustomConverters.cs#DeferredRawJson)]
+
 <xref:Nerdbank.Json.JsonReader.ReadRaw(Nerdbank.Json.SerializationContext)?displayProperty=nameWithType> validates and skips one value using the active depth and cancellation limits.
 Sequence-backed readers return a zero-copy borrowed slice; span-backed readers copy only the captured value into owned storage.
 Borrowed slices are valid only while their input buffers remain alive and unchanged.
@@ -41,6 +43,27 @@ For explicitly unvalidated output, use <xref:Nerdbank.Json.JsonWriter.WriteRaw*>
 Sequence-backed <xref:Nerdbank.Json.JsonReader> instances parse the original segments rather than flattening the document.
 Only individual scalar tokens that cross segment boundaries may need temporary GC-owned storage.
 Peeking copies reader position, not input ownership; advancing a peek reader does not advance the original.
+
+## UTF-8 strings and token inspection
+
+<xref:Nerdbank.Json.JsonReader.NextJsonType?displayProperty=nameWithType> uses the same <xref:Nerdbank.Json.JsonValueKind> vocabulary as the DOM.
+<xref:Nerdbank.Json.JsonReader.NextCode?displayProperty=nameWithType> exposes the next significant UTF-8 byte, while <xref:Nerdbank.Json.JsonReader.IsNull?displayProperty=nameWithType> and <xref:Nerdbank.Json.JsonReader.ReadNull?displayProperty=nameWithType> support explicit null handling.
+Inspection skips permitted insignificant input but does not validate an entire value.
+
+<xref:Nerdbank.Json.JsonReader.TryReadStringSpan*> returns a borrowed, decoded UTF-8 view only for an unescaped, contiguous string.
+It returns false without advancing for null, escaped, or segmented strings; malformed strings still throw.
+Use <xref:Nerdbank.Json.JsonReader.ReadStringSequence?displayProperty=nameWithType> to handle all nullable strings, or <xref:Nerdbank.Json.JsonReader.ReadStringSpan?displayProperty=nameWithType> when null is not allowed.
+Both return decoded content, never JSON escape text, and allocate token-scoped storage only when necessary.
+Unescaped sequence slices retain the input's borrowed lifetime.
+
+<xref:Nerdbank.Json.JsonWriter.WriteString*> accepts decoded UTF-8 bytes, validates them, and applies JSON escaping directly without an intermediate UTF-16 string.
+It accepts sequences even when a multi-byte character crosses a segment boundary.
+Do not pass an already-quoted or already-escaped JSON token to this method; use raw-value APIs for that contract.
+
+Reader and writer `Clone` methods preserve syntax or formatting options but start at the root of their new input or destination.
+They do not inherit container state.
+There is intentionally no public writer `GetSpan`/`Advance` pair: arbitrary fragments cannot safely maintain JSON container and pending-property state.
+Use <xref:Nerdbank.Json.JsonWriter.WriteRaw*> for trusted, complete JSON values.
 
 ## Security considerations
 

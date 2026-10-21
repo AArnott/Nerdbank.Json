@@ -8,6 +8,65 @@ using Microsoft;
 public class JsonWriterTests
 {
 	[Test]
+	public void Utf8StringEscapesDecodedContentAndCloneStartsAtRoot()
+	{
+		TestBufferWriter originalBuffer = new();
+		JsonWriter original = new(originalBuffer) { WriteIndented = true };
+		original.WriteStartArray();
+		original.Write(1);
+		TestBufferWriter cloneBuffer = new();
+		JsonWriter clone = original.Clone(cloneBuffer);
+		Assert.True(clone.WriteIndented);
+		clone.WriteString("é😀\n\\\""u8);
+		clone.Flush();
+		Assert.Equal("\"é😀\\n\\\\\\\"\"", Encoding.UTF8.GetString(cloneBuffer.WrittenArray));
+		original.WriteEndArray();
+		original.Flush();
+		Assert.Equal("[\n  1\n]", Encoding.UTF8.GetString(originalBuffer.WrittenArray));
+	}
+
+	[Test]
+	public void Utf8StringSequenceAllowsSplitCodePoints()
+	{
+		byte[] bytes = Encoding.UTF8.GetBytes("é😀\n\\\"");
+		for (int split = 0; split <= bytes.Length; split++)
+		{
+			Utf8Segment first = new(bytes.AsMemory(0, split));
+			Utf8Segment last = first.Append(bytes.AsMemory(split));
+			ReadOnlySequence<byte> sequence = new(first, 0, last, last.Memory.Length);
+			TestBufferWriter buffer = new();
+			JsonWriter writer = new(buffer);
+			writer.WriteStartObject();
+			writer.WritePropertyName("s");
+			writer.WriteString(sequence);
+			writer.WriteEndObject();
+			writer.Flush();
+			Assert.Equal("{\"s\":\"é😀\\n\\\\\\\"\"}", Encoding.UTF8.GetString(buffer.WrittenArray));
+		}
+	}
+
+	[Test]
+	public void InvalidUtf8DoesNotChangeWriterState()
+	{
+		TestBufferWriter buffer = new();
+		JsonWriter writer = new(buffer);
+		writer.WriteStartArray();
+		try
+		{
+			writer.WriteString(new byte[] { 0xED, 0xA0, 0x80 });
+			Assert.Fail("Expected invalid UTF-8 to be rejected.");
+		}
+		catch (FormatException)
+		{
+		}
+
+		writer.WriteString("ok"u8);
+		writer.WriteEndArray();
+		writer.Flush();
+		Assert.Equal("[\"ok\"]", Encoding.UTF8.GetString(buffer.WrittenArray));
+	}
+
+	[Test]
 	public void Write_ScalarOverloads()
 	{
 		TestBufferWriter buffer = new();
@@ -149,6 +208,18 @@ public class JsonWriterTests
 		internal Segment Append(ReadOnlyMemory<byte> memory)
 		{
 			Segment next = new(memory) { RunningIndex = this.RunningIndex + this.Memory.Length };
+			this.Next = next;
+			return next;
+		}
+	}
+
+	private sealed class Utf8Segment : ReadOnlySequenceSegment<byte>
+	{
+		internal Utf8Segment(ReadOnlyMemory<byte> memory) => this.Memory = memory;
+
+		internal Utf8Segment Append(ReadOnlyMemory<byte> memory)
+		{
+			Utf8Segment next = new(memory) { RunningIndex = this.RunningIndex + this.Memory.Length };
 			this.Next = next;
 			return next;
 		}

@@ -222,6 +222,103 @@ public partial class JsonReaderTests
 		reader.ReadEndArray();
 	}
 
+	[Test]
+	public void MemoryArrayAndCloneKeepBorrowedStorageAndSyntaxOptions()
+	{
+		byte[] bytes = "[/*comment*/1,]"u8.ToArray();
+		JsonReader reader = new(bytes, allowTrailingCommas: true, JsonCommentHandling.Skip);
+		JsonReader memoryReader = new((ReadOnlyMemory<byte>)bytes, allowTrailingCommas: true, JsonCommentHandling.Skip);
+		Assert.Equal(reader.Sequence.Start, memoryReader.Sequence.Start);
+		reader.ReadStartArray();
+		ReadOnlySequence<byte> other = new("/*c*/[2,]"u8.ToArray());
+		JsonReader clone = reader.Clone(other);
+		Assert.Equal(0, clone.Consumed);
+		clone.ReadStartArray();
+		Assert.Equal(2, clone.ReadInt32());
+		clone.ReadEndArray();
+		Assert.True(clone.End);
+		Assert.Equal(1, reader.ReadInt32());
+		reader.ReadEndArray();
+	}
+
+	[Test]
+	[Arguments("null", JsonValueKind.Null)]
+	[Arguments("true", JsonValueKind.Boolean)]
+	[Arguments("-1", JsonValueKind.Number)]
+	[Arguments("\"text\"", JsonValueKind.String)]
+	[Arguments("[]", JsonValueKind.Array)]
+	[Arguments("{}", JsonValueKind.Object)]
+	public void TokenInspection(string json, JsonValueKind kind)
+	{
+		JsonReader reader = new(Encoding.UTF8.GetBytes(" \n" + json));
+		Assert.Equal((byte)json[0], reader.NextCode);
+		Assert.Equal(kind, reader.NextJsonType);
+		Assert.Equal(kind == JsonValueKind.Null, reader.IsNull);
+		Assert.Equal(2, reader.Consumed);
+		if (reader.IsNull)
+		{
+			reader.ReadNull();
+		}
+		else
+		{
+			reader.Skip(new());
+		}
+
+		Assert.True(reader.End);
+	}
+
+	[Test]
+	[Arguments("\"plain é😀\"", "plain é😀", false)]
+	[Arguments("\"a\\n\\uD83D\\uDE00\\\\\\\"\"", "a\n😀\\\"", true)]
+	[Arguments("\"\"", "", false)]
+	public void Utf8Strings_AllBoundaries(string json, string expected, bool escaped)
+	{
+		byte[] bytes = Encoding.UTF8.GetBytes(json);
+		for (int split = 0; split <= bytes.Length; split++)
+		{
+			Segment first = new(bytes.AsMemory(0, split));
+			Segment last = first.Append(bytes.AsMemory(split));
+			ReadOnlySequence<byte> sequence = new(first, 0, last, last.Memory.Length);
+			JsonReader reader = new(sequence);
+			bool contiguous = reader.TryReadStringSpan(out ReadOnlySpan<byte> span);
+			Assert.False(escaped && contiguous);
+			if (contiguous)
+			{
+				Assert.Equal(expected, Encoding.UTF8.GetString(span.ToArray()));
+			}
+			else
+			{
+				Assert.Equal(0, reader.Consumed);
+				ReadOnlySequence<byte> decoded = reader.ReadStringSequence()!.Value;
+				Assert.Equal(expected, Encoding.UTF8.GetString(decoded.ToArray()));
+			}
+
+			Assert.True(reader.End);
+			JsonReader spanReader = new(sequence);
+			Assert.Equal(expected, Encoding.UTF8.GetString(spanReader.ReadStringSpan().ToArray()));
+			Assert.True(spanReader.End);
+		}
+	}
+
+	[Test]
+	public void Utf8Strings_NullAndBorrowedLifetime()
+	{
+		JsonReader nullReader = new("null"u8);
+		Assert.False(nullReader.TryReadStringSpan(out _));
+		Assert.Equal(0, nullReader.Consumed);
+		Assert.Null(nullReader.ReadStringSequence());
+		Assert.True(nullReader.End);
+		byte[] bytes = "\"text\""u8.ToArray();
+		JsonReader reader = new(bytes);
+		ReadOnlySequence<byte> decoded = reader.ReadStringSequence()!.Value;
+		bytes[1] = (byte)'n';
+		Assert.Equal("next", Encoding.UTF8.GetString(decoded.ToArray()));
+		JsonReader spanReader = new(bytes.AsSpan());
+		ReadOnlySequence<byte> owned = spanReader.ReadStringSequence()!.Value;
+		bytes[1] = (byte)'t';
+		Assert.Equal("next", Encoding.UTF8.GetString(owned.ToArray()));
+	}
+
 	private static object ReadNumber(string type, string token)
 	{
 		JsonReader reader = new(Encoding.UTF8.GetBytes(token));

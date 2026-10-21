@@ -7,6 +7,26 @@ using PolyType;
 
 public partial class CustomConvertersSamples
 {
+	// <DeferredRawJson>
+	public static string RoundTripRawEnvelope(string json)
+	{
+		JsonSerializer serializer = new();
+		RawEnvelope envelope = serializer.Deserialize<RawEnvelope>(json)!;
+		RawJson payload = envelope.Payload;
+		// Deserialization owns these bytes, so they can be retained after the source is released.
+		return serializer.Serialize(envelope);
+	}
+
+	[GenerateShape]
+	public partial class RawEnvelope
+	{
+		public string? Method { get; set; }
+
+		public RawJson Payload { get; set; }
+	}
+
+	// </DeferredRawJson>
+
 	// <CustomConverterRegisteredAtRuntime>
 	private void CustomConverterRegisteredAtRuntime()
 	{
