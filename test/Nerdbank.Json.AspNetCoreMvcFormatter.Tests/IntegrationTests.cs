@@ -47,13 +47,19 @@ public class IntegrationTests
 	}
 
 	[Test]
-	public async Task MalformedJson_ReturnsBadRequest()
+	[Arguments("""{"name":"Ada","age":}""", false)]
+	[Arguments("""{"name":"Ada","age":}""", true)]
+	[Arguments("""{"name":"Ada","age":36} {}""", false)]
+	[Arguments("""{"name":"Ada","age":36} {}""", true)]
+	[Arguments("""{"name":"Ada","age":36} garbage""", false)]
+	[Arguments("""{"name":"Ada","age":36} garbage""", true)]
+	public async Task MalformedJson_ReturnsBadRequest(string json, bool utf16)
 	{
 		// Keep the built-in formatters so ProblemDetails (which has no generated shape) can still be written.
 		using IHost host = await CreateHostAsync(replaceSystemTextJson: false);
 		using HttpClient client = host.GetTestClient();
 
-		using StringContent content = new("""{"name":"Ada","age":}""", Encoding.UTF8, "application/json");
+		using StringContent content = new(json, utf16 ? Encoding.Unicode : Encoding.UTF8, "application/json");
 		using HttpResponseMessage response = await client.PostAsync("/people/echo", content);
 
 		Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);

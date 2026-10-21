@@ -17,9 +17,12 @@ namespace Nerdbank.Json.AspNetCoreMvcFormatter;
 /// The formatter reads incrementally from the request's <see cref="PipeReader"/> so large bodies are not buffered in
 /// full, honors <see cref="HttpContext.RequestAborted"/>, and never uses reflection or roots <c>System.Text.Json</c>,
 /// keeping it trimming- and NativeAOT-safe.
+/// Each nonempty body must contain exactly one JSON document, allowing trailing whitespace and configured comments.
 /// </remarks>
 public class JsonInputFormatter : TextInputFormatter
 {
+	private static readonly StreamPipeReaderOptions LeaveOpenPipeReaderOptions = new(leaveOpen: true);
+
 	private readonly JsonSerializer serializer;
 	private readonly ITypeShapeProvider shapeProvider;
 
@@ -72,7 +75,7 @@ public class JsonInputFormatter : TextInputFormatter
 		else
 		{
 			transcodingStream = Encoding.CreateTranscodingStream(httpContext.Request.Body, encoding, Encoding.UTF8, leaveOpen: true);
-			reader = PipeReader.Create(transcodingStream);
+			reader = PipeReader.Create(transcodingStream, LeaveOpenPipeReaderOptions);
 		}
 
 		try
@@ -87,7 +90,10 @@ public class JsonInputFormatter : TextInputFormatter
 				return InputFormatterResult.NoValue();
 			}
 
-			object? model = await RuntimeShapeSerialization.DeserializeAsync(this.serializer, this.shapeProvider, modelType, reader, cancellationToken).ConfigureAwait(false);
+			// The stream API validates the entire document. Adapt the same reader so the empty-body peek's
+			// buffered bytes are retained; the pipe API intentionally reads only the first value.
+			using Stream body = reader.AsStream(leaveOpen: true);
+			object? model = await RuntimeShapeSerialization.DeserializeAsync(this.serializer, this.shapeProvider, modelType, body, cancellationToken).ConfigureAwait(false);
 			return InputFormatterResult.Success(model);
 		}
 		catch (Exception ex) when (ex is not MissingTypeShapeException && ex is not OperationCanceledException && IsInputError(ex))
@@ -99,7 +105,14 @@ public class JsonInputFormatter : TextInputFormatter
 		{
 			if (transcodingStream is not null)
 			{
-				await transcodingStream.DisposeAsync().ConfigureAwait(false);
+				try
+				{
+					await reader.CompleteAsync().ConfigureAwait(false);
+				}
+				finally
+				{
+					await transcodingStream.DisposeAsync().ConfigureAwait(false);
+				}
 			}
 		}
 	}

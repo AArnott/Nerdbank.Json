@@ -8,30 +8,29 @@ using PolyType.Abstractions;
 namespace Nerdbank.Json.AspNetCoreMvcFormatter;
 
 /// <summary>
-/// Bridges a runtime <see cref="Type"/> to the strongly typed, source-generated serialization APIs on
+/// Resolves runtime type shapes for the source-generated serialization APIs on
 /// <see cref="JsonSerializer"/> using an explicitly supplied <see cref="ITypeShapeProvider"/>.
 /// </summary>
 /// <remarks>
-/// The bridge uses PolyType's <see cref="ITypeShape.Invoke(ITypeShapeFunc, object?)"/> visitor to enter a generic
-/// context without reflection or expression compilation, keeping the formatters trimming- and NativeAOT-safe.
+/// Only default-value calculation requires a generic visitor. Serialization uses the runtime-object APIs
+/// without reflection or expression compilation, keeping the formatters trimming- and NativeAOT-safe.
 /// </remarks>
 internal static class RuntimeShapeSerialization
 {
 	/// <summary>
-	/// Deserializes a value of the specified runtime <paramref name="type"/> from a <see cref="PipeReader"/>.
+	/// Deserializes a complete JSON document of the specified runtime <paramref name="type"/> from a stream.
 	/// </summary>
 	/// <param name="serializer">The serializer to use.</param>
 	/// <param name="provider">The shape provider that must contain a shape for <paramref name="type"/>.</param>
 	/// <param name="type">The runtime type to deserialize.</param>
-	/// <param name="reader">The pipe to read from.</param>
+	/// <param name="stream">The stream to read from, which is left open.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>The deserialized value, boxed.</returns>
 	/// <exception cref="MissingTypeShapeException">Thrown when <paramref name="provider"/> has no shape for <paramref name="type"/>.</exception>
-	internal static Task<object?> DeserializeAsync(JsonSerializer serializer, ITypeShapeProvider provider, Type type, PipeReader reader, CancellationToken cancellationToken)
+	internal static ValueTask<object?> DeserializeAsync(JsonSerializer serializer, ITypeShapeProvider provider, Type type, Stream stream, CancellationToken cancellationToken)
 	{
 		ITypeShape shape = provider.GetTypeShape(type) ?? throw new MissingTypeShapeException(type, provider);
-		DeserializeFunc func = new(serializer, reader, cancellationToken);
-		return (Task<object?>)shape.Invoke(func)!;
+		return serializer.DeserializeObjectAsync(stream, shape, cancellationToken);
 	}
 
 	/// <summary>
@@ -46,11 +45,10 @@ internal static class RuntimeShapeSerialization
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>A task tracking the asynchronous serialization.</returns>
 	/// <exception cref="MissingTypeShapeException">Thrown when <paramref name="provider"/> has no shape for <paramref name="type"/>.</exception>
-	internal static Task SerializeAsync(JsonSerializer serializer, ITypeShapeProvider provider, Type type, object? value, PipeWriter writer, CancellationToken cancellationToken)
+	internal static ValueTask SerializeAsync(JsonSerializer serializer, ITypeShapeProvider provider, Type type, object? value, PipeWriter writer, CancellationToken cancellationToken)
 	{
 		ITypeShape shape = provider.GetTypeShape(type) ?? throw new MissingTypeShapeException(type, provider);
-		SerializeFunc func = new(serializer, value, writer, cancellationToken);
-		return (Task)shape.Invoke(func)!;
+		return serializer.SerializeObjectAsync(writer, value, shape, cancellationToken);
 	}
 
 	/// <summary>
@@ -64,22 +62,6 @@ internal static class RuntimeShapeSerialization
 	{
 		ITypeShape shape = provider.GetTypeShape(type) ?? throw new MissingTypeShapeException(type, provider);
 		return shape.Invoke(DefaultValueFunc.Instance);
-	}
-
-	private sealed class DeserializeFunc(JsonSerializer serializer, PipeReader reader, CancellationToken cancellationToken) : ITypeShapeFunc
-	{
-		public object? Invoke<T>(ITypeShape<T> typeShape, object? state) => this.InvokeAsync(typeShape);
-
-		private async Task<object?> InvokeAsync<T>(ITypeShape<T> typeShape)
-			=> await serializer.DeserializeAsync(reader, typeShape, cancellationToken).ConfigureAwait(false);
-	}
-
-	private sealed class SerializeFunc(JsonSerializer serializer, object? value, PipeWriter writer, CancellationToken cancellationToken) : ITypeShapeFunc
-	{
-		public object? Invoke<T>(ITypeShape<T> typeShape, object? state) => this.InvokeAsync(typeShape);
-
-		private async Task InvokeAsync<T>(ITypeShape<T> typeShape)
-			=> await serializer.SerializeAsync(writer, (T?)value, typeShape, cancellationToken).ConfigureAwait(false);
 	}
 
 	private sealed class DefaultValueFunc : ITypeShapeFunc

@@ -1,6 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.IO.Pipelines;
 using System.Text;
 using Microsoft.AspNetCore.Mvc.Formatters;
 
@@ -58,6 +59,163 @@ public class InputFormatterTests : FormatterTestBase
 	}
 
 	[Test]
+	[Arguments(false, false)]
+	[Arguments(false, true)]
+	[Arguments(true, false)]
+	[Arguments(true, true)]
+	public async Task ReadAsync_TrailingData_AddsModelError(bool utf16, bool chunked)
+	{
+		string[] suffixes = ["{}", " null", " 42", " garbage", "]", "\uFEFF", "\uFEFF{}", " /* comment */", " /* unterminated"];
+		foreach (string suffix in suffixes)
+		{
+			Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;
+			byte[] body = encoding.GetBytes("""{"name":"Ada","age":36}""" + suffix);
+			using Stream stream = chunked ? new OneByteAtATimeStream(body) : new MemoryStream(body);
+			InputFormatterContext context = CreateInputContext(stream, utf16 ? "application/json; charset=utf-16" : "application/json", typeof(Person));
+			context.ModelState.AddModelError("existing", "Keep this error.");
+
+			InputFormatterResult result = await this.formatter.ReadAsync(context);
+
+			Assert.True(result.HasError, $"Accepted trailing data: {suffix}");
+			Assert.False(result.IsModelSet);
+			Assert.True(context.ModelState.ContainsKey("model"));
+			Assert.Equal("Keep this error.", Assert.Single(context.ModelState["existing"]!.Errors).ErrorMessage);
+			Assert.True(stream.CanRead);
+		}
+	}
+
+	[Test]
+	[Arguments(false, false)]
+	[Arguments(false, true)]
+	[Arguments(true, false)]
+	[Arguments(true, true)]
+	public async Task ReadAsync_TrailingWhitespaceAndComments(bool utf16, bool chunked)
+	{
+		Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;
+		string[] suffixes = [" \t\r\n", " /* comment */ \r\n // final comment", " // comment\r\n /* final comment */"];
+		foreach (string suffix in suffixes)
+		{
+			byte[] body = encoding.GetBytes("""{"name":"Ada","age":36}""" + suffix);
+			using Stream stream = chunked ? new OneByteAtATimeStream(body) : new MemoryStream(body);
+			InputFormatterContext context = CreateInputContext(stream, utf16 ? "application/json; charset=utf-16" : "application/json", typeof(Person));
+			JsonInputFormatter commentsFormatter = new(Provider, new JsonSerializer { ReadCommentHandling = JsonCommentHandling.Skip });
+
+			InputFormatterResult result = await commentsFormatter.ReadAsync(context);
+
+			Assert.False(result.HasError);
+			Assert.Equal(new Person("Ada", 36), Assert.IsType<Person>(result.Model));
+			Assert.True(stream.CanRead);
+		}
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task ReadAsync_CommentsEnabled_RejectsInvalidTrailingData(bool utf16)
+	{
+		string[] suffixes = [" /* comment */ {}", " // comment\n null", " /* comment */ \uFEFF"];
+		foreach (string suffix in suffixes)
+		{
+			Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;
+			using OneByteAtATimeStream stream = new(encoding.GetBytes("""{"name":"Ada","age":36}""" + suffix));
+			InputFormatterContext context = CreateInputContext(stream, utf16 ? "application/json; charset=utf-16" : "application/json", typeof(Person));
+			JsonInputFormatter commentsFormatter = new(Provider, new JsonSerializer { ReadCommentHandling = JsonCommentHandling.Skip });
+
+			InputFormatterResult result = await commentsFormatter.ReadAsync(context);
+
+			Assert.True(result.HasError, $"Accepted trailing data: {suffix}");
+			Assert.True(context.ModelState.ContainsKey("model"));
+		}
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	[Skip("Core JsonAsyncReader.EnsureFullyConsumedAsync accepts unterminated trailing block comments; requires a core fix outside MVC scope.")]
+	public async Task ReadAsync_CommentsEnabled_UnterminatedTrailingComment_AddsModelError(bool utf16)
+	{
+		Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;
+		using OneByteAtATimeStream stream = new(encoding.GetBytes("""{"name":"Ada","age":36} /* unterminated"""));
+		InputFormatterContext context = CreateInputContext(stream, utf16 ? "application/json; charset=utf-16" : "application/json", typeof(Person));
+		JsonInputFormatter commentsFormatter = new(Provider, new JsonSerializer { ReadCommentHandling = JsonCommentHandling.Skip });
+
+		InputFormatterResult result = await commentsFormatter.ReadAsync(context);
+
+		Assert.True(result.HasError);
+		Assert.True(context.ModelState.ContainsKey("model"));
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task ReadAsync_InvalidTrailingEncoding_AddsModelError(bool utf16)
+	{
+		Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;
+		byte[] body = [.. encoding.GetBytes("""{"name":"Ada","age":36}"""), 0xFF];
+		using OneByteAtATimeStream stream = new(body);
+		InputFormatterContext context = CreateInputContext(stream, utf16 ? "application/json; charset=utf-16" : "application/json", typeof(Person));
+
+		InputFormatterResult result = await this.formatter.ReadAsync(context);
+
+		Assert.True(result.HasError);
+		Assert.True(context.ModelState.ContainsKey("model"));
+		Assert.True(stream.CanRead);
+	}
+
+	[Test]
+	public async Task ReadAsync_PreservesPeekedBodyReaderBytes()
+	{
+		using MemoryStream stream = new(Encoding.UTF8.GetBytes("""{"name":"Ada","age":36}""" + " \r\n"));
+		InputFormatterContext context = CreateInputContext(stream, "application/json", typeof(Person));
+		PipeReader reader = context.HttpContext.Request.BodyReader;
+		ReadResult buffered = await reader.ReadAsync();
+		Assert.Equal(stream.Length, stream.Position);
+		reader.AdvanceTo(buffered.Buffer.Start, buffered.Buffer.Start);
+
+		InputFormatterResult result = await this.formatter.ReadAsync(context);
+
+		Assert.False(result.HasError);
+		Assert.Equal(new Person("Ada", 36), Assert.IsType<Person>(result.Model));
+		Assert.True(stream.CanRead);
+		ReadResult remaining = await reader.ReadAsync();
+		Assert.True(remaining.IsCompleted);
+		Assert.True(remaining.Buffer.IsEmpty);
+		reader.AdvanceTo(remaining.Buffer.End);
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task ReadAsync_InitialBom_IsAllowed(bool utf16)
+	{
+		Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;
+		using OneByteAtATimeStream stream = new(encoding.GetBytes("\uFEFF" + """{"name":"Ada","age":36}"""));
+		InputFormatterContext context = CreateInputContext(stream, utf16 ? "application/json; charset=utf-16" : "application/json", typeof(Person));
+
+		InputFormatterResult result = await this.formatter.ReadAsync(context);
+
+		Assert.False(result.HasError);
+		Assert.Equal(new Person("Ada", 36), Assert.IsType<Person>(result.Model));
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task ReadAsync_Null_SetsModel(bool utf16)
+	{
+		Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;
+		using MemoryStream stream = new(encoding.GetBytes("null \r\n"));
+		InputFormatterContext context = CreateInputContext(stream, utf16 ? "application/json; charset=utf-16" : "application/json", typeof(Person));
+
+		InputFormatterResult result = await this.formatter.ReadAsync(context);
+
+		Assert.False(result.HasError);
+		Assert.True(result.IsModelSet);
+		Assert.Null(result.Model);
+		Assert.True(stream.CanRead);
+	}
+
+	[Test]
 	public async Task ReadAsync_EmptyBody_NoValue()
 	{
 		InputFormatterContext context = CreateInputContext(new MemoryStream([]), "application/json", typeof(Person));
@@ -81,6 +239,22 @@ public class InputFormatterTests : FormatterTestBase
 	}
 
 	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task ReadAsync_EmptyBody_ValueTypeDefault(bool utf16)
+	{
+		using MemoryStream stream = new([]);
+		InputFormatterContext context = CreateInputContext(stream, utf16 ? "application/json; charset=utf-16" : "application/json", typeof(int), treatEmptyInputAsDefaultValue: true);
+
+		InputFormatterResult result = await this.formatter.ReadAsync(context);
+
+		Assert.False(result.HasError);
+		Assert.True(result.IsModelSet);
+		Assert.Equal(0, Assert.IsType<int>(result.Model));
+		Assert.True(stream.CanRead);
+	}
+
+	[Test]
 	public async Task ReadAsync_ProviderMiss_Throws()
 	{
 		byte[] body = Encoding.UTF8.GetBytes("""{"x":1}""");
@@ -90,14 +264,36 @@ public class InputFormatterTests : FormatterTestBase
 	}
 
 	[Test]
-	public async Task ReadAsync_Cancellation_Throws()
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task ReadAsync_Cancellation_Throws(bool utf16)
 	{
-		byte[] body = Encoding.UTF8.GetBytes("""{"name":"Ada","age":36}""");
+		Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;
+		byte[] body = encoding.GetBytes("""{"name":"Ada","age":36}""");
 		using CancellationTokenSource cts = new();
 		cts.Cancel();
-		InputFormatterContext context = CreateInputContext(new MemoryStream(body), "application/json", typeof(Person), requestAborted: cts.Token);
+		using MemoryStream stream = new(body);
+		InputFormatterContext context = CreateInputContext(stream, utf16 ? "application/json; charset=utf-16" : "application/json", typeof(Person), requestAborted: cts.Token);
 
 		await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await this.formatter.ReadAsync(context));
+		Assert.True(context.ModelState.IsValid);
+		Assert.True(stream.CanRead);
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task ReadAsync_CancellationWhileValidatingTrailingBytes_Throws(bool utf16)
+	{
+		Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;
+		using CancellationTokenSource cts = new();
+		using CancelAtEndStream stream = new(encoding.GetBytes("""{"name":"Ada","age":36}""" + " \r\n"), cts);
+		InputFormatterContext context = CreateInputContext(stream, utf16 ? "application/json; charset=utf-16" : "application/json", typeof(Person), requestAborted: cts.Token);
+
+		await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await this.formatter.ReadAsync(context));
+
+		Assert.True(context.ModelState.IsValid);
+		Assert.True(stream.CanRead);
 	}
 
 	[Test]
@@ -130,6 +326,19 @@ public class InputFormatterTests : FormatterTestBase
 	{
 		InputFormatterContext context = CreateInputContext(new MemoryStream([]), contentType, typeof(Person));
 		Assert.Equal(expected, this.formatter.CanRead(context));
+	}
+
+	private sealed class CancelAtEndStream(byte[] data, CancellationTokenSource cancellation) : MemoryStream(data)
+	{
+		public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+		{
+			if (this.Position == this.Length)
+			{
+				cancellation.Cancel();
+			}
+
+			return base.ReadAsync(buffer, cancellationToken);
+		}
 	}
 
 	private sealed class OneByteAtATimeStream(byte[] data) : Stream

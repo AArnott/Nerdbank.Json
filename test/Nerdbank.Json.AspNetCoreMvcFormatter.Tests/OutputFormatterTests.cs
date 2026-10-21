@@ -61,6 +61,34 @@ public class OutputFormatterTests : FormatterTestBase
 	}
 
 	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task WriteAsync_RuntimeType_LeavesBodyOpen(bool utf16)
+	{
+		(OutputFormatterWriteContext context, MemoryStream body) = CreateOutputContext(typeof(object), new Person("Ada", 36), utf16 ? "application/json; charset=utf-16" : "application/json");
+
+		await this.formatter.WriteAsync(context);
+
+		Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;
+		Assert.Equal("""{"name":"Ada","age":36}""", encoding.GetString(body.ToArray()));
+		Assert.True(body.CanWrite);
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task WriteAsync_Cancellation_Throws(bool utf16)
+	{
+		using CancellationTokenSource cts = new();
+		cts.Cancel();
+		(OutputFormatterWriteContext context, MemoryStream body) = CreateOutputContext(typeof(Person), new Person("Ada", 36), utf16 ? "application/json; charset=utf-16" : "application/json", cts.Token);
+
+		await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await this.formatter.WriteAsync(context));
+
+		Assert.True(body.CanWrite);
+	}
+
+	[Test]
 	public async Task WriteAsync_ProviderMiss_Throws()
 	{
 		(OutputFormatterWriteContext context, _) = CreateOutputContext(typeof(Unregistered), new Unregistered { X = 1 });
