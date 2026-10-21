@@ -36,24 +36,30 @@ property rejection, and honor `AllowTrailingCommas` and `ReadCommentHandling`.
 
 ## `object` and `ExpandoObject`
 
-Call <xref:Nerdbank.Json.JsonSerializer.WithUntypedConverters*> to register converters for
-`object`, `ExpandoObject`, and `JsonValue` members:
+Call <xref:Nerdbank.Json.OptionalConverters.WithObjectConverter*> to register the converter for <xref:System.Object>.
+It reads JSON into boxed primitives, read-only dictionaries with object keys containing strings, and object arrays.
+Non-negative integer tokens become <xref:System.UInt64>, negative integers become <xref:System.Int64>, and fractional or exponent-form numbers become <xref:System.Double>.
+Numbers outside those ranges fail explicitly; use the native DOM when exact number-token fidelity is required.
 
-* A value typed as `object` **deserializes to a boxed <xref:Nerdbank.Json.JsonValue>**, giving
-  full JSON fidelity with no runtime type discovery.
-* Serializing an `object` accepts a `JsonValue` or a boxed JSON primitive (`bool`, `string`, or
-  any built-in numeric type). Any other CLR type throws a
-  <xref:System.NotSupportedException> instead of silently walking an arbitrary object graph via
-  reflection. Reflection-based serialization of arbitrary runtime types is intentionally **not**
-  provided; serialize such values through their own generated type shape.
-* `ExpandoObject` round-trips as a JSON object whose member values are `JsonValue` instances.
-  Because `ExpandoObject` stores members in a way that requires a linear scan per insertion,
-  reconstructing one from JSON is **O(n²)**; prefer `JsonObject` for large payloads. The
-  <xref:Nerdbank.Json.SecuritySettings.MaxObjectMemberCount> limit bounds the worst case.
+Runtime-shaped objects can be written through an `object` member when their shape is available from <xref:Nerdbank.Json.SerializationContext.TypeShapeProvider>.
+No arbitrary reflection-based discovery is performed.
+The converter also writes its deserialized dictionary and array representations, native DOM values, and boxed JSON primitives.
+
+Use <xref:Nerdbank.Json.OptionalConverters.WithDynamicObjectConverter*> instead when dictionaries should also support read-only C# dynamic member access.
+Both registrations target the same `object` type and cannot be combined on one serializer.
+
+Call <xref:Nerdbank.Json.OptionalConverters.WithExpandoObjectConverter*> separately to enable <xref:System.Dynamic.ExpandoObject>.
+Its member values use the same primitives and arrays, with nested objects represented by read-only dynamic dictionaries.
+Reconstructing an expando is **O(n²)** because each insertion scans its existing members.
+The <xref:Nerdbank.Json.SecuritySettings.MaxObjectMemberCount> limit bounds the property count on both reads and writes.
+
+Call <xref:Nerdbank.Json.OptionalConverters.WithJsonValueConverter*> to register converters for shaped members declared as <xref:Nerdbank.Json.JsonValue> or any of its concrete subclasses.
+This preserves the native hierarchy and exact number tokens independently of the object and expando opt-ins.
+Each registration returns an immutable serializer copy and rejects duplicate converter registrations.
 
 ## System.Text.Json interop
 
-Call <xref:Nerdbank.Json.JsonSerializer.WithSystemTextJsonConverters*> to register converters
+Call <xref:Nerdbank.Json.OptionalConverters.WithSystemTextJsonConverters*> to register converters
 for <xref:System.Text.Json.JsonElement>, <xref:System.Text.Json.Nodes.JsonNode>, and
 <xref:System.Text.Json.JsonDocument>. They bridge by round-tripping raw JSON text, so they add
 no reflection — but calling the method roots the `System.Text.Json` assembly. Because the

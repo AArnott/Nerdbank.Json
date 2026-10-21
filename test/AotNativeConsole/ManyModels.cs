@@ -167,9 +167,9 @@ internal static class ManyModels
 			throw new InvalidOperationException("Untyped DOM round-trip failed.");
 		}
 
-		JsonSerializer untyped = serializer.WithUntypedConverters();
+		JsonSerializer untyped = serializer.WithObjectConverter().WithExpandoObjectConverter();
 		object? boxed = untyped.Deserialize<object, UntypedWitness>("""[1,2,3]""");
-		if (((JsonArray)boxed!).Count != 3)
+		if (((object?[])boxed!).Length != 3)
 		{
 			throw new InvalidOperationException("object opt-in round-trip failed.");
 		}

@@ -11,9 +11,10 @@ using PolyType.Utilities;
 
 namespace Nerdbank.Json;
 
-internal sealed class ConverterCache
+internal sealed class ConverterCache : ITypeShapeFunc
 {
 	private readonly ConcurrentDictionary<(Type Type, Type Provider), ITypeShape> cachedTypeShapes = new();
+	private readonly ConcurrentDictionary<ITypeShape, JsonConverter> nativeAotResolvedConverters = new();
 	private readonly JsonSerializerConfiguration configuration;
 	private MultiProviderTypeCache? cachedConverters;
 	private MultiProviderTypeCache? nativeAotCachedConverters;
@@ -69,6 +70,8 @@ internal sealed class ConverterCache
 		}
 	}
 
+	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state) => this.GetOrAddConverter(typeShape);
+
 #if NET
 	internal JsonConverter<T> GetOrAddConverter<T>()
 		=> throw new NotSupportedException("Dynamic converter lookup is not supported on .NET. Supply an explicit type shape or witness type.");
@@ -82,10 +85,13 @@ internal sealed class ConverterCache
 #if NET
 		if (!RuntimeFeature.IsDynamicCodeSupported)
 		{
-			JsonConverter<T> converter = this.TryGetProfferedConverter(shape, visitor: null, out JsonConverter<T>? profferedConverter)
-				? profferedConverter
-				: (JsonConverter<T>)this.NativeAotCachedConverters.GetOrAdd(shape)!;
-			return this.WrapWithReferencePreservation(converter);
+			return (JsonConverter<T>)this.nativeAotResolvedConverters.GetOrAdd(shape, _ =>
+			{
+				JsonConverter<T> converter = this.TryGetProfferedConverter(shape, visitor: null, out JsonConverter<T>? profferedConverter)
+					? profferedConverter
+					: (JsonConverter<T>)this.NativeAotCachedConverters.GetOrAdd(shape)!;
+				return this.WrapWithReferencePreservation(converter);
+			});
 		}
 #endif
 
@@ -93,7 +99,16 @@ internal sealed class ConverterCache
 	}
 
 	internal JsonConverter GetOrAddConverter(ITypeShape shape)
-		=> (JsonConverter)this.CachedConverters.GetOrAdd(shape)!;
+	{
+#if NET
+		if (!RuntimeFeature.IsDynamicCodeSupported)
+		{
+			return (JsonConverter)shape.Invoke(this)!;
+		}
+#endif
+
+		return (JsonConverter)this.CachedConverters.GetOrAdd(shape)!;
+	}
 
 	internal JsonConverter GetOrAddConverter(Type type, ITypeShapeProvider provider)
 		=> this.GetOrAddConverter(provider.GetTypeShape(type) ?? throw new NotSupportedException($"The type shape provider '{provider.GetType().FullName}' does not provide a shape for '{type.FullName}'."));
