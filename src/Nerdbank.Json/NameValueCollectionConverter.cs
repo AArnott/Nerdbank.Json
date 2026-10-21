@@ -46,7 +46,11 @@ internal sealed partial class NameValueCollectionConverter : JsonConverter<NameV
 				string key = reader.ReadRequiredString(context.StringInterningCache);
 				collision.MarkAsRead(key);
 				reader.ReadNameSeparator();
-				if (reader.PeekValueToken() == '[')
+				if (reader.TryReadNull())
+				{
+					result.Add(key, null);
+				}
+				else if (reader.PeekValueToken() == '[')
 				{
 					SerializationContext valuesContext = context;
 					valuesContext.DepthStep();

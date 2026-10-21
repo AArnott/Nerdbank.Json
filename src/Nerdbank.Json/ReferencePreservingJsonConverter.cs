@@ -96,4 +96,7 @@ internal sealed class ReferencePreservingJsonConverter<T>(JsonConverter<T> inner
 		Assumes.NotNull(context.ReferenceTracker);
 		return await context.ReferenceTracker.ReadObjectAsync(reader, inner, context).ConfigureAwait(false);
 	}
+
+	/// <inheritdoc/>
+	internal override JsonConverter UnwrapReferencePreservation() => inner;
 }

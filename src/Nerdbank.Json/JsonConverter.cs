@@ -107,6 +107,10 @@ public abstract class JsonConverter
 	/// <param name="context">The operation context.</param>
 	/// <returns>The deserialized value.</returns>
 	public abstract ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context);
+
+	/// <summary>Gets this converter without its reference-preservation wrapper.</summary>
+	/// <returns>The converter for the underlying value representation.</returns>
+	internal virtual JsonConverter UnwrapReferencePreservation() => this;
 }
 
 /// <summary>

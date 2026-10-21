@@ -15,13 +15,20 @@ using System.Globalization;
 
 namespace Nerdbank.Json;
 
+/// <summary>Converts untyped values to primitives, dictionaries and arrays using contextual runtime shapes when writing.</summary>
+/// <param name="dynamicObjects">Whether deserialized dictionaries support dynamic member access.</param>
 internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConverter<object>
 {
+	/// <summary>The ordinary object converter.</summary>
 	internal static readonly ObjectConverter Instance = new();
+
+	/// <summary>The object converter with read-only dynamic dictionaries.</summary>
 	internal static readonly ObjectConverter DynamicInstance = new(dynamicObjects: true);
 
+	/// <inheritdoc/>
 	public override bool PreferAsyncSerialization => true;
 
+	/// <inheritdoc/>
 	public override object? Read(ref JsonReader reader, SerializationContext context)
 	{
 		context.CancellationToken.ThrowIfCancellationRequested();
@@ -47,7 +54,7 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 				{
 					do
 					{
-						items.Add(this.Read(ref reader, context));
+						items.Add(this.ReadNestedValue(ref reader, context));
 						if (reader.TryReadEndArray())
 						{
 							break;
@@ -62,6 +69,8 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 			case '{':
 				context.DepthStep();
 				Dictionary<object, object?> members = [];
+				object result = dynamicObjects ? new DynamicJsonDictionary(members) : new ReadOnlyDictionary<object, object?>(members);
+				context.ReportObjectConstructed(result);
 				reader.ReadStartObject();
 				if (!reader.TryReadEndObject())
 				{
@@ -79,7 +88,7 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 							throw new FormatException($"The JSON object contains duplicate property '{name}'.");
 						}
 
-						members.Add(name, this.Read(ref reader, context));
+						members.Add(name, this.ReadNestedValue(ref reader, context));
 						if (reader.TryReadEndObject())
 						{
 							break;
@@ -90,14 +99,18 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 					while (true);
 				}
 
-				return dynamicObjects ? new DynamicJsonDictionary(members) : new ReadOnlyDictionary<object, object?>(members);
+				return result;
 			default:
 				string token = reader.ReadNumberToken();
 				if (token.IndexOfAny(['.', 'e', 'E']) < 0)
 				{
-					return token[0] == '-'
-						? (object)long.Parse(token, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture)
-						: ulong.Parse(token, NumberStyles.None, CultureInfo.InvariantCulture);
+					if (token[0] == '-')
+					{
+						long signed = long.Parse(token, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
+						return signed < 0 ? (object)signed : (ulong)signed;
+					}
+
+					return ulong.Parse(token, NumberStyles.None, CultureInfo.InvariantCulture);
 				}
 
 				double number = double.Parse(token, NumberStyles.Float, CultureInfo.InvariantCulture);
@@ -110,6 +123,7 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 		}
 	}
 
+	/// <inheritdoc/>
 	public override void Write(ref JsonWriter writer, in object? value, SerializationContext context)
 	{
 		context.CancellationToken.ThrowIfCancellationRequested();
@@ -139,7 +153,7 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 
 					first = false;
 					writer.WritePropertyName(key);
-					this.Write(ref writer, entry.Value, context);
+					this.WriteNestedValue(ref writer, entry.Value, context);
 				}
 
 				writer.WriteEndObject();
@@ -154,7 +168,7 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 						writer.WriteValueSeparator();
 					}
 
-					this.Write(ref writer, array[i], context);
+					this.WriteNestedValue(ref writer, array[i], context);
 				}
 
 				writer.WriteEndArray();
@@ -167,26 +181,69 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 						throw new NotSupportedException("A plain System.Object has no JSON representation.");
 					}
 
-					context.GetConverter(value.GetType()).WriteObject(ref writer, value, context);
+					GetRuntimeConverter(value, context).WriteObject(ref writer, value, context);
 				}
 
 				break;
 		}
 	}
 
+	/// <inheritdoc/>
 	public override ValueTask WriteAsync(JsonAsyncWriter writer, object? value, SerializationContext context)
 	{
 		Requires.NotNull(writer);
 		if (value is not null and not JsonValue and not IReadOnlyDictionary<object, object?> and not object[] &&
 			value.GetType() != typeof(object) && !BuiltInJsonConverters.IsSupported(value.GetType()))
 		{
-			return context.GetConverter(value.GetType()).WriteObjectAsync(writer, value, context);
+			return GetRuntimeConverter(value, context).WriteObjectAsync(writer, value, context);
 		}
 
 		return base.WriteAsync(writer, value, context);
 	}
 
+	/// <inheritdoc/>
 	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
+
+	/// <summary>Reads a nested untyped value, including a reference envelope when preservation is enabled.</summary>
+	/// <param name="reader">The JSON reader.</param>
+	/// <param name="context">The operation context.</param>
+	/// <returns>The nested value.</returns>
+	internal object? ReadNestedValue(ref JsonReader reader, SerializationContext context)
+	{
+		if (context.ReferenceTracker is not null && reader.PeekValueToken() == '{')
+		{
+			JsonReader peek = reader;
+			peek.ReadStartObject();
+			if (!peek.TryReadEndObject() && peek.ReadRequiredString() is "$id" or "$ref")
+			{
+				return context.ReferenceTracker.ReadObject(ref reader, this, context);
+			}
+		}
+
+		return this.Read(ref reader, context with { ReferenceId = 0 });
+	}
+
+	/// <summary>Writes a nested untyped reference value using the operation's reference tracker.</summary>
+	/// <param name="writer">The JSON writer.</param>
+	/// <param name="value">The nested value.</param>
+	/// <param name="context">The operation context.</param>
+	internal void WriteNestedValue(ref JsonWriter writer, object? value, SerializationContext context)
+	{
+		if (value is not null and not string && !value.GetType().IsValueType && context.ReferenceTracker is not null)
+		{
+			context.ReferenceTracker.WriteObject(ref writer, value, this, context);
+		}
+		else
+		{
+			this.Write(ref writer, value, context with { ReferenceId = 0 });
+		}
+	}
+
+	private static JsonConverter GetRuntimeConverter(object value, SerializationContext context)
+	{
+		JsonConverter converter = context.GetConverter(value.GetType());
+		return context.ReferenceTracker?.IsWritingObject(value, context.ReferenceId) is true ? converter.UnwrapReferencePreservation() : converter;
+	}
 
 	private static bool TryWriteBoxedPrimitive(ref JsonWriter writer, object value)
 	{
@@ -254,18 +311,26 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 	}
 }
 
+/// <summary>A read-only dictionary whose string keys are also available through dynamic member access.</summary>
+/// <param name="content">The dictionary contents.</param>
 internal sealed class DynamicJsonDictionary(IDictionary<object, object?> content) : DynamicObject, IReadOnlyDictionary<object, object?>
 {
+	/// <inheritdoc/>
 	public int Count => content.Count;
 
+	/// <inheritdoc/>
 	public IEnumerable<object> Keys => content.Keys;
 
+	/// <inheritdoc/>
 	public IEnumerable<object?> Values => content.Values;
 
+	/// <inheritdoc/>
 	public object? this[object key] => content[key];
 
+	/// <inheritdoc/>
 	public override bool TryGetMember(GetMemberBinder binder, out object? result) => content.TryGetValue(binder.Name, out result);
 
+	/// <inheritdoc/>
 	public override bool TryGetIndex(GetIndexBinder binder, object[] indexes, out object? result)
 	{
 		if (indexes.Length == 1)
@@ -277,14 +342,19 @@ internal sealed class DynamicJsonDictionary(IDictionary<object, object?> content
 		return false;
 	}
 
+	/// <inheritdoc/>
 	public override IEnumerable<string> GetDynamicMemberNames() => content.Keys.Cast<string>();
 
+	/// <inheritdoc/>
 	public bool ContainsKey(object key) => content.ContainsKey(key);
 
+	/// <inheritdoc/>
 	public bool TryGetValue(object key, out object? value) => content.TryGetValue(key, out value);
 
+	/// <inheritdoc/>
 	public IEnumerator<KeyValuePair<object, object?>> GetEnumerator() => content.GetEnumerator();
 
+	/// <inheritdoc/>
 	System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => this.GetEnumerator();
 }
 
@@ -298,8 +368,10 @@ internal sealed class DynamicJsonDictionary(IDictionary<object, object?> content
 /// </remarks>
 internal sealed class ExpandoObjectConverter : JsonConverter<ExpandoObject>
 {
+	/// <summary>The reusable expando converter.</summary>
 	internal static readonly ExpandoObjectConverter Instance = new();
 
+	/// <inheritdoc/>
 	public override ExpandoObject? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (reader.TryReadNull())
@@ -326,7 +398,7 @@ internal sealed class ExpandoObjectConverter : JsonConverter<ExpandoObject>
 					throw new FormatException($"The JSON object exceeds the configured maximum of {maxMembers} members.");
 				}
 
-				members.Add(name, ObjectConverter.DynamicInstance.Read(ref reader, context));
+				members.Add(name, ObjectConverter.DynamicInstance.ReadNestedValue(ref reader, context));
 				if (reader.TryReadEndObject())
 				{
 					break;
@@ -340,6 +412,7 @@ internal sealed class ExpandoObjectConverter : JsonConverter<ExpandoObject>
 		return result;
 	}
 
+	/// <inheritdoc/>
 	public override void Write(ref JsonWriter writer, in ExpandoObject? value, SerializationContext context)
 	{
 		if (value is null)
@@ -367,28 +440,37 @@ internal sealed class ExpandoObjectConverter : JsonConverter<ExpandoObject>
 
 			first = false;
 			writer.WritePropertyName(member.Key);
-			ObjectConverter.Instance.Write(ref writer, member.Value, context);
+			ObjectConverter.Instance.WriteNestedValue(ref writer, member.Value, context);
 		}
 
 		writer.WriteEndObject();
 	}
 
+	/// <inheritdoc/>
 	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 }
 
+/// <summary>Adapts the native DOM converter to a specific concrete node type.</summary>
+/// <typeparam name="T">The node type.</typeparam>
 internal sealed class JsonDomConverter<T> : JsonConverter<T>
 	where T : JsonValue
 {
+	/// <inheritdoc/>
 	public override bool PreferAsyncSerialization => true;
 
+	/// <inheritdoc/>
 	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context) => JsonValueConverter.Instance.Write(ref writer, value, context);
 
+	/// <inheritdoc/>
 	public override T? Read(ref JsonReader reader, SerializationContext context) => Cast(JsonValueConverter.Instance.Read(ref reader, context));
 
+	/// <inheritdoc/>
 	public override ValueTask WriteAsync(JsonAsyncWriter writer, T? value, SerializationContext context) => JsonValueConverter.Instance.WriteAsync(writer, value, context);
 
+	/// <inheritdoc/>
 	public override async ValueTask<T?> ReadAsync(JsonAsyncReader reader, SerializationContext context) => Cast(await JsonValueConverter.Instance.ReadAsync(reader, context).ConfigureAwait(false));
 
+	/// <inheritdoc/>
 	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 
 	private static T? Cast(JsonValue? value) => value is T result ? result : value is null or JsonNull ? null : throw new FormatException($"The JSON value is not a {typeof(T).Name}.");

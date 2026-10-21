@@ -42,6 +42,13 @@ internal sealed class JsonReferenceEqualityTracker
 		this.deserializedObjects.Add(referenceId, value);
 	}
 
+	/// <summary>Determines whether an enclosing converter is already writing this object's reference envelope.</summary>
+	/// <param name="value">The value being written.</param>
+	/// <param name="referenceId">The current reference id.</param>
+	/// <returns>Whether the current envelope belongs to this value.</returns>
+	internal bool IsWritingObject(object value, int referenceId)
+		=> referenceId != 0 && this.serializedObjects.TryGetValue(value, out (int ReferenceId, bool Done) entry) && entry.ReferenceId == referenceId && !entry.Done;
+
 	internal void WriteObject(ref JsonWriter writer, object value, JsonConverter inner, SerializationContext context)
 	{
 		if (this.TryGetSerializedObject(value, out int referenceId))
@@ -61,7 +68,7 @@ internal sealed class JsonReferenceEqualityTracker
 		writer.WriteNumberValue(assignedReferenceId);
 		writer.WriteValueSeparator();
 		writer.WritePropertyName("$value");
-		inner.WriteObject(ref writer, value, context);
+		inner.WriteObject(ref writer, value, context with { ReferenceId = assignedReferenceId });
 		writer.WriteEndObject();
 
 		this.serializedObjects[value] = (assignedReferenceId, true);
@@ -177,7 +184,7 @@ internal sealed class JsonReferenceEqualityTracker
 		headerWriter.WritePropertyName("$value");
 		writer.ReturnWriter(ref headerWriter);
 
-		await inner.WriteObjectAsync(writer, value, context).ConfigureAwait(false);
+		await inner.WriteObjectAsync(writer, value, context with { ReferenceId = assignedReferenceId }).ConfigureAwait(false);
 
 		JsonWriter footerWriter = writer.CreateWriter();
 		footerWriter.WriteEndObject();

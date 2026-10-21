@@ -214,6 +214,50 @@ public partial class JsonUntypedConvertersTests : TestBase
 		Assert.Equal(number.RawToken, this.untyped.Serialize<JsonNumber, Witness>(number));
 	}
 
+	[Test]
+	[Arguments(ReferencePreservationMode.AllowCycles)]
+	[Arguments(ReferencePreservationMode.RejectCycles)]
+	public void RuntimeShapedObjectIsWrappedOnlyOnce(ReferencePreservationMode mode)
+	{
+		JsonSerializer serializer = this.untyped with { PreserveReferences = mode };
+		string json = serializer.Serialize<object, Witness>(new RuntimeModel { Name = "Ada" });
+		Assert.Equal("""{"$id":1,"$value":{"name":"Ada"}}""", json);
+		IReadOnlyDictionary<object, object?> result = Assert.IsAssignableFrom<IReadOnlyDictionary<object, object?>>(serializer.Deserialize<object, Witness>(json));
+		Assert.Equal("Ada", result["name"]);
+	}
+
+	[Test]
+	public async Task RuntimeShapedObjectCycleAsync()
+	{
+		JsonSerializer serializer = this.untyped with { PreserveReferences = ReferencePreservationMode.AllowCycles };
+		ReferenceRuntimeModel value = new();
+		value.Next = value;
+		using MemoryStream stream = new();
+		await serializer.SerializeAsync(stream, (object)value, Shape<object, Witness>());
+		Assert.Equal("""{"$id":1,"$value":{"next":{"$ref":1}}}""", System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+		stream.Position = 0;
+		object? result = await serializer.DeserializeAsync(stream, Shape<object, Witness>());
+		IReadOnlyDictionary<object, object?> dictionary = Assert.IsAssignableFrom<IReadOnlyDictionary<object, object?>>(result);
+		Assert.Same(result, dictionary["next"]);
+	}
+
+	[Test]
+	public void DictionaryAndExpandoCycles()
+	{
+		JsonSerializer serializer = this.untyped with { PreserveReferences = ReferencePreservationMode.AllowCycles };
+		Dictionary<object, object?> dictionary = [];
+		dictionary["self"] = dictionary;
+		string json = serializer.Serialize<object, Witness>(dictionary);
+		object? result = serializer.Deserialize<object, Witness>(json);
+		Assert.Same(result, Assert.IsAssignableFrom<IReadOnlyDictionary<object, object?>>(result)["self"]);
+
+		ExpandoObject expando = new();
+		((IDictionary<string, object?>)expando)["self"] = expando;
+		json = serializer.Serialize<ExpandoObject, Witness>(expando);
+		ExpandoObject roundTrip = serializer.Deserialize<ExpandoObject, Witness>(json)!;
+		Assert.Same(roundTrip, ((IDictionary<string, object?>)roundTrip)["self"]);
+	}
+
 	private static ITypeShape<T> Shape<T, TProvider>()
 #if NET
 		where TProvider : IShapeable<T> => TProvider.GetTypeShape();
@@ -225,6 +269,12 @@ public partial class JsonUntypedConvertersTests : TestBase
 	public partial class RuntimeModel
 	{
 		public string? Name { get; set; }
+	}
+
+	[GenerateShape]
+	public partial class ReferenceRuntimeModel
+	{
+		public object? Next { get; set; }
 	}
 
 	[GenerateShape]
