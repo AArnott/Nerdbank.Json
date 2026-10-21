@@ -72,8 +72,38 @@ public partial record JsonSerializer
 		Requires.NotNull(stream);
 
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		await this.SerializeAsync(writer, value, shape, cancellationToken).ConfigureAwait(false);
-		await writer.CompleteAsync().ConfigureAwait(false);
+		try
+		{
+			await this.SerializeAsync(writer, value, shape, cancellationToken).ConfigureAwait(false);
+		}
+		finally
+		{
+			await writer.CompleteAsync().ConfigureAwait(false);
+		}
+	}
+
+	/// <summary>Serializes a value asynchronously to a stream with per-call state.</summary>
+	/// <typeparam name="T">The type of value.</typeparam>
+	/// <param name="stream">The destination stream, which is left open.</param>
+	/// <param name="value">The value to serialize.</param>
+	/// <param name="shape">The shape describing the value.</param>
+	/// <param name="startingContext">The inactive starting context.</param>
+	/// <returns>A task tracking the write.</returns>
+	[OverloadResolutionPriority(-1)]
+	public async ValueTask SerializeAsync<T>(Stream stream, T? value, ITypeShape<T> shape, SerializationContext startingContext)
+	{
+		Requires.NotNull(stream);
+		Requires.NotNull(shape);
+		ThrowIfOperationInProgress(startingContext);
+		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
+		try
+		{
+			await this.SerializeAsync(writer, value, shape, startingContext).ConfigureAwait(false);
+		}
+		finally
+		{
+			await writer.CompleteAsync().ConfigureAwait(false);
+		}
 	}
 
 	/// <summary>
@@ -176,6 +206,29 @@ public partial record JsonSerializer
 	public ValueTask<T?> DeserializeAsync<T, TProvider>(Stream stream, CancellationToken cancellationToken = default)
 		where TProvider : IShapeable<T> => this.DeserializeAsync(stream, TProvider.GetTypeShape(), cancellationToken);
 #endif
+
+	/// <summary>Deserializes a value asynchronously from a stream with per-call state.</summary>
+	/// <typeparam name="T">The type of value.</typeparam>
+	/// <param name="stream">The source stream, which is left open.</param>
+	/// <param name="shape">The shape describing the value.</param>
+	/// <param name="startingContext">The inactive starting context.</param>
+	/// <returns>The deserialized value.</returns>
+	[OverloadResolutionPriority(-1)]
+	public async ValueTask<T?> DeserializeAsync<T>(Stream stream, ITypeShape<T> shape, SerializationContext startingContext)
+	{
+		Requires.NotNull(stream);
+		Requires.NotNull(shape);
+		ThrowIfOperationInProgress(startingContext);
+		PipeReader reader = PipeReader.Create(stream, StreamPipeReaderOptions);
+		try
+		{
+			return await this.DeserializeAsync(reader, shape, startingContext).ConfigureAwait(false);
+		}
+		finally
+		{
+			await reader.CompleteAsync().ConfigureAwait(false);
+		}
+	}
 
 	private async ValueTask SerializeAsyncCore<T>(PipeWriter writer, T? value, ITypeShape<T> shape, SerializationContext startingContext, CancellationToken cancellationToken)
 	{
