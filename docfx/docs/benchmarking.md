@@ -54,6 +54,12 @@ This recovers most, but not all, of the integration regression: the accepted pre
 The remaining difference is not attributed solely to validation; these measurements do not isolate every remaining reader cost.
 An explicit contiguous string-parser specialization was also tested and removed because its small effect did not justify a second path.
 
+A further medium run of the committed code measured small reads at 351.1 ± 2.13 ns (median 351.1 ns) and wide reads at 1270.5 ± 14.17 ns (median 1269.4 ns), with unchanged 200/664 B allocations.
+Writes measured 179.2 ± 1.08 ns and 479.3 ± 5.62 ns, both at 0 B.
+The full 64-case skip matrix also completed at the same medium job and affinity, covering four token distributions, two sizes, four segment sizes, and cancellable/non-cancellable contexts.
+It reported 0–1 B per contiguous operation and 104–107 B per segmented operation across those payload sizes, consistent with bounded navigation state rather than payload materialization; the small differences within those ranges were not separately attributed.
+These final-only skip measurements do not establish a paired skip-throughput improvement.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.
