@@ -200,14 +200,21 @@ public partial record JsonSerializer
 		StringComparer comparer = ignoreCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 		JsonNavigationOptions options = new(comparer, ignoreCase);
 
-		if (!JsonTargetedNavigator.TryNavigate(ref reader, path, converters, options, ref context))
+		try
 		{
-			return missingBehavior == MissingPathBehavior.Throw
-				? throw new JsonPathNotFoundException(path.ToString())
-				: default;
-		}
+			if (!JsonTargetedNavigator.TryNavigate(ref reader, path, converters, options, ref context))
+			{
+				return missingBehavior == MissingPathBehavior.Throw
+					? throw new JsonPathNotFoundException(path.ToString())
+					: default;
+			}
 
-		return this.ConverterCache.GetOrAddConverter(targetShape).Read(ref reader, context);
+			return this.ConverterCache.GetOrAddConverter(targetShape).Read(ref reader, context);
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during deserialization.", ex);
+		}
 	}
 
 	/// <summary>Options for selecting a value within a JSON document.</summary>

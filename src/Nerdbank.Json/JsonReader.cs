@@ -21,6 +21,7 @@ public ref struct JsonReader
 	private readonly ReadOnlySpan<byte> utf8Json;
 	private ReadOnlySequence<byte>? sequence;
 	private int position;
+	private int navigationDepth;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="JsonReader"/> struct.
@@ -36,6 +37,7 @@ public ref struct JsonReader
 		this.utf8Json = jsonUtf8;
 		this.sequence = null;
 		this.position = 0;
+		this.navigationDepth = 0;
 	}
 
 	/// <summary>Initializes a new instance of the <see cref="JsonReader"/> struct over a possibly segmented UTF-8 document.</summary>
@@ -60,6 +62,7 @@ public ref struct JsonReader
 		}
 
 		this.position = 0;
+		this.navigationDepth = 0;
 	}
 
 	/// <summary>Gets the original input sequence.</summary>
@@ -89,6 +92,9 @@ public ref struct JsonReader
 
 	/// <summary>Gets the number of bytes consumed from the input buffer.</summary>
 	internal readonly int BytesConsumed => this.position;
+
+	/// <summary>Gets the net number of containers entered through structural reader methods.</summary>
+	internal readonly int NavigationDepth => this.navigationDepth;
 
 	/// <summary>
 	/// Creates an independent copy of this reader at the current position.
@@ -198,6 +204,7 @@ public ref struct JsonReader
 		this.SkipWhiteSpaceUtf8();
 		this.RequireCurrent((byte)'{');
 		this.position++;
+		this.navigationDepth++;
 	}
 
 	/// <summary>
@@ -224,6 +231,7 @@ public ref struct JsonReader
 		this.SkipWhiteSpaceUtf8();
 		this.RequireCurrent((byte)'[');
 		this.position++;
+		this.navigationDepth++;
 	}
 
 	/// <summary>
@@ -268,9 +276,14 @@ public ref struct JsonReader
 	/// <summary>
 	/// Skips over the next JSON value.
 	/// </summary>
-	public void SkipValue()
+	/// <param name="context">The active serialization context, including the remaining depth and cancellation token.</param>
+	/// <remarks>Each array or object, including an empty one, consumes one depth step. The caller's context is not modified, so siblings retain the same depth budget.</remarks>
+	/// <exception cref="InvalidOperationException">The value exceeds the remaining depth limit.</exception>
+	/// <exception cref="OperationCanceledException">The operation has been canceled.</exception>
+	public void Skip(SerializationContext context)
 	{
-		this.SkipWhiteSpaceUtf8();
+		context.CancellationToken.ThrowIfCancellationRequested();
+		this.SkipWhiteSpaceUtf8(context.CancellationToken);
 		if (this.position >= this.utf8Json.Length)
 		{
 			throw new FormatException("Expected a JSON value.");
@@ -279,13 +292,15 @@ public ref struct JsonReader
 		switch (this.utf8Json[this.position])
 		{
 			case (byte)'{':
-				this.SkipObjectUtf8();
+				context.DepthStep();
+				this.SkipObjectUtf8(context);
 				break;
 			case (byte)'[':
-				this.SkipArrayUtf8();
+				context.DepthStep();
+				this.SkipArrayUtf8(context);
 				break;
 			case (byte)'"':
-				this.SkipStringUtf8();
+				this.SkipStringUtf8(context.CancellationToken);
 				break;
 			case (byte)'t':
 			case (byte)'f':
@@ -299,7 +314,7 @@ public ref struct JsonReader
 
 				break;
 			default:
-				this.ReadNumberTokenUtf8Core();
+				this.ReadNumberTokenUtf8Core(context.CancellationToken);
 				break;
 		}
 	}
@@ -308,11 +323,20 @@ public ref struct JsonReader
 	/// Reads the next JSON value and returns its raw JSON text.
 	/// </summary>
 	/// <returns>The raw JSON representation of the next value.</returns>
-	public string ReadRawValue()
+	/// <remarks>Uses the default depth limit of 64. Converters should use <see cref="ReadRawValue(SerializationContext)"/> to preserve the active operation's limits.</remarks>
+	public string ReadRawValue() => this.ReadRawValue(new SerializationContext());
+
+	/// <summary>
+	/// Reads the next JSON value and returns its raw JSON text using the active operation's limits.
+	/// </summary>
+	/// <param name="context">The active serialization context.</param>
+	/// <returns>The raw JSON representation of the next value.</returns>
+	public string ReadRawValue(SerializationContext context)
 	{
-		this.SkipWhiteSpaceUtf8();
+		context.CancellationToken.ThrowIfCancellationRequested();
+		this.SkipWhiteSpaceUtf8(context.CancellationToken);
 		int utf8Start = this.position;
-		this.SkipValue();
+		this.Skip(context);
 		return Encoding.UTF8.GetString(this.utf8Json[utf8Start..this.position]);
 	}
 
@@ -623,16 +647,16 @@ public ref struct JsonReader
 		}
 	}
 
-	private ReadOnlySpan<byte> ReadNumberTokenUtf8Core()
+	private ReadOnlySpan<byte> ReadNumberTokenUtf8Core(CancellationToken cancellationToken = default)
 	{
-		this.SkipWhiteSpaceUtf8();
+		this.SkipWhiteSpaceUtf8(cancellationToken);
 		int start = this.position;
 		if (this.TryConsume((byte)'-'))
 		{
 		}
 
 		int integerStart = this.position;
-		this.ReadDigitsUtf8(requireAtLeastOne: true);
+		this.ReadDigitsUtf8(requireAtLeastOne: true, cancellationToken);
 		if (this.position - integerStart > 1 && this.utf8Json[integerStart] == (byte)'0')
 		{
 			throw new FormatException("JSON numbers cannot have leading zeros.");
@@ -640,7 +664,7 @@ public ref struct JsonReader
 
 		if (this.TryConsume((byte)'.'))
 		{
-			this.ReadDigitsUtf8(requireAtLeastOne: true);
+			this.ReadDigitsUtf8(requireAtLeastOne: true, cancellationToken);
 		}
 
 		if (this.TryConsume((byte)'e') || this.TryConsume((byte)'E'))
@@ -650,7 +674,7 @@ public ref struct JsonReader
 				this.TryConsume((byte)'-');
 			}
 
-			this.ReadDigitsUtf8(requireAtLeastOne: true);
+			this.ReadDigitsUtf8(requireAtLeastOne: true, cancellationToken);
 		}
 
 		this.ValidateScalarTerminator();
@@ -665,15 +689,20 @@ public ref struct JsonReader
 		}
 	}
 
-	private void SkipWhiteSpaceUtf8()
+	private void SkipWhiteSpaceUtf8(CancellationToken cancellationToken = default)
 	{
-		this.position = this.SkipInsignificantCharactersUtf8(this.position);
+		this.position = this.SkipInsignificantCharactersUtf8(this.position, cancellationToken);
 	}
 
-	private int SkipInsignificantCharactersUtf8(int index)
+	private int SkipInsignificantCharactersUtf8(int index, CancellationToken cancellationToken = default)
 	{
 		while (index < this.utf8Json.Length)
 		{
+			if ((index & 1023) == 0)
+			{
+				cancellationToken.ThrowIfCancellationRequested();
+			}
+
 			if (index == 0
 				&& this.utf8Json.Length >= 3
 				&& this.utf8Json[0] == 0xEF
@@ -699,6 +728,11 @@ public ref struct JsonReader
 					index += 2;
 					while (index < this.utf8Json.Length && this.utf8Json[index] is not (byte)'\r' and not (byte)'\n')
 					{
+						if ((index & 1023) == 0)
+						{
+							cancellationToken.ThrowIfCancellationRequested();
+						}
+
 						index++;
 					}
 
@@ -710,6 +744,11 @@ public ref struct JsonReader
 					index += 2;
 					while (index + 1 < this.utf8Json.Length && !(this.utf8Json[index] == (byte)'*' && this.utf8Json[index + 1] == (byte)'/'))
 					{
+						if ((index & 1023) == 0)
+						{
+							cancellationToken.ThrowIfCancellationRequested();
+						}
+
 						index++;
 					}
 
@@ -729,21 +768,23 @@ public ref struct JsonReader
 		return index;
 	}
 
-	private bool TryReadEndToken(byte endToken)
+	private bool TryReadEndToken(byte endToken, CancellationToken cancellationToken = default)
 	{
-		int index = this.SkipInsignificantCharactersUtf8(this.position);
+		int index = this.SkipInsignificantCharactersUtf8(this.position, cancellationToken);
 		if (index < this.utf8Json.Length && this.utf8Json[index] == endToken)
 		{
 			this.position = index + 1;
+			this.navigationDepth--;
 			return true;
 		}
 
 		if (this.allowTrailingCommas && index < this.utf8Json.Length && this.utf8Json[index] == (byte)',')
 		{
-			int afterComma = this.SkipInsignificantCharactersUtf8(index + 1);
+			int afterComma = this.SkipInsignificantCharactersUtf8(index + 1, cancellationToken);
 			if (afterComma < this.utf8Json.Length && this.utf8Json[afterComma] == endToken)
 			{
 				this.position = afterComma + 1;
+				this.navigationDepth--;
 				return true;
 			}
 		}
@@ -762,11 +803,16 @@ public ref struct JsonReader
 		return false;
 	}
 
-	private void ReadDigitsUtf8(bool requireAtLeastOne)
+	private void ReadDigitsUtf8(bool requireAtLeastOne, CancellationToken cancellationToken = default)
 	{
 		int start = this.position;
 		while (this.position < this.utf8Json.Length && this.utf8Json[this.position] is >= (byte)'0' and <= (byte)'9')
 		{
+			if ((this.position & 1023) == 0)
+			{
+				cancellationToken.ThrowIfCancellationRequested();
+			}
+
 			this.position++;
 		}
 
@@ -815,55 +861,63 @@ public ref struct JsonReader
 		return value;
 	}
 
-	private void SkipArrayUtf8()
+	private void SkipArrayUtf8(SerializationContext context)
 	{
 		this.ReadStartArray();
-		if (this.TryReadEndArray())
+		if (this.TryReadEndToken((byte)']', context.CancellationToken))
 		{
 			return;
 		}
 
 		while (true)
 		{
-			this.SkipValue();
-			if (this.TryReadEndArray())
+			this.Skip(context);
+			if (this.TryReadEndToken((byte)']', context.CancellationToken))
 			{
 				return;
 			}
 
+			this.SkipWhiteSpaceUtf8(context.CancellationToken);
 			this.ReadValueSeparator();
 		}
 	}
 
-	private void SkipObjectUtf8()
+	private void SkipObjectUtf8(SerializationContext context)
 	{
 		this.ReadStartObject();
-		if (this.TryReadEndObject())
+		if (this.TryReadEndToken((byte)'}', context.CancellationToken))
 		{
 			return;
 		}
 
 		while (true)
 		{
-			this.SkipStringUtf8();
+			this.SkipStringUtf8(context.CancellationToken);
+			this.SkipWhiteSpaceUtf8(context.CancellationToken);
 			this.ReadNameSeparator();
-			this.SkipValue();
-			if (this.TryReadEndObject())
+			this.Skip(context);
+			if (this.TryReadEndToken((byte)'}', context.CancellationToken))
 			{
 				return;
 			}
 
+			this.SkipWhiteSpaceUtf8(context.CancellationToken);
 			this.ReadValueSeparator();
 		}
 	}
 
-	private void SkipStringUtf8()
+	private void SkipStringUtf8(CancellationToken cancellationToken)
 	{
-		this.SkipWhiteSpaceUtf8();
+		this.SkipWhiteSpaceUtf8(cancellationToken);
 		this.RequireCurrent((byte)'"');
 		this.position++;
 		while (this.position < this.utf8Json.Length)
 		{
+			if ((this.position & 1023) <= 1)
+			{
+				cancellationToken.ThrowIfCancellationRequested();
+			}
+
 			byte ch = this.utf8Json[this.position++];
 			if (ch == (byte)'"')
 			{

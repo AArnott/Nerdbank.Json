@@ -174,11 +174,11 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 			else if (this.extensionData?.CanRead is true)
 			{
 				propertyName ??= property?.Name ?? throw new InvalidOperationException("The property name should be available for extension data.");
-				(unused ??= new()).Add(propertyName, reader.ReadRawValue());
+				(unused ??= new()).Add(propertyName, reader.ReadRawValue(context));
 			}
 			else
 			{
-				reader.SkipValue();
+				reader.Skip(context);
 			}
 
 			if (reader.TryReadEndObject())
@@ -427,7 +427,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 
 		if (this.setter is null)
 		{
-			reader.SkipValue();
+			reader.Skip(context);
 			return;
 		}
 	}

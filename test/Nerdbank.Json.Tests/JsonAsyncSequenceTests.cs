@@ -52,6 +52,13 @@ public partial class JsonAsyncSequenceTests : TestBase
 		JsonSerializer.StreamingEnumerationOptions<GroupEnvelope, int> options = new(x => x.Groups[1].Items);
 		Assert.Equal([2, 3], await CollectAsync(serializer.DeserializePathEnumerableAsync(stream, Shape<GroupEnvelope, GroupEnvelope>(), options)));
 		Assert.Equal(3, serializer.DeserializePath(json, Shape<GroupEnvelope, GroupEnvelope>(), new JsonSerializer.DeserializePathOptions<GroupEnvelope, int>(x => x.Groups[1].Items[1])));
+
+		JsonSerializer shallow = serializer with { StartingContext = new SerializationContext { MaxDepth = 4 } };
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => shallow.DeserializePath(json, Shape<GroupEnvelope, GroupEnvelope>(), new JsonSerializer.DeserializePathOptions<GroupEnvelope, int>(x => x.Groups[1].Items[1])));
+		Assert.IsType<InvalidOperationException>(error.InnerException);
+		using ChunkedStream shallowStream = new(Encoding.UTF8.GetBytes(json), 1);
+		error = await Assert.ThrowsAsync<JsonSerializationException>(async () => await CollectAsync(shallow.DeserializePathEnumerableAsync(shallowStream, Shape<GroupEnvelope, GroupEnvelope>(), options)));
+		Assert.IsType<InvalidOperationException>(error.InnerException);
 	}
 
 	[Test]
@@ -551,6 +558,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 			reader.ReadStartObject();
 			Assert.Equal("data", reader.ReadRequiredString());
 			reader.ReadNameSeparator();
+			context.DepthStep();
 			return base.SkipToIndexValue(ref reader, index, context);
 		}
 
@@ -558,6 +566,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 		{
 			await reader.ReadStartObjectAsync(context);
 			Assert.Equal("data", await reader.ReadPropertyNameAsync(context));
+			context.DepthStep();
 			return await base.SkipToIndexValueAsync(reader, index, context);
 		}
 	}

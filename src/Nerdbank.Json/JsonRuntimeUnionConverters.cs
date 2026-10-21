@@ -193,7 +193,9 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 	{
 		if (this.objectEnvelope is not null)
 		{
-			return this.objectEnvelope.ReadDiscriminator(ref reader).SkipToValue(ref reader, in segment, context);
+			JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader);
+			context.DepthStep();
+			return objectConverter.SkipToValue(ref reader, in segment, context);
 		}
 
 		reader.ReadStartArray();
@@ -217,6 +219,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		}
 
 		reader.ReadValueSeparator();
+		context.DepthStep();
 		return converter.SkipToValue(ref reader, in segment, context);
 	}
 
@@ -225,6 +228,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		if (this.objectEnvelope is not null)
 		{
 			JsonConverter objectConverter = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context).ConfigureAwait(false);
+			context.DepthStep();
 			int objectInner = await objectConverter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
 			return objectInner < 0 ? -1 : objectInner + 1;
 		}
@@ -250,6 +254,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		}
 
 		await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+		context.DepthStep();
 		int inner = await converter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
 		return inner < 0 ? -1 : inner + 1;
 	}
@@ -314,12 +319,10 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 			return default;
 		}
 
-		context.DepthStep();
-
-		string raw = reader.ReadRawValue();
+		string raw = reader.ReadRawValue(context);
 		byte[] rawUtf8 = Encoding.UTF8.GetBytes(raw);
 
-		HashSet<string> presentNames = this.ScanPropertyNames(rawUtf8);
+		HashSet<string> presentNames = this.ScanPropertyNames(rawUtf8, context);
 
 		int match = -1;
 		for (int i = 0; i < this.cases.Length; i++)
@@ -357,8 +360,9 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 		return true;
 	}
 
-	private HashSet<string> ScanPropertyNames(byte[] rawUtf8)
+	private HashSet<string> ScanPropertyNames(byte[] rawUtf8, SerializationContext context)
 	{
+		context.DepthStep();
 		HashSet<string> names = new(this.nameComparer);
 		JsonReader reader = new(rawUtf8, this.allowTrailingCommas, this.commentHandling);
 		reader.ReadStartObject();
@@ -371,7 +375,7 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 		{
 			string name = reader.ReadRequiredString();
 			reader.ReadNameSeparator();
-			reader.SkipValue();
+			reader.Skip(context);
 			names.Add(name);
 			if (reader.TryReadEndObject())
 			{

@@ -16,8 +16,11 @@ internal static class JsonTargetedNavigator
 	internal static bool TryNavigate(ref JsonReader reader, JsonPath path, JsonConverter?[]? converters, JsonNavigationOptions options, ref SerializationContext context)
 	{
 		ReadOnlySpan<JsonPathSegment> segments = path.Segments;
+		int startingDepth = reader.NavigationDepth;
+		int maxDepth = context.MaxDepth;
 		for (int i = 0; i < segments.Length; i++)
 		{
+			context.MaxDepth = maxDepth - (reader.NavigationDepth - startingDepth);
 			context.DepthStep();
 			if (reader.TryReadNull())
 			{
@@ -28,22 +31,23 @@ internal static class JsonTargetedNavigator
 			JsonConverter? converter = converters is not null ? converters[i] : null;
 			bool found = converter is not null
 				? converter.SkipToValue(ref reader, in segment, context)
-				: NavigateRawToken(ref reader, in segment, options);
+				: NavigateRawToken(ref reader, in segment, options, context);
 			if (!found)
 			{
 				return false;
 			}
 		}
 
+		context.MaxDepth = maxDepth - (reader.NavigationDepth - startingDepth);
 		return true;
 	}
 
-	internal static bool NavigateRawToken(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	internal static bool NavigateRawToken(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 		=> segment.IsIndex
-			? NavigateIndex(ref reader, segment.Index)
-			: NavigateMember(ref reader, in segment, options);
+			? NavigateIndex(ref reader, segment.Index, context)
+			: NavigateMember(ref reader, in segment, options, context);
 
-	private static bool NavigateMember(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	private static bool NavigateMember(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
 		char token = reader.PeekValueToken();
 		if (token != '{')
@@ -64,7 +68,7 @@ internal static class JsonTargetedNavigator
 				return true;
 			}
 
-			reader.SkipValue();
+			reader.Skip(context);
 			if (reader.TryReadEndObject())
 			{
 				return false;
@@ -87,7 +91,7 @@ internal static class JsonTargetedNavigator
 		return options.NameComparer.Equals(name, segment.Name);
 	}
 
-	private static bool NavigateIndex(ref JsonReader reader, int index)
+	private static bool NavigateIndex(ref JsonReader reader, int index, SerializationContext context)
 	{
 		char token = reader.PeekValueToken();
 		if (token != '[')
@@ -109,7 +113,7 @@ internal static class JsonTargetedNavigator
 				return true;
 			}
 
-			reader.SkipValue();
+			reader.Skip(context);
 			current++;
 			if (reader.TryReadEndArray())
 			{

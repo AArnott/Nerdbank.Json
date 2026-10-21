@@ -33,7 +33,7 @@ internal sealed class SystemTextJsonElementConverter : JsonConverter<JsonElement
 
 	public override JsonElement Read(ref JsonReader reader, SerializationContext context)
 	{
-		using JsonDocument document = JsonDocument.Parse(reader.ReadRawValue(), SystemTextJsonInterop.DocumentOptions);
+		using JsonDocument document = JsonDocument.Parse(reader.ReadRawValue(context), SystemTextJsonInterop.DocumentOptions);
 		return document.RootElement.Clone();
 	}
 
@@ -59,7 +59,7 @@ internal sealed class SystemTextJsonNodeConverter : JsonConverter<JsonSchemaNode
 	internal static readonly SystemTextJsonNodeConverter Instance = new();
 
 	public override JsonSchemaNode? Read(ref JsonReader reader, SerializationContext context)
-		=> JsonSchemaNode.Parse(reader.ReadRawValue(), nodeOptions: null, SystemTextJsonInterop.DocumentOptions);
+		=> JsonSchemaNode.Parse(reader.ReadRawValue(context), nodeOptions: null, SystemTextJsonInterop.DocumentOptions);
 
 	public override void Write(ref JsonWriter writer, in JsonSchemaNode? value, SerializationContext context)
 	{
@@ -83,7 +83,7 @@ internal sealed class SystemTextJsonDocumentConverter : JsonConverter<JsonDocume
 	internal static readonly SystemTextJsonDocumentConverter Instance = new();
 
 	public override JsonDocument? Read(ref JsonReader reader, SerializationContext context)
-		=> JsonDocument.Parse(reader.ReadRawValue(), SystemTextJsonInterop.DocumentOptions);
+		=> JsonDocument.Parse(reader.ReadRawValue(context), SystemTextJsonInterop.DocumentOptions);
 
 	public override void Write(ref JsonWriter writer, in JsonDocument? value, SerializationContext context)
 	{

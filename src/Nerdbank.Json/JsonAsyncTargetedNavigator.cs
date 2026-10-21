@@ -21,8 +21,11 @@ internal static class JsonAsyncTargetedNavigator
 	{
 		JsonPathSegment[] segments = path.SegmentArray;
 		int openContainers = 0;
+		int startingDepth = reader.NavigationDepth;
+		int maxDepth = context.MaxDepth;
 		for (int i = 0; i < segments.Length; i++)
 		{
+			context.MaxDepth = maxDepth - (reader.NavigationDepth - startingDepth);
 			context.DepthStep();
 			if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
 			{

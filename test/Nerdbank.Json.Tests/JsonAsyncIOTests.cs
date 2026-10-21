@@ -207,7 +207,7 @@ public partial class JsonAsyncIOTests : TestBase
 		await pipe.Writer.WriteAsync(utf8);
 		await pipe.Writer.CompleteAsync();
 		using JsonAsyncReader reader = new(pipe.Reader) { CancellationToken = default };
-		SerializationContext context = default;
+		SerializationContext context = new();
 		await reader.BufferNextValueAsync(context);
 		JsonReader sync = reader.CreateBufferedReader();
 		Assert.Throws<InvalidOperationException>(() => reader.CreateBufferedReader());

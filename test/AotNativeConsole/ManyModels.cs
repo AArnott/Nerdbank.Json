@@ -464,7 +464,7 @@ internal sealed class CoordConverter : JsonConverter<Coord>
 
 		for (int i = 0; i < index; i++)
 		{
-			reader.SkipValue();
+			reader.Skip(context);
 			if (reader.TryReadEndArray())
 			{
 				return false;

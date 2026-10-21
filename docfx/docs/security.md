@@ -39,6 +39,13 @@ When the data to be deserialized has a legitimate need for deeper nesting than t
 
 [!code-csharp[](../../samples/cs/Security.cs#SetMaxDepth)]
 
+Unknown-property skipping, retained <xref:Nerdbank.Json.UnusedDataPacket> values, raw capture, and targeted navigation honor the active operation's remaining depth and cancellation token.
+Each skipped JSON object or array consumes one depth step, including empty containers; sibling values share the same remaining budget rather than decrementing it globally.
+Asynchronous framing and envelope draining enforce these limits while scanning, before buffering an over-budget value in full.
+Custom converters should pass their active context to <xref:Nerdbank.Json.JsonReader.Skip(Nerdbank.Json.SerializationContext)> or <xref:Nerdbank.Json.JsonReader.ReadRawValue(Nerdbank.Json.SerializationContext)> instead of starting a new budget.
+The parameterless raw-text convenience method uses a depth limit of 64.
+Known flattened multidimensional arrays retain their logical-array depth semantics; raw skipping counts their actual JSON containers.
+
 ## Hash collisions
 
 When deserializing data into a dictionary or any other collection that hashes a key to provide fast lookup times, an adversary may carefully choose the keys in the collection such that when deserialized, the hash codes will collide, reducing the performance of the collection from its typical O(1) or "constant time" performance to O(n) or "linear time" performance.

@@ -87,7 +87,7 @@ public sealed class PointConverter : JsonConverter<Point>
 
 		for (int i = 0; i < index; i++)
 		{
-			reader.SkipValue();
+			reader.Skip(context);
 			if (reader.TryReadEndArray())
 			{
 				return false;

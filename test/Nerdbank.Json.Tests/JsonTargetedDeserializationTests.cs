@@ -246,8 +246,9 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	[Test]
 	public void PreParsed_ThroughUnion_ThrowsClearError()
 	{
-		NotSupportedException ex = Assert.Throws<NotSupportedException>(
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(
 			() => this.Serializer.DeserializePath(Document, JsonPath.Root.Member("pet").Member("name"), Shape<string, Witness>()));
+		NotSupportedException ex = Assert.IsType<NotSupportedException>(error.InnerException);
 		Assert.Contains("expression-based", ex.Message, StringComparison.Ordinal);
 	}
 
@@ -417,7 +418,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 
 			for (int i = 0; i < target; i++)
 			{
-				reader.SkipValue();
+				reader.Skip(context);
 				if (reader.TryReadEndArray())
 				{
 					return false;

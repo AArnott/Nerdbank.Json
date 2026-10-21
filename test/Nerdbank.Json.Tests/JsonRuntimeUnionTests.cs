@@ -239,6 +239,23 @@ public partial class JsonRuntimeUnionTests : TestBase
 		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{/* c */"radius":2.5}""", Shape<Shape2, Shape2>()));
 	}
 
+	[Test]
+	public async Task DuckTyping_RawCapturePreservesDepthBudget()
+	{
+		JsonSerializer serializer = DuckSerializer() with { StartingContext = new SerializationContext { MaxDepth = 2 } };
+		const string accepted = """{"radius":2.5,"unknown":[]}""";
+		const string rejected = """{"radius":2.5,"unknown":[[]]}""";
+		Assert.Equal(new Circle(2.5), serializer.Deserialize(accepted, Shape<Shape2, Shape2>()));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize(rejected, Shape<Shape2, Shape2>()));
+		Assert.IsType<InvalidOperationException>(exception.InnerException);
+
+		using MemoryStream goodStream = new(System.Text.Encoding.UTF8.GetBytes(accepted));
+		Assert.Equal(new Circle(2.5), await serializer.DeserializeAsync(goodStream, Shape<Shape2, Shape2>()));
+		using MemoryStream badStream = new(System.Text.Encoding.UTF8.GetBytes(rejected));
+		exception = await Assert.ThrowsAsync<JsonSerializationException>(async () => await serializer.DeserializeAsync(badStream, Shape<Shape2, Shape2>()));
+		Assert.IsType<InvalidOperationException>(exception.InnerException);
+	}
+
 	private static JsonSerializer DuckSerializer() => new()
 	{
 		DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<Shape2, Shape2>(), Shape<Circle, Circle>(), Shape<Square, Square>())],

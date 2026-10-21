@@ -140,7 +140,7 @@ public abstract class JsonConverter
 	/// This internal dispatcher supplies raw-token navigation for built-in representations.
 	/// </remarks>
 	internal virtual bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
-		=> JsonTargetedNavigator.NavigateRawToken(ref reader, in segment, options);
+		=> JsonTargetedNavigator.NavigateRawToken(ref reader, in segment, options, context);
 
 	/// <summary>
 	/// Asynchronously advances the reader from this converter's value toward the child selected by a targeted-navigation

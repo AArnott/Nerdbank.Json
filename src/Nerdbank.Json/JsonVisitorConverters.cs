@@ -334,6 +334,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 
 		reader.ReadValueSeparator();
+		context.DepthStep();
 		return converter.SkipToValue(ref reader, in segment, context);
 	}
 
@@ -366,6 +367,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 
 		await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+		context.DepthStep();
 		int inner = await converter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
 		return inner < 0 ? -1 : inner + 1;
 	}
@@ -648,11 +650,11 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 				}
 				else if (this.extensionData?.CanRead is true)
 				{
-					(extensionData ??= new()).Add(propertyName, reader.ReadRawValue());
+					(extensionData ??= new()).Add(propertyName, reader.ReadRawValue(context));
 				}
 				else
 				{
-					reader.SkipValue();
+					reader.Skip(context);
 				}
 
 				if (reader.TryReadEndObject())

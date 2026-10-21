@@ -340,6 +340,7 @@ public partial record JsonSerializer
 
 		if (!await asyncReader.TryReadNullAsync(context).ConfigureAwait(false))
 		{
+			context.DepthStep();
 			await asyncReader.ReadStartArrayAsync(context).ConfigureAwait(false);
 			if (!await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
 			{
@@ -427,18 +428,20 @@ public partial record JsonSerializer
 		}
 		else
 		{
-			await asyncReader.ReadStartArrayAsync(context).ConfigureAwait(false);
-			if (!await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+			SerializationContext elementContext = context with { MaxDepth = context.MaxDepth - asyncReader.NavigationDepth };
+			elementContext.DepthStep();
+			await asyncReader.ReadStartArrayAsync(elementContext).ConfigureAwait(false);
+			if (!await asyncReader.TryReadEndArrayAsync(elementContext).ConfigureAwait(false))
 			{
 				while (true)
 				{
-					yield return await asyncReader.ReadValueAsync(converter, context).ConfigureAwait(false);
-					if (await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+					yield return await asyncReader.ReadValueAsync(converter, elementContext).ConfigureAwait(false);
+					if (await asyncReader.TryReadEndArrayAsync(elementContext).ConfigureAwait(false))
 					{
 						break;
 					}
 
-					await asyncReader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+					await asyncReader.ReadValueSeparatorAsync(elementContext).ConfigureAwait(false);
 				}
 			}
 		}
