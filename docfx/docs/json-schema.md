@@ -1,6 +1,6 @@
 # JSON Schema export
 
-The `JsonSerializer.GetJsonSchema` method returns a mutable <xref:System.Text.Json.Nodes.JsonObject> containing a standards-based **JSON Schema (draft 2020-12 by default)** document that describes how the serializer represents a type.
+<xref:Nerdbank.Json.JsonSerializer.GetJsonSchema*> returns a mutable <xref:System.Text.Json.Nodes.JsonObject> containing a standards-based **JSON Schema (draft 2020-12 by default)** document that describes how the serializer represents a type.
 Call `ToJsonString()` on the result to obtain JSON text.
 The schema DOM is distinct from the optional native JSON DOM; ordinary serialization does not execute through System.Text.Json.
 The schema is generated from the effective, source-generated shape and converter graph, so it is trimming-safe
@@ -45,8 +45,7 @@ Draft 4 and Draft 7 use an array-valued `items` keyword for tuples and `addition
 
 ## Custom converters
 
-A custom converter describes its representation by overriding
-`JsonConverter.GetJsonSchema`.
+A custom converter describes its representation by overriding <xref:Nerdbank.Json.JsonConverter.GetJsonSchema*> and returning a <xref:System.Text.Json.Nodes.JsonObject>.
 Use <xref:Nerdbank.Json.JsonSchemaContext.GetJsonSchema(PolyType.ITypeShape)> to resolve nested schemas so shared definitions and recursion are handled consistently.
 The context exposes the selected <xref:Nerdbank.Json.JsonSchemaContext.Dialect> and provides `CreateTupleSchema` and `ApplyTupleSchema` helpers that accept a <xref:System.Text.Json.Nodes.JsonArray> of positional schemas.
 Ownership of this array transfers to the result.
@@ -57,6 +56,7 @@ Custom fragments are not automatically translated between dialects; converters s
 
 A custom converter that does **not** override the hook produces a permissive schema annotated with a conspicuous
 `$comment` rather than false precision.
+The informational [NBJson032](../analyzers/NBJson032.md) diagnostic reminds concrete converter authors to describe their format.
 Registered converters override built-in scalar schemas, and property-specific converters affect only that property's schema.
 Schemas describe serialization; a converter applied only to a constructor parameter may accept a different input representation.
 
