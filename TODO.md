@@ -12,6 +12,26 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 * Keep string-returning default `Serialize`, alongside direct UTF-8 buffer and stream APIs.
 * Do not add MessagePack extensions, indexed object contracts, Godot, or SignalR.
 
+## Finalization policy (user-directed)
+
+Keep the preferred MessagePack-aligned public API and finalize otherwise-ready work without waiting for complete performance recovery.
+Continue tracking benchmark impact and applying measured, correctness-preserving mitigations; unresolved performance findings are non-blocking follow-ups, not API-finalization gates.
+Log the affected scenario, measured time/allocations and uncertainty, suspected or confirmed source, attempted mitigation, and any genuine public-contract constraint.
+Do not confuse a current hotspot with proof of the change that caused a regression.
+
+The current public-contract review finds no identified regression that requires replacing the preferred API.
+
+| Area | API constraint and optimization latitude |
+|---|---|
+| Object lookup/dispatch, converter caching, parser scanning, segmented access, scratch storage | Internal implementation choices; no required public API change has been identified. |
+| By-value converter context | Preserves each converter's local depth/state semantics and matches the preferred model; internal readonly-reference dispatch already avoids some copies without changing public overrides. Further internal optimization is possible, but eliminating all public-boundary value-copy semantics is not promised. |
+| CLR strings, contiguous decoded spans, independently owned raw results | Materializing the requested representation can inherently require decoding, copying, or allocation. Existing UTF-8 span/sequence, typed numeric, raw borrowed, and direct buffer APIs cover important alternatives without removing convenient APIs. |
+| Future specialized fast paths | Add caller-buffer/ownership-aware APIs only when evidence warrants them; no known issue currently requires a new public escape hatch. Do not weaken lifetimes, context isolation, grammar, depth/cancellation, or exact-shape identity for speed. |
+
+The remaining contiguous-read gap and segmented scratch latency tradeoffs stay logged in the current checkpoint and benchmark guide.
+The rejected hash experiment remains rejected; unchanged public APIs do not prevent another measured implementation experiment later.
+Actual macOS execution is separately pending and must not be reported as completed.
+
 ## Bootstrap
 
 - [x] Inspect the implemented source surface and establish this tracker.
@@ -78,7 +98,7 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 - [x] Document intentional low-level contract limits separately from implementation tasks; the implemented scalar subset does not promise general string/container primitives.
 - [x] Publish and execute final Windows NativeAOT core net9.0/net10.0 and all four fixtures; the final full platform run supersedes the historical linker block.
 - [x] Investigate and optimize the object elapsed-time regression without sacrificing allocation parity, safety, or correctness; causal boundaries and accepted fixes are recorded below.
-- [ ] Further isolate and reduce residual small/wide-object read cost; the accepted fixes do not establish complete original-speed restoration.
+- [ ] Further isolate and reduce residual small/wide-object read cost as a non-blocking follow-up, not an API-finalization gate; the accepted fixes do not establish complete original-speed restoration.
 - [x] Execute full Linux validation in an isolated WSL Linux-native checkout, preserving existing size budgets.
 - [ ] Receive actual macOS validation evidence from the ready script/instructions handoff; no Mac execution is claimed.
 
