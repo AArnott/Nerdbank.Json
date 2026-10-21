@@ -8,7 +8,7 @@ public partial class HttpMessage
 {
 	// The attribute controls the comparer for the instance the deserializer constructs.
 	// The initializer controls the comparer for instances application code constructs.
-	[JsonCollectionComparer(typeof(CaseInsensitiveComparer))]
+	[UseComparer(typeof(CaseInsensitiveComparer))]
 	public Dictionary<string, string> Headers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 

@@ -336,7 +336,7 @@ internal partial class DeviceSnapshot : IJsonSerializationCallbacks
 
 	public Dictionary<int, string> Tags { get; set; } = [];
 
-	[JsonCollectionComparer(typeof(CaseInsensitiveStringComparer))]
+	[UseComparer(typeof(CaseInsensitiveStringComparer))]
 	public Dictionary<string, string> Labels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
 	public List<SensorReading> Readings { get; set; } = [];

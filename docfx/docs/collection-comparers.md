@@ -3,7 +3,7 @@
 The deserializer creates a fresh collection when it populates a settable dictionary
 or set member. By default that collection uses its type's default comparer, which
 loses member-specific semantics such as a case-insensitive dictionary. Apply
-<xref:Nerdbank.Json.JsonCollectionComparerAttribute> to select the
+<xref:Nerdbank.Json.UseComparerAttribute> to select the
 <xref:System.Collections.Generic.IEqualityComparer`1> or
 <xref:System.Collections.Generic.IComparer`1> used for that member's collection.
 
@@ -16,6 +16,12 @@ collections such as <xref:System.Collections.Generic.Dictionary`2> and
 collections such as <xref:System.Collections.Generic.SortedDictionary`2>. The
 comparer is activated through a source-generated type shape rather than runtime
 reflection, so the feature is trimming-safe and NativeAOT-compatible.
+
+Alternatively, specify a provider type and property name, such as `[UseComparer(typeof(StringComparer), nameof(StringComparer.OrdinalIgnoreCase))]`.
+The property must have a public, parameterless getter and return the required comparer interface.
+Static properties require no provider instance.
+Instance properties use a provider activated through its associated source-generated shape and require a public parameterless constructor.
+Mutable and parameterized collections, including immutable sets and dictionaries, support these providers.
 
 The attribute only influences the instances the deserializer creates. Specify the same
 comparer in the member's initializer so instances created by application code share the
@@ -30,10 +36,11 @@ unnecessary; that zero-configuration pattern remains the preferred alternative.
 ## Diagnostics
 
 The `NBJson003` analyzer reports invalid uses of
-<xref:Nerdbank.Json.JsonCollectionComparerAttribute> at compile time when any of the
+<xref:Nerdbank.Json.UseComparerAttribute> at compile time when any of the
 following is true:
 
 * The decorated member is not a dictionary or set.
-* The comparer type does not declare a public parameterless constructor.
+* The comparer or instance provider type does not declare a public parameterless constructor.
+* A specified provider property is missing or does not have a public, parameterless getter.
 * The comparer type does not implement `IEqualityComparer<T>` or `IComparer<T>` for the
   collection's key or element type.

@@ -2,10 +2,41 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using Nerdbank.Json.Analyzers;
-using VerifyCS = Nerdbank.Json.Analyzers.Tests.Verifier.AnalyzerVerifier<Nerdbank.Json.Analyzers.JsonCollectionComparerAnalyzer>;
+using VerifyCS = Nerdbank.Json.Analyzers.Tests.Verifier.AnalyzerVerifier<Nerdbank.Json.Analyzers.UseComparerAnalyzer>;
 
-public class JsonCollectionComparerAnalyzerTests
+public class UseComparerAnalyzerTests
 {
+	[Test]
+	[Arguments("StringComparer", "OrdinalIgnoreCase", false)]
+	[Arguments("Provider", "Comparer", false)]
+	[Arguments("Provider", "Missing", true)]
+	[Arguments("Provider", "WrongType", true)]
+	public async Task ProviderProperties_AreValidated(string provider, string member, bool diagnostic)
+	{
+		string attribute = $"UseComparer(typeof({provider}), \"{member}\")";
+		if (diagnostic)
+		{
+			attribute = "{|NBJson003:" + attribute + "|}";
+		}
+
+		string source = /* lang=c#-test */ $$"""
+			using System;
+			using System.Collections.Generic;
+			using Nerdbank.Json;
+			class Model
+			{
+				[{{attribute}}]
+				public Dictionary<string, int> Values { get; set; } = new();
+			}
+			public class Provider
+			{
+				public IEqualityComparer<string> Comparer => StringComparer.OrdinalIgnoreCase;
+				public static int WrongType => 1;
+			}
+			""";
+		await VerifyCS.VerifyAnalyzerAsync(source);
+	}
+
 	[Test]
 	public async Task Dictionary_WithCompatibleEqualityComparer_NoDiagnostic()
 	{
@@ -20,7 +51,7 @@ public class JsonCollectionComparerAnalyzerTests
 			[GenerateShape]
 			partial class Model
 			{
-				[JsonCollectionComparer(typeof(CaseInsensitive))]
+				[UseComparer(typeof(CaseInsensitive))]
 				public Dictionary<string, int> Values { get; set; } = new();
 			}
 
@@ -48,7 +79,7 @@ public class JsonCollectionComparerAnalyzerTests
 			[GenerateShape]
 			partial class Model
 			{
-				[JsonCollectionComparer(typeof(CaseInsensitive))]
+				[UseComparer(typeof(CaseInsensitive))]
 				public HashSet<string> Values { get; set; } = new();
 			}
 
@@ -76,7 +107,7 @@ public class JsonCollectionComparerAnalyzerTests
 			[GenerateShape]
 			partial class Model
 			{
-				[JsonCollectionComparer(typeof(Descending))]
+				[UseComparer(typeof(Descending))]
 				public SortedDictionary<string, int> Values { get; set; } = new();
 			}
 
@@ -101,7 +132,7 @@ public class JsonCollectionComparerAnalyzerTests
 			using PolyType;
 
 			[GenerateShape]
-			partial class Model([JsonCollectionComparer(typeof(CaseInsensitive))] Dictionary<string, int> values)
+			partial class Model([UseComparer(typeof(CaseInsensitive))] Dictionary<string, int> values)
 			{
 				public Dictionary<string, int> Values { get; } = values;
 			}
@@ -130,7 +161,7 @@ public class JsonCollectionComparerAnalyzerTests
 			[GenerateShape]
 			partial class Model
 			{
-				[{|NBJson003:JsonCollectionComparer(typeof(CaseInsensitive))|}]
+				[{|NBJson003:UseComparer(typeof(CaseInsensitive))|}]
 				public int Count { get; set; }
 			}
 
@@ -158,7 +189,7 @@ public class JsonCollectionComparerAnalyzerTests
 			[GenerateShape]
 			partial class Model
 			{
-				[{|NBJson003:JsonCollectionComparer(typeof(IntComparer))|}]
+				[{|NBJson003:UseComparer(typeof(IntComparer))|}]
 				public Dictionary<string, int> Values { get; set; } = new();
 			}
 
@@ -186,7 +217,7 @@ public class JsonCollectionComparerAnalyzerTests
 			[GenerateShape]
 			partial class Model
 			{
-				[{|NBJson003:JsonCollectionComparer(typeof(NeedsArgs))|}]
+				[{|NBJson003:UseComparer(typeof(NeedsArgs))|}]
 				public Dictionary<string, int> Values { get; set; } = new();
 			}
 

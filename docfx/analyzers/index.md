@@ -7,7 +7,7 @@ reported as warnings or errors depending on severity.
 |---------|----------|----------|---------|
 | NBJson001 | Usage | Warning | Delegate-typed serializable members are not supported |
 | NBJson002 | Usage | Warning | Unsupported dictionary key types |
-| [NBJson003](../docs/collection-comparers.md) | Usage | Warning | `JsonCollectionComparer` must target a dictionary or set with a compatible comparer |
+| [NBJson003](../docs/collection-comparers.md) | Usage | Warning | `UseComparer` must target a dictionary or set with a compatible comparer or provider property |
 | [NBJson033](NBJson033.md) | Usage | Error | Return the `JsonWriter` before awaiting, calling the `JsonAsyncWriter` again, or returning |
 | [NBJson034](NBJson034.md) | Usage | Error | Do not reuse a `JsonWriter` after returning it |
 | [NBJson035](NBJson035.md) | Usage | Error | Return the `JsonReader` before awaiting, calling the `JsonAsyncReader` again, or returning |

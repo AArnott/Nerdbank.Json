@@ -2,9 +2,33 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Text;
+using PolyType.Abstractions;
 
-public partial class JsonCollectionComparerTests : TestBase
+public partial class UseComparerTests : TestBase
 {
+	[Test]
+	public async Task StaticAndInstanceProviders_ConfigureMutableAndParameterizedCollections()
+	{
+		const string Json = """{"headers":{"Accept":"json"},"tags":["Alpha"],"ordered":{"a":1,"b":2}}""";
+		ProviderModel value = this.Serializer.Deserialize<ProviderModel>(Json)!;
+		using MemoryStream stream = new(Encoding.UTF8.GetBytes(Json));
+		ProviderModel asyncValue = (await this.Serializer.DeserializeAsync(stream, TypeShapeResolver.ResolveDynamicOrThrow<ProviderModel>()))!;
+		foreach (ProviderModel model in new[] { value, asyncValue })
+		{
+			Assert.Equal("json", model.Headers!["accept"]);
+			Assert.Contains("alpha", model.Tags!);
+			Assert.Equal(["b", "a"], model.Ordered!.Keys);
+		}
+	}
+
+	[Test]
+	public void NullProviderValue_Throws()
+	{
+		Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<NullProviderModel>("{}"));
+	}
+
 	[Test]
 	public void Dictionary_MemberComparer_IsAppliedDuringDeserialization()
 	{
@@ -88,7 +112,7 @@ public partial class JsonCollectionComparerTests : TestBase
 	public void Attribute_OnNonCollectionMember_Throws()
 	{
 		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<InvalidScalarModel>("""{"name":"Ada"}"""));
-		Assert.Contains(nameof(JsonCollectionComparerAttribute), exception.Message, StringComparison.Ordinal);
+		Assert.Contains(nameof(UseComparerAttribute), exception.Message, StringComparison.Ordinal);
 	}
 
 	[Test]
@@ -101,26 +125,26 @@ public partial class JsonCollectionComparerTests : TestBase
 	[GenerateShape]
 	internal partial class HeaderBag
 	{
-		[JsonCollectionComparer(typeof(CaseInsensitiveStringComparer))]
+		[UseComparer(typeof(CaseInsensitiveStringComparer))]
 		public Dictionary<string, string>? Headers { get; set; }
 	}
 
 	[GenerateShape]
 	internal partial class TagSet
 	{
-		[JsonCollectionComparer(typeof(CaseInsensitiveStringComparer))]
+		[UseComparer(typeof(CaseInsensitiveStringComparer))]
 		public HashSet<string>? Tags { get; set; }
 	}
 
 	[GenerateShape]
 	internal partial class SortedModel
 	{
-		[JsonCollectionComparer(typeof(DescendingStringComparer))]
+		[UseComparer(typeof(DescendingStringComparer))]
 		public SortedDictionary<string, int>? Ordered { get; set; }
 	}
 
 	[GenerateShape]
-	internal partial class ConstructorModel([JsonCollectionComparer(typeof(CaseInsensitiveStringComparer))] Dictionary<string, string> headers)
+	internal partial class ConstructorModel([UseComparer(typeof(CaseInsensitiveStringComparer))] Dictionary<string, string> headers)
 	{
 		public Dictionary<string, string> Headers { get; } = headers;
 	}
@@ -128,7 +152,7 @@ public partial class JsonCollectionComparerTests : TestBase
 	[GenerateShape]
 	internal partial class TwoDictionaries
 	{
-		[JsonCollectionComparer(typeof(CaseInsensitiveStringComparer))]
+		[UseComparer(typeof(CaseInsensitiveStringComparer))]
 		public Dictionary<string, string>? Insensitive { get; set; }
 
 		public Dictionary<string, string>? Sensitive { get; set; }
@@ -137,15 +161,44 @@ public partial class JsonCollectionComparerTests : TestBase
 	[GenerateShape]
 	internal partial class InvalidScalarModel
 	{
-		[JsonCollectionComparer(typeof(CaseInsensitiveStringComparer))]
+		[UseComparer(typeof(CaseInsensitiveStringComparer))]
 		public string? Name { get; set; }
 	}
 
 	[GenerateShape]
 	internal partial class IncompatibleComparerModel
 	{
-		[JsonCollectionComparer(typeof(DescendingStringComparer))]
+		[UseComparer(typeof(DescendingStringComparer))]
 		public Dictionary<string, string>? Headers { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class ProviderModel
+	{
+		[UseComparer(typeof(StringComparer), nameof(StringComparer.OrdinalIgnoreCase))]
+		public Dictionary<string, string>? Headers { get; set; }
+
+		[UseComparer(typeof(ComparerProvider), nameof(ComparerProvider.EqualityComparer))]
+		public ImmutableHashSet<string>? Tags { get; set; }
+
+		[UseComparer(typeof(ComparerProvider), nameof(ComparerProvider.OrderComparer))]
+		public ImmutableSortedDictionary<string, int>? Ordered { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class NullProviderModel
+	{
+		[UseComparer(typeof(ComparerProvider), nameof(ComparerProvider.Null))]
+		public Dictionary<string, string>? Headers { get; set; }
+	}
+
+	internal sealed class ComparerProvider
+	{
+		public static IEqualityComparer<string>? Null => null;
+
+		public IEqualityComparer<string> EqualityComparer => StringComparer.OrdinalIgnoreCase;
+
+		public IComparer<string> OrderComparer => new DescendingStringComparer();
 	}
 
 	internal sealed class CaseInsensitiveStringComparer : IEqualityComparer<string>

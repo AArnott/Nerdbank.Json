@@ -13,20 +13,20 @@ using Microsoft.CodeAnalysis.Diagnostics;
 namespace Nerdbank.Json.Analyzers;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class JsonCollectionComparerAnalyzer : DiagnosticAnalyzer
+public class UseComparerAnalyzer : DiagnosticAnalyzer
 {
 	public const string InvalidComparerDiagnosticId = "NBJson003";
 
 	public static readonly DiagnosticDescriptor InvalidComparerDiagnostic = new(
 		id: InvalidComparerDiagnosticId,
-		title: "JsonCollectionComparer attribute is invalid",
+		title: "UseComparer attribute is invalid",
 		messageFormat: "{0}",
 		category: "Usage",
 		defaultSeverity: DiagnosticSeverity.Warning,
 		isEnabledByDefault: true,
 		helpLinkUri: "https://aarnott.github.io/Nerdbank.Json/docs/collection-comparers.html");
 
-	private const string AttributeMetadataName = "Nerdbank.Json.JsonCollectionComparerAttribute";
+	private const string AttributeMetadataName = "Nerdbank.Json.UseComparerAttribute";
 
 	public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [InvalidComparerDiagnostic];
 
@@ -76,7 +76,7 @@ public class JsonCollectionComparerAnalyzer : DiagnosticAnalyzer
 			?? member.Locations.FirstOrDefault()
 			?? Location.None;
 
-		if (attribute.ConstructorArguments.Length != 1 || attribute.ConstructorArguments[0].Value is not INamedTypeSymbol comparerType)
+		if (attribute.ConstructorArguments.Length is not (1 or 2) || attribute.ConstructorArguments[0].Value is not INamedTypeSymbol comparerType)
 		{
 			// The compiler already reports malformed attribute arguments.
 			return;
@@ -87,11 +87,31 @@ public class JsonCollectionComparerAnalyzer : DiagnosticAnalyzer
 			context.ReportDiagnostic(Diagnostic.Create(
 				InvalidComparerDiagnostic,
 				location,
-				$"'{member.Name}' is not a dictionary or set member, so JsonCollectionComparer cannot be applied to it."));
+				$"'{member.Name}' is not a dictionary or set member, so UseComparer cannot be applied to it."));
 			return;
 		}
 
-		if (!HasPublicParameterlessConstructor(comparerType))
+		ITypeSymbol suppliedComparerType = comparerType;
+		bool needsInstance = true;
+		if (attribute.ConstructorArguments.Length == 2 && attribute.ConstructorArguments[1].Value is string memberName)
+		{
+			IPropertySymbol? property = null;
+			for (INamedTypeSymbol? type = comparerType; type is not null && property is null; type = type.BaseType)
+			{
+				property = type.GetMembers(memberName).OfType<IPropertySymbol>().FirstOrDefault(p => p.DeclaredAccessibility == Accessibility.Public && p.GetMethod?.DeclaredAccessibility == Accessibility.Public && !p.IsIndexer);
+			}
+
+			if (property is null)
+			{
+				context.ReportDiagnostic(Diagnostic.Create(InvalidComparerDiagnostic, location, $"Comparer provider '{comparerType.Name}' must declare a public property '{memberName}' with a public parameterless getter."));
+				return;
+			}
+
+			suppliedComparerType = property.Type;
+			needsInstance = !property.IsStatic;
+		}
+
+		if (needsInstance && !HasPublicParameterlessConstructor(comparerType))
 		{
 			context.ReportDiagnostic(Diagnostic.Create(
 				InvalidComparerDiagnostic,
@@ -100,7 +120,7 @@ public class JsonCollectionComparerAnalyzer : DiagnosticAnalyzer
 			return;
 		}
 
-		if (!ImplementsComparerFor(comparerType, comparedType, symbols))
+		if (!ImplementsComparerFor(suppliedComparerType, comparedType, symbols))
 		{
 			context.ReportDiagnostic(Diagnostic.Create(
 				InvalidComparerDiagnostic,
@@ -171,9 +191,9 @@ public class JsonCollectionComparerAnalyzer : DiagnosticAnalyzer
 			&& !type.IsAbstract
 			&& type.InstanceConstructors.Any(c => c.Parameters.IsEmpty && c.DeclaredAccessibility == Accessibility.Public);
 
-	private static bool ImplementsComparerFor(INamedTypeSymbol comparerType, ITypeSymbol comparedType, WellKnownSymbols symbols)
+	private static bool ImplementsComparerFor(ITypeSymbol comparerType, ITypeSymbol comparedType, WellKnownSymbols symbols)
 	{
-		foreach (INamedTypeSymbol iface in comparerType.AllInterfaces)
+		foreach (INamedTypeSymbol iface in EnumerateSelfAndInterfaces(comparerType))
 		{
 			if ((symbols.EqualityComparer is not null && SymbolEqualityComparer.Default.Equals(iface.OriginalDefinition, symbols.EqualityComparer)) ||
 				(symbols.Comparer is not null && SymbolEqualityComparer.Default.Equals(iface.OriginalDefinition, symbols.Comparer)))
