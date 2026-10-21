@@ -47,6 +47,13 @@ Two medium runs measured wide reads at 1446/1413 ns, versus 1589/1592/1605 ns fo
 The wide-object improvement repeated, while the incremental small-object timing overlapped the preceding variation.
 Older targets retain scalar validation, and no target relaxes malformed UTF-8, control-byte, or surrogate checks.
 
+Caching the immutable input length and outlining segmented token slicing and delimiter search further reduced contiguous wrapper work without duplicating the parser.
+Two medium runs measured small reads at 379/357 ns and wide reads at 1237/1278 ns; read allocations stayed at 200/664 B and both writes stayed allocation-free.
+The input view grows by one `long` field, while segmented navigation still borrows the payload and copies only split tokens when required.
+This recovers most, but not all, of the integration regression: the accepted pre-segmented reader measured about 313 ns and 1071–1077 ns without the new strict string validation.
+The remaining difference is not attributed solely to validation; these measurements do not isolate every remaining reader cost.
+An explicit contiguous string-parser specialization was also tested and removed because its small effect did not justify a second path.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.

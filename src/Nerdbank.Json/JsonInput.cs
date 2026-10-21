@@ -14,7 +14,11 @@ internal readonly ref struct JsonInput
 
 	/// <summary>Initializes a new instance of the <see cref="JsonInput"/> struct.</summary>
 	/// <param name="span">The borrowed input.</param>
-	internal JsonInput(ReadOnlySpan<byte> span) => this.span = span;
+	internal JsonInput(ReadOnlySpan<byte> span)
+	{
+		this.span = span;
+		this.Length = span.Length;
+	}
 
 	/// <summary>Initializes a new instance of the <see cref="JsonInput"/> struct.</summary>
 	/// <param name="sequence">The borrowed input.</param>
@@ -22,14 +26,19 @@ internal readonly ref struct JsonInput
 	{
 		this.span = sequence.IsSingleSegment ? sequence.First.Span : default;
 		this.segments = sequence.IsSingleSegment ? null : new(sequence);
+		this.Length = sequence.Length;
 	}
 
 	/// <summary>Initializes a new instance of the <see cref="JsonInput"/> struct with an independent segment cursor.</summary>
 	/// <param name="segments">The copied navigation state.</param>
-	private JsonInput(Segments segments) => this.segments = segments;
+	private JsonInput(Segments segments)
+	{
+		this.segments = segments;
+		this.Length = segments.Sequence.Length;
+	}
 
 	/// <summary>Gets the input length without narrowing sequence offsets.</summary>
-	internal long Length => this.segments is null ? this.span.Length : this.segments.Sequence.Length;
+	internal long Length { get; }
 
 	/// <summary>Gets a byte at an absolute input offset.</summary>
 	/// <param name="index">The absolute offset.</param>
@@ -43,6 +52,7 @@ internal readonly ref struct JsonInput
 	/// <param name="start">The token offset.</param>
 	/// <param name="length">The token length.</param>
 	/// <returns>Borrowed storage or a GC-owned token copy, never pooled storage.</returns>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal ReadOnlySpan<byte> Slice(long start, long length)
 	{
 		if (this.segments is null)
@@ -50,8 +60,7 @@ internal readonly ref struct JsonInput
 			return this.span.Slice(checked((int)start), checked((int)length));
 		}
 
-		ReadOnlySequence<byte> token = this.segments.Slice(start, length);
-		return token.IsSingleSegment ? token.First.Span : token.ToArray();
+		return SliceSegmented(this.segments, start, length);
 	}
 
 	/// <summary>Compares a short literal without copying segmented input or disturbing the token-slice cursor.</summary>
@@ -120,6 +129,7 @@ internal readonly ref struct JsonInput
 	/// <summary>Finds the next quote or backslash without materializing input.</summary>
 	/// <param name="start">The offset at which to start searching.</param>
 	/// <returns>The absolute delimiter offset, or -1.</returns>
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
 	internal long IndexOfDelimiter(long start)
 	{
 		if (this.segments is null)
@@ -128,6 +138,19 @@ internal readonly ref struct JsonInput
 			return offset < 0 ? -1 : start + offset;
 		}
 
+		return this.IndexOfSegmentedDelimiter(start);
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private static ReadOnlySpan<byte> SliceSegmented(Segments segments, long start, long length)
+	{
+		ReadOnlySequence<byte> token = segments.Slice(start, length);
+		return token.IsSingleSegment ? token.First.Span : token.ToArray();
+	}
+
+	[MethodImpl(MethodImplOptions.NoInlining)]
+	private long IndexOfSegmentedDelimiter(long start)
+	{
 		for (long index = start; index < this.Length; index++)
 		{
 			if (this[index] is (byte)'"' or (byte)'\\')
