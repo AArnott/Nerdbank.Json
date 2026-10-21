@@ -32,6 +32,7 @@ public class ConverterStructureAnalyzerTests
 	[Arguments("nested.Write(ref writer, in value, context);")]
 	[Arguments("ref JsonWriter alias = ref writer; alias.Write(value);")]
 	[Arguments("try { writer.Write(value); } finally { writer.Flush(); }")]
+	[Arguments("Fail();")]
 	[Arguments("switch ((System.DayOfWeek)value) { case System.DayOfWeek.Sunday: case System.DayOfWeek.Monday: case System.DayOfWeek.Tuesday: case System.DayOfWeek.Wednesday: case System.DayOfWeek.Thursday: case System.DayOfWeek.Friday: case System.DayOfWeek.Saturday: writer.Write(value); break; }")]
 	public Task ValidOrUnknownWrite([StringSyntax("c#-test")] string body)
 		=> VerifyWrite(body, invalid: false);
@@ -95,6 +96,8 @@ public class ConverterStructureAnalyzerTests
 					{{body}}
 				}
 				private static void Helper(ref JsonWriter writer) => writer.Write(1);
+				[System.Diagnostics.CodeAnalysis.DoesNotReturn]
+				private static void Fail() => throw new System.NotSupportedException();
 			}
 			""");
 

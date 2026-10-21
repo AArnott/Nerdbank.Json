@@ -48,6 +48,7 @@ public sealed class ConverterStructureAnalyzer : DiagnosticAnalyzer
 			INamedTypeSymbol? converter = context.Compilation.GetTypeByMetadataName(KnownNames.GenericConverter);
 			INamedTypeSymbol? reader = context.Compilation.GetTypeByMetadataName(KnownNames.Reader);
 			INamedTypeSymbol? writer = context.Compilation.GetTypeByMetadataName(KnownNames.Writer);
+			INamedTypeSymbol? doesNotReturn = context.Compilation.GetTypeByMetadataName("System.Diagnostics.CodeAnalysis.DoesNotReturnAttribute");
 			if (converter is null || reader is null || writer is null)
 			{
 				return;
@@ -195,6 +196,11 @@ public sealed class ConverterStructureAnalyzer : DiagnosticAnalyzer
 						{
 							return item is not IInvalidOperation &&
 								!(item is IObjectCreationOperation creation && creation.Arguments.Any(a => IsOriginal(a.Value, state)));
+						}
+
+						if (invocation.TargetMethod.GetAttributes().Any(a => SymbolEqualityComparer.Default.Equals(a.AttributeClass, doesNotReturn)))
+						{
+							return false;
 						}
 
 						if (IsOriginal(invocation.Instance, state))

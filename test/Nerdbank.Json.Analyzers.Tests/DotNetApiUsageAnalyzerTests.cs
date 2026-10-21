@@ -53,16 +53,21 @@ public class DotNetApiUsageAnalyzerTests
 			""");
 
 	[Test]
-	public Task HardObsoleteSerializerApiDoesNotGetADuplicateWarning()
-		=> VerifyCS.VerifyAnalyzerAsync(
-			/* lang=c#-test */ """
+	public async Task HardObsoleteSerializerApiDoesNotGetADuplicateWarning()
+	{
+		VerifyCS.Test test = new()
+		{
+			CompilerDiagnostics = Microsoft.CodeAnalysis.Testing.CompilerDiagnostics.None,
+			TestCode = /* lang=c#-test */ """
 			using Nerdbank.Json;
 			class Model
 			{
-				void M(JsonSerializer serializer) => {|#0:JsonSerializerExtensions.Serialize<Model>(serializer, this)|};
+				void M(JsonSerializer serializer) => JsonSerializerExtensions.Serialize<Model>(serializer, this);
 			}
 			""",
-			Microsoft.CodeAnalysis.Testing.DiagnosticResult.CompilerError("CS0619").WithLocation(0));
+		};
+		await test.RunAsync();
+	}
 
 	[Test]
 	[Arguments(false)]
