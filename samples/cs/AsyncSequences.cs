@@ -18,7 +18,7 @@ public static class AsyncSequenceSample
 	// Stream the elements of a large top-level JSON array without buffering the whole document.
 	public static async Task ProcessArrayAsync(Stream stream, JsonSerializer serializer)
 	{
-		await foreach (LogEntry? entry in serializer.DeserializeArrayAsync<LogEntry>(stream))
+		await foreach (LogEntry? entry in serializer.DeserializeEnumerableAsync<LogEntry>(stream, new() { Format = JsonSequenceFormat.JsonArray }))
 		{
 			System.Console.WriteLine(entry!.Message);
 		}
@@ -28,7 +28,7 @@ public static class AsyncSequenceSample
 	public static async Task ProcessNdjsonAsync(PipeReader reader, JsonSerializer serializer, CancellationToken cancellationToken)
 	{
 		await foreach (LogEntry? entry in serializer
-			.DeserializeNewlineDelimitedAsync<LogEntry>(reader)
+			.DeserializeEnumerableAsync<LogEntry>(reader, new() { Format = JsonSequenceFormat.NDJson })
 			.WithCancellation(cancellationToken))
 		{
 			System.Console.WriteLine(entry!.Timestamp);
@@ -39,7 +39,7 @@ public static class AsyncSequenceSample
 	// trailing envelope are consumed incrementally; only one entry is materialized at a time.
 	public static async Task ProcessEnvelopeAsync(Stream stream, JsonSerializer serializer)
 	{
-		await foreach (LogEntry? entry in serializer.DeserializePathEnumerableAsync<LogFile, LogEntry>(stream, f => f.Entries))
+		await foreach (LogEntry? entry in serializer.DeserializePathEnumerableAsync<LogFile, LogEntry>(stream, new JsonSerializer.StreamingEnumerationOptions<LogFile, LogEntry>(f => f.Entries)))
 		{
 			System.Console.WriteLine(entry!.Message);
 		}
@@ -48,7 +48,7 @@ public static class AsyncSequenceSample
 	// Serialize an asynchronous source as a top-level JSON array with backpressure.
 	public static async Task WriteArrayAsync(Stream stream, JsonSerializer serializer)
 	{
-		await serializer.SerializeArrayAsync<LogEntry>(stream, ProduceAsync());
+		await serializer.SerializeEnumerableAsync<LogEntry>(stream, ProduceAsync(), new() { Format = JsonSequenceFormat.JsonArray });
 
 		static async IAsyncEnumerable<LogEntry> ProduceAsync()
 		{

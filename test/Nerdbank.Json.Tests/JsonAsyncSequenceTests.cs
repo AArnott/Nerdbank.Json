@@ -11,6 +11,43 @@ using PolyType.Abstractions;
 public partial class JsonAsyncSequenceTests : TestBase
 {
 	[Test]
+	[Arguments(JsonSequenceFormat.NDJson, "1\n2\n3\n")]
+	[Arguments(JsonSequenceFormat.JsonArray, "[1,2,3]")]
+	public async Task Enumerable_Options_RoundTrip(JsonSequenceFormat format, string expected)
+	{
+		JsonSerializer.SequenceOptions options = new() { Format = format };
+		using MemoryStream stream = new();
+		await this.Serializer.SerializeEnumerableAsync<int, Witness>(stream, Produce(), options);
+		Assert.Equal(expected, Encoding.UTF8.GetString(stream.ToArray()));
+		stream.Position = 0;
+		Assert.Equal([1, 2, 3], await CollectAsync(this.Serializer.DeserializeEnumerableAsync<int, Witness>(stream, options)));
+		Assert.True(stream.CanRead);
+
+		static async IAsyncEnumerable<int> Produce()
+		{
+			await Task.Yield();
+			yield return 1;
+			yield return 2;
+			yield return 3;
+		}
+	}
+
+	[Test]
+	public async Task Enumerable_Options_RejectUnknownFormat()
+	{
+		JsonSerializer.SequenceOptions options = new() { Format = (JsonSequenceFormat)99 };
+		using MemoryStream stream = new();
+		await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await CollectAsync(this.Serializer.DeserializeEnumerableAsync<int, Witness>(stream, options)));
+		await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await this.Serializer.SerializeEnumerableAsync<int, Witness>(stream, Empty(), options));
+
+		static async IAsyncEnumerable<int> Empty()
+		{
+			await Task.Yield();
+			yield break;
+		}
+	}
+
+	[Test]
 	[Arguments(false)]
 	[Arguments(true)]
 	public async Task PathOptions_OwnsPipeUnlessLeaveOpen(bool leaveOpen)
@@ -193,7 +230,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 		for (int chunk = 1; chunk <= 4; chunk++)
 		{
 			using ChunkedStream stream = new(utf8, chunk);
-			List<Item> result = await CollectAsync(this.Serializer.DeserializeNewlineDelimitedAsync(stream, Shape<Item, Item>()));
+			List<Item> result = await CollectAsync(this.Serializer.DeserializeEnumerableAsync(stream, Shape<Item, Item>()));
 			Assert.Equal([new Item(1, "a"), new Item(2, "b"), new Item(3, "c")], result);
 		}
 	}
@@ -203,7 +240,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("   \n  \n");
 		using ChunkedStream stream = new(utf8, 2);
-		List<int> result = await CollectAsync(this.Serializer.DeserializeNewlineDelimitedAsync(stream, Shape<int, Witness>()));
+		List<int> result = await CollectAsync(this.Serializer.DeserializeEnumerableAsync(stream, Shape<int, Witness>()));
 		Assert.Empty(result);
 	}
 
@@ -213,7 +250,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 		byte[] utf8 = Encoding.UTF8.GetBytes("1 2\n");
 		using ChunkedStream stream = new(utf8, 1);
 		await Assert.ThrowsAsync<FormatException>(async () =>
-			await CollectAsync(this.Serializer.DeserializeNewlineDelimitedAsync(stream, Shape<int, Witness>())));
+			await CollectAsync(this.Serializer.DeserializeEnumerableAsync(stream, Shape<int, Witness>())));
 	}
 
 	[Test]
@@ -328,9 +365,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 	public async Task SerializeNewlineDelimited_RoundTrips()
 	{
 		using MemoryStream stream = new();
-		await this.Serializer.SerializeNewlineDelimitedAsync(stream, Source(), Shape<Item, Item>());
+		await this.Serializer.SerializeEnumerableAsync(stream, Source(), Shape<Item, Item>());
 		stream.Position = 0;
-		List<Item> result = await CollectAsync(this.Serializer.DeserializeNewlineDelimitedAsync(stream, Shape<Item, Item>()));
+		List<Item> result = await CollectAsync(this.Serializer.DeserializeEnumerableAsync(stream, Shape<Item, Item>()));
 		Assert.Equal([new Item(1, "a"), new Item(2, "b")], result);
 
 		static async IAsyncEnumerable<Item> Source()
