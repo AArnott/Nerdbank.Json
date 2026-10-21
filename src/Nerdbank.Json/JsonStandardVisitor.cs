@@ -37,6 +37,12 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 	{
 		JsonConverter<TElement> elementConverter = this.GetConverter(enumerableShape.ElementType, attributeProvider: null);
 
+		if (enumerableShape.IsAsyncEnumerable)
+		{
+			this.GetCollectionOptions(enumerableShape, enumerableShape.ElementType, enumerableShape.SupportedComparer, state as MemberComparerInfluence);
+			return new JsonAsyncEnumerableConverter<TEnumerable, TElement>(elementConverter);
+		}
+
 		if (enumerableShape.Type.IsArray && enumerableShape.Rank > 1)
 		{
 			return new JsonMultidimensionalArrayConverter<TEnumerable, TElement>(elementConverter, enumerableShape.Rank);

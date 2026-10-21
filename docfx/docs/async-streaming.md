@@ -36,6 +36,16 @@ brace arrives. Only an individual value that a custom converter reads with the d
 a raw extension-data value, or a single constructor argument is materialized at a time — never the
 enclosing document.
 
+### Asynchronous enumerable contracts
+
+<xref:System.Collections.Generic.IAsyncEnumerable`1> values are supported both at the root and within ordinary shaped models when using <xref:Nerdbank.Json.JsonSerializer.SerializeAsync*>.
+Each element is written before the next is requested, without materializing the sequence or requiring its count in advance.
+Cancellation is passed to the enumerator, and pipe backpressure pauses enumeration.
+Element converters retain their normal synchronous or asynchronous dispatch.
+
+Synchronous serialization rejects asynchronous-only enumerable contracts and directs callers to the asynchronous API.
+Deserialization accepts a JSON `null` but cannot construct an asynchronous enumerable from an array; use a supported collection contract instead.
+
 ## Behavior and ownership
 
 * **Stream ownership is explicit.** The `Stream`, `PipeReader`, and `PipeWriter` you pass are never
