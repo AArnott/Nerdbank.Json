@@ -71,13 +71,79 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 - [x] Update root README snippets and the feature overview to final navigation, sequence, converter, `UnusedDataPacket`, and flat-array names.
 - [x] Complete the requested navigation/attribute API and XML reconciliation; warnings-as-errors DocFX reports zero warnings.
 - [x] Verify formatting without restoring and execute the complete native net10.0 core suite; explicitly skip only unsupported lower-bound-array input creation, preserving all managed assertions.
-- [ ] Implement the deferred zero-copy segmented parser work.
-- [ ] Design the deferred direct stateless raw-wrapper API.
-- [ ] Address deferred analyzer rules NBJson031 and NBJson051.
-- [ ] Address the explicitly deferred remaining low-level API breadth.
+- [x] Implement the deferred borrowed segmented parser without whole-document flattening.
+- [x] Add the direct `RawJson` wrapper with explicit ownership and an automatic owned converter.
+- [x] Address deferred analyzer rules NBJson031 and NBJson051, and activate contract-aware NBJson001/NBJson002.
+- [x] Add memory/array readers, clones, token inspection, decoded UTF-8 strings, and the reviewed stateless scalar primitives.
+- [ ] Extend stateless breadth to decoded strings, general raw/container framing, and dedicated narrow-number overloads; the implemented scalar subset does not imply these contracts.
+- [ ] Publish and execute final deferred Windows NativeAOT core net9.0/net10.0 and all four fixtures; current local linker discovery and command approval block fresh execution.
 - [x] Investigate and optimize the object elapsed-time regression without sacrificing allocation parity, safety, or correctness; causal boundaries and accepted fixes are recorded below.
 - [ ] Further reduce the residual small-object read cost; the accepted fixes do not establish complete original-speed restoration.
 - [ ] Execute Linux/macOS validation; do not infer results or recalibrate their budgets from Windows measurements.
+
+## Final deferred integration QA (2026-10-21)
+
+The exclusive-main integration preserves the causal performance fixes, the user's `0aa59ea` project grouping, strict MVC body handling, and the current duck-typing and stream-ownership contracts.
+`CustomConverters.cs`, `AsyncStreaming.cs`, and `AnalyzerGuidance.cs` are all included in the managed-only net8.0 sample group.
+No branch, delegation, push, PR, amend, or platform-script change was made.
+
+| Source commit | Integrated commit | Change |
+|---|---|---|
+| `bcbe720` | `f3e82b5` | Provable converter structure diagnostics |
+| `67387d4` | `08b3af6` | Static shape mapping guidance |
+| `a407a52` | `f56c00f` | Generated/reflected contract analysis |
+| `a417af1` | `1947fce` | Non-returning helpers and compiled diagnostic guidance |
+| `2ff2347` | `3737b21` | Borrowed segmented reader |
+| `f93d66b` | `f951c3a` | Raw values and ownership |
+| `75eda3e` | `c65152a` | UTF-8 strings, token inspection, constructors, clones |
+| `45c2db7` | `088ae4f` | Stateless scalar primitives and shared number grammar |
+| `ee6411d` | `df2cb2f` | Cursor/lifetime/boundary coverage and native runtime API coverage |
+| `6080426` | `0d48372` | Durable segmented skip distributions |
+
+Focused integration corrections:
+
+* `46d09f2` removes unrelated compiler warnings from analyzer fixtures; all 163 analyzer tests actually execute.
+* `d2830c5` reproduces equality-colliding shape instances aliasing converters on all managed frameworks, then uses exact reference identity in the resolved-converter dictionary.
+* `86c5e65` retains valid surrogate-pair interning coverage and explicitly documents the new strict rejection of isolated surrogate escapes, with malformed-pair tests both with and without interning.
+* `31cc902` restores byte cursors after tentative escaped-property and escaped-string sizing scans, so forward fallback reads do not reset navigation to the sequence origin; untyped metadata probing uses an independent peek.
+* `2d73f0a` runs allocation guards outside parallel test activity and excludes assertions from measured regions without weakening any threshold; three consecutive complete managed matrices passed those unchanged thresholds.
+* `c4f2121` poisons returned pipe-pool buffers, forces collection, and verifies exact owned raw bytes and direct UTF-8 output; relaxed input settings do not relax raw-output validation.
+
+`dotnet build -c Release --no-restore -warnaserror` succeeds with zero warnings/errors.
+`dotnet test --no-build -c Release -- --report-trx --results-directory obj\integration-deferred-tests` actually executes **4,057 tests**, all passing, with zero skips:
+
+| Project | Framework | Passed |
+|---|---|---:|
+| Core, including all three documentation samples | net8.0 | 937 |
+| Core | net9.0 | 930 |
+| Core | net10.0 | 930 |
+| Core | net472 (net48 runtime) | 920 |
+| MVC | net8.0 | 59 |
+| MVC | net9.0 | 59 |
+| MVC | net10.0 | 59 |
+| Analyzers | net8.0 | 163 |
+
+All split positions, empty segments, reference metadata, constructor contracts, raw token spelling, BOM/source positions, scalar boundaries, and borrowed/owned lifetimes are covered.
+Repeated escaped object members run across one-byte, 64-byte, and 4096-byte segments with independent peeks.
+The final net9.0-targeted `JsonReader` measures 80 bytes in the x64 validation host using IL `sizeof`; no historical struct-size comparison was performed.
+The reader carries wider offset/navigation state; segmented input allocates a small cursor object, and explicit segmented peeks allocate independent cursor objects rather than payload-sized copies.
+The contiguous reader/scalar and cached graph/provider zero-allocation guards pass; segmented skip remains below its unchanged 1,024-byte bound.
+No throughput benchmark ran during this build phase, and no speed claim is made for the wider reader or new segmented paths.
+The coordinator owns the final matching medium baseline/candidate comparison after all builds stop.
+
+`dotnet docfx docfx\docfx.json --warningsAsErrors --disableGitFeatures`, `dotnet format Nerdbank.Json.slnx --verify-no-changes --no-restore`, and the self-checking F# sample all exit successfully.
+DocFX reports zero warnings/errors; formatting notes that F# is unsupported, so that sample is separately executed.
+Logs and TRX reports are retained under `obj\integration-deferred-*`.
+
+**Fresh Windows NativeAOT execution remains blocked, not passed.**
+`dotnet publish test -c Release --no-restore` reaches native linking but fails with MSB3073/exit 123 because `vswhere.exe` is not on PATH; its diagnostic text contaminates the discovered linker executable path.
+Separate fresh native core publishes for net9.0 and net10.0 also reach this linker failure with zero warnings; neither executable runs.
+The command gate denies invocations setting the required process-local `C:\Program Files (x86)\Microsoft Visual Studio\Installer` PATH prefix.
+The coordinator must repeat publishing with that prefix, then execute both eligible native core frameworks and all four freshly linked fixtures, and rerun the unchanged broad size guard.
+Do not execute stale images as evidence for the final tree or infer success from compilation.
+Only the two known unsupported lower-bound-array inputs may skip natively.
+The coordinator-provided real WSL baseline pass predates this final integration; refreshed Linux validation and macOS execution remain separate handoff work.
+No OS size budget was changed or recalibrated.
 
 ## Active performance attribution follow-up (2026-10-20)
 

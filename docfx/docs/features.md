@@ -15,6 +15,18 @@ Key traits:
 * Numeric formatting using invariant culture.
 * Base64 encoding for byte buffers.
 
+## Low-Level UTF-8 Reader and Raw Values
+
+<xref:Nerdbank.Json.JsonReader> borrows contiguous or segmented input without flattening the document.
+Offsets remain 64-bit, explicit peeks keep independent navigation state, and only individual split scalar tokens may require temporary copies.
+Decoded UTF-8 string spans and sequences, token inspection, memory/array constructors, and option-preserving clones support custom converters.
+
+<xref:Nerdbank.Json.RawJson> retains exact JSON bytes with explicit borrowed and owned lifetimes.
+Its automatic converter returns owned storage and writes exactly one validated strict JSON value directly to UTF-8 output.
+<xref:Nerdbank.Json.JsonPrimitives> supplies allocation-free stateless scalar reads and writes with explicit incomplete-input results and atomic destination writes.
+Stateless decoded strings and general raw/container framing are not yet implemented.
+See [custom converters](custom-converters.md) for lifetime, Unicode validation, and partial-block contracts.
+
 ## Built-In Type Coverage
 
 The built-in serializer currently supports:
@@ -25,6 +37,7 @@ The built-in serializer currently supports:
 * `DateTime`, `DateTimeOffset`, `TimeSpan`
 * `Guid`, `Version`, `Uri`, `CultureInfo`, `Encoding`
 * `byte[]`, `Memory<byte>`, `ReadOnlyMemory<byte>`
+* <xref:Nerdbank.Json.RawJson>
 * `Color`, `Point`
 * On .NET 8 and later: `Half`, `Int128`, `UInt128`, `DateOnly`, `TimeOnly`, `Rune`
 

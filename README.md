@@ -12,6 +12,8 @@ It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`,
 ## Features
 
 * Direct UTF-8 JSON writing to `IBufferWriter<byte>`.
+* Borrowed segmented UTF-8 parsing, decoded UTF-8 string views, token inspection, and stateless scalar primitives.
+* `RawJson` values with explicit borrowed/owned lifetimes and automatic owned deserialization.
 * RFC 8259 string escaping, limited to the characters that must be escaped.
 * Built-in serialization and deserialization for common .NET primitive and BCL types.
 * PolyType-driven serialization for mutable objects, records, and immutable objects with mapped constructor parameters.
@@ -50,6 +52,7 @@ The current built-in serializer supports:
 * `DateTime`, `DateTimeOffset`, `TimeSpan`
 * `Guid`, `Version`, `Uri`, `CultureInfo`, `Encoding`
 * `byte[]`, `Memory<byte>`, `ReadOnlyMemory<byte>`
+* `RawJson` for exact UTF-8 token retention
 * `System.Drawing.Color`, `System.Drawing.Point`
 * On .NET 8 and later: `Half`, `Int128`, `UInt128`, `DateOnly`, `TimeOnly`, `Rune`
 
@@ -204,16 +207,23 @@ The implemented feature surface is described in the [feature guide](docfx/docs/f
 The public-API audit is complete for this checkpoint, with remaining low-level breadth explicitly deferred; this is not a claim of perfect binary parity with Nerdbank.MessagePack.
 Dictionary keys are limited to supported simple types, collections without construction support are serialization-only, and getter-only scalar or immutable properties require constructor binding to be populated.
 
-The final accepted code checkpoint `13bc811` (2026-10-20) builds all Release targets with zero warnings/errors and passes all **3,467 managed tests**, with zero failures/skips.
-The Windows net10.0 native core suite has **805 passes, zero failures, and two explicit platform skips**: NativeAOT cannot create the non-zero-lower-bound array inputs; managed normalization assertions remain intact.
-All four NativeAOT fixtures publish with warnings treated as errors and execute successfully.
-The broad image is 6,159,360 bytes (5.874 MiB), passing the unchanged Windows 5.79 +/- 0.2 MiB guard; the minimal image is 2,771,456 bytes (2.643 MiB, uncalibrated).
-Linux/macOS budgets are preserved but were not locally tested or recalibrated.
+The deferred integration checkpoint `c4f2121` (2026-10-21) builds all Release targets with warnings treated as errors and passes all **4,057 managed tests**, with zero warnings, failures, or skips.
+This includes 163 analyzer tests and all configured core and MVC frameworks.
+All three C# documentation samples remain compiled in the managed-only net8.0 target.
+Fresh Windows NativeAOT linking is blocked by local `vswhere.exe` discovery; the command gate denied the process-local Visual Studio Installer PATH prefix required on this machine.
+No fresh native execution or image-size result is claimed for this checkpoint.
+
+At the historical `13bc811` checkpoint, the Windows net10.0 native core suite had **805 passes, zero failures, and two explicit platform skips**: NativeAOT cannot create the non-zero-lower-bound array inputs; managed normalization assertions remain intact.
+All four NativeAOT fixtures published with warnings treated as errors and executed successfully at that checkpoint.
+The historical broad image was 6,159,360 bytes (5.874 MiB), passing the unchanged Windows 5.79 +/- 0.2 MiB guard; the minimal image was 2,771,456 bytes (2.643 MiB, uncalibrated).
+Linux/macOS budgets are preserved without recalibration; final-tree cross-platform execution remains a coordinator handoff.
 MVC uses the public object async APIs while retaining strict single-JSON-body validation, with no MVC test skips.
 DocFX, formatting verification, and the self-checking F# sample also succeed.
 
-The matched benchmark comparison is complete: object allocations match the original baseline (200/664/0/0 B), and all twelve skipping scenarios allocate 0 B, but the four object microbenchmarks remain roughly **13-24% slower**; full speed restoration is not claimed.
-Zero-copy segmented parsing, the direct stateless raw-wrapper API, remaining low-level breadth, NBJson031/NBJson051, and elapsed-time optimization remain deferred.
-NBJson001/NBJson002 remain inactive; experimental duck typing does not guarantee identical constructor-time validation.
+The causal performance investigation and its accepted recovery are documented in [TODO.md](TODO.md); full speed restoration is not claimed.
+No throughput comparison is claimed for the later segmented-reader integration; matching medium jobs must run after integration builds stop.
+Segmented parsing, owned raw values, UTF-8 string/token APIs, scalar `JsonPrimitives`, and NBJson001/NBJson002/NBJson031/NBJson051 are implemented.
+Stateless decoded strings, raw/container framing, and dedicated narrow-number overloads remain deliberately deferred.
+Experimental duck typing validates candidates against object contract metadata but remains an experimental selection strategy.
 Async-stream first-value reads cannot safely retain prefetch; use caller-owned pipes.
 See [TODO.md](TODO.md) for final evidence, constraints, and superseded checkpoints.
