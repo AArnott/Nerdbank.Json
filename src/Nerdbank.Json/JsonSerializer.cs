@@ -3,6 +3,7 @@
 
 #pragma warning disable SA1600 // Internal helper members added for overload forwarding are intentionally undocumented.
 
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 
 namespace Nerdbank.Json;
@@ -72,14 +73,14 @@ public partial record JsonSerializer
 	}
 
 	/// <inheritdoc cref="JsonSerializerConfiguration.ConverterTypes"/>
-	public JsonConverterTypeCollection ConverterTypes
+	public ConverterTypeCollection ConverterTypes
 	{
 		get => this.configuration.ConverterTypes;
 		init => this.configuration = this.configuration with { ConverterTypes = value };
 	}
 
 	/// <inheritdoc cref="JsonSerializerConfiguration.ConverterFactories"/>
-	public IReadOnlyList<IJsonConverterFactory> ConverterFactories
+	public ImmutableArray<IJsonConverterFactory> ConverterFactories
 	{
 		get => this.configuration.ConverterFactories;
 		init => this.configuration = this.configuration with { ConverterFactories = value };

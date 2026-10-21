@@ -226,7 +226,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 		JsonNamingPolicy policy = JsonNamingPolicy.CamelCase;
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([new Point3Converter(policy)]),
+			Converters = ConverterCollection.Create([new Point3Converter(policy)]),
 			PropertyNamingPolicy = policy,
 		};
 
@@ -245,7 +245,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 		JsonNamingPolicy policy = JsonNamingPolicy.CamelCase;
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([new Point3Converter(policy)]),
+			Converters = ConverterCollection.Create([new Point3Converter(policy)]),
 			PropertyNamingPolicy = policy,
 		};
 

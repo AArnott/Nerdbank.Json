@@ -30,7 +30,7 @@ internal sealed class ConverterCache
 
 	internal MessagePack.IComparerProvider? ComparerProvider => this.configuration.ComparerProvider;
 
-	internal bool HasRuntimeConverters => this.configuration.Converters.Count > 0 || this.configuration.ConverterTypes.Count > 0 || this.configuration.ConverterFactories.Count > 0;
+	internal bool HasRuntimeConverters => this.configuration.Converters.Count > 0 || this.configuration.ConverterTypes.Count > 0 || this.configuration.ConverterFactories.Length > 0;
 
 	internal StringComparer PropertyNameComparer => this.configuration.PropertyNameCaseInsensitive ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
@@ -298,11 +298,22 @@ internal sealed class ConverterCache
 		return false;
 	}
 
-	private static JsonConverter ActivateAssociatedConverterType(Type targetType, Type converterType, ITypeShape targetTypeShape)
+	private static JsonConverter ActivateAssociatedConverterType(Type targetType, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type converterType, ITypeShape targetTypeShape)
 	{
 		if (TryActivateAssociatedConverterType(converterType, targetTypeShape, out JsonConverter? converter))
 		{
 			return converter!;
+		}
+
+		if (!converterType.ContainsGenericParameters)
+		{
+			JsonConverter result = (JsonConverter)(Activator.CreateInstance(converterType) ?? throw new NotSupportedException($"Converter type '{converterType}' could not be instantiated."));
+			if (result.DataType != targetType)
+			{
+				throw new NotSupportedException($"Converter type '{converterType}' does not convert '{targetType}'.");
+			}
+
+			return result;
 		}
 
 		throw new NotSupportedException($"Converter type '{converterType}' registered for '{targetType}' must have an associated generated shape.");

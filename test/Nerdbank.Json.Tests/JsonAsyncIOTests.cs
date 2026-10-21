@@ -184,7 +184,7 @@ public partial class JsonAsyncIOTests : TestBase
 		TrackingConverter converter = new();
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([converter]),
+			Converters = ConverterCollection.Create([converter]),
 		};
 
 		Tracked value = new("hello");

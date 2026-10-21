@@ -9,7 +9,7 @@ partial class CustomConvertersSamples
 	{
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([new FooConverter()]),
+			Converters = ConverterCollection.Create([new FooConverter()]),
 		};
 	}
 	// </CustomConverterRegisteredAtRuntime>
@@ -19,7 +19,7 @@ partial class CustomConvertersSamples
 	{
 		JsonSerializer genericSerializer = new()
 		{
-			ConverterTypes = new JsonConverterTypeCollection([typeof(EnvelopeConverter<>)]),
+			ConverterTypes = ConverterTypeCollection.Create([typeof(EnvelopeConverter<>)]),
 		};
 	}
 	// </CustomOpenGenericConverterRegisteredAtRuntime>

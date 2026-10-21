@@ -32,7 +32,7 @@ System.Console.WriteLine($"{city} {humidity} {missing}");
 
 JsonSerializer pointSerializer = new()
 {
-	Converters = new ConverterCollection([new PointConverter()]),
+	Converters = ConverterCollection.Create([new PointConverter()]),
 };
 string pointJson = pointSerializer.Serialize(new Sensor(new Point(3, 7)), Sensor.GetTypeShape());
 int y = pointSerializer.DeserializeAt<Sensor, int>(pointJson, s => s.Position.Y);

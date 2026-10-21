@@ -72,6 +72,6 @@ public partial record JsonSerializer
 			}
 		}
 
-		return new ConverterCollection(merged);
+		return ConverterCollection.Create([.. merged]);
 	}
 }

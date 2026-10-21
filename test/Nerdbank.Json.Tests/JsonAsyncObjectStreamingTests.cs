@@ -12,7 +12,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 	public async Task MutableObject_ProcessesBeforeClosingBrace()
 	{
 		ProbeConverter probe = new();
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([probe]) };
+		JsonSerializer serializer = new() { Converters = ConverterCollection.Create([probe]) };
 		Pipe pipe = new();
 
 		ValueTask<MutableModel?> task = serializer.DeserializeAsync(pipe.Reader, Shape<MutableModel, MutableModel>());
@@ -35,7 +35,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 	public async Task ConstructorObject_ProcessesBeforeClosingBrace()
 	{
 		ProbeConverter probe = new();
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([probe]) };
+		JsonSerializer serializer = new() { Converters = ConverterCollection.Create([probe]) };
 		Pipe pipe = new();
 
 		ValueTask<CtorModel?> task = serializer.DeserializeAsync(pipe.Reader, Shape<CtorModel, CtorModel>());
@@ -60,7 +60,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 		JsonSerializer serializer = new()
 		{
 			PreserveReferences = ReferencePreservationMode.RejectCycles,
-			Converters = new ConverterCollection([probe]),
+			Converters = ConverterCollection.Create([probe]),
 		};
 		Pipe pipe = new();
 
@@ -147,7 +147,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 		await WriteAsync(pipe.Writer, """{"a":1,"junk":{"deep":[1,2,3],"more":"x"},"b":2,"probe":"ok"}""");
 		await pipe.Writer.CompleteAsync();
 		ProbeConverter probe = new();
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([probe]) };
+		JsonSerializer serializer = new() { Converters = ConverterCollection.Create([probe]) };
 		MutableModel? result = await serializer.DeserializeAsync(pipe.Reader, Shape<MutableModel, MutableModel>());
 		Assert.NotNull(result);
 		Assert.Equal(1, result!.A);

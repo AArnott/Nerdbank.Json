@@ -145,7 +145,7 @@ public partial class JsonSchemaTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([new MoneyConverter()]),
+			Converters = ConverterCollection.Create([new MoneyConverter()]),
 		};
 
 		string schema = serializer.GetJsonSchema(Shape<Money, Money>());
@@ -157,7 +157,7 @@ public partial class JsonSchemaTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([new OpaqueConverter()]),
+			Converters = ConverterCollection.Create([new OpaqueConverter()]),
 		};
 
 		string schema = serializer.GetJsonSchema(Shape<Opaque, Opaque>());

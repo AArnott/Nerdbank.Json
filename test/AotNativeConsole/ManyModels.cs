@@ -140,7 +140,7 @@ internal static class ManyModels
 
 		JsonSerializer customSerializer = new()
 		{
-			Converters = new ConverterCollection([new CoordConverter()]),
+			Converters = ConverterCollection.Create([new CoordConverter()]),
 		};
 		string trackJson = customSerializer.Serialize(new Track(new Coord(3, 7)));
 		int y = customSerializer.DeserializeAt<Track, int>(trackJson, t => t.Position.Y);

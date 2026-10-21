@@ -155,7 +155,7 @@ public partial class JsonStringInterningTests
 	public void SmallInterningCacheHitsDoNotAllocate(string encoded)
 	{
 		AllocationMeasuringConverter converter = new();
-		JsonSerializer serializer = new() { InternStrings = true, Converters = new([converter]) };
+		JsonSerializer serializer = new() { InternStrings = true, Converters = [converter] };
 		string token = "\"" + encoded + "\"";
 		byte[] json = Encoding.UTF8.GetBytes("[" + string.Join(",", Enumerable.Repeat(token, 64)) + "]");
 		serializer.Deserialize<string[], JsonStringInterningTests>(json);

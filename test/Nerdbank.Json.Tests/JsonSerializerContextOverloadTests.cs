@@ -17,7 +17,7 @@ public partial class JsonSerializerContextOverloadTests : TestBase
 
 	private readonly JsonSerializer serializer = new()
 	{
-		Converters = new ConverterCollection([new StateConverter()]),
+		Converters = ConverterCollection.Create([new StateConverter()]),
 	};
 
 	[Test]
@@ -141,7 +141,7 @@ public partial class JsonSerializerContextOverloadTests : TestBase
 	[Test]
 	public void ContextFromActiveOperationIsRejected()
 	{
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([new ReentrantConverter()]) };
+		JsonSerializer serializer = new() { Converters = ConverterCollection.Create([new ReentrantConverter()]) };
 
 		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() =>
 		{

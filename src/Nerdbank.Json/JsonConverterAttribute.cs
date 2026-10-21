@@ -1,6 +1,8 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Nerdbank.Json;
 
 /// <summary>
@@ -11,10 +13,11 @@ namespace Nerdbank.Json;
 /// </remarks>
 /// <param name="converterType">The converter type to activate.</param>
 [AttributeUsage(AttributeTargets.Interface | AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Enum | AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Parameter, AllowMultiple = false, Inherited = false)]
-public sealed class JsonConverterAttribute(Type converterType) : Attribute
+public sealed class JsonConverterAttribute([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type converterType) : Attribute
 {
 	/// <summary>
 	/// Gets the converter type to activate.
 	/// </summary>
+	[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
 	public Type ConverterType { get; } = converterType ?? throw new ArgumentNullException(nameof(converterType));
 }

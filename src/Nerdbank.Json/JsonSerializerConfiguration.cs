@@ -3,6 +3,8 @@
 
 #pragma warning disable SA1600 // Elements should be documented
 
+using System.Collections.Immutable;
+
 namespace Nerdbank.Json;
 
 internal record JsonSerializerConfiguration
@@ -10,9 +12,9 @@ internal record JsonSerializerConfiguration
 	internal static readonly JsonSerializerConfiguration Default = new();
 
 	private ConverterCache? converterCache;
-	private ConverterCollection converters = new();
-	private IReadOnlyList<IJsonConverterFactory> converterFactories = [];
-	private JsonConverterTypeCollection converterTypes = new();
+	private ConverterCollection converters = [];
+	private ImmutableArray<IJsonConverterFactory> converterFactories = [];
+	private ConverterTypeCollection converterTypes = [];
 	private bool allowTrailingCommas;
 	private MessagePack.IComparerProvider? comparerProvider = MessagePack.SecureComparerProvider.Default;
 	private DeserializeDefaultValuesPolicy deserializeDefaultValues;
@@ -45,7 +47,7 @@ internal record JsonSerializerConfiguration
 	/// <summary>
 	/// Gets the runtime-registered converter types that take precedence after <see cref="Converters"/>.
 	/// </summary>
-	internal JsonConverterTypeCollection ConverterTypes
+	internal ConverterTypeCollection ConverterTypes
 	{
 		get => this.converterTypes;
 		init
@@ -58,11 +60,16 @@ internal record JsonSerializerConfiguration
 	/// <summary>
 	/// Gets the runtime-registered converter factories that are consulted after <see cref="Converters"/> and <see cref="ConverterTypes"/>.
 	/// </summary>
-	internal IReadOnlyList<IJsonConverterFactory> ConverterFactories
+	internal ImmutableArray<IJsonConverterFactory> ConverterFactories
 	{
 		get => this.converterFactories;
 		init
 		{
+			if (value.IsDefault || value.Any(static factory => factory is null))
+			{
+				throw new ArgumentException("An initialized array of non-null factories is required.", nameof(value));
+			}
+
 			this.converterFactories = value;
 			this.converterCache = null;
 		}

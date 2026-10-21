@@ -57,7 +57,7 @@ public partial class SerializationContextTests : TestBase
 		JsonSerializer serializer = new()
 		{
 			StartingContext = startingContext,
-			Converters = new ConverterCollection([new StateConverter()]),
+			Converters = ConverterCollection.Create([new StateConverter()]),
 		};
 
 		Assert.Equal("\"from context\"", serializer.Serialize<string, SerializationContextTests>("input"));

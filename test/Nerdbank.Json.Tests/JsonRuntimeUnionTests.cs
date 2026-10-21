@@ -215,7 +215,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([new CircleConverter()]),
+			Converters = ConverterCollection.Create([new CircleConverter()]),
 			Unions = JsonUnionConfiguration.Default.WithUnion(
 				JsonUnion<Shape2>.Create().AddCase("circle", Shape<Circle, Circle>())),
 		};

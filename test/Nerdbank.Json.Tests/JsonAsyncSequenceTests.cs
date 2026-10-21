@@ -218,7 +218,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 	[Test]
 	public async Task PathExpression_ThroughCustomConverter()
 	{
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([new CustomListConverter()]) };
+		JsonSerializer serializer = new() { Converters = ConverterCollection.Create([new CustomListConverter()]) };
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"list":{"v":[1,2,3]}}""");
 		using ChunkedStream stream = new(utf8, 2);
 		List<int> result = await CollectAsync(serializer.DeserializeArrayAtAsync<CustomEnvelope, int>(stream, e => e.List.Values, Shape<CustomEnvelope, CustomEnvelope>()));
