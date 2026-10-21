@@ -191,6 +191,9 @@ Set `JsonSerializer.MultiDimensionalArrayFormat` to `MultiDimensionalArrayFormat
 * A member of type `UnusedDataPacket` captures unknown JSON members as raw JSON text for forward-compatible round-tripping, without an extension-data attribute.
 * Deserialization can optionally skip comments and accept trailing commas.
 * Asynchronous stream and pipe APIs process built-in objects and collections incrementally; custom converters using the default asynchronous hooks buffer their individual values.
+* UTF-8 buffers, sequences, and caller-owned pipes deserialize the first value; caller pipes retain unread prefetched bytes. Synchronous streams return the first value after buffering through EOF.
+* String and asynchronous stream deserialization remain strict single-document operations. Use a caller-owned pipe for repeated first-value reads; temporary async-stream pipes cannot safely preserve read-ahead for the next operation.
+* Operation failures use `JsonSerializationException` and retain their causal exception or existing error code; argument validation and actual cancellation remain distinct.
 * Cyclic back-references require early registration of mutable instances; immutable or constructor-bound objects cannot be back-referenced while under construction.
 * Targeted deserialization and sequence streaming do not support reference preservation.
 
@@ -199,3 +202,12 @@ Set `JsonSerializer.MultiDimensionalArrayFormat` to `MultiDimensionalArrayFormat
 The implemented feature surface is described in the [feature guide](docfx/docs/features.md), with dedicated guides for streaming, unions, schema generation, reference preservation, and MVC integration.
 API parity work with Nerdbank.MessagePack remains in progress; the capabilities above are implemented, not a future roadmap.
 Dictionary keys are limited to supported simple types, collections without construction support are serialization-only, and getter-only scalar or immutable properties require constructor binding to be populated.
+
+The 2026-10-20 Windows integration checkpoint builds all Release targets without warnings and passes all 3,033 configured managed tests plus the self-checking F# sample.
+All four NativeAOT fixtures publish with warnings treated as errors and execute successfully, including root-all shipping compatibility and nested-record/array/dynamic-dictionary regressions.
+The minimal native image is 2,767,872 bytes (2.640 MiB, uncalibrated); the broad image is 6,145,024 bytes (5.860 MiB), passing the original Windows 5.79 +/- 0.2 MiB guard.
+Linux/macOS thresholds are unchanged and were not locally recalibrated.
+
+Context-aware navigation/skipping integration, zero-copy parser work, NBJson031/NBJson051, the remaining public-API/XML audit, and benchmark comparison are pending.
+NBJson001/NBJson002 currently declare descriptors but do not report diagnostics.
+DocFX builds successfully with 75 duplicate inherited-parameter warnings in existing navigation XML; these are separate from the warning-free managed and native builds.

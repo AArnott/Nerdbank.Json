@@ -54,20 +54,20 @@ Commit each logical step; the eventual PR must explain this breaking-change/no-o
 - [x] Add a NativeAOT code-size reporting project and workflow.
 - [x] Add an F# sample.
 - [x] Integrate non-format-specific converter/default/ref-parameter analyzers and default-initializer code fixes.
-- [ ] Restore an equivalent executable native-size regression guard after measuring/calibrating image sizes; report-only minimal fixtures do not replace the removed existing broad-image threshold check.
+- [x] Restore the executable broad native-size regression guard, retaining the original OS-specific thresholds; the minimal fixture remains an explicitly uncalibrated report.
 
 ## Integration QA
 
 - [ ] Audit all remaining public APIs against the local reference and remove superseded APIs without aliases.
-- [ ] Update affected samples and documentation after each API change.
+- [x] Update affected samples and documentation for the integrated snapshot, including compiled and executed custom-converter examples.
 - [x] Verify the Release solution build on all targets, all configured managed test frameworks, and the self-checking F# sample after fixed-snapshot integration.
-- [ ] Verify NativeAOT runtime compatibility after the separate platform fix; successful native linking alone is insufficient.
+- [x] Publish and execute the four NativeAOT fixtures after the integrated platform and dynamic-dictionary fixes; successful native linking alone is insufficient.
 - [ ] Compare performance and allocations with the baseline after concurrent builds stop.
 - [ ] Explain approved differences and authorized breaking/no-obsolete-alias policy in the final PR.
-- [ ] Audit asynchronous error wrapping against synchronous `JsonSerializationException` behavior; current async converter format failures remain unwrapped.
-- [ ] Audit trailing-data rejection consistently across generic, object-based, native DOM, stream, and pipe entry points.
+- [x] Normalize asynchronous operation failures as `JsonSerializationException`, retaining causes, existing exception instances/codes, and actual cancellation.
+- [x] Verify first-value behavior across generic, object-based, native DOM, buffer/sequence, synchronous stream, and caller-pipe entry points, with documented strict string/async-stream/NDJSON boundaries.
 - [x] Update root README snippets and the feature overview to final navigation, sequence, converter, `UnusedDataPacket`, and flat-array names.
-- [ ] Complete the separate docfx/API audit after symbols stabilize; detailed guides outside the overview have not been audited.
+- [ ] Complete the remaining public-API/docfx audit after navigation symbols stabilize; refreshed guides build, but DocFX still reports 75 duplicate inherited parameter warnings in navigation overload XML.
 - [ ] Implement the deferred zero-copy parser work.
 - [ ] Address deferred analyzer rules NBJson031 and NBJson051.
 
@@ -87,7 +87,7 @@ Commit `e8140f6` atomically publishes serializer and shape caches and adds repea
 ### Additional fixed snapshots
 
 Only the explicitly supplied snapshots below were integrated, preserving each source commit as a separate logical cherry-pick.
-No foundations followup after `d48a85e`, additional platform commits, or separately active behavior QA changes were integrated.
+This table records the earlier fixed snapshots; the final approved behavior and documentation snapshots are listed below.
 
 | Source snapshot | Integrated commit | Change |
 |---|---|---|
@@ -112,33 +112,84 @@ Object-envelope union navigation now delegates to the public hooks with the acti
 Additional regression coverage exposed generated-union case construction bypassing registered custom converters; it now uses the existing custom-converter selector without changing native property dispatch or adding roots.
 Both generated and runtime union cases are covered with custom wire names, synchronous serialization/deserialization/path selection, and incrementally read sequences for both envelopes.
 
-### Current verification and deferrals
+### Final approved integration snapshots
 
-The Release solution builds all configured targets with **zero warnings and zero errors**.
-All **2,721 managed tests pass**, with zero failures or skips:
+Only the six explicitly approved behavior/documentation commits were added in this pass.
+No later navigation snapshot was integrated, and its context-aware skipping implementation was not edited.
+
+| Source commit | Integrated commit | Change |
+|---|---|---|
+| `ae2203e` | `7aa0f4b` | Operation exception normalization and cancellation |
+| `f8b9d57` | `40bcb5a` | First-value UTF-8 reads and unread caller-pipe bytes |
+| `6c72157` | `381fe97` | Preserve stream serialization failures during pipe cleanup |
+| `096f19b` | `dadaa14` | API parity guides and package documentation |
+| `eb7380d` | `e35e28d` | Converter/default analyzer documentation |
+| `16db156` | `b7d03cd` | F# providers and native validation boundaries |
+
+Commit `601f46f` keeps invalid sequence options as argument errors before stream cleanup and reconciles cross-workstream assertions with the normalized exception contract.
+Commit `f1ba1cc` replaces the `DynamicObject` base class with direct `IDynamicMetaObjectProvider` implementation, removing IL3050 without shipping warning suppressions or additional assembly roots.
+Managed tests exercise dynamic member/index access, missing members and invalid index arity, read-only behavior, and nested expando values.
+The native runtime fixture verifies the same deserialized dictionaries through non-dynamic interfaces.
+Commit `e805254` compiles the actual converter documentation source in the managed-only net8.0 target and adds four executable sample tests.
+The attributed converter now targets `Foo` itself; parameter attributes, reader end-object validation, converter lookup, and closed generic shape associations use current APIs.
+Public navigation hooks replace stale internal-hook override instructions in XML and guides.
+
+### Current verification and deferrals (2026-10-20)
+
+`dotnet build Nerdbank.Json.slnx -c Release --no-restore -warnaserror` builds all configured targets with **zero warnings and zero errors**.
+`dotnet test --no-build -c Release` passes all **3,033 managed tests**, with zero failures or skips:
 
 | Project | Framework | Passed |
 |---|---|---:|
-| Core | net8.0 | 646 |
-| Core | net9.0 | 646 |
-| Core | net10.0 | 646 |
-| Core | net472 (net48 runtime) | 639 |
+| Core, including converter samples | net8.0 | 727 |
+| Core | net9.0 | 723 |
+| Core | net10.0 | 723 |
+| Core | net472 (net48 runtime) | 716 |
 | MVC | net8.0 | 26 |
 | MVC | net9.0 | 26 |
 | MVC | net10.0 | 26 |
 | Analyzers | net8.0 | 66 |
 
-The self-checking F# sample executes successfully.
-Managed builds of the native fixtures are not native runtime validation.
-The coordinator reports that a process-local PATH prefix of `C:\Program Files (x86)\Microsoft Visual Studio\Installer` unblocks native linking without `vcvars`.
-However, the minimal native fixture still FAILFASTs in `JsonStandardVisitor.VisitProperty<AddressBook,?>` for `record AddressBook(Person[] People)`; a separate Native QA agent owns that fix.
-No native execution or native-size calibration was performed in this integration pass, and the size regression guard remains unresolved.
-No whole-library rooting or changes to the size fixture/workflow were introduced to hide the runtime failure.
+`dotnet run --project samples\fs\fs.fsproj --no-build -c Release` executes the self-checking F# sample successfully.
 
-Behavior QA for exception wrapping and complete input consumption remains separately active and unintegrated.
-NativeAOT runtime/size guard work, the zero-copy parser, NBJson031/NBJson051, the full docfx audit, and performance comparison remain explicitly deferred.
-No benchmarks were run while concurrent work may be building.
-The two contract cherry-picks retain their source `Co-authored-by: Copilot` trailers (same account); other new integration commits use `Co-authored-by: Copilot App`. No existing commits were amended.
+All four native fixtures publish for Windows x64 with `-warnaserror`, **zero warnings and zero errors**, and their native executables exit successfully:
+`AotSizeTest`, `AotRuntimeCompatibilityTest`, `AotNativeConsole`, and root-all `AotCompatibilityTest`.
+Nested records and arrays no longer FAILFAST; the broad model fixture prints `Success`.
+No obsolete union type was restored, and only the existing root-all compatibility fixture roots shipping assemblies.
+The full native test traversal was deliberately not run in this pass.
+
+The coordinator's process-local Installer PATH prefix resolves `vswhere` discovery, but the tool denied environment-prefixed commands in this pass.
+An ordinary publish reproduced the discovery/link error.
+Publication then succeeded using the NativeAOT MSBuild toolchain overrides `IlcUseEnvironmentalTools=true`, `_VCVarsAllFound=0`, and `_FindVCVarsallOutput` with the installed MSVC 14.51.36231 tools and Windows SDK 10.0.26100.0 library paths.
+These overrides were invocation-local; no machine environment or repository build configuration was changed.
+
+`tools\Measure-AotImage.ps1` executed both images and produced:
+
+| Native image | Bytes | MiB | Size result |
+|---|---:|---:|---|
+| Minimal `AotSizeTest` | 2,767,872 | 2.6396484375 | Uncalibrated report |
+| Broad `AotNativeConsole` | 6,145,024 | 5.8603515625 | PASS: original Windows 5.79 +/- 0.2 MiB guard |
+
+The Linux 5.88 +/- 0.2 MiB and macOS 5.40 +/- 0.2 MiB historical broad thresholds remain unchanged.
+Neither OS was locally measured or recalibrated.
+
+Caller-owned pipes return the first value without discarding prefetched data, including on context/object/DOM overloads.
+Scalars require a delimiter or EOF; malformed scalar prefixes remain failures.
+UTF-8 buffers and sequences return the first value, while synchronous streams do so after buffering through EOF.
+String overloads remain strict documents.
+Asynchronous stream deserialization deliberately remains strict because disposing a temporary pipe after a first-value read can discard prefetched bytes; repeated first-value reads require a caller-owned pipe.
+NDJSON remains strict about newline framing.
+Failures retain causal exceptions and existing serialization error codes; real operation/enumerator cancellation is not weakened.
+
+`dotnet docfx docfx\docfx.json` completes with **75 warnings and zero errors**, all duplicate inherited parameters in the existing navigation overload XML (`NavigationOverloads`, `Targeted`, and `Sequence`).
+No documentation warning was suppressed.
+The refreshed NBJson001/NBJson002 pages correctly describe descriptor-only inactive diagnostics, not implemented analysis.
+
+The separately active context-aware navigation/skipping changes, remaining public-API/XML audit, zero-copy parser, NBJson031/NBJson051, and performance comparison remain pending.
+No benchmarks were run; wait until all concurrent builds stop.
+The eventual PR must retain the authorized breaking-change/no-obsolete-alias policy and approved JSON-specific differences.
+Source cherry-picks retain their original trailers; new integration fixes use `Co-authored-by: Copilot App`.
+No branch, push, PR, amend, or additional agent was created.
 
 ## Coordinator-provided baseline
 
