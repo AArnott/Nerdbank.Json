@@ -39,7 +39,7 @@ public static class AsyncSequenceSample
 	// trailing envelope are consumed incrementally; only one entry is materialized at a time.
 	public static async Task ProcessEnvelopeAsync(Stream stream, JsonSerializer serializer)
 	{
-		await foreach (LogEntry? entry in serializer.DeserializeArrayAtAsync<LogFile, LogEntry>(stream, f => f.Entries))
+		await foreach (LogEntry? entry in serializer.DeserializePathEnumerableAsync<LogFile, LogEntry>(stream, f => f.Entries))
 		{
 			System.Console.WriteLine(entry!.Message);
 		}

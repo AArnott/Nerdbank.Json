@@ -156,7 +156,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 		for (int chunk = 1; chunk <= 6; chunk++)
 		{
 			using ChunkedStream stream = new(utf8, chunk);
-			List<int> result = await CollectAsync(this.Serializer.DeserializeArrayAtAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>()));
+			List<int> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>()));
 			Assert.Equal([10, 20, 30], result);
 		}
 	}
@@ -167,7 +167,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"other":[1,2]}""");
 		using ChunkedStream stream = new(utf8, 3);
 		await Assert.ThrowsAsync<JsonPathNotFoundException>(async () =>
-			await CollectAsync(this.Serializer.DeserializeArrayAtAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>())));
+			await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>())));
 	}
 
 	[Test]
@@ -175,7 +175,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"other":[1,2]}""");
 		using ChunkedStream stream = new(utf8, 3);
-		List<int> result = await CollectAsync(this.Serializer.DeserializeArrayAtAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>(), MissingPathBehavior.ReturnDefault));
+		List<int> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>(), MissingPathBehavior.ReturnDefault));
 		Assert.Empty(result);
 	}
 
@@ -184,7 +184,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"items":null,"count":0}""");
 		using ChunkedStream stream = new(utf8, 3);
-		List<int> result = await CollectAsync(this.Serializer.DeserializeArrayAtAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>()));
+		List<int> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>()));
 		Assert.Empty(result);
 	}
 
@@ -194,7 +194,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"items":42}""");
 		using ChunkedStream stream = new(utf8, 3);
 		await Assert.ThrowsAsync<FormatException>(async () =>
-			await CollectAsync(this.Serializer.DeserializeArrayAtAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>())));
+			await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>())));
 	}
 
 	[Test]
@@ -202,7 +202,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"inner":{"items":[7,8,9]},"trailing":true}""");
 		using ChunkedStream stream = new(utf8, 2);
-		List<int> result = await CollectAsync(this.Serializer.DeserializeArrayAtAsync<Envelope, int>(stream, e => e.Inner.Items, Shape<Envelope, Envelope>()));
+		List<int> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<Envelope, int>(stream, e => e.Inner.Items, Shape<Envelope, Envelope>()));
 		Assert.Equal([7, 8, 9], result);
 	}
 
@@ -211,7 +211,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"pet":["Cat",{"toys":["ball","mouse"],"lives":9}]}""");
 		using ChunkedStream stream = new(utf8, 3);
-		List<string> result = await CollectAsync(this.Serializer.DeserializeArrayAtAsync<UnionEnvelope, string>(stream, e => e.Pet.Toys, Shape<UnionEnvelope, UnionEnvelope>()));
+		List<string> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<UnionEnvelope, string>(stream, e => e.Pet.Toys, Shape<UnionEnvelope, UnionEnvelope>()));
 		Assert.Equal(["ball", "mouse"], result);
 	}
 
@@ -221,7 +221,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 		JsonSerializer serializer = new() { Converters = ConverterCollection.Create([new CustomListConverter()]) };
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"list":{"v":[1,2,3]}}""");
 		using ChunkedStream stream = new(utf8, 2);
-		List<int> result = await CollectAsync(serializer.DeserializeArrayAtAsync<CustomEnvelope, int>(stream, e => e.List.Values, Shape<CustomEnvelope, CustomEnvelope>()));
+		List<int> result = await CollectAsync(serializer.DeserializePathEnumerableAsync<CustomEnvelope, int>(stream, e => e.List.Values, Shape<CustomEnvelope, CustomEnvelope>()));
 		Assert.Equal([1, 2, 3], result);
 	}
 
@@ -232,7 +232,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"pet":["Cat",{"toys":[1]}]}""");
 		using ChunkedStream stream = new(utf8, 4);
 		await Assert.ThrowsAsync<NotSupportedException>(async () =>
-			await CollectAsync(this.Serializer.DeserializeArrayAtAsync(stream, JsonPath.Root.Member("pet").Member("toys"), Shape<int, Witness>())));
+			await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("pet").Member("toys"), Shape<int, Witness>())));
 	}
 
 	[Test]

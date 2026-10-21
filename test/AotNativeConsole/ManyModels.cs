@@ -101,7 +101,7 @@ internal static class ManyModels
 		byte[] envelope = Encoding.UTF8.GetBytes("{\"meta\":\"x\",\"items\":[3,5,7],\"count\":3}");
 		using MemoryStream pathStream = new(envelope);
 		int sum = 0;
-		await foreach (int value in serializer.DeserializeArrayAtAsync(pathStream, JsonPath.Root.Member("items"), WitnessShape<int, IntWitness>()))
+		await foreach (int value in serializer.DeserializePathEnumerableAsync(pathStream, JsonPath.Root.Member("items"), WitnessShape<int, IntWitness>()))
 		{
 			sum += value;
 		}
@@ -130,8 +130,8 @@ internal static class ManyModels
 		DeviceSnapshot snapshot = CreateSnapshot();
 		string json = serializer.Serialize(snapshot);
 
-		string? name = serializer.DeserializeAt<DeviceSnapshot, string>(json, x => x.Name);
-		int cell = serializer.DeserializeAt<int, IntWitness>(json, JsonPath.Root.Member("grid").Index(1).Index(2));
+		string? name = serializer.DeserializePath<DeviceSnapshot, string>(json, x => x.Name);
+		int cell = serializer.DeserializePath<int, IntWitness>(json, JsonPath.Root.Member("grid").Index(1).Index(2));
 
 		if (name != "Weather station" || cell != 6)
 		{
@@ -143,7 +143,7 @@ internal static class ManyModels
 			Converters = ConverterCollection.Create([new CoordConverter()]),
 		};
 		string trackJson = customSerializer.Serialize(new Track(new Coord(3, 7)));
-		int y = customSerializer.DeserializeAt<Track, int>(trackJson, t => t.Position.Y);
+		int y = customSerializer.DeserializePath<Track, int>(trackJson, t => t.Position.Y);
 		if (y != 7)
 		{
 			throw new InvalidOperationException("Navigation through a custom converter did not select the expected value.");

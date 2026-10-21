@@ -48,7 +48,7 @@ internal static class JsonTargetedNavigator
 		char token = reader.PeekValueToken();
 		if (token != '{')
 		{
-			throw new NotSupportedException($"Cannot navigate to member '{segment.Name}' because the value is not a plain JSON object (its first token is '{token}'). If the value uses a union envelope or a custom-converter representation, use the expression-based DeserializeAt overload, which supplies the converter metadata required to traverse it.");
+			throw new NotSupportedException($"Cannot navigate to member '{segment.Name}' because the value is not a plain JSON object (its first token is '{token}'). If the value uses a union envelope or a custom-converter representation, use the expression-based DeserializePath overload, which supplies the converter metadata required to traverse it.");
 		}
 
 		reader.ReadStartObject();
@@ -92,7 +92,7 @@ internal static class JsonTargetedNavigator
 		char token = reader.PeekValueToken();
 		if (token != '[')
 		{
-			throw new NotSupportedException($"Cannot navigate to index {index} because the value is not a plain JSON array (its first token is '{token}'). If the value uses a union envelope or a custom-converter representation, use the expression-based DeserializeAt overload, which supplies the converter metadata required to traverse it.");
+			throw new NotSupportedException($"Cannot navigate to index {index} because the value is not a plain JSON array (its first token is '{token}'). If the value uses a union envelope or a custom-converter representation, use the expression-based DeserializePath overload, which supplies the converter metadata required to traverse it.");
 		}
 
 		reader.ReadStartArray();
