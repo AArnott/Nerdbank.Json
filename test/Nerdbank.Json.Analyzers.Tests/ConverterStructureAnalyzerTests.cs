@@ -90,7 +90,7 @@ public class ConverterStructureAnalyzerTests
 			using Nerdbank.Json;
 			abstract class Converter : JsonConverter<int>
 			{
-				private readonly JsonConverter<int> nested = null!;
+				protected readonly JsonConverter<int> nested = null!;
 				public override void {{(invalid ? "{|NBJson031:Write|}" : "Write")}}(ref JsonWriter writer, in int value, SerializationContext context)
 				{
 					{{body}}
@@ -107,7 +107,7 @@ public class ConverterStructureAnalyzerTests
 			using Nerdbank.Json;
 			abstract class Converter : JsonConverter<int>
 			{
-				private readonly JsonConverter<int> nested = null!;
+				protected readonly JsonConverter<int> nested = null!;
 				public override int {{(invalid ? "{|NBJson031:Read|}" : "Read")}}(ref JsonReader reader, SerializationContext context)
 				{
 					{{body}}
