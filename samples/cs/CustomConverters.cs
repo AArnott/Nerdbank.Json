@@ -48,14 +48,14 @@ public sealed class FooConverter : JsonConverter<Foo>
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
 		context.DepthStep();
 		writer.WriteStartObject();
 		writer.WritePropertyName("name");
-		writer.WriteStringValue(value.Name?.ToUpperInvariant());
+		writer.Write(value.Name?.ToUpperInvariant());
 		writer.WriteEndObject();
 	}
 
@@ -105,7 +105,7 @@ public sealed class WrapperConverter : JsonConverter<Wrapper>
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -173,7 +173,7 @@ public sealed class EnvelopeConverter<T> : JsonConverter<Envelope<T>>
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -224,7 +224,7 @@ public sealed class EnvelopeConverterFactory : IJsonConverterFactory
 		{
 			if (value is null)
 			{
-				writer.WriteNullValue();
+				writer.WriteNull();
 				return;
 			}
 

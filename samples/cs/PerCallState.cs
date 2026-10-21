@@ -45,11 +45,11 @@ public sealed class TenantIdConverter : JsonConverter<TenantId>
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
-		writer.WriteStringValue(value.Value ?? context[PerCallStateSamples.TenantKey] as string);
+		writer.Write(value.Value ?? context[PerCallStateSamples.TenantKey] as string);
 	}
 
 	public override TenantId? Read(ref JsonReader reader, SerializationContext context)

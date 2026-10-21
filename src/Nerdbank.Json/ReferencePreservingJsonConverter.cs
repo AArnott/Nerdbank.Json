@@ -54,7 +54,7 @@ internal sealed class ReferencePreservingJsonConverter<T>(JsonConverter<T> inner
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 

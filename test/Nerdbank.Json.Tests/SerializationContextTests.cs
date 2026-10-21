@@ -67,7 +67,7 @@ public partial class SerializationContextTests : TestBase
 	private sealed class StateConverter : JsonConverter<string>
 	{
 		public override void Write(ref JsonWriter writer, in string? value, SerializationContext context)
-			=> writer.WriteStringValue(context[StateKey] as string);
+			=> writer.Write(context[StateKey] as string);
 
 		public override string? Read(ref JsonReader reader, SerializationContext context)
 		{

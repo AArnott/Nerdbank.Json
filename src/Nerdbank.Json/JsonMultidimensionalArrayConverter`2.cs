@@ -46,7 +46,7 @@ internal sealed class JsonMultidimensionalArrayConverter<TArray, TElement> : Jso
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 

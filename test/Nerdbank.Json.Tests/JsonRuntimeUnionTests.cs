@@ -300,13 +300,13 @@ public partial class JsonRuntimeUnionTests : TestBase
 		{
 			if (value is null)
 			{
-				writer.WriteNullValue();
+				writer.WriteNull();
 				return;
 			}
 
 			writer.WriteStartObject();
 			writer.WritePropertyName("r");
-			writer.WriteNumberValue(value.Radius);
+			writer.Write(value.Radius);
 			writer.WriteEndObject();
 		}
 

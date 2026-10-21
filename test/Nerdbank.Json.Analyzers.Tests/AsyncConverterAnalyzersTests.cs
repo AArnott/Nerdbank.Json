@@ -107,7 +107,7 @@ public class AsyncConverterAnalyzersTests
 				public override ValueTask WriteAsync(JsonAsyncWriter writer, string? value, SerializationContext context)
 				{
 					JsonWriter w = writer.CreateWriter();
-					w.WriteNullValue();
+					w.WriteNull();
 					{|NBJson033:return|} default;
 				}
 			}
@@ -131,7 +131,7 @@ public class AsyncConverterAnalyzersTests
 				public override ValueTask WriteAsync(JsonAsyncWriter writer, string? value, SerializationContext context)
 				{
 					JsonWriter w = writer.CreateWriter();
-					w.WriteNullValue();
+					w.WriteNull();
 					writer.ReturnWriter(ref w);
 					return default;
 				}
@@ -156,7 +156,7 @@ public class AsyncConverterAnalyzersTests
 				public override async ValueTask WriteAsync(JsonAsyncWriter writer, string? value, SerializationContext context)
 				{
 					JsonWriter w = writer.CreateWriter();
-					w.WriteNullValue();
+					w.WriteNull();
 					{|NBJson033:await|} Task.Yield();
 				}
 			}
@@ -184,7 +184,7 @@ public class AsyncConverterAnalyzersTests
 				{
 					JsonWriter w = writer.CreateWriter();
 					writer.ReturnWriter(ref w);
-					{|NBJson034:w|}.WriteNullValue();
+					{|NBJson034:w|}.WriteNull();
 					return default;
 				}
 			}

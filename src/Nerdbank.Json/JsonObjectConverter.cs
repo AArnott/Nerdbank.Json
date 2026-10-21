@@ -43,7 +43,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -302,7 +302,7 @@ internal sealed class JsonExtensionData<TDeclaring, TProperty> : JsonExtensionDa
 			}
 
 			writer.WritePropertyName(entry.Key);
-			writer.WriteRawValue(entry.Value);
+			writer.WriteRaw(entry.Value);
 			first = false;
 		}
 	}

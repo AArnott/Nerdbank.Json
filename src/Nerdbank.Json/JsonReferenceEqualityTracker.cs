@@ -55,7 +55,7 @@ internal sealed class JsonReferenceEqualityTracker
 		{
 			writer.WriteStartObject();
 			writer.WritePropertyName("$ref");
-			writer.WriteNumberValue(referenceId);
+			writer.Write(referenceId);
 			writer.WriteEndObject();
 			return;
 		}
@@ -65,7 +65,7 @@ internal sealed class JsonReferenceEqualityTracker
 
 		writer.WriteStartObject();
 		writer.WritePropertyName("$id");
-		writer.WriteNumberValue(assignedReferenceId);
+		writer.Write(assignedReferenceId);
 		writer.WriteValueSeparator();
 		writer.WritePropertyName("$value");
 		inner.WriteObject(ref writer, value, context with { ReferenceId = assignedReferenceId });
@@ -166,7 +166,7 @@ internal sealed class JsonReferenceEqualityTracker
 			JsonWriter refWriter = writer.CreateWriter();
 			refWriter.WriteStartObject();
 			refWriter.WritePropertyName("$ref");
-			refWriter.WriteNumberValue(referenceId);
+			refWriter.Write(referenceId);
 			refWriter.WriteEndObject();
 			writer.ReturnWriter(ref refWriter);
 			await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
@@ -179,7 +179,7 @@ internal sealed class JsonReferenceEqualityTracker
 		JsonWriter headerWriter = writer.CreateWriter();
 		headerWriter.WriteStartObject();
 		headerWriter.WritePropertyName("$id");
-		headerWriter.WriteNumberValue(assignedReferenceId);
+		headerWriter.Write(assignedReferenceId);
 		headerWriter.WriteValueSeparator();
 		headerWriter.WritePropertyName("$value");
 		writer.ReturnWriter(ref headerWriter);

@@ -353,9 +353,9 @@ public partial class JsonTargetedDeserializationTests : TestBase
 		public override void Write(ref JsonWriter writer, in Point3? value, SerializationContext context)
 		{
 			writer.WriteStartArray();
-			writer.WriteNumberValue(value!.X);
+			writer.Write(value!.X);
 			writer.WriteValueSeparator();
-			writer.WriteNumberValue(value.Y);
+			writer.Write(value.Y);
 			writer.WriteEndArray();
 		}
 

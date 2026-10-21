@@ -33,7 +33,7 @@ internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonCon
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -279,7 +279,7 @@ internal abstract class JsonDictionaryConverter<TDictionary, TKey, TValue> : Jso
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -522,7 +522,7 @@ internal sealed class JsonListConverter<TCollection, TElement>(JsonConverter<TEl
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -657,7 +657,7 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 

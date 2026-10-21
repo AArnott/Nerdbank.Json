@@ -8,12 +8,93 @@ using Microsoft;
 public class JsonWriterTests
 {
 	[Test]
+	public void Write_ScalarOverloads()
+	{
+		TestBufferWriter buffer = new();
+		JsonWriter writer = new(buffer);
+		writer.WriteStartArray();
+		writer.Write((byte)255);
+		writer.WriteValueSeparator();
+		writer.Write((sbyte)-128);
+		writer.WriteValueSeparator();
+		writer.Write(short.MinValue);
+		writer.WriteValueSeparator();
+		writer.Write(ushort.MaxValue);
+		writer.WriteValueSeparator();
+		writer.Write(int.MinValue);
+		writer.WriteValueSeparator();
+		writer.Write(uint.MaxValue);
+		writer.WriteValueSeparator();
+		writer.Write(long.MinValue);
+		writer.WriteValueSeparator();
+		writer.Write(ulong.MaxValue);
+		writer.WriteValueSeparator();
+		writer.Write(1.25f);
+		writer.WriteValueSeparator();
+		writer.Write(1.25d);
+		writer.WriteValueSeparator();
+		writer.Write(1.25m);
+		writer.WriteValueSeparator();
+		writer.Write(true);
+		writer.WriteValueSeparator();
+		writer.Write("hello".AsSpan());
+		writer.WriteValueSeparator();
+		writer.WriteNull();
+		writer.WriteEndArray();
+		writer.Flush();
+		Assert.Equal("""[255,-128,-32768,65535,-2147483648,4294967295,-9223372036854775808,18446744073709551615,1.25,1.25,1.25,true,"hello",null]""", Encoding.UTF8.GetString(buffer.WrittenArray));
+	}
+
+	[Test]
+	public void WriteRaw_Utf8AndSequence()
+	{
+		TestBufferWriter buffer = new();
+		JsonWriter writer = new(buffer) { WriteIndented = true };
+		writer.WriteStartArray();
+		writer.WriteRaw("""{"a":1}"""u8);
+		writer.WriteValueSeparator();
+		ReadOnlySequence<byte> sequence = new("[2,3]"u8.ToArray());
+		writer.WriteRaw(sequence);
+		writer.WriteEndArray();
+		writer.Flush();
+		Assert.Equal("[\n  {\"a\":1},\n  [2,3]\n]", Encoding.UTF8.GetString(buffer.WrittenArray));
+	}
+
+	[Test]
+	public void Write_NonfiniteNumbersThrowBeforeWriting()
+	{
+		TestBufferWriter buffer = new();
+		JsonWriter writer = new(buffer);
+		try
+		{
+			writer.Write(double.PositiveInfinity);
+			Assert.Fail("Expected non-finite number rejection.");
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+		}
+
+		try
+		{
+			writer.Write(float.NaN);
+			Assert.Fail("Expected non-finite number rejection.");
+		}
+		catch (ArgumentOutOfRangeException)
+		{
+		}
+
+		writer.Write(1);
+		writer.Flush();
+		Assert.Equal("1", Encoding.UTF8.GetString(buffer.WrittenArray));
+	}
+
+	[Test]
 	public void WriteStringValue_EscapesOnlyRfc8259RequiredCharacters()
 	{
 		TestBufferWriter buffer = new();
 		JsonWriter writer = new(buffer);
 
-		writer.WriteStringValue("plain ü <tag> \"quoted\" \\ slash\nnext");
+		writer.Write("plain ü <tag> \"quoted\" \\ slash\nnext");
 		writer.Flush();
 
 		Assert.Equal("\"plain ü <tag> \\\"quoted\\\" \\\\ slash\\nnext\"", Encoding.UTF8.GetString(buffer.WrittenArray));
@@ -25,7 +106,7 @@ public class JsonWriterTests
 		TestBufferWriter buffer = new();
 		JsonWriter writer = new(buffer);
 
-		writer.WriteStringValue("a\u0001b");
+		writer.Write("a\u0001b");
 		writer.Flush();
 
 		Assert.Equal("\"a\\u0001b\"", Encoding.UTF8.GetString(buffer.WrittenArray));
@@ -37,7 +118,7 @@ public class JsonWriterTests
 		TestBufferWriter buffer = new();
 		JsonWriter writer = new(buffer);
 
-		writer.WriteStringValue((string?)null);
+		writer.Write((string?)null);
 		writer.Flush();
 
 		Assert.Equal("null", Encoding.UTF8.GetString(buffer.WrittenArray));
@@ -51,7 +132,7 @@ public class JsonWriterTests
 
 		try
 		{
-			writer.WriteStringValue("\uD800");
+			writer.Write("\uD800");
 			Assert.Fail("Expected an ArgumentException to be thrown.");
 		}
 		catch (ArgumentException)

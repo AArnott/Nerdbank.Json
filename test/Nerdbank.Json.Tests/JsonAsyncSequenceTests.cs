@@ -483,7 +483,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 				}
 
 				first = false;
-				writer.WriteNumberValue(item);
+				writer.Write(item);
 			}
 
 			writer.WriteEndArray();

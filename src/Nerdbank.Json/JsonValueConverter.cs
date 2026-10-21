@@ -49,23 +49,23 @@ internal sealed class JsonValueConverter : JsonConverter<JsonValue>
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
 		switch (value.Kind)
 		{
 			case JsonValueKind.Null:
-				writer.WriteNullValue();
+				writer.WriteNull();
 				break;
 			case JsonValueKind.Boolean:
-				writer.WriteBooleanValue(((JsonBoolean)value).Value);
+				writer.Write(((JsonBoolean)value).Value);
 				break;
 			case JsonValueKind.String:
-				writer.WriteStringValue(((JsonString)value).Value);
+				writer.Write(((JsonString)value).Value);
 				break;
 			case JsonValueKind.Number:
-				writer.WriteRawValue(((JsonNumber)value).RawToken);
+				writer.WriteRaw(((JsonNumber)value).RawToken);
 				break;
 			case JsonValueKind.Array:
 				this.WriteArray(ref writer, (JsonArray)value, context);

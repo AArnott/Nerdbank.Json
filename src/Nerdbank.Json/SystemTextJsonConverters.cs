@@ -41,11 +41,11 @@ internal sealed class SystemTextJsonElementConverter : JsonConverter<JsonElement
 	{
 		if (value.ValueKind == System.Text.Json.JsonValueKind.Undefined)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
-		writer.WriteRawValue(value.GetRawText());
+		writer.WriteRaw(value.GetRawText());
 	}
 
 	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
@@ -65,11 +65,11 @@ internal sealed class SystemTextJsonNodeConverter : JsonConverter<JsonSchemaNode
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
-		writer.WriteRawValue(value.ToJsonString());
+		writer.WriteRaw(value.ToJsonString());
 	}
 
 	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
@@ -89,11 +89,11 @@ internal sealed class SystemTextJsonDocumentConverter : JsonConverter<JsonDocume
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
-		writer.WriteRawValue(value.RootElement.GetRawText());
+		writer.WriteRaw(value.RootElement.GetRawText());
 	}
 
 	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();

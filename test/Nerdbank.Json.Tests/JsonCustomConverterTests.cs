@@ -119,7 +119,7 @@ public partial class JsonObjectSerializerTests
 	{
 		public override void Write(ref JsonWriter writer, in string? value, SerializationContext context)
 		{
-			writer.WriteStringValue(value?.ToUpperInvariant());
+			writer.Write(value?.ToUpperInvariant());
 		}
 
 		public override string? Read(ref JsonReader reader, SerializationContext context)
@@ -142,13 +142,13 @@ public partial class JsonObjectSerializerTests
 		{
 			if (value is null)
 			{
-				writer.WriteNullValue();
+				writer.WriteNull();
 				return;
 			}
 
 			writer.WriteStartObject();
 			writer.WritePropertyName("value");
-			writer.WriteStringValue(value.Value?.ToUpperInvariant());
+			writer.Write(value.Value?.ToUpperInvariant());
 			writer.WriteEndObject();
 		}
 
@@ -182,13 +182,13 @@ public partial class JsonObjectSerializerTests
 		{
 			if (value is null)
 			{
-				writer.WriteNullValue();
+				writer.WriteNull();
 				return;
 			}
 
 			writer.WriteStartObject();
 			writer.WritePropertyName("value");
-			writer.WriteStringValue(value.Value + "!");
+			writer.Write(value.Value + "!");
 			writer.WriteEndObject();
 		}
 
@@ -225,7 +225,7 @@ public partial class JsonObjectSerializerTests
 		{
 			if (value is null)
 			{
-				writer.WriteNullValue();
+				writer.WriteNull();
 				return;
 			}
 

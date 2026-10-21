@@ -391,7 +391,7 @@ public partial record JsonSerializer
 		{
 			await asyncWriter.WriteValueAsync(converter, value, context).ConfigureAwait(false);
 			JsonWriter syncWriter = asyncWriter.CreateWriter();
-			syncWriter.WriteRawValue("\n");
+			syncWriter.WriteRaw("\n");
 			asyncWriter.ReturnWriter(ref syncWriter);
 			await asyncWriter.FlushIfAppropriateAsync(context).ConfigureAwait(false);
 		}

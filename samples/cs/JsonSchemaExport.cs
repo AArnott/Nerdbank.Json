@@ -29,7 +29,7 @@ string draft7Schema = serializer.GetJsonSchema<Product>(
 public sealed class TemperatureConverter : JsonConverter<Temperature>
 {
 	public override void Write(ref JsonWriter writer, in Temperature? value, SerializationContext context)
-		=> writer.WriteNumberValue(value?.Celsius ?? 0);
+		=> writer.Write(value?.Celsius ?? 0);
 
 	public override Temperature? Read(ref JsonReader reader, SerializationContext context)
 		=> new(double.Parse(reader.ReadNumberToken()));

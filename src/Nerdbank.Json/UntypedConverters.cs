@@ -130,7 +130,7 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 		switch (value)
 		{
 			case null:
-				writer.WriteNullValue();
+				writer.WriteNull();
 				break;
 			case JsonValue json:
 				JsonValueConverter.Instance.Write(ref writer, json, context);
@@ -250,46 +250,46 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 		switch (value)
 		{
 			case bool b:
-				writer.WriteBooleanValue(b);
+				writer.Write(b);
 				break;
 			case string s:
-				writer.WriteStringValue(s);
+				writer.Write(s);
 				break;
 			case char c:
 				writer.WriteStringValue(c.ToString());
 				break;
 			case byte n:
-				writer.WriteNumberValue(n);
+				writer.Write(n);
 				break;
 			case sbyte n:
-				writer.WriteNumberValue(n);
+				writer.Write(n);
 				break;
 			case short n:
-				writer.WriteNumberValue(n);
+				writer.Write(n);
 				break;
 			case ushort n:
-				writer.WriteNumberValue(n);
+				writer.Write(n);
 				break;
 			case int n:
-				writer.WriteNumberValue(n);
+				writer.Write(n);
 				break;
 			case uint n:
-				writer.WriteNumberValue(n);
+				writer.Write(n);
 				break;
 			case long n:
-				writer.WriteNumberValue(n);
+				writer.Write(n);
 				break;
 			case ulong n:
-				writer.WriteNumberValue(n);
+				writer.Write(n);
 				break;
 			case float n:
-				writer.WriteNumberValue(n);
+				writer.Write(n);
 				break;
 			case double n:
-				writer.WriteNumberValue(n);
+				writer.Write(n);
 				break;
 			case decimal n:
-				writer.WriteNumberValue(n);
+				writer.Write(n);
 				break;
 			case DateTime dateTime:
 				return BuiltInJsonConverters.TrySerialize(ref writer, dateTime);
@@ -417,7 +417,7 @@ internal sealed class ExpandoObjectConverter : JsonConverter<ExpandoObject>
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 

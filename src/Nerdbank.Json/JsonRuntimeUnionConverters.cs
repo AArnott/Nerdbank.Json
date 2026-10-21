@@ -61,11 +61,11 @@ internal readonly struct RuntimeUnionCaseEntry<TBase>
 	{
 		if (this.Tag is int tag)
 		{
-			writer.WriteNumberValue(tag);
+			writer.Write(tag);
 		}
 		else
 		{
-			writer.WriteStringValue(this.Name);
+			writer.Write(this.Name);
 		}
 	}
 }
@@ -106,7 +106,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 	{
 		if (!typeof(TBase).IsValueType && value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -141,7 +141,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		}
 		else
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			writer.WriteValueSeparator();
 			this.WriteBase(ref writer, value, context);
 		}
@@ -294,7 +294,7 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 	{
 		if (!typeof(TBase).IsValueType && value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 

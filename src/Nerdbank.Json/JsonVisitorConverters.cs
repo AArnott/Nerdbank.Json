@@ -43,11 +43,11 @@ internal readonly struct JsonUnionCaseMetadata<TUnion>
 	{
 		if (this.usesIntegerAlias)
 		{
-			writer.WriteNumberValue(this.intAlias);
+			writer.Write(this.intAlias);
 		}
 		else
 		{
-			writer.WriteStringValue(this.stringAlias);
+			writer.Write(this.stringAlias);
 		}
 	}
 }
@@ -71,7 +71,7 @@ internal sealed class JsonOptionalConverter<TOptional, TElement> : JsonConverter
 	{
 		if (!this.deconstructor(value, out TElement? element))
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -111,7 +111,7 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 		var underlyingValue = (TUnderlying)(object)value;
 		if (this.namesByValue?.TryGetValue(underlyingValue, out string? name) == true)
 		{
-			writer.WriteStringValue(name);
+			writer.Write(name);
 			return;
 		}
 
@@ -227,7 +227,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 	{
 		if (!typeof(TUnion).IsValueType && value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -262,7 +262,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 		else
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			converter = this.baseConverter ?? throw new NotSupportedException($"No union case is registered for type '{value?.GetType().FullName}', and the base type '{typeof(TUnion).FullName}' cannot be serialized directly.");
 		}
 
@@ -546,7 +546,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 

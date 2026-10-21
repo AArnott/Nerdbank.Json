@@ -227,7 +227,7 @@ public partial class JsonSchemaTests : TestBase
 
 	internal sealed class MoneyConverter : JsonConverter<Money>
 	{
-		public override void Write(ref JsonWriter writer, in Money? value, SerializationContext context) => writer.WriteStringValue(value?.Amount.ToString());
+		public override void Write(ref JsonWriter writer, in Money? value, SerializationContext context) => writer.Write(value?.Amount.ToString());
 
 		public override Money? Read(ref JsonReader reader, SerializationContext context) => new(decimal.Parse(reader.ReadString()!));
 
@@ -240,7 +240,7 @@ public partial class JsonSchemaTests : TestBase
 
 	internal sealed class OpaqueConverter : JsonConverter<Opaque>
 	{
-		public override void Write(ref JsonWriter writer, in Opaque? value, SerializationContext context) => writer.WriteNumberValue(value?.Value ?? 0);
+		public override void Write(ref JsonWriter writer, in Opaque? value, SerializationContext context) => writer.Write(value?.Value ?? 0);
 
 		public override Opaque? Read(ref JsonReader reader, SerializationContext context) => new(int.Parse(reader.ReadNumberToken()));
 	}

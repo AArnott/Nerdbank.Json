@@ -70,91 +70,91 @@ internal static class BuiltInJsonConverters
 		// never allocates.
 		if (typeof(T) == typeof(string))
 		{
-			writer.WriteStringValue((string?)(object?)value);
+			writer.Write((string?)(object?)value);
 			return true;
 		}
 
 		if (typeof(T) == typeof(char))
 		{
-			writer.WriteStringValue(new string(Unsafe.As<T, char>(ref value), 1));
+			writer.Write(new string(Unsafe.As<T, char>(ref value), 1));
 			return true;
 		}
 
 		if (typeof(T) == typeof(bool))
 		{
-			writer.WriteBooleanValue(Unsafe.As<T, bool>(ref value));
+			writer.Write(Unsafe.As<T, bool>(ref value));
 			return true;
 		}
 
 		if (typeof(T) == typeof(byte))
 		{
-			writer.WriteNumberValue(Unsafe.As<T, byte>(ref value));
+			writer.Write(Unsafe.As<T, byte>(ref value));
 			return true;
 		}
 
 		if (typeof(T) == typeof(sbyte))
 		{
-			writer.WriteNumberValue(Unsafe.As<T, sbyte>(ref value));
+			writer.Write(Unsafe.As<T, sbyte>(ref value));
 			return true;
 		}
 
 		if (typeof(T) == typeof(short))
 		{
-			writer.WriteNumberValue(Unsafe.As<T, short>(ref value));
+			writer.Write(Unsafe.As<T, short>(ref value));
 			return true;
 		}
 
 		if (typeof(T) == typeof(ushort))
 		{
-			writer.WriteNumberValue(Unsafe.As<T, ushort>(ref value));
+			writer.Write(Unsafe.As<T, ushort>(ref value));
 			return true;
 		}
 
 		if (typeof(T) == typeof(int))
 		{
-			writer.WriteNumberValue(Unsafe.As<T, int>(ref value));
+			writer.Write(Unsafe.As<T, int>(ref value));
 			return true;
 		}
 
 		if (typeof(T) == typeof(uint))
 		{
-			writer.WriteNumberValue(Unsafe.As<T, uint>(ref value));
+			writer.Write(Unsafe.As<T, uint>(ref value));
 			return true;
 		}
 
 		if (typeof(T) == typeof(long))
 		{
-			writer.WriteNumberValue(Unsafe.As<T, long>(ref value));
+			writer.Write(Unsafe.As<T, long>(ref value));
 			return true;
 		}
 
 		if (typeof(T) == typeof(ulong))
 		{
-			writer.WriteNumberValue(Unsafe.As<T, ulong>(ref value));
+			writer.Write(Unsafe.As<T, ulong>(ref value));
 			return true;
 		}
 
 		if (typeof(T) == typeof(float))
 		{
-			writer.WriteNumberValue(Unsafe.As<T, float>(ref value));
+			writer.Write(Unsafe.As<T, float>(ref value));
 			return true;
 		}
 
 		if (typeof(T) == typeof(double))
 		{
-			writer.WriteNumberValue(Unsafe.As<T, double>(ref value));
+			writer.Write(Unsafe.As<T, double>(ref value));
 			return true;
 		}
 
 		if (typeof(T) == typeof(decimal))
 		{
-			writer.WriteNumberValue(Unsafe.As<T, decimal>(ref value));
+			writer.Write(Unsafe.As<T, decimal>(ref value));
 			return true;
 		}
 
 		if (typeof(T) == typeof(BigInteger))
 		{
-			writer.WriteRawValue(Unsafe.As<T, BigInteger>(ref value).ToString(CultureInfo.InvariantCulture));
+			writer.WriteRaw(Unsafe.As<T, BigInteger>(ref value).ToString(CultureInfo.InvariantCulture));
 			return true;
 		}
 
@@ -163,7 +163,7 @@ internal static class BuiltInJsonConverters
 #if NET8_0_OR_GREATER
 			writer.WriteAsciiFormattedString(Unsafe.As<T, DateTime>(ref value), maxLength: 33, format: "O");
 #else
-			writer.WriteStringValue(Unsafe.As<T, DateTime>(ref value).ToString("O", CultureInfo.InvariantCulture));
+			writer.Write(Unsafe.As<T, DateTime>(ref value).ToString("O", CultureInfo.InvariantCulture));
 #endif
 			return true;
 		}
@@ -173,7 +173,7 @@ internal static class BuiltInJsonConverters
 #if NET8_0_OR_GREATER
 			writer.WriteAsciiFormattedString(Unsafe.As<T, DateTimeOffset>(ref value), maxLength: 33, format: "O");
 #else
-			writer.WriteStringValue(Unsafe.As<T, DateTimeOffset>(ref value).ToString("O", CultureInfo.InvariantCulture));
+			writer.Write(Unsafe.As<T, DateTimeOffset>(ref value).ToString("O", CultureInfo.InvariantCulture));
 #endif
 			return true;
 		}
@@ -183,7 +183,7 @@ internal static class BuiltInJsonConverters
 #if NET8_0_OR_GREATER
 			writer.WriteAsciiFormattedString(Unsafe.As<T, TimeSpan>(ref value), maxLength: 26, format: "c");
 #else
-			writer.WriteStringValue(Unsafe.As<T, TimeSpan>(ref value).ToString("c", CultureInfo.InvariantCulture));
+			writer.Write(Unsafe.As<T, TimeSpan>(ref value).ToString("c", CultureInfo.InvariantCulture));
 #endif
 			return true;
 		}
@@ -193,32 +193,32 @@ internal static class BuiltInJsonConverters
 #if NET8_0_OR_GREATER
 			writer.WriteAsciiFormattedString(Unsafe.As<T, Guid>(ref value), maxLength: 36, format: "D");
 #else
-			writer.WriteStringValue(Unsafe.As<T, Guid>(ref value).ToString("D", CultureInfo.InvariantCulture));
+			writer.Write(Unsafe.As<T, Guid>(ref value).ToString("D", CultureInfo.InvariantCulture));
 #endif
 			return true;
 		}
 
 		if (typeof(T) == typeof(Version))
 		{
-			writer.WriteStringValue(((Version?)(object?)value)?.ToString());
+			writer.Write(((Version?)(object?)value)?.ToString());
 			return true;
 		}
 
 		if (typeof(T) == typeof(Uri))
 		{
-			writer.WriteStringValue(((Uri?)(object?)value)?.OriginalString);
+			writer.Write(((Uri?)(object?)value)?.OriginalString);
 			return true;
 		}
 
 		if (typeof(T) == typeof(CultureInfo))
 		{
-			writer.WriteStringValue(((CultureInfo?)(object?)value)?.Name);
+			writer.Write(((CultureInfo?)(object?)value)?.Name);
 			return true;
 		}
 
 		if (typeof(T) == typeof(Encoding))
 		{
-			writer.WriteStringValue(((Encoding?)(object?)value)?.WebName);
+			writer.Write(((Encoding?)(object?)value)?.WebName);
 			return true;
 		}
 
@@ -242,7 +242,7 @@ internal static class BuiltInJsonConverters
 
 		if (typeof(T) == typeof(Color))
 		{
-			writer.WriteNumberValue(Unsafe.As<T, Color>(ref value).ToArgb());
+			writer.Write(Unsafe.As<T, Color>(ref value).ToArgb());
 			return true;
 		}
 
@@ -250,9 +250,9 @@ internal static class BuiltInJsonConverters
 		{
 			Point point = Unsafe.As<T, Point>(ref value);
 			writer.WriteStartArray();
-			writer.WriteNumberValue(point.X);
+			writer.Write(point.X);
 			writer.WriteValueSeparator();
-			writer.WriteNumberValue(point.Y);
+			writer.Write(point.Y);
 			writer.WriteEndArray();
 			return true;
 		}
@@ -260,37 +260,37 @@ internal static class BuiltInJsonConverters
 #if NET8_0_OR_GREATER
 		if (typeof(T) == typeof(Half))
 		{
-			writer.WriteRawValue(Unsafe.As<T, Half>(ref value).ToString(CultureInfo.InvariantCulture));
+			writer.WriteRaw(Unsafe.As<T, Half>(ref value).ToString(CultureInfo.InvariantCulture));
 			return true;
 		}
 
 		if (typeof(T) == typeof(Int128))
 		{
-			writer.WriteRawValue(Unsafe.As<T, Int128>(ref value).ToString(CultureInfo.InvariantCulture));
+			writer.WriteRaw(Unsafe.As<T, Int128>(ref value).ToString(CultureInfo.InvariantCulture));
 			return true;
 		}
 
 		if (typeof(T) == typeof(UInt128))
 		{
-			writer.WriteRawValue(Unsafe.As<T, UInt128>(ref value).ToString(CultureInfo.InvariantCulture));
+			writer.WriteRaw(Unsafe.As<T, UInt128>(ref value).ToString(CultureInfo.InvariantCulture));
 			return true;
 		}
 
 		if (typeof(T) == typeof(DateOnly))
 		{
-			writer.WriteStringValue(Unsafe.As<T, DateOnly>(ref value).ToString("O", CultureInfo.InvariantCulture));
+			writer.Write(Unsafe.As<T, DateOnly>(ref value).ToString("O", CultureInfo.InvariantCulture));
 			return true;
 		}
 
 		if (typeof(T) == typeof(TimeOnly))
 		{
-			writer.WriteStringValue(Unsafe.As<T, TimeOnly>(ref value).ToString("O", CultureInfo.InvariantCulture));
+			writer.Write(Unsafe.As<T, TimeOnly>(ref value).ToString("O", CultureInfo.InvariantCulture));
 			return true;
 		}
 
 		if (typeof(T) == typeof(Rune))
 		{
-			writer.WriteStringValue(Unsafe.As<T, Rune>(ref value).ToString());
+			writer.Write(Unsafe.As<T, Rune>(ref value).ToString());
 			return true;
 		}
 #endif
@@ -326,67 +326,67 @@ internal static class BuiltInJsonConverters
 
 		if (typeof(T) == typeof(byte))
 		{
-			Unsafe.As<T, byte>(ref value) = reader.ReadByteValue();
+			Unsafe.As<T, byte>(ref value) = reader.ReadByte();
 			return true;
 		}
 
 		if (typeof(T) == typeof(sbyte))
 		{
-			Unsafe.As<T, sbyte>(ref value) = reader.ReadSByteValue();
+			Unsafe.As<T, sbyte>(ref value) = reader.ReadSByte();
 			return true;
 		}
 
 		if (typeof(T) == typeof(short))
 		{
-			Unsafe.As<T, short>(ref value) = reader.ReadInt16Value();
+			Unsafe.As<T, short>(ref value) = reader.ReadInt16();
 			return true;
 		}
 
 		if (typeof(T) == typeof(ushort))
 		{
-			Unsafe.As<T, ushort>(ref value) = reader.ReadUInt16Value();
+			Unsafe.As<T, ushort>(ref value) = reader.ReadUInt16();
 			return true;
 		}
 
 		if (typeof(T) == typeof(int))
 		{
-			Unsafe.As<T, int>(ref value) = reader.ReadInt32Value();
+			Unsafe.As<T, int>(ref value) = reader.ReadInt32();
 			return true;
 		}
 
 		if (typeof(T) == typeof(uint))
 		{
-			Unsafe.As<T, uint>(ref value) = reader.ReadUInt32Value();
+			Unsafe.As<T, uint>(ref value) = reader.ReadUInt32();
 			return true;
 		}
 
 		if (typeof(T) == typeof(long))
 		{
-			Unsafe.As<T, long>(ref value) = reader.ReadInt64Value();
+			Unsafe.As<T, long>(ref value) = reader.ReadInt64();
 			return true;
 		}
 
 		if (typeof(T) == typeof(ulong))
 		{
-			Unsafe.As<T, ulong>(ref value) = reader.ReadUInt64Value();
+			Unsafe.As<T, ulong>(ref value) = reader.ReadUInt64();
 			return true;
 		}
 
 		if (typeof(T) == typeof(float))
 		{
-			Unsafe.As<T, float>(ref value) = reader.ReadSingleValue();
+			Unsafe.As<T, float>(ref value) = reader.ReadSingle();
 			return true;
 		}
 
 		if (typeof(T) == typeof(double))
 		{
-			Unsafe.As<T, double>(ref value) = reader.ReadDoubleValue();
+			Unsafe.As<T, double>(ref value) = reader.ReadDouble();
 			return true;
 		}
 
 		if (typeof(T) == typeof(decimal))
 		{
-			Unsafe.As<T, decimal>(ref value) = reader.ReadDecimalValue();
+			Unsafe.As<T, decimal>(ref value) = reader.ReadDecimal();
 			return true;
 		}
 
@@ -469,16 +469,16 @@ internal static class BuiltInJsonConverters
 
 		if (typeof(T) == typeof(Color))
 		{
-			Unsafe.As<T, Color>(ref value) = Color.FromArgb(reader.ReadInt32Value());
+			Unsafe.As<T, Color>(ref value) = Color.FromArgb(reader.ReadInt32());
 			return true;
 		}
 
 		if (typeof(T) == typeof(Point))
 		{
 			reader.ReadStartArray();
-			int x = reader.ReadInt32Value();
+			int x = reader.ReadInt32();
 			reader.ReadValueSeparator();
-			int y = reader.ReadInt32Value();
+			int y = reader.ReadInt32();
 			reader.ReadEndArray();
 			Unsafe.As<T, Point>(ref value) = new Point(x, y);
 			return true;

@@ -275,7 +275,7 @@ public partial class JsonAsyncIOTests : TestBase
 		internal int ReadAsyncCalls { get; private set; }
 
 		public override void Write(ref JsonWriter writer, in Tracked? value, SerializationContext context)
-			=> writer.WriteStringValue(value?.Text);
+			=> writer.Write(value?.Text);
 
 		public override Tracked? Read(ref JsonReader reader, SerializationContext context)
 		{
@@ -287,7 +287,7 @@ public partial class JsonAsyncIOTests : TestBase
 		{
 			this.WriteAsyncCalls++;
 			JsonWriter syncWriter = writer.CreateWriter();
-			syncWriter.WriteStringValue(value?.Text);
+			syncWriter.Write(value?.Text);
 			writer.ReturnWriter(ref syncWriter);
 			await writer.FlushIfAppropriateAsync(context);
 		}
