@@ -9,6 +9,7 @@ public partial class JsonObjectSerializerTests : TestBase
 {
 #if NET
 	[Test]
+	[NotInParallel]
 	public void Serialize_CachedObjectGraph_DoesNotAllocate()
 	{
 		Person value = new()

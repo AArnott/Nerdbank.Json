@@ -120,6 +120,7 @@ public partial class JsonReaderTests
 	}
 
 	[Test]
+	[NotInParallel]
 	public void Segmented_ConstructorBorrowsAndSkipDoesNotMaterializePayload()
 	{
 		byte[] payload = Encoding.UTF8.GetBytes("\"" + new string('a', 1_000_000) + "\"");
@@ -133,10 +134,11 @@ public partial class JsonReaderTests
 #endif
 		JsonReader reader = new(sequence);
 		reader.Skip(new());
-		Assert.True(reader.End);
 #if NET
-		Assert.InRange(GC.GetAllocatedBytesForCurrentThread() - before, 0, 1024);
+		long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+		Assert.InRange(allocated, 0, 1024);
 #endif
+		Assert.True(reader.End);
 
 		JsonReader borrowed = new(sequence);
 		payload[1] = (byte)'b';
@@ -166,6 +168,7 @@ public partial class JsonReaderTests
 
 #if NET
 	[Test]
+	[NotInParallel]
 	public void SegmentedSkipDoesNotAllocateForSplitLiteralsOrNumbers()
 	{
 		byte[] bytes = Encoding.UTF8.GetBytes("[" + string.Join(",", Enumerable.Repeat("true,false,null,0", 1000)) + "]");
@@ -188,6 +191,7 @@ public partial class JsonReaderTests
 	}
 
 	[Test]
+	[NotInParallel]
 	public void ContiguousReaderAndPrimitiveOperationsDoNotAllocate()
 	{
 		ReadScalars();

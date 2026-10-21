@@ -49,6 +49,7 @@ public partial class ConverterContextTests
 	}
 
 	[Test]
+	[NotInParallel]
 	[Arguments(false)]
 	[Arguments(true)]
 	public void AlternatingProvidersPreserveConverterIdentity(bool equalShapes)
