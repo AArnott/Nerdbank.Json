@@ -13,7 +13,7 @@ public class ConverterUsageAnalyzerTests
 			class {|NBJson032:Converter|} : JsonConverter<int>
 			{
 				public override int Read(ref JsonReader reader, SerializationContext context) => 0;
-				public override void Write(ref JsonWriter writer, int value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in int value, SerializationContext context) { }
 			}
 			""");
 
@@ -33,9 +33,9 @@ public class ConverterUsageAnalyzerTests
 			using PolyType;
 			abstract class Base : JsonConverter<int>
 			{
-				public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape shape) => new();
+				public override System.Text.Json.Nodes.JsonObject? GetJsonSchema(JsonSchemaContext context, ITypeShape shape) => new();
 				public override int Read(ref JsonReader reader, SerializationContext context) => 0;
-				public override void Write(ref JsonWriter writer, int value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in int value, SerializationContext context) { }
 			}
 			class Converter : Base { }
 			""");
@@ -49,7 +49,7 @@ public class ConverterUsageAnalyzerTests
 			{
 				public void GetJsonSchema() { }
 				public override int Read(ref JsonReader reader, SerializationContext context) => 0;
-				public override void Write(ref JsonWriter writer, int value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in int value, SerializationContext context) { }
 			}
 			""");
 
@@ -63,13 +63,13 @@ public class ConverterUsageAnalyzerTests
 			{
 				private readonly JsonSerializer serializer;
 				public Converter(JsonSerializer serializer) { this.serializer = serializer; }
-				public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape shape) => new();
+				public override System.Text.Json.Nodes.JsonObject? GetJsonSchema(JsonSchemaContext context, ITypeShape shape) => new();
 				public override int Read(ref JsonReader reader, SerializationContext context)
 				{
 					_ = {|NBJson030:new JsonSerializer()|};
 					return {|NBJson030:serializer.Deserialize<int>("0", ReflectionShape())|};
 				}
-				public override void Write(ref JsonWriter writer, int value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in int value, SerializationContext context) { }
 				private static ITypeShape<int> ReflectionShape() => PolyType.ReflectionProvider.ReflectionTypeShapeProvider.Default.GetTypeShapeOrThrow<int>();
 			}
 			""");

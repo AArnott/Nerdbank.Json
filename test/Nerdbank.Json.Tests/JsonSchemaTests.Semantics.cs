@@ -39,7 +39,7 @@ public partial class JsonSchemaTests
 	[Test]
 	public void CustomScalarConverter_TakesPrecedenceOverBuiltInSchema()
 	{
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([new TextIntegerConverter()]) };
+		JsonSerializer serializer = new() { Converters = [new TextIntegerConverter()] };
 		JsonSchemaObject schema = serializer.GetJsonSchema(Shape<int, Witness>());
 		Assert.Equal("string", schema["type"]!.GetValue<string>());
 		Assert.Null(schema["minimum"]);
@@ -58,7 +58,7 @@ public partial class JsonSchemaTests
 	[Test]
 	public void CustomScalarWithoutSchema_IsExplicitlyUndocumented()
 	{
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([new UndocumentedIntegerConverter()]) };
+		JsonSerializer serializer = new() { Converters = [new UndocumentedIntegerConverter()] };
 		JsonSchemaObject schema = serializer.GetJsonSchema(Shape<int, Witness>());
 		Assert.NotNull(schema["$comment"]);
 		Assert.Null(schema["type"]);
@@ -196,7 +196,7 @@ public partial class JsonSchemaTests
 
 	internal partial class TextIntegerConverter : JsonConverter<int>
 	{
-		public override void Write(ref JsonWriter writer, int value, SerializationContext context) => writer.WriteStringValue(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => writer.WriteStringValue(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
 		public override int Read(ref JsonReader reader, SerializationContext context) => int.Parse(reader.ReadString()!, System.Globalization.CultureInfo.InvariantCulture);
 
@@ -205,7 +205,7 @@ public partial class JsonSchemaTests
 
 	private sealed class UndocumentedIntegerConverter : JsonConverter<int>
 	{
-		public override void Write(ref JsonWriter writer, int value, SerializationContext context) => writer.WriteStringValue("integer");
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => writer.WriteStringValue("integer");
 
 		public override int Read(ref JsonReader reader, SerializationContext context) => 0;
 	}

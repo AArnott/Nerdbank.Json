@@ -15,7 +15,7 @@ internal sealed class JsonAsyncEnumerableConverter<TEnumerable, TElement>(JsonCo
 	public override bool PreferAsyncSerialization => true;
 
 	/// <inheritdoc/>
-	public override void Write(ref JsonWriter writer, TEnumerable? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TEnumerable? value, SerializationContext context)
 		=> throw new NotSupportedException($"The type {typeof(TEnumerable)} implements IAsyncEnumerable<T> and requires asynchronous serialization. Use SerializeAsync instead.");
 
 	/// <inheritdoc/>

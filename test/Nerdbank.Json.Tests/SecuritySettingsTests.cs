@@ -39,8 +39,8 @@ public partial class SecuritySettingsTests
 		JsonSerializer trusted = new JsonSerializer
 		{
 			StartingContext = new() { Security = SecuritySettings.TrustedData },
-		}.WithUntypedConverters();
-		JsonSerializer untrusted = new JsonSerializer().WithUntypedConverters();
+		}.WithExpandoObjectConverter();
+		JsonSerializer untrusted = new JsonSerializer().WithExpandoObjectConverter();
 		ExpandoObject value = new();
 		IDictionary<string, object?> members = value;
 		for (int i = 0; i < count; i++)
@@ -69,12 +69,50 @@ public partial class SecuritySettingsTests
 	}
 
 	[Test]
+	[Arguments(1)]
+	[Arguments(2)]
+	public async Task ExpandoObjectMemberLimit_AppliesToReadAndWrite(int count)
+	{
+		JsonSerializer serializer = new JsonSerializer
+		{
+			StartingContext = new() { Security = new() { MaxObjectMemberCount = 1 } },
+		}.WithExpandoObjectConverter();
+		ExpandoObject value = new();
+		IDictionary<string, object?> members = value;
+		members.Add("a", 1);
+		if (count == 2)
+		{
+			members.Add("b", 2);
+		}
+
+		string json = count == 1 ? """{"a":1}""" : """{"a":1,"b":2}""";
+		ITypeShape<ExpandoObject> shape = TypeShapeResolver.ResolveDynamicOrThrow<ExpandoObject, SecuritySettingsTests>();
+		using MemoryStream input = new(Encoding.UTF8.GetBytes(json));
+		using MemoryStream output = new();
+		if (count == 1)
+		{
+			Assert.Single((IDictionary<string, object?>)serializer.Deserialize(json, shape)!);
+			Assert.Single((IDictionary<string, object?>)(await serializer.DeserializeAsync(input, shape))!);
+			Assert.Equal(json, serializer.Serialize(value, shape));
+			await serializer.SerializeAsync(output, value, shape);
+			Assert.Equal(json, Encoding.UTF8.GetString(output.ToArray()));
+		}
+		else
+		{
+			Assert.Throws<JsonSerializationException>(() => serializer.Deserialize(json, shape));
+			await Assert.ThrowsAsync<FormatException>(async () => await serializer.DeserializeAsync(input, shape));
+			Assert.Throws<JsonSerializationException>(() => serializer.Serialize(value, shape));
+			await Assert.ThrowsAsync<FormatException>(async () => await serializer.SerializeAsync(output, value, shape));
+		}
+	}
+
+	[Test]
 	public void Expando_DuplicatesAndNestedDepthAreStillRejected()
 	{
 		JsonSerializer serializer = new JsonSerializer
 		{
 			StartingContext = new() { MaxDepth = 2 },
-		}.WithUntypedConverters();
+		}.WithExpandoObjectConverter();
 		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<ExpandoObject, SecuritySettingsTests>("""{"a":1,"a":2}"""));
 		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize<ExpandoObject, SecuritySettingsTests>("""{"a":{"b":{"c":1}}}"""));
 	}

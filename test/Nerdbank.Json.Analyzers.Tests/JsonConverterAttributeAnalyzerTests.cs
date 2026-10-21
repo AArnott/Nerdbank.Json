@@ -9,7 +9,7 @@ public class JsonConverterAttributeAnalyzerTests
 		abstract class Stub<T> : Nerdbank.Json.JsonConverter<T>
 		{
 			public override T? Read(ref Nerdbank.Json.JsonReader reader, Nerdbank.Json.SerializationContext context) => default;
-			public override void Write(ref Nerdbank.Json.JsonWriter writer, T? value, Nerdbank.Json.SerializationContext context) { }
+			public override void Write(ref Nerdbank.Json.JsonWriter writer, in T? value, Nerdbank.Json.SerializationContext context) { }
 		}
 		""";
 

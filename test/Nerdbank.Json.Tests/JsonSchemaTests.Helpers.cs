@@ -41,7 +41,7 @@ public partial class JsonSchemaTests
 	{
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([new CallbackSchemaConverter(context =>
+			Converters = ConverterCollection.Create([new CallbackSchemaConverter(context =>
 			{
 				Assert.Throws<ArgumentException>(() => context.CreateTupleSchema(new JsonSchemaArray()));
 				JsonSchemaArray positions = new() { (JsonSchemaNode)context.GetJsonSchema(Shape<int, Witness>()) };
@@ -66,7 +66,7 @@ public partial class JsonSchemaTests
 	{
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([new CallbackSchemaConverter(context => new JsonSchemaObject
+			Converters = ConverterCollection.Create([new CallbackSchemaConverter(context => new JsonSchemaObject
 			{
 				["type"] = "array",
 				["items"] = context.GetJsonSchema(Shape<TreeNode, TreeNode>()),
@@ -82,7 +82,7 @@ public partial class JsonSchemaTests
 	{
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([new CallbackSchemaConverter(context => context.Dialect == JsonSchemaDialect.Draft4
+			Converters = ConverterCollection.Create([new CallbackSchemaConverter(context => context.Dialect == JsonSchemaDialect.Draft4
 				? throw new NotSupportedException("Draft 4 is not supported by this converter.")
 				: new JsonSchemaObject { ["const"] = "opaque", ["customKeyword"] = new JsonSchemaArray(1, true, "text") })]),
 		};
@@ -132,7 +132,7 @@ public partial class JsonSchemaTests
 
 		public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => callback(context);
 
-		public override void Write(ref JsonWriter writer, Opaque? value, SerializationContext context) => throw new NotSupportedException();
+		public override void Write(ref JsonWriter writer, in Opaque? value, SerializationContext context) => throw new NotSupportedException();
 
 		public override Opaque? Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();
 	}

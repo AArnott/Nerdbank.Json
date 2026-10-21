@@ -191,7 +191,7 @@ internal static class ManyModels
 			throw new InvalidOperationException("JSON schema export did not describe the model.");
 		}
 
-		JsonSerializer custom = new() { Converters = new ConverterCollection([new CoordConverter()]) };
+		JsonSerializer custom = new() { Converters = [new CoordConverter()] };
 		System.Text.Json.Nodes.JsonObject customSchema = custom.GetJsonSchema<Coord>(new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 });
 		if (customSchema["items"] is null || customSchema["minItems"]?.GetValue<int>() != 2)
 		{

@@ -15,7 +15,7 @@ public class AsyncConverterAnalyzersTests
 			class {|NBJson037:MyConverter|} : JsonConverter<string>
 			{
 				public override string? Read(ref JsonReader reader, SerializationContext context) => null;
-				public override void Write(ref JsonWriter writer, string? value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) { }
 				public override async ValueTask WriteAsync(JsonAsyncWriter writer, string? value, SerializationContext context) => await Task.Yield();
 			}
 			""";
@@ -34,7 +34,7 @@ public class AsyncConverterAnalyzersTests
 			{
 				public override bool PreferAsyncSerialization => true;
 				public override string? Read(ref JsonReader reader, SerializationContext context) => null;
-				public override void Write(ref JsonWriter writer, string? value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) { }
 				public override async ValueTask WriteAsync(JsonAsyncWriter writer, string? value, SerializationContext context) => await Task.Yield();
 			}
 			""";
@@ -51,7 +51,7 @@ public class AsyncConverterAnalyzersTests
 			class MyConverter : JsonConverter<string>
 			{
 				public override string? Read(ref JsonReader reader, SerializationContext context) => null;
-				public override void Write(ref JsonWriter writer, string? value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) { }
 			}
 			""";
 
@@ -68,7 +68,7 @@ public class AsyncConverterAnalyzersTests
 			abstract class MyConverter : JsonConverter<string>
 			{
 				public override string? Read(ref JsonReader reader, SerializationContext context) => null;
-				public override void Write(ref JsonWriter writer, string? value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) { }
 				public override async ValueTask WriteAsync(JsonAsyncWriter writer, string? value, SerializationContext context) => await Task.Yield();
 			}
 			""";
@@ -103,7 +103,7 @@ public class AsyncConverterAnalyzersTests
 			{
 				public override bool PreferAsyncSerialization => true;
 				public override string? Read(ref JsonReader reader, SerializationContext context) => null;
-				public override void Write(ref JsonWriter writer, string? value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) { }
 				public override ValueTask WriteAsync(JsonAsyncWriter writer, string? value, SerializationContext context)
 				{
 					JsonWriter w = writer.CreateWriter();
@@ -127,7 +127,7 @@ public class AsyncConverterAnalyzersTests
 			{
 				public override bool PreferAsyncSerialization => true;
 				public override string? Read(ref JsonReader reader, SerializationContext context) => null;
-				public override void Write(ref JsonWriter writer, string? value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) { }
 				public override ValueTask WriteAsync(JsonAsyncWriter writer, string? value, SerializationContext context)
 				{
 					JsonWriter w = writer.CreateWriter();
@@ -152,7 +152,7 @@ public class AsyncConverterAnalyzersTests
 			{
 				public override bool PreferAsyncSerialization => true;
 				public override string? Read(ref JsonReader reader, SerializationContext context) => null;
-				public override void Write(ref JsonWriter writer, string? value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) { }
 				public override async ValueTask WriteAsync(JsonAsyncWriter writer, string? value, SerializationContext context)
 				{
 					JsonWriter w = writer.CreateWriter();
@@ -179,7 +179,7 @@ public class AsyncConverterAnalyzersTests
 			{
 				public override bool PreferAsyncSerialization => true;
 				public override string? Read(ref JsonReader reader, SerializationContext context) => null;
-				public override void Write(ref JsonWriter writer, string? value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) { }
 				public override ValueTask WriteAsync(JsonAsyncWriter writer, string? value, SerializationContext context)
 				{
 					JsonWriter w = writer.CreateWriter();
@@ -204,7 +204,7 @@ public class AsyncConverterAnalyzersTests
 			{
 				public override bool PreferAsyncSerialization => true;
 				public override string? Read(ref JsonReader reader, SerializationContext context) => null;
-				public override void Write(ref JsonWriter writer, string? value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) { }
 				public override ValueTask<string?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
 				{
 					JsonReader r = reader.CreateBufferedReader();
@@ -228,7 +228,7 @@ public class AsyncConverterAnalyzersTests
 			{
 				public override bool PreferAsyncSerialization => true;
 				public override string? Read(ref JsonReader reader, SerializationContext context) => null;
-				public override void Write(ref JsonWriter writer, string? value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) { }
 				public override async ValueTask<string?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
 				{
 					await reader.BufferNextValueAsync(context);
@@ -254,7 +254,7 @@ public class AsyncConverterAnalyzersTests
 			{
 				public override bool PreferAsyncSerialization => true;
 				public override string? Read(ref JsonReader reader, SerializationContext context) => null;
-				public override void Write(ref JsonWriter writer, string? value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) { }
 				public override ValueTask<string?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
 				{
 					JsonReader r = reader.CreateBufferedReader();
@@ -278,7 +278,7 @@ public class AsyncConverterAnalyzersTests
 			{
 				public override bool PreferAsyncSerialization => true;
 				public override string? Read(ref JsonReader reader, SerializationContext context) => null;
-				public override void Write(ref JsonWriter writer, string? value, SerializationContext context) { }
+				public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) { }
 				public override ValueTask<string?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
 				{
 					JsonReader r = reader.CreateBufferedReader();

@@ -53,7 +53,7 @@ public partial class AsyncEnumerableContractTests : TestBase
 	[Test]
 	public async Task CustomValueConverter_UsesAsyncContract()
 	{
-		this.Serializer = this.Serializer with { Converters = new([new WrappedIntConverter()]) };
+		this.Serializer = this.Serializer with { Converters = [new WrappedIntConverter()] };
 		Assert.Equal("""["v1","v2"]""", await this.WriteAsync<IAsyncEnumerable<WrappedInt>, AsyncEnumerableContractTests>(WrappedAsync()));
 		Assert.Equal("""{"values":["v1","v2"]}""", await this.WriteAsync<CustomModel, CustomModel>(new() { Values = WrappedAsync() }));
 
@@ -193,7 +193,7 @@ public partial class AsyncEnumerableContractTests : TestBase
 
 		public override WrappedInt Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();
 
-		public override void Write(ref JsonWriter writer, WrappedInt value, SerializationContext context) => throw new NotSupportedException();
+		public override void Write(ref JsonWriter writer, in WrappedInt value, SerializationContext context) => throw new NotSupportedException();
 
 		public override ValueTask WriteAsync(JsonAsyncWriter writer, WrappedInt value, SerializationContext context)
 		{

@@ -389,7 +389,7 @@ internal sealed class JsonDomConverter<T> : JsonConverter<T>
 
 	public override async ValueTask<T?> ReadAsync(JsonAsyncReader reader, SerializationContext context) => Cast(await JsonValueConverter.Instance.ReadAsync(reader, context).ConfigureAwait(false));
 
-	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
+	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 
 	private static T? Cast(JsonValue? value) => value is T result ? result : value is null or JsonNull ? null : throw new FormatException($"The JSON value is not a {typeof(T).Name}.");
 }

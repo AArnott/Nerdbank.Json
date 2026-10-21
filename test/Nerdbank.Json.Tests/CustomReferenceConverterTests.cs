@@ -57,8 +57,11 @@ public partial class CustomReferenceConverterTests
 		Assert.Equal("null", Encoding.UTF8.GetString(stream.ToArray()));
 		stream.Position = 0;
 		PipeReader pipeReader = PipeReader.Create(stream, new(leaveOpen: true));
-		using JsonAsyncReader asyncReader = new(pipeReader) { CancellationToken = default };
-		Assert.Null(await converter.ReadObjectAsync(asyncReader, context));
+		using (JsonAsyncReader asyncReader = new(pipeReader) { CancellationToken = default })
+		{
+			Assert.Null(await converter.ReadObjectAsync(asyncReader, context));
+		}
+
 		await pipeReader.CompleteAsync();
 	}
 
