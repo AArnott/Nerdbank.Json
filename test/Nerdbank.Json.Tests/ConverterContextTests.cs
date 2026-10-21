@@ -49,6 +49,42 @@ public partial class ConverterContextTests
 	}
 
 	[Test]
+	public void AlternatingProvidersPreserveConverterIdentity()
+	{
+		StringShapeProvider firstProvider = new();
+		StringShapeProvider secondProvider = new();
+		ContextSerializer serializer = new() { ConverterFactories = [new LookupFactory()] };
+		SerializationContext context = serializer.CreateContext(firstProvider);
+		JsonConverter<string> first = context.GetConverter(firstProvider.Shape);
+		JsonConverter<string> second = context.GetConverter(secondProvider.Shape);
+		Assert.NotSame(first, second);
+		Parallel.For(0, 1000, i =>
+		{
+			Assert.Same(first, context.GetConverter(firstProvider.Shape));
+			Assert.Same(second, context.GetConverter((ITypeShape)secondProvider.Shape));
+			Assert.Same(first, context.GetConverter<string>(firstProvider));
+			Assert.Same(second, context.GetConverter<string>(secondProvider));
+		});
+
+#if NET
+		for (int i = 0; i < 1000; i++)
+		{
+			context.GetConverter(firstProvider.Shape);
+			context.GetConverter(secondProvider.Shape);
+		}
+
+		long before = GC.GetAllocatedBytesForCurrentThread();
+		for (int i = 0; i < 1000; i++)
+		{
+			context.GetConverter(firstProvider.Shape);
+			context.GetConverter(secondProvider.Shape);
+		}
+
+		Assert.Equal(0L, GC.GetAllocatedBytesForCurrentThread() - before);
+#endif
+	}
+
+	[Test]
 	public void FactoryInvokeAndLookup()
 	{
 		LookupFactory factory = new();
@@ -60,6 +96,19 @@ public partial class ConverterContextTests
 	private record ContextSerializer : JsonSerializer
 	{
 		internal SerializationContext CreateContext(ITypeShapeProvider provider) => this.CreateSerializationContext(provider);
+	}
+
+	private sealed class StringShapeProvider : ITypeShapeProvider
+	{
+		internal StringShapeProvider()
+		{
+			this.Shape = new PolyType.SourceGenModel.SourceGenObjectTypeShape<string> { Provider = this };
+		}
+
+		internal ITypeShape<string> Shape { get; }
+
+		public ITypeShape? GetTypeShape(Type type)
+			=> type == typeof(string) ? this.Shape : PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape(type);
 	}
 
 	private sealed class LookupFactory : IJsonConverterFactory, ITypeShapeFunc

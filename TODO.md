@@ -116,6 +116,39 @@ dispatch and reduces the small serialization Core body from 4337 to 4161 bytes.
 Raw benchmark/profile evidence is under the current session's `files\perf-cause`;
 the final causal report will retain the complete uncertainty and artifact mapping.
 
+### Accepted shape-aware converter locality cache
+
+The `d5b883f` parent had a last-converter shortcut that compared only `T`; removing
+it was necessary for provider correctness but adds repeated multi-provider lookup.
+A measurement-only restoration recovers the small-write step (223.1 to 196.0 ns)
+without changing `in T` or reference registration. This unsafe historical control
+is not production code.
+
+The accepted replacement checks exact shape identity and atomically publishes an
+immutable shape/converter pair. A resolved-entry dictionary retains each pair, so
+alternating warmed shapes do not allocate a new pair on every miss. It preserves
+the authoritative converter caches and reference wrappers, including NativeAOT.
+Provider alternation, concurrent identity, and zero allocation after warmup have
+explicit coverage. This adds one cold entry per resolved shape and a per-cache
+factory delegate; no per-operation closure is introduced.
+
+Medium property-fix-only A / locality-cache B / property-fix-only A2 means:
+small read 322.4 / 308.2 / 325.2 ns; small write 197.8 / 190.4 / 195.5 ns.
+Wide read is inconclusive (1071.7 / 1099.2 / 1060.9 ns, B error 48.55 ns);
+wide write is noisy (595.1 / 499.6 / 527.2 ns, A error 100.11 ns).
+Other medium cache runs give 302.4 ns small read and 185.5 ns small write.
+Do not interpret the noisy wide-write mean as a precise improvement.
+Nested chain/order are 530.8/2162.1 ns with unchanged allocations.
+The sampled dictionary `FindEntry` hotspot disappears from the top write stacks;
+this is sampled attribution, not a precise count of CPU nanoseconds.
+
+Release builds and formatting pass; all 3,479 managed tests pass on repeat.
+One initial full run reported 7,624 unexpected bytes in the existing .NET 10
+warmed-object allocation test. Its isolated rerun and the full rerun pass unchanged;
+the cause of that one-off test-thread allocation is not established.
+NativeAOT net10.0 passes 808 tests with the same two platform-input skips
+(810 total), including provider/identity/allocation tests.
+
 ## Final accepted checkpoint (2026-10-20, code `13bc811`)
 
 **This is the authoritative final result.** It supersedes the earlier managed counts, native input-creation failures, size measurements, pending benchmark comparison, and unverified platform-guard notes retained below as historical evidence.

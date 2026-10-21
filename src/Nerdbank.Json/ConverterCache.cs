@@ -14,14 +14,17 @@ namespace Nerdbank.Json;
 internal sealed class ConverterCache : ITypeShapeFunc
 {
 	private readonly ConcurrentDictionary<(Type Type, Type Provider), ITypeShape> cachedTypeShapes = new();
-	private readonly ConcurrentDictionary<ITypeShape, JsonConverter> nativeAotResolvedConverters = new();
+	private readonly ConcurrentDictionary<ITypeShape, CacheEntry> resolvedConverters = new();
 	private readonly JsonSerializerConfiguration configuration;
+	private readonly Func<ITypeShape, CacheEntry> createCacheEntry;
+	private CacheEntry? lastConverter;
 	private MultiProviderTypeCache? cachedConverters;
 	private MultiProviderTypeCache? nativeAotCachedConverters;
 
 	internal ConverterCache(JsonSerializerConfiguration configuration)
 	{
 		this.configuration = configuration;
+		this.createCacheEntry = shape => new(shape, (JsonConverter)shape.Invoke(this)!);
 	}
 
 	internal bool SerializeEnumValuesByName => this.configuration.SerializeEnumValuesByName;
@@ -65,7 +68,7 @@ internal sealed class ConverterCache : ITypeShapeFunc
 		ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: true),
 	})!;
 
-	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state) => this.GetOrAddConverter(typeShape);
+	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state) => this.ResolveConverter(typeShape);
 
 #if NET
 	internal JsonConverter<T> GetOrAddConverter<T>()
@@ -76,37 +79,14 @@ internal sealed class ConverterCache : ITypeShapeFunc
 #endif
 
 	internal JsonConverter<T> GetOrAddConverter<T>(ITypeShape<T> shape)
-	{
-#if NET
-		if (!RuntimeFeature.IsDynamicCodeSupported)
-		{
-			return (JsonConverter<T>)this.nativeAotResolvedConverters.GetOrAdd(
-				shape,
-				static (key, cache) =>
-				{
-					ITypeShape<T> typedShape = (ITypeShape<T>)key;
-					JsonConverter<T> converter = cache.TryGetProfferedConverter(typedShape, visitor: null, out JsonConverter<T>? profferedConverter)
-						? profferedConverter
-						: (JsonConverter<T>)cache.NativeAotCachedConverters.GetOrAdd(typedShape)!;
-					return cache.WrapWithReferencePreservation(converter);
-				},
-				this);
-		}
-#endif
-
-		return (JsonConverter<T>)this.CachedConverters.GetOrAdd(shape)!;
-	}
+		=> (JsonConverter<T>)this.GetOrAddConverter((ITypeShape)shape);
 
 	internal JsonConverter GetOrAddConverter(ITypeShape shape)
 	{
-#if NET
-		if (!RuntimeFeature.IsDynamicCodeSupported)
-		{
-			return (JsonConverter)shape.Invoke(this)!;
-		}
-#endif
-
-		return (JsonConverter)this.CachedConverters.GetOrAdd(shape)!;
+		CacheEntry? entry = Volatile.Read(ref this.lastConverter);
+		return entry is not null && ReferenceEquals(entry.Shape, shape)
+			? entry.Converter
+			: this.GetOrAddConverterSlow(shape);
 	}
 
 	internal JsonConverter GetOrAddConverter(Type type, ITypeShapeProvider provider)
@@ -287,6 +267,28 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
 
+	private JsonConverter GetOrAddConverterSlow(ITypeShape shape)
+	{
+		CacheEntry entry = this.resolvedConverters.GetOrAdd(shape, this.createCacheEntry);
+		Volatile.Write(ref this.lastConverter, entry);
+		return entry.Converter;
+	}
+
+	private JsonConverter<T> ResolveConverter<T>(ITypeShape<T> shape)
+	{
+#if NET
+		if (!RuntimeFeature.IsDynamicCodeSupported)
+		{
+			JsonConverter<T> converter = this.TryGetProfferedConverter(shape, visitor: null, out JsonConverter<T>? profferedConverter)
+				? profferedConverter
+				: (JsonConverter<T>)this.NativeAotCachedConverters.GetOrAdd(shape)!;
+			return this.WrapWithReferencePreservation(converter);
+		}
+#endif
+
+		return (JsonConverter<T>)this.CachedConverters.GetOrAdd(shape)!;
+	}
+
 	private bool TryGetRuntimeProfferedConverter(Type type, ITypeShape shape, out JsonConverter? converter)
 	{
 		if (this.configuration.Converters.TryGetConverter(type, out converter))
@@ -345,5 +347,14 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 		converter = null;
 		return false;
+	}
+
+	private sealed class CacheEntry(ITypeShape shape, JsonConverter converter)
+	{
+		/// <summary>Gets the exact shape used to resolve the converter.</summary>
+		internal ITypeShape Shape { get; } = shape;
+
+		/// <summary>Gets the converter resolved for this shape.</summary>
+		internal JsonConverter Converter { get; } = converter;
 	}
 }
