@@ -12,6 +12,8 @@ using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
 using System.Collections.ObjectModel;
 using System.Dynamic;
 using System.Globalization;
+using System.Linq.Expressions;
+using System.Reflection;
 
 namespace Nerdbank.Json;
 
@@ -313,7 +315,7 @@ internal sealed class ObjectConverter(bool dynamicObjects = false) : JsonConvert
 
 /// <summary>A read-only dictionary whose string keys are also available through dynamic member access.</summary>
 /// <param name="content">The dictionary contents.</param>
-internal sealed class DynamicJsonDictionary(IDictionary<object, object?> content) : DynamicObject, IReadOnlyDictionary<object, object?>
+internal sealed class DynamicJsonDictionary(IDictionary<object, object?> content) : IDynamicMetaObjectProvider, IReadOnlyDictionary<object, object?>
 {
 	/// <inheritdoc/>
 	public int Count => content.Count;
@@ -328,22 +330,7 @@ internal sealed class DynamicJsonDictionary(IDictionary<object, object?> content
 	public object? this[object key] => content[key];
 
 	/// <inheritdoc/>
-	public override bool TryGetMember(GetMemberBinder binder, out object? result) => content.TryGetValue(binder.Name, out result);
-
-	/// <inheritdoc/>
-	public override bool TryGetIndex(GetIndexBinder binder, object[] indexes, out object? result)
-	{
-		if (indexes.Length == 1)
-		{
-			return content.TryGetValue(indexes[0], out result);
-		}
-
-		result = null;
-		return false;
-	}
-
-	/// <inheritdoc/>
-	public override IEnumerable<string> GetDynamicMemberNames() => content.Keys.Cast<string>();
+	DynamicMetaObject IDynamicMetaObjectProvider.GetMetaObject(Expression parameter) => new DictionaryMetaObject(parameter, this);
 
 	/// <inheritdoc/>
 	public bool ContainsKey(object key) => content.ContainsKey(key);
@@ -356,6 +343,39 @@ internal sealed class DynamicJsonDictionary(IDictionary<object, object?> content
 
 	/// <inheritdoc/>
 	System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => this.GetEnumerator();
+
+	private sealed class DictionaryMetaObject(Expression expression, DynamicJsonDictionary dictionary) : DynamicMetaObject(expression, BindingRestrictions.Empty, dictionary)
+	{
+		private static readonly MethodInfo TryGetValueMethod = typeof(IReadOnlyDictionary<object, object?>).GetMethod(nameof(TryGetValue))!;
+
+		public override IEnumerable<string> GetDynamicMemberNames() => dictionary.Keys.Cast<string>();
+
+		public override DynamicMetaObject BindGetMember(GetMemberBinder binder)
+		{
+			DynamicMetaObject fallback = binder.FallbackGetMember(this);
+			return binder.FallbackGetMember(this, this.BindLookup(Expression.Constant(binder.Name, typeof(object)), fallback));
+		}
+
+		public override DynamicMetaObject BindGetIndex(GetIndexBinder binder, DynamicMetaObject[] indexes)
+		{
+			if (indexes.Length != 1)
+			{
+				return binder.FallbackGetIndex(this, indexes);
+			}
+
+			DynamicMetaObject fallback = binder.FallbackGetIndex(this, indexes);
+			return binder.FallbackGetIndex(this, indexes, this.BindLookup(Expression.Convert(indexes[0].Expression, typeof(object)), fallback));
+		}
+
+		private DynamicMetaObject BindLookup(Expression key, DynamicMetaObject fallback)
+		{
+			ParameterExpression value = Expression.Variable(typeof(object), "value");
+			Expression lookup = Expression.Call(Expression.Convert(this.Expression, typeof(IReadOnlyDictionary<object, object?>)), TryGetValueMethod, key, value);
+			return new(
+				Expression.Block([value], Expression.Condition(lookup, value, Expression.Convert(fallback.Expression, typeof(object)))),
+				BindingRestrictions.GetTypeRestriction(this.Expression, this.LimitType).Merge(fallback.Restrictions));
+		}
+	}
 }
 
 /// <summary>

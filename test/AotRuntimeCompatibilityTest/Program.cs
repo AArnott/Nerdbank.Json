@@ -1,6 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Dynamic;
 using Nerdbank.Json;
 using PolyType;
 
@@ -29,6 +30,22 @@ if (!original.People.SequenceEqual(restored.People) || original.Favorite != rest
 Console.WriteLine(json);
 Console.WriteLine(addressBookJson);
 
+JsonSerializer dynamicSerializer = new JsonSerializer().WithDynamicObjectConverter();
+object dynamicValue = dynamicSerializer.Deserialize<object, UntypedWitness>("""{"name":"Ada","nested":{"active":true}}""")
+	?? throw new InvalidOperationException("The dynamic dictionary was null.");
+if (dynamicValue is not IDynamicMetaObjectProvider ||
+	dynamicValue is not IReadOnlyDictionary<object, object?> dynamicMap ||
+	!Equals(dynamicMap["name"], "Ada") ||
+	dynamicMap["nested"] is not IReadOnlyDictionary<object, object?> nested ||
+	!Equals(nested["active"], true) ||
+	dynamicSerializer.Serialize<object, UntypedWitness>(dynamicValue) != """{"name":"Ada","nested":{"active":true}}""")
+{
+	throw new InvalidOperationException("The dynamic dictionary did not round-trip through its native dictionary interface.");
+}
+
 static ITypeShape<T> GetShape<T, TProvider>()
 	where TProvider : IShapeable<T>
 	=> TProvider.GetTypeShape();
+
+[GenerateShapeFor<object>]
+internal partial class UntypedWitness;

@@ -1,8 +1,12 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Dynamic;
+using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Microsoft.CSharp.RuntimeBinder;
 using PolyType;
 using PolyType.Abstractions;
 using JsonSerializer = Nerdbank.Json.JsonSerializer;
@@ -181,14 +185,20 @@ public partial class JsonUntypedConvertersTests : TestBase
 	{
 		JsonSerializer serializer = new JsonSerializer().WithDynamicObjectConverter();
 		object? value = serializer.Deserialize<object, Witness>("""{"name":"Ada","nested":{"active":true}}""");
-		DynamicObject dynamicObject = Assert.IsAssignableFrom<DynamicObject>(value);
-		Assert.Contains("name", dynamicObject.GetDynamicMemberNames());
+		IDynamicMetaObjectProvider dynamicObject = Assert.IsAssignableFrom<IDynamicMetaObjectProvider>(value);
+		Assert.Contains("name", dynamicObject.GetMetaObject(Expression.Constant(value)).GetDynamicMemberNames());
 		IReadOnlyDictionary<object, object?> map = Assert.IsAssignableFrom<IReadOnlyDictionary<object, object?>>(value);
-		Assert.IsAssignableFrom<DynamicObject>(map["nested"]);
+		Assert.IsAssignableFrom<IDynamicMetaObjectProvider>(map["nested"]);
 		Assert.Equal("""{"name":"Ada","nested":{"active":true}}""", serializer.Serialize<object, Witness>(value));
 
 		ExpandoObject expando = this.untyped.Deserialize<ExpandoObject, Witness>("""{"nested":{"active":true}}""")!;
-		Assert.IsAssignableFrom<DynamicObject>(((IDictionary<string, object?>)expando)["nested"]);
+		Assert.IsAssignableFrom<IDynamicMetaObjectProvider>(((IDictionary<string, object?>)expando)["nested"]);
+#if NET
+		if (RuntimeFeature.IsDynamicCodeSupported)
+#endif
+		{
+			AssertDynamicAccess(value!, expando);
+		}
 	}
 
 	[Test]
@@ -256,6 +266,29 @@ public partial class JsonUntypedConvertersTests : TestBase
 		json = serializer.Serialize<ExpandoObject, Witness>(expando);
 		ExpandoObject roundTrip = serializer.Deserialize<ExpandoObject, Witness>(json)!;
 		Assert.Same(roundTrip, ((IDictionary<string, object?>)roundTrip)["self"]);
+	}
+
+#if NET
+	[RequiresDynamicCode("C# dynamic binding requires runtime code generation.")]
+	[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Only called in untrimmed managed test runs. Native tests validate dictionary access instead.")]
+#endif
+	private static void AssertDynamicAccess(object value, ExpandoObject expando)
+	{
+		dynamic model = value;
+		Assert.Equal("Ada", (string)model.name);
+		Assert.Equal("Ada", (string)model["name"]);
+		Assert.True((bool)model.nested.active);
+		Assert.True((bool)model["nested"]["active"]);
+		Assert.Equal(2, ((IReadOnlyDictionary<object, object?>)value).Count);
+		Assert.Throws<RuntimeBinderException>(() => (object)model.Count);
+		Assert.Throws<RuntimeBinderException>(() => (object)model.missing);
+		Assert.Throws<RuntimeBinderException>(() => (object)model["missing"]);
+		Assert.Throws<RuntimeBinderException>(() => (object)model["name", "nested"]);
+		Assert.Throws<RuntimeBinderException>(() => model.name = "Grace");
+		Assert.Throws<RuntimeBinderException>(() => model["name"] = "Grace");
+		Assert.Throws<RuntimeBinderException>(() => model.name());
+		dynamic dynamicExpando = expando;
+		Assert.True((bool)dynamicExpando.nested.active);
 	}
 
 	private static ITypeShape<T> Shape<T, TProvider>()

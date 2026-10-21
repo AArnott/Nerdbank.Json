@@ -47,6 +47,8 @@ The converter also writes its deserialized dictionary and array representations,
 
 Use <xref:Nerdbank.Json.OptionalConverters.WithDynamicObjectConverter*> instead when dictionaries should also support read-only C# dynamic member access.
 Both registrations target the same `object` type and cannot be combined on one serializer.
+The dynamic dictionaries implement <xref:System.Dynamic.IDynamicMetaObjectProvider> directly and remain usable as `IReadOnlyDictionary<object, object?>` in NativeAOT applications.
+C# `dynamic` operations themselves require runtime code generation; use dictionary access in NativeAOT.
 
 Call <xref:Nerdbank.Json.OptionalConverters.WithExpandoObjectConverter*> separately to enable <xref:System.Dynamic.ExpandoObject>.
 Its member values use the same primitives and arrays, with nested objects represented by read-only dynamic dictionaries.
