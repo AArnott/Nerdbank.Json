@@ -49,15 +49,19 @@ public partial class ConverterContextTests
 	}
 
 	[Test]
-	public void AlternatingProvidersPreserveConverterIdentity()
+	[Arguments(false)]
+	[Arguments(true)]
+	public void AlternatingProvidersPreserveConverterIdentity(bool equalShapes)
 	{
-		StringShapeProvider firstProvider = new();
-		StringShapeProvider secondProvider = new();
+		StringShapeProvider firstProvider = new(equalShapes);
+		StringShapeProvider secondProvider = new(equalShapes);
 		ContextSerializer serializer = new() { ConverterFactories = [new LookupFactory()] };
 		SerializationContext context = serializer.CreateContext(firstProvider);
 		JsonConverter<string> first = context.GetConverter(firstProvider.Shape);
 		JsonConverter<string> second = context.GetConverter(secondProvider.Shape);
 		Assert.NotSame(first, second);
+		Assert.Same(firstProvider, Assert.IsType<PassThroughStringConverter>(first).Provider);
+		Assert.Same(secondProvider, Assert.IsType<PassThroughStringConverter>(second).Provider);
 		Parallel.For(0, 1000, i =>
 		{
 			Assert.Same(first, context.GetConverter(firstProvider.Shape));
@@ -100,15 +104,29 @@ public partial class ConverterContextTests
 
 	private sealed class StringShapeProvider : ITypeShapeProvider
 	{
-		internal StringShapeProvider()
+		internal StringShapeProvider(bool equalShapes = false)
 		{
-			this.Shape = new PolyType.SourceGenModel.SourceGenObjectTypeShape<string> { Provider = this };
+			this.Shape = equalShapes
+				? new EqualStringShape { Provider = this }
+				: new PolyType.SourceGenModel.SourceGenObjectTypeShape<string> { Provider = this };
 		}
 
 		internal ITypeShape<string> Shape { get; }
 
 		public ITypeShape? GetTypeShape(Type type)
 			=> type == typeof(string) ? this.Shape : PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape(type);
+
+		private sealed class EqualStringShape : PolyType.SourceGenModel.SourceGenTypeShape<string>
+		{
+			public override TypeShapeKind Kind => TypeShapeKind.Object;
+
+			public override object? Accept(TypeShapeVisitor visitor, object? state = null)
+				=> throw new NotSupportedException("The registered factory supplies the converter.");
+
+			public override bool Equals(object? obj) => obj is EqualStringShape;
+
+			public override int GetHashCode() => 1;
+		}
 	}
 
 	private sealed class LookupFactory : IJsonConverterFactory, ITypeShapeFunc
@@ -135,12 +153,14 @@ public partial class ConverterContextTests
 		{
 			Assert.IsType<ConverterContext>(state);
 			this.Invoked = true;
-			return new PassThroughStringConverter();
+			return new PassThroughStringConverter(typeShape.Provider);
 		}
 	}
 
-	private sealed class PassThroughStringConverter : JsonConverter<string>
+	private sealed class PassThroughStringConverter(ITypeShapeProvider provider) : JsonConverter<string>
 	{
+		internal ITypeShapeProvider Provider { get; } = provider;
+
 		public override void Write(ref JsonWriter writer, in string? value, SerializationContext context) => writer.Write(value);
 
 		public override string? Read(ref JsonReader reader, SerializationContext context) => reader.ReadString();

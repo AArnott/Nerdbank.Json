@@ -14,7 +14,7 @@ namespace Nerdbank.Json;
 internal sealed class ConverterCache : ITypeShapeFunc
 {
 	private readonly ConcurrentDictionary<(Type Type, Type Provider), ITypeShape> cachedTypeShapes = new();
-	private readonly ConcurrentDictionary<ITypeShape, CacheEntry> resolvedConverters = new();
+	private readonly ConcurrentDictionary<ITypeShape, CacheEntry> resolvedConverters = new(TypeShapeReferenceComparer.Instance);
 	private readonly JsonSerializerConfiguration configuration;
 	private readonly Func<ITypeShape, CacheEntry> createCacheEntry;
 	private CacheEntry? lastConverter;
@@ -353,6 +353,16 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 		converter = null;
 		return false;
+	}
+
+	private sealed class TypeShapeReferenceComparer : IEqualityComparer<ITypeShape>
+	{
+		/// <summary>Gets the comparer for exact type shape identity.</summary>
+		internal static readonly TypeShapeReferenceComparer Instance = new();
+
+		public bool Equals(ITypeShape? x, ITypeShape? y) => ReferenceEquals(x, y);
+
+		public int GetHashCode(ITypeShape obj) => RuntimeHelpers.GetHashCode(obj);
 	}
 
 	private sealed class CacheEntry(ITypeShape shape, JsonConverter converter)
