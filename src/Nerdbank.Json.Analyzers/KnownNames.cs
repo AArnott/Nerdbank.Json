@@ -22,4 +22,10 @@ internal static class KnownNames
 
 	/// <summary>The schema customization method.</summary>
 	internal const string GetJsonSchema = "GetJsonSchema";
+
+	/// <summary>The mutable synchronous JSON reader.</summary>
+	internal const string Reader = "Nerdbank.Json.JsonReader";
+
+	/// <summary>The mutable synchronous JSON writer.</summary>
+	internal const string Writer = "Nerdbank.Json.JsonWriter";
 }

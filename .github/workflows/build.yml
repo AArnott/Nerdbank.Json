@@ -80,7 +80,8 @@ jobs:
         name: aot-image-${{ matrix.os }}-${{ matrix.rid }}
         path: |
           bin/AotSizeTest/${{ env.BUILDCONFIGURATION }}/net10.0/${{ matrix.rid }}/publish/
-          obj/test/AotSizeTest/${{ env.BUILDCONFIGURATION }}/net10.0/${{ matrix.rid }}/native/
+          obj/test/AotSizeTest/${{ env.BUILDCONFIGURATION }}/net10.0/${{ matrix.rid }}/native/*.mstat
+          obj/test/AotSizeTest/${{ env.BUILDCONFIGURATION }}/net10.0/${{ matrix.rid }}/native/*.dgml.xml
         if-no-files-found: error
     - name: 💅🏻 Verify formatted code
       run: dotnet format --verify-no-changes --no-restore

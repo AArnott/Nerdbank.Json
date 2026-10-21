@@ -17,5 +17,5 @@ NBJson034 | Usage | Error | Async converters should not reuse a JsonWriter after
 NBJson035 | Usage | Error | Async converters should return the JsonReader before awaiting, calling the JsonAsyncReader again, or returning
 NBJson036 | Usage | Error | Async converters should not reuse a JsonReader after returning it
 NBJson037 | Usage | Warning | Async converters should override PreferAsyncSerialization
-NBJson050 | Usage | Warning | JsonWriter parameters should be passed by ref
+NBJson050 | Usage | Warning | JsonReader and JsonWriter parameters should be passed by ref
 NBJson110 | Usage | Warning | Initialized members should declare DefaultValueAttribute

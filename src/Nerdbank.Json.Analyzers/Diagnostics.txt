@@ -34,3 +34,7 @@ and unsupported members are excluded. Customized shape roots are not inferred.
 The code fix adds a fully qualified [DefaultValue(...)] for constant initializers
 and preserves primitive conversions. It deliberately does not fix computed
 initializers or shared multi-variable fields, since either could change behavior.
+
+NBJson050 (Usage, Warning): Pass JsonReader and JsonWriter parameters by ref to
+preserve changes to their mutable state. Explicit in/ref/out parameters are not
+diagnosed, nor are unrelated types or the asynchronous reader/writer classes.
