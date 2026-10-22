@@ -103,7 +103,7 @@ internal readonly ref struct JsonInput
 			return true;
 		}
 
-		return TryGetSegmentedSpan(this.segments, start, length, out value);
+		return this.segments.TryGetSpan(start, length, out value);
 	}
 
 	/// <summary>Copies a range into caller-owned storage without materializing a token array.</summary>
@@ -170,14 +170,6 @@ internal readonly ref struct JsonInput
 		}
 
 		return this.IndexOfSegmentedDelimiter(start);
-	}
-
-	[MethodImpl(MethodImplOptions.NoInlining)]
-	private static bool TryGetSegmentedSpan(Segments segments, long start, long length, out ReadOnlySpan<byte> value)
-	{
-		ReadOnlySequence<byte> slice = segments.Slice(start, length);
-		value = slice.IsSingleSegment ? slice.First.Span : default;
-		return slice.IsSingleSegment;
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -294,17 +286,31 @@ internal readonly ref struct JsonInput
 		/// <param name="offset">The absolute token offset.</param>
 		/// <param name="length">The token length.</param>
 		/// <returns>The borrowed token.</returns>
-		internal ReadOnlySequence<byte> Slice(long offset, long length)
+		internal ReadOnlySequence<byte> Slice(long offset, long length) => this.Sequence.Slice(this.GetSlicePosition(offset), length);
+
+		/// <summary>Checks contiguous availability without traversing to the end of the range.</summary>
+		/// <param name="offset">The absolute range offset.</param>
+		/// <param name="length">The range length.</param>
+		/// <param name="value">Receives a span borrowing the original input, or an empty span for a split range.</param>
+		/// <returns>Whether the range fits in the first memory block at its cached start position.</returns>
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		internal bool TryGetSpan(long offset, long length, out ReadOnlySpan<byte> value)
 		{
-			if (offset < this.sliceOffset)
+			SequencePosition position = this.GetSlicePosition(offset);
+			if (length < 0 || length > this.Sequence.Length - offset)
 			{
-				this.sliceOffset = 0;
-				this.slicePosition = this.Sequence.Start;
+				throw new ArgumentOutOfRangeException(nameof(length));
 			}
 
-			this.slicePosition = this.Sequence.GetPosition(offset - this.sliceOffset, this.slicePosition);
-			this.sliceOffset = offset;
-			return this.Sequence.Slice(this.slicePosition, length);
+			this.Sequence.TryGet(ref position, out ReadOnlyMemory<byte> first, advance: false);
+			if (length <= first.Length)
+			{
+				value = first.Span[..(int)length];
+				return true;
+			}
+
+			value = default;
+			return false;
 		}
 
 		/// <summary>Gets a byte, advancing or resetting the cached segment as necessary.</summary>
@@ -329,6 +335,19 @@ internal readonly ref struct JsonInput
 			}
 
 			return this.memory.Span[checked((int)(index - this.start))];
+		}
+
+		private SequencePosition GetSlicePosition(long offset)
+		{
+			if (offset < this.sliceOffset)
+			{
+				this.sliceOffset = 0;
+				this.slicePosition = this.Sequence.Start;
+			}
+
+			this.slicePosition = this.Sequence.GetPosition(offset - this.sliceOffset, this.slicePosition);
+			this.sliceOffset = offset;
+			return this.slicePosition;
 		}
 	}
 }

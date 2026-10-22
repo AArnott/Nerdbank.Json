@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nerdbank.Json\Nerdbank.Json.csproj" />
+    <Compile Include="..\..\src\Nerdbank.Json\JsonInput.cs" Link="JsonInput.cs" />
   </ItemGroup>
 
   <!-- Documentation samples, including the reflective factory example, are exercised in the managed-only target. -->

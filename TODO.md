@@ -119,6 +119,9 @@ The digit loop, cancellation checks, grammar, failure outputs, token spellings, 
 The old constant-time span access became expensive with borrowed segmentation (`3737b21`) and was later copied into the shared lexer (`088ae4f`); warmed profiles and repeated original-source controls corroborate this cause.
 The [benchmark report](docfx/docs/benchmarking.md) includes scaling/error/allocation tables and an anomalous unchanged escaped-string control, not just the wins.
 Remaining profiled targets include split-token copy setup, redundant span-probe traversal, per-byte segment access, and property lookup division.
+The retained span-probe change now avoids traversing a split token to its end simply to answer whether it is contiguous, while keeping range checks and exact position-based slicing semantics.
+Repeated Medium runs support roughly 10%/8% number/property improvements versus the first original baseline, with unchanged 104/768 B allocations; noisy initial pairs and write-control drift remain documented rather than normalized away.
+The full managed matrix plus 60 span-contract cases passes, including borrowed memory-manager input, empty/whole segment boundaries, peeks/copies, failure recovery, and >2 GiB logical offsets.
 
 ## Current macOS CI calibration (operator-approved)
 

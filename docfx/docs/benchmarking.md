@@ -275,6 +275,27 @@ Paired warmed profiles move byte-cursor exclusive share from 52.4% to 19.7%, wit
 All 5,013 managed tests pass; new tests were first checked against the original parser, retaining existing legacy zero-sign semantics and exact source positions rather than changing unrelated behavior.
 Full reports and paired traces are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\numeric-forward-baseline-A1`, `files\numeric-forward-baseline-A2`, `files\numeric-forward-candidate-B1`, `files\numeric-forward-confirm-B2`, and `files\segmented-*-baseline` / `files\segmented-*-forward-cache`.
 
+## Segmented span-probe traversal
+
+After the numeric rewind fix, profiles still show token-end seeking during a span-availability query followed by the same seeking again when a split token is copied.
+The retained query resolves the cached start position, validates the full requested range, and inspects the first memory block without walking to the token's end.
+Copy/sequence-returning paths retain full slicing and the same independent cursors; no storage, ownership, table layout, or public API changes.
+
+Fresh serial .NET 9 Medium A/B/A/B runs use the settings above; errors are 99.9% confidence-interval half-widths.
+
+| Operation | Original A1 mean +/- error, us | Candidate B1 mean +/- error, us | Original A2 mean +/- error, us | Candidate B2 mean +/- error, us | B/op, all |
+|---|---:|---:|---:|---:|---:|
+| Numbers | 6.717 +/- 0.364 | 6.841 +/- 0.489 | 6.712 +/- 0.301 | 6.030 +/- 0.211 | 104 |
+| Property names | 6.736 +/- 0.411 | 6.513 +/- 0.133 | 7.617 +/- 0.662 | 6.221 +/- 0.060 | 768 |
+| Unescaped string | 3.761 +/- 0.198 | 3.599 +/- 0.047 | 3.832 +/- 0.143 | 3.568 +/- 0.093 | 1024 |
+| Escaped string | 10.790 +/- 0.255 | 10.848 +/- 0.379 | 11.198 +/- 0.502 | 10.479 +/- 0.227 | 1024 |
+
+The repeat supports a modest benefit for numbers/property names (about 10%/8% versus A1); the first numeric pair alone did not establish a win, and string-case changes overlap uncertainty.
+Unchanged write controls drifted upward during the first candidate run, so these are not blanket or normalized serializer throughput claims.
+The full 5,069-test managed matrix passes, plus four subsequently added non-array-backed memory-manager cases (60 total span-contract cases across the four core frameworks).
+Contract tests compile the actual internal input source without expanding shipping visibility, and cover every small range, whole-segment boundaries, empty segments, invalid ranges/exceptions, >2 GiB logical offsets, borrowed identity, copies, and independent peeks.
+Reports are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\span-probe-baseline-A1`, `files\span-probe-baseline-A2`, `files\span-probe-candidate-B1`, and `files\span-probe-confirm-B2`.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.
