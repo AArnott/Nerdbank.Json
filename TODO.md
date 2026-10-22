@@ -122,6 +122,10 @@ Remaining profiled targets include split-token copy setup, redundant span-probe 
 The retained span-probe change now avoids traversing a split token to its end simply to answer whether it is contiguous, while keeping range checks and exact position-based slicing semantics.
 Repeated Medium runs support roughly 10%/8% number/property improvements versus the first original baseline, with unchanged 104/768 B allocations; noisy initial pairs and write-control drift remain documented rather than normalized away.
 The full managed matrix plus 60 span-contract cases passes, including borrowed memory-manager input, empty/whole segment boundaries, peeks/copies, failure recovery, and >2 GiB logical offsets.
+Property lookup now caches a mask for power-of-two bucket counts; all other counts retain the original positive-hash modulus, table size, hashing, and collision order.
+Disassembly confirms the wide-object hot path uses AND instead of signed division. Repeated Medium wide medians are 1,460/1,416 ns original and 1,337/1,329 ns candidate; the repeat mean improves about 5.7% with unchanged 664 B allocation.
+Small-object timings overlap uncertainty, and initial write controls drifted badly; the full A/B/A/B table is retained in the benchmark guide rather than claiming a universal improvement.
+All 5,117 managed tests pass with a warning-free Release build, including zero/singleton/power-of-two/non-power-of-two lookup, high-bit hashes, collisions, Unicode/escaped names, misses, and case-insensitive fallback.
 
 ## Current macOS CI calibration (operator-approved)
 

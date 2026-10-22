@@ -296,6 +296,27 @@ The full 5,069-test managed matrix passes, plus four subsequently added non-arra
 Contract tests compile the actual internal input source without expanding shipping visibility, and cover every small range, whole-segment boundaries, empty segments, invalid ranges/exceptions, >2 GiB logical offsets, borrowed identity, copies, and independent peeks.
 Reports are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\span-probe-baseline-A1`, `files\span-probe-baseline-A2`, `files\span-probe-candidate-B1`, and `files\span-probe-confirm-B2`.
 
+### Division-free power-of-two property buckets
+
+Warmed object profiles and disassembly identify property lookup arithmetic in `PopulateReference`/`FindSplitProperty` as another cost after lexical scanning.
+The table still has exactly one bucket per property; only positive power-of-two counts cache a mask. All other counts, including the empty-table sentinel, keep the original positive-hash modulus.
+Hashing, collision order, unknown-property behavior, and public APIs are unchanged. The cost is one metadata `int` per table (potentially additional alignment padding) and a branch, not a new per-read allocation.
+Captured disassembly confirms baseline signed `idiv` and candidate mask-test/AND with a cold modulus fallback; the helper remains inlined in the reader.
+
+Serial .NET 9 Medium A/B/A/B results use the same environment and defaults as above; errors are 99.9% confidence-interval half-widths.
+
+| Operation | Original A1 mean +/- error, ns | Candidate B1 mean +/- error, ns | Original A2 mean +/- error, ns | Candidate B2 mean +/- error, ns | B/op, all |
+|---|---:|---:|---:|---:|---:|
+| Small read (five properties, modulus fallback) | 402.91 +/- 12.50 | 402.79 +/- 5.15 | 430.36 +/- 26.17 | 415.05 +/- 16.60 | 200 |
+| Wide read (sixteen properties, masked) | 1435.70 +/- 68.21 | 1372.45 +/- 71.17 | 1414.95 +/- 35.89 | 1334.37 +/- 38.40 | 664 |
+| Small write control | 248.10 +/- 37.93 | 187.73 +/- 2.48 | 203.31 +/- 8.45 | 209.07 +/- 6.78 | 0 |
+| Wide write control | 583.54 +/- 46.85 | 520.88 +/- 9.26 | 522.98 +/- 18.37 | 512.35 +/- 3.81 | 0 |
+
+Wide medians are 1459.72/1415.89 ns original and 1337.22/1328.84 ns candidate; both comparisons improve, with a roughly 5.7% mean reduction in the repeat. The initial mean intervals overlap, and small-read differences remain inconclusive.
+The original A1 write controls were unstable and much slower than later runs, despite no write-path change; these measurements are not normalized against writes or promoted into blanket serializer speed claims.
+The full 5,117-test managed matrix passes, including zero/singleton bucket counts, high-bit hashes, collision chains at power-of-two and other sizes, escaped/Unicode names, misses and case-insensitive fallback.
+Reports and disassembly are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\bucket-mask-baseline-A1`, `files\bucket-mask-baseline-A2`, `files\bucket-mask-candidate-B1`, and `files\bucket-mask-confirm-B2`.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.

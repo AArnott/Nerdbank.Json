@@ -5,6 +5,7 @@
 #pragma warning disable SA1600 // Elements should be documented
 #pragma warning disable SA1649 // File name should match first type name
 
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Nerdbank.Json;
@@ -517,17 +518,19 @@ internal sealed class Utf8PropertyLookup<TDeclaring>
 {
 	private readonly int[] buckets;
 	private readonly Entry[] entries;
+	private readonly int bucketMask;
 
 	internal Utf8PropertyLookup(JsonProperty<TDeclaring>[] properties)
 	{
 		this.buckets = new int[properties.Length];
 		this.entries = new Entry[properties.Length];
+		this.bucketMask = properties.Length > 0 && (properties.Length & (properties.Length - 1)) == 0 ? properties.Length - 1 : -1;
 		for (int i = 0; i < properties.Length; i++)
 		{
 			JsonProperty<TDeclaring> property = properties[i];
 			ReadOnlySpan<byte> name = property.EncodedName;
 			int hashCode = GetHashCode(name);
-			int bucketIndex = (hashCode & 0x7fffffff) % this.buckets.Length;
+			int bucketIndex = this.GetBucketIndex(hashCode);
 			this.entries[i] = new Entry(hashCode, this.buckets[bucketIndex] - 1, property);
 			this.buckets[bucketIndex] = i + 1;
 		}
@@ -536,7 +539,7 @@ internal sealed class Utf8PropertyLookup<TDeclaring>
 	internal bool TryGetValue(ReadOnlySpan<byte> name, out JsonProperty<TDeclaring>? property)
 	{
 		int hashCode = GetHashCode(name);
-		for (int i = this.buckets[(hashCode & 0x7fffffff) % this.buckets.Length] - 1; i >= 0; i = this.entries[i].Next)
+		for (int i = this.buckets[this.GetBucketIndex(hashCode)] - 1; i >= 0; i = this.entries[i].Next)
 		{
 			Entry entry = this.entries[i];
 			if (entry.HashCode == hashCode && name.SequenceEqual(entry.Property.EncodedName))
@@ -563,6 +566,10 @@ internal sealed class Utf8PropertyLookup<TDeclaring>
 			return hash;
 		}
 	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private int GetBucketIndex(int hashCode)
+		=> this.bucketMask >= 0 ? hashCode & this.bucketMask : (hashCode & 0x7fffffff) % this.buckets.Length;
 
 	private readonly struct Entry
 	{

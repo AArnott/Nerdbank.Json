@@ -128,11 +128,84 @@ public partial class JsonObjectSerializerTests : TestBase
 	}
 
 	[Test]
-	public void Deserialize_EmptyObjectGraph_IgnoresUnknownProperty()
+	[Arguments("{}")]
+	[Arguments("""{"unknown":1}""")]
+	public void Deserialize_EmptyObjectGraph_IgnoresUnknownProperty(string json)
 	{
-		EmptyContainer? value = this.Serializer.Deserialize<EmptyContainer>("""{"unknown":1}""");
+		EmptyContainer? value = this.Serializer.Deserialize<EmptyContainer>(json);
 
 		Assert.NotNull(value);
+	}
+
+	[Test]
+	[Arguments("""{"Aa":1,"BB":2,"Ua":3,"café":4}""")]
+	[Arguments("""{"café":4,"C#":{"nested":[1,2]},"Ua":3,"BB":2,"Aa":1}""")]
+	[Arguments("""{"caf\u00e9":4,"Ua":3,"B\u0042":2,"\u0041a":1,"C#":false}""")]
+	public void Deserialize_ObjectGraph_PowerOfTwoPropertyCount_ResolvesCollisions(string json)
+	{
+		this.Serializer = new() { PropertyNamingPolicy = null };
+		PowerOfTwoPropertyContainer? value = this.Serializer.Deserialize<PowerOfTwoPropertyContainer>(Encoding.UTF8.GetBytes(json));
+
+		Assert.NotNull(value);
+		Assert.Equal(1, value.First);
+		Assert.Equal(2, value.Second);
+		Assert.Equal(3, value.Third);
+		Assert.Equal(4, value.Unicode);
+	}
+
+	[Test]
+	[Arguments("""{"Aa":1,"BB":2,"Ua":3,"café":4,"abcde":5}""")]
+	[Arguments("""{"abcde":5,"café":4,"C#":{"nested":[1,2]},"Ua":3,"BB":2,"Aa":1}""")]
+	[Arguments("""{"abcde":5,"caf\u00e9":4,"Ua":3,"B\u0042":2,"\u0041a":1,"C#":false}""")]
+	public void Deserialize_ObjectGraph_NonPowerOfTwoPropertyCount_ResolvesCollisions(string json)
+	{
+		this.Serializer = new() { PropertyNamingPolicy = null };
+		NonPowerOfTwoPropertyContainer? value = this.Serializer.Deserialize<NonPowerOfTwoPropertyContainer>(Encoding.UTF8.GetBytes(json));
+
+		Assert.NotNull(value);
+		Assert.Equal(1, value.First);
+		Assert.Equal(2, value.Second);
+		Assert.Equal(3, value.Third);
+		Assert.Equal(4, value.Unicode);
+		Assert.Equal(5, value.NegativeHash);
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public void Deserialize_ObjectGraph_CollidingPropertyNames_CaseInsensitiveFallback(bool escapedNames)
+	{
+		this.Serializer = new() { PropertyNamingPolicy = null, PropertyNameCaseInsensitive = true };
+		string json = escapedNames
+			? """{"ABC\u0044E":5,"CAF\u00e9":4,"uA":3,"b\u0062":2,"\u0061A":1,"C#":false}"""
+			: """{"ABCDE":5,"CAFé":4,"uA":3,"bb":2,"aA":1,"C#":false}""";
+		byte[] utf8 = Encoding.UTF8.GetBytes(json);
+
+		PowerOfTwoPropertyContainer? powerOfTwo = this.Serializer.Deserialize<PowerOfTwoPropertyContainer>(utf8);
+		NonPowerOfTwoPropertyContainer? nonPowerOfTwo = this.Serializer.Deserialize<NonPowerOfTwoPropertyContainer>(utf8);
+
+		Assert.NotNull(powerOfTwo);
+		Assert.Equal(1, powerOfTwo.First);
+		Assert.Equal(2, powerOfTwo.Second);
+		Assert.Equal(3, powerOfTwo.Third);
+		Assert.Equal(4, powerOfTwo.Unicode);
+		Assert.NotNull(nonPowerOfTwo);
+		Assert.Equal(1, nonPowerOfTwo.First);
+		Assert.Equal(2, nonPowerOfTwo.Second);
+		Assert.Equal(3, nonPowerOfTwo.Third);
+		Assert.Equal(4, nonPowerOfTwo.Unicode);
+		Assert.Equal(5, nonPowerOfTwo.NegativeHash);
+	}
+
+	[Test]
+	[Arguments("""{"unknown":false,"uri":"value"}""")]
+	[Arguments("""{"\u0075ri":"value","unknown":false}""")]
+	public void Deserialize_ObjectGraph_SingleProperty_ResolvesName(string json)
+	{
+		RenamedPropertyContainer? value = this.Serializer.Deserialize<RenamedPropertyContainer>(Encoding.UTF8.GetBytes(json));
+
+		Assert.NotNull(value);
+		Assert.Equal("value", value.URLValue);
 	}
 
 	[Test]
@@ -465,6 +538,44 @@ public partial class JsonObjectSerializerTests : TestBase
 	[GenerateShape]
 	internal partial class EmptyContainer
 	{
+	}
+
+	// Including quotes, Aa and BB have equal hashes; Ua shares their bucket for both 4 and 5 buckets.
+	// The unknown name C# has the same hash as Aa and BB.
+	[GenerateShape]
+	internal partial class PowerOfTwoPropertyContainer
+	{
+		[PropertyShape(Name = "Aa")]
+		public int First { get; set; }
+
+		[PropertyShape(Name = "BB")]
+		public int Second { get; set; }
+
+		[PropertyShape(Name = "Ua")]
+		public int Third { get; set; }
+
+		[PropertyShape(Name = "café")]
+		public int Unicode { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class NonPowerOfTwoPropertyContainer
+	{
+		[PropertyShape(Name = "Aa")]
+		public int First { get; set; }
+
+		[PropertyShape(Name = "BB")]
+		public int Second { get; set; }
+
+		[PropertyShape(Name = "Ua")]
+		public int Third { get; set; }
+
+		[PropertyShape(Name = "café")]
+		public int Unicode { get; set; }
+
+		// The quoted UTF-8 name has a negative hash, exercising positive-hash modulus.
+		[PropertyShape(Name = "abcde")]
+		public int NegativeHash { get; set; }
 	}
 
 	[GenerateShape]
