@@ -130,6 +130,9 @@ Segmented delimiter search now borrows one memory span per block instead of prob
 Repeated Medium long-run cases improve about 10x/35x at 64/4,096-byte segmentation and dense escaped strings about 12-16%; allocations are unchanged. Tiny fragmentation benefits much less.
 All 5,173 managed tests pass, including 116 direct input cases and deterministic per-block span-access bounds (the original fails precisely those 24 work-count cases).
 The unchanged numeric control is 3.6%/4.9% slower in the two candidate runs; this is logged explicitly for the next numeric-copy/setup investigation rather than hidden behind the string wins.
+The direct-stack numeric scratch experiment is rejected and preserved only at `perf/numeric-scratch-setup` (`90f3982`): 6.041 versus 6.029 us for the numeric-array control is inconclusive, Single/Decimal do not improve, and the same 0x168-byte frame remains while native helper code grows.
+Only reusable short/pooled numeric benchmarks and 127/128/129/4,096-byte fraction/overflow contracts are retained; all 128 numeric-scanning tests passed on the original production source and all 5,205 tests passed on the candidate.
+Next: test a direct known-length segmented copy that reuses the token-start cursor without walking the token end twice; do not duplicate numeric parsing, cap valid spellings, or infer timing from source-level cleanup.
 
 ## Current macOS CI calibration (operator-approved)
 

@@ -137,6 +137,107 @@ public partial class JsonReaderTests
 		}
 	}
 
+	[Test]
+	[Arguments(127)]
+	[Arguments(128)]
+	[Arguments(129)]
+	[Arguments(4096)]
+	public void NumberScanning_LongFractionPreservesValueAndPositions(int tokenLength)
+	{
+		foreach (bool negative in new[] { false, true })
+		{
+			string prefix = negative ? "-123.125" : "123.125";
+			string token = prefix + new string('0', tokenLength - prefix.Length);
+			byte[] bytes = Encoding.UTF8.GetBytes("[42," + token + ",7]");
+			foreach (int segmentSize in new[] { 0, 1, 3, 64 })
+			{
+				ReadOnlySequence<byte> sequence = NumberScanningSequence(bytes, segmentSize);
+				foreach (string kind in new[] { "Single", "Double", "Decimal" })
+				{
+					JsonReader reader = new(sequence);
+					reader.ReadStartArray();
+					Assert.Equal(42, reader.ReadInt32());
+					reader.ReadValueSeparator();
+					JsonReader peek = reader.CreatePeekReader();
+					Assert.Equal(token, peek.ReadNumberToken());
+					Assert.Equal(4, reader.Consumed);
+					switch (kind)
+					{
+						case "Single":
+							Assert.Equal(negative ? -123.125f : 123.125f, reader.ReadSingle());
+							break;
+						case "Double":
+							Assert.Equal(negative ? -123.125 : 123.125, reader.ReadDouble());
+							break;
+						case "Decimal":
+							Assert.Equal(negative ? -123.125m : 123.125m, reader.ReadDecimal());
+							break;
+						default:
+							throw new InvalidOperationException();
+					}
+
+					Assert.Equal(4L + tokenLength, reader.Consumed);
+					Assert.Equal(sequence.GetPosition(reader.Consumed), reader.Position);
+					Assert.Equal((byte)',', reader.NextCode);
+					reader.ReadValueSeparator();
+					Assert.Equal(7, reader.ReadInt32());
+					reader.ReadEndArray();
+					Assert.Equal(sequence.Length, reader.Consumed);
+					Assert.Equal(sequence.GetPosition(sequence.Length), reader.Position);
+					Assert.True(reader.End);
+				}
+			}
+		}
+	}
+
+	[Test]
+	[Arguments(127)]
+	[Arguments(128)]
+	[Arguments(129)]
+	[Arguments(4096)]
+	public void NumberScanning_LongIntegerOverflowPreservesPositions(int tokenLength)
+	{
+		byte[] bytes = Encoding.UTF8.GetBytes("[" + new string('9', tokenLength) + ",7]");
+		foreach (int segmentSize in new[] { 0, 1, 3, 64 })
+		{
+			ReadOnlySequence<byte> sequence = NumberScanningSequence(bytes, segmentSize);
+			foreach (string kind in new[] { "Byte", "SByte", "Int16", "UInt16", "Int32", "UInt32", "Int64", "UInt64" })
+			{
+				JsonReader reader = new(sequence);
+				reader.ReadStartArray();
+				OverflowException? failure = null;
+				try
+				{
+					_ = kind switch
+					{
+						"Byte" => (decimal)reader.ReadByte(),
+						"SByte" => reader.ReadSByte(),
+						"Int16" => reader.ReadInt16(),
+						"UInt16" => reader.ReadUInt16(),
+						"Int32" => reader.ReadInt32(),
+						"UInt32" => reader.ReadUInt32(),
+						"Int64" => reader.ReadInt64(),
+						"UInt64" => reader.ReadUInt64(),
+						_ => throw new InvalidOperationException(),
+					};
+				}
+				catch (OverflowException ex)
+				{
+					failure = ex;
+				}
+
+				Assert.IsType<OverflowException>(failure);
+				Assert.Equal(1L + tokenLength, reader.Consumed);
+				Assert.Equal(sequence.GetPosition(reader.Consumed), reader.Position);
+				Assert.Equal((byte)',', reader.NextCode);
+				reader.ReadValueSeparator();
+				Assert.Equal(7, reader.ReadInt32());
+				reader.ReadEndArray();
+				Assert.True(reader.End);
+			}
+		}
+	}
+
 	private static void AssertNumberScanningFailure(ref JsonReader reader)
 	{
 		FormatException? failure = null;

@@ -353,6 +353,50 @@ Tests compare bytewise cursor/result parity, all non-delimiter byte values, empt
 The work-count test proves at most two memory-span accesses per visited nonempty block rather than per character, without a timing assertion.
 Reports are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d` under `files\segment-runs-baseline-A1`, `files\segment-runs-baseline-A2`, `files\segment-runs-candidate-B1`, and `files\segment-runs-confirm-B2`.
 
+### Rejected: direct-stack numeric scratch setup
+
+The post-rewind numeric profile attributes 24.82% exclusive sampled time to the segmented Double helper, which includes inlined copying/materialization work.
+A candidate copied short split tokens directly into 128-byte stack scratch and parsed without returning a disposable token, outlining the unchanged pooled path for longer spellings into eleven cold helpers.
+All 5,205 managed tests passed, including new 127/128/129/4,096-byte fraction/overflow spellings across floating and integer types; the new contract tests also passed on the original source.
+`SegmentedNumericScratchBenchmarks` is retained to exercise short and pooled Single/Double/Decimal spellings, alongside the existing array-scaling and adjacent controls.
+
+The candidate is **rejected**: neither single-token Double nor the fixed numeric-array control improves meaningfully, while several Single/Decimal/long-token results worsen.
+The initial 32-value scaling cell is bimodal/noisy (original median 8,410.75 ns, candidate 5,669.91 ns), unlike the stable independent 32-number control; it is not evidence of a general win.
+Disassembly shows both short-token helpers still reserve a 0x168-byte frame; `ReadDoubleSegmented` itself grows from 1,531 to 1,847 native bytes, excluding the additional pooled helper.
+Removing the disposable source syntax did not remove the dominant sequence-copy setup and does not justify extra methods/IL.
+The production candidate is preserved only on local `perf/numeric-scratch-setup` at `90f3982`, not on the PR branch; only reusable tests/benchmarks and this evidence are retained.
+
+Matching serial .NET 9 Medium A/B results follow, in ns with 99.9% confidence-interval half-widths and unchanged allocations.
+
+| Operation | Original A1 mean +/- error | Candidate B1 mean +/- error | B/op, both |
+|---|---:|---:|---:|
+| NumberTokenScalingNumbers(ValueCount: 32, SegmentSize: 0) | 1742.14 +/- 19.19 | 1850.70 +/- 40.57 | 0 |
+| NumberTokenScalingNumbers(ValueCount: 32, SegmentSize: 3) | 7609.51 +/- 884.73 | 5711.34 +/- 485.45 | 104 |
+| NumberTokenScalingNumbers(ValueCount: 32, SegmentSize: 64) | 3609.55 +/- 110.25 | 3727.39 +/- 94.87 | 104 |
+| NumberTokenScalingNumbers(ValueCount: 256, SegmentSize: 0) | 14202.16 +/- 166.94 | 14182.21 +/- 166.02 | 0 |
+| NumberTokenScalingNumbers(ValueCount: 256, SegmentSize: 3) | 47760.01 +/- 356.98 | 49043.20 +/- 1148.92 | 104 |
+| NumberTokenScalingNumbers(ValueCount: 256, SegmentSize: 64) | 28310.07 +/- 257.15 | 29191.08 +/- 797.09 | 104 |
+| NumberTokenScalingNumbers(ValueCount: 1024, SegmentSize: 0) | 56102.22 +/- 1352.75 | 54610.33 +/- 599.53 | 0 |
+| NumberTokenScalingNumbers(ValueCount: 1024, SegmentSize: 3) | 195295.72 +/- 2152.47 | 189138.05 +/- 2782.10 | 104 |
+| NumberTokenScalingNumbers(ValueCount: 1024, SegmentSize: 64) | 115991.22 +/- 885.87 | 113969.21 +/- 612.91 | 104 |
+| ObjectDeserializeSmall_NerdbankJson | 397.92 +/- 4.99 | 401.78 +/- 15.48 | 200 |
+| ObjectDeserializeWide_NerdbankJson | 1318.57 +/- 11.41 | 1355.09 +/- 70.48 | 664 |
+| ObjectSerializeSmall_NerdbankJson | 198.00 +/- 6.41 | 205.84 +/- 8.79 | 0 |
+| ObjectSerializeWide_NerdbankJson | 504.45 +/- 7.51 | 567.43 +/- 53.44 | 0 |
+| SegmentedNumericScratchReadDouble(TokenLength: 9) | 188.57 +/- 3.20 | 189.77 +/- 2.81 | 104 |
+| SegmentedNumericScratchReadSingle(TokenLength: 9) | 186.35 +/- 2.17 | 199.01 +/- 4.70 | 104 |
+| SegmentedNumericScratchReadDecimal(TokenLength: 9) | 175.39 +/- 2.25 | 180.81 +/- 5.08 | 104 |
+| SegmentedNumericScratchReadDouble(TokenLength: 129) | 1283.04 +/- 11.49 | 1308.68 +/- 20.84 | 104 |
+| SegmentedNumericScratchReadSingle(TokenLength: 129) | 1251.46 +/- 13.89 | 1259.70 +/- 14.03 | 104 |
+| SegmentedNumericScratchReadDecimal(TokenLength: 129) | 1167.75 +/- 26.80 | 1234.56 +/- 24.55 | 104 |
+| SegmentedTokenNumbers | 6040.68 +/- 60.98 | 6029.06 +/- 93.39 | 104 |
+| SegmentedTokenPropertyNames | 6672.83 +/- 550.57 | 6415.40 +/- 84.94 | 768 |
+| SegmentedTokenUnescapedString | 3453.06 +/- 31.35 | 3600.76 +/- 91.20 | 1024 |
+| SegmentedTokenEscapedString | 8670.20 +/- 129.09 | 9094.73 +/- 128.21 | 1024 |
+
+Reports and disassembly are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\numeric-scratch-baseline-A1` and `files\numeric-scratch-candidate-B1`.
+The next credible copy-path hypothesis is avoiding full end-position traversal and a temporary sequence slice when copying a known-length split token, not duplicating the numeric parser or limiting valid token lengths.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.
