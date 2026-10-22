@@ -6,6 +6,9 @@ one property, array element, or dictionary entry.
 
 [!code-csharp[](../../samples/cs/TargetedDeserialization.cs#TargetedDeserialization)]
 
+Call <xref:Nerdbank.Json.JsonSerializer.DeserializePath*> with <xref:Nerdbank.Json.JsonSerializer.DeserializePathOptions`2> to select a typed expression path.
+The options carry the root and selected element types and are reusable across calls.
+
 ## Two ways to specify a path
 
 * **Expression overloads** (`w => w.Location.City`) are ergonomic. The expression is *parsed but
@@ -24,8 +27,9 @@ one property, array element, or dictionary entry.
   envelopes, and naming policies remain correct for the target subtree.
 * Navigation honors the serializer's case-insensitivity, comment handling, and trailing-comma
   settings, and works over multi-segment (`ReadOnlySequence<byte>`) input.
-* A missing path is controlled by <xref:Nerdbank.Json.MissingPathBehavior>: throw a
-  <xref:Nerdbank.Json.JsonPathNotFoundException> (the default) or return the target's default value.
+* A missing path throws <xref:Nerdbank.Json.JsonPathNotFoundException> by default.
+  For typed paths, set <xref:Nerdbank.Json.JsonSerializer.DeserializePathOptions`2.DefaultForUndiscoverablePath> to return the target's default value instead.
+  Raw <xref:Nerdbank.Json.JsonPath> overloads use <xref:Nerdbank.Json.MissingPathBehavior> for the same choice.
   An intermediate `null` is treated as a missing path.
 
 ## Navigating through unions and custom representations
@@ -39,14 +43,15 @@ navigator asks that converter how to descend. This works out of the box for:
   union's base type are addressable this way).
 * **Duck-typing unions**, whose payload is already a plain object.
 
-Custom converters that use a non-standard representation participate by overriding
-`JsonConverter.TryNavigate`. The default implementation navigates a self-describing object or array,
-so most converters need do nothing. A converter that remaps logical members (for example, one that
-writes a value as a positional array) overrides the hook to translate a
-<xref:Nerdbank.Json.JsonNavigationSegment> into a navigation over its own representation, honoring the
-supplied <xref:Nerdbank.Json.JsonNavigationOptions> name comparer:
+Custom converters that use a non-standard representation participate by overriding <xref:Nerdbank.Json.JsonConverter.SkipToPropertyValue*> or <xref:Nerdbank.Json.JsonConverter.SkipToIndexValue*>.
+The default implementations navigate self-describing objects and arrays.
+A converter that remaps logical members, such as one that writes a value as a positional array, translates the supplied property shape or index into its own representation and leaves the reader positioned at the selected value.
+Return `false` when the value is absent.
 
 [!code-csharp[](../../samples/cs/TargetedDeserialization.cs#NavigationHook)]
+
+For streaming paths, override <xref:Nerdbank.Json.JsonConverter.SkipToPropertyValueAsync*> or <xref:Nerdbank.Json.JsonConverter.SkipToIndexValueAsync*> as appropriate.
+Use the asynchronous reader's structural methods to enter containers so the navigator can drain the enclosing envelope correctly.
 
 Pre-parsed <xref:Nerdbank.Json.JsonPath> navigation uses raw JSON tokens only. It still targets any
 type, and it traverses plain objects and arrays, but it cannot descend *through* a union envelope or

@@ -11,11 +11,122 @@ Declare a class that derives from <xref:Nerdbank.Json.JsonConverter`1>:
 
 [!code-csharp[](../../samples/cs/CustomConverters.cs#YourOwnConverter)]
 
+Use the scalar <xref:Nerdbank.Json.JsonWriter.Write*> overloads to write strings, numbers, and booleans, and <xref:Nerdbank.Json.JsonWriter.WriteRaw*> for already encoded JSON.
+JSON container methods such as <xref:Nerdbank.Json.JsonWriter.WriteStartObject> remain explicit.
+<xref:Nerdbank.Json.JsonReader> exposes typed scalar methods such as <xref:Nerdbank.Json.JsonReader.ReadInt32> as well as structural and raw-token methods.
+
 > [!CAUTION]
 > It is imperative that each `Write` and `Read` method write and read exactly one JSON value.
 
 If you have more than one field to serialize, wrap them in one JSON object or one JSON array.
 If the value may be `null`, handle that explicitly before reading or writing the surrounding structure.
+
+## Borrowing and retaining raw JSON
+
+Use <xref:Nerdbank.Json.RawJson> for a model member whose JSON should be decoded separately from its envelope.
+The built-in converter is automatic, preserves exact numeric and string token spelling, and always returns owned storage.
+No DOM registration is necessary.
+
+[!code-csharp[](../../samples/cs/CustomConverters.cs#DeferredRawJson)]
+
+[!code-csharp[](../../samples/cs/CustomConverters.cs#RawEnvelopeModel)]
+
+<xref:Nerdbank.Json.JsonReader.ReadRaw(Nerdbank.Json.SerializationContext)?displayProperty=nameWithType> validates and skips one value using the active depth and cancellation limits.
+Sequence-backed readers return a zero-copy borrowed slice; span-backed readers copy only the captured value into owned storage.
+Borrowed slices are valid only while their input buffers remain alive and unchanged.
+Call <xref:Nerdbank.Json.RawJson.ToOwned?displayProperty=nameWithType> before returning a pipe buffer or recycling application-owned memory.
+The method retains its owned copy when called on a mutable instance, so subsequent calls do not copy again.
+
+<xref:Nerdbank.Json.JsonWriter.Write(Nerdbank.Json.RawJson)?displayProperty=nameWithType> and the built-in converter validate exactly one strict JSON value before writing its UTF-8 bytes directly.
+This does not normalize numbers, decode and re-escape strings, or apply indentation within the raw payload.
+Comments, trailing commas, stream byte-order marks, multiple values, and empty or default payloads are rejected.
+Normal raw capture skips a leading stream byte-order mark before capturing the value, so it cannot introduce one inside an enclosing JSON container.
+For explicitly unvalidated output, use <xref:Nerdbank.Json.JsonWriter.WriteRaw*> only with already trusted JSON.
+
+Sequence-backed <xref:Nerdbank.Json.JsonReader> instances parse the original segments rather than flattening the document.
+Only individual scalar tokens that cross segment boundaries may need temporary GC-owned storage.
+Peeking copies reader position, not input ownership; advancing a peek reader does not advance the original.
+For segmented input, an explicit peek allocates a small independent navigation cursor rather than copying any payload.
+Tentative UTF-8 string reads use allocation-free cursor checkpoints.
+
+## UTF-8 strings and token inspection
+
+String reading and skipping enforce JSON quotes, escapes, four hexadecimal digits after `\u`, and escaping of control bytes.
+They deliberately do not validate Unicode well-formedness: the application receiving the data decides whether to validate it.
+CLR string reads use the runtime's UTF-8 replacement fallback (`U+FFFD` for invalid sequences), consistently across segment boundaries.
+Each `\uXXXX` escape contributes its UTF-16 code unit, including isolated surrogates; adjacent valid surrogate pairs retain their usual CLR representation.
+CLR string writes escape isolated surrogates instead of silently replacing user data.
+Raw JSON and unescaped UTF-8 string views preserve the original bytes, not a replacement-decoded approximation.
+Decoded UTF-8 string APIs preserve non-ASCII source bytes even around JSON escapes; an escaped isolated surrogate has no valid UTF-8 representation and uses replacement fallback in those byte results.
+
+<xref:Nerdbank.Json.JsonReader.NextJsonType?displayProperty=nameWithType> uses the same <xref:Nerdbank.Json.JsonValueKind> vocabulary as the DOM.
+<xref:Nerdbank.Json.JsonReader.NextCode?displayProperty=nameWithType> exposes the next significant UTF-8 byte, while <xref:Nerdbank.Json.JsonReader.IsNull?displayProperty=nameWithType> and <xref:Nerdbank.Json.JsonReader.ReadNull?displayProperty=nameWithType> support explicit null handling.
+Inspection skips permitted insignificant input but does not validate an entire value.
+
+<xref:Nerdbank.Json.JsonReader.TryReadStringSpan*> returns a borrowed, decoded UTF-8 view only for an unescaped, contiguous string.
+It returns false without advancing for null, escaped content, or content spanning segments; malformed strings still throw.
+Use <xref:Nerdbank.Json.JsonReader.ReadStringSequence?displayProperty=nameWithType> to handle all nullable strings, or <xref:Nerdbank.Json.JsonReader.ReadStringSpan?displayProperty=nameWithType> when null is not allowed.
+Both return decoded content, never JSON escape text, and allocate token-scoped storage only when necessary.
+Unescaped sequence slices retain the input's borrowed lifetime.
+
+<xref:Nerdbank.Json.JsonWriter.WriteString*> accepts decoded UTF-8 bytes and applies JSON escaping directly without an intermediate UTF-16 string or Unicode validation.
+Quotes, backslashes, and control bytes are escaped; all other bytes are transmitted unchanged, including invalid UTF-8.
+It accepts sequences even when a multi-byte character crosses a segment boundary.
+Do not pass an already-quoted or already-escaped JSON token to this method; use raw-value APIs for that contract.
+
+Reader and writer `Clone` methods preserve syntax or formatting options but start at the root of their new input or destination.
+They do not inherit container state.
+
+## Writing directly into the output buffer
+
+Use <xref:Nerdbank.Json.JsonWriter.GetSpan(System.Int32)?displayProperty=nameWithType> and <xref:Nerdbank.Json.JsonWriter.Advance(System.Int32)?displayProperty=nameWithType> to encode one complete, trusted UTF-8 JSON value directly into the writer's buffer.
+This is the direct-buffer equivalent of <xref:Nerdbank.Json.JsonWriter.WriteRaw*>: it does not validate or escape the payload.
+Do not use it for fragments, property names, separators, empty payloads, or multiple values.
+For validated raw output, use <xref:Nerdbank.Json.RawJson> instead.
+
+[!code-csharp[](../../samples/cs/CustomConverters.cs#DirectWriterBuffer)]
+
+`GetSpan(length)` returns at least the requested payload capacity, excluding space reserved for enclosing indentation; zero requests a nonempty span.
+Reserving does not start a JSON value or change pending-property state, although growing the buffer may flush previously written bytes.
+Fill the returned span, then call `Advance(bytesWritten)` once with the length of the complete value, which may exceed the requested minimum but must fit the returned span.
+A positive advance applies normal value bookkeeping and enclosing indentation, without reformatting the payload's internal JSON.
+As with other writer APIs, callers write enclosing value separators explicitly.
+
+`Advance(0)` cancels a reservation without writing an empty value or consuming pending-property state, and is harmless without a reservation.
+Negative or oversized arguments are rejected; an invalid advance does not consume the reservation or change byte counters.
+A new reservation replaces the old one and need not preserve its unadvanced contents, so rewrite the entire value after retrying with a larger span.
+The borrowed span expires on another reservation, a write, any advance, a flush, or returning the writer to <xref:Nerdbank.Json.JsonAsyncWriter>.
+Never retain that span across those operations or copy a writer to share its reservation.
+A clone starts with no reservation, and async writer handoff preserves only advanced values and normal container state, not outstanding reservations.
+
+## Stateless scalar primitives
+
+<xref:Nerdbank.Json.JsonPrimitives> provides stateless reads and writes for null, booleans, every signed and unsigned integer width from 8 through 64 bits, finite single- and double-precision numbers, decimals, and exact number tokens.
+Scalar readers use `TryRead` overloads selected by the declared output type, matching the MessagePack API model; replaced type-specific method names are removed rather than retained as aliases.
+Scalar writers use the corresponding `TryWrite` overloads, including direct single-precision formatting rather than widening a float to double.
+Its number grammar is shared with the reader rather than maintained as a second parser.
+Primitive readers start exactly at the token; they do not skip whitespace, comments, or a BOM.
+
+Pass `isFinalBlock: false` when more bytes can arrive.
+A complete-looking number or literal at the end of a non-final block returns `InsufficientBuffer`, since another byte could extend the number or invalidate the literal boundary.
+A delimiter or `isFinalBlock: true` establishes the boundary.
+Truncated prefixes in a final block are `TokenMismatch`, not a successful default value.
+
+The nested <xref:Nerdbank.Json.JsonPrimitives.DecodeResult> distinguishes success, wrong-type/malformed/out-of-range input, an empty buffer, and an incomplete valid prefix.
+Read `tokenSize` as bytes consumed on success, a minimum required source length on incomplete input, and zero on mismatch.
+An incomplete-input size is a lower bound, not a guarantee that a buffer of that length will complete the token: further bytes may extend its lexeme, and a delimiter or final-block indication is still necessary.
+Size hints are capped at the maximum span length, <xref:System.Int32.MaxValue>.
+Decoded outputs are meaningful only on success.
+Writers leave the destination unchanged when it is too short and report its exact required length.
+Non-finite floating-point input and invalid raw number tokens fail with a required length of zero.
+
+Floating-point reads follow the target framework's numeric parsing behavior, including legacy rounding limitations.
+Legacy floating-point output uses exponential notation with nine significant digits for single precision and seventeen for double precision instead of the old formatter's lossy defaults; negative zero is preserved.
+The span-based contract does not imply that every legacy runtime formatting helper is allocation-free.
+
+The stateless surface deliberately does not yet include decoded strings, arbitrary raw JSON values, or container framing.
+Use the stateful reader and writer for those operations.
+In particular, strings need a caller-owned decoding destination and an explicit partial-escape/UTF-8 contract before a stateless API can be added safely.
 
 ## Security considerations
 
@@ -58,7 +169,8 @@ The converter reads the state from the context it is given:
 
 [!code-csharp[](../../samples/cs/PerCallState.cs#PerCallStateConverter)]
 
-Overloads that accept a <xref:Nerdbank.Json.SerializationContext> are available for `Serialize`, `Deserialize`, `SerializeObject`, and `DeserializeObject` on <xref:Nerdbank.Json.JsonWriter> and <xref:Nerdbank.Json.JsonReader>, and for `SerializeAsync` and `DeserializeAsync` on <xref:System.IO.Pipelines.PipeWriter> and <xref:System.IO.Pipelines.PipeReader>. Keep these points in mind:
+Overloads that accept a <xref:Nerdbank.Json.SerializationContext> are available for `Serialize`, `Deserialize`, `SerializeObject`, and `DeserializeObject` on <xref:Nerdbank.Json.JsonWriter> and <xref:Nerdbank.Json.JsonReader>, and for their asynchronous counterparts on pipes and streams.
+Keep these points in mind:
 
 - The supplied context is used *instead of* <xref:Nerdbank.Json.JsonSerializer.StartingContext?displayProperty=nameWithType>. Its state is not merged with the serializer's, so start from `serializer.StartingContext` (as the sample does) when you want to keep the serializer's settings and state.
 - The operation is canceled by the context's <xref:Nerdbank.Json.SerializationContext.CancellationToken?displayProperty=nameWithType>, so these overloads take no separate `CancellationToken` parameter.
@@ -74,6 +186,10 @@ To use your converter wherever a type appears, apply <xref:Nerdbank.Json.JsonCon
 
 [!code-csharp[](../../samples/cs/CustomConverters.cs#CustomConverterByAttribute)]
 
+The converter's generic argument must match the attributed type; this example applies `FooConverter : JsonConverter<Foo>` to `Foo` itself.
+The attribute automatically asks PolyType to generate the associated converter constructor, so no separate <xref:PolyType.AssociatedTypeShapeAttribute> is required for attributed converters.
+Open generic converter types are supported on generic model types; generate shapes for the closed models through a witness type so their closed converter constructors are available under NativeAOT.
+
 You may also apply <xref:Nerdbank.Json.JsonConverterAttribute> to a property or constructor parameter to affect only that serialized slot:
 
 [!code-csharp[](../../samples/cs/CustomConverters.cs#CustomConverterByAttributeOnMember)]
@@ -88,13 +204,34 @@ Open generic converter types may be registered with <xref:Nerdbank.Json.JsonSeri
 
 [!code-csharp[](../../samples/cs/CustomConverters.cs#CustomOpenGenericConverterRegisteredAtRuntime)]
 
+<xref:Nerdbank.Json.ConverterTypeCollection> is immutable and supports collection expressions through its collection builder, as well as explicit calls to <xref:Nerdbank.Json.ConverterTypeCollection.Create*>.
+For runtime registration without a converter attribute, associate an open generic converter with its model using <xref:PolyType.AssociatedTypeShapeAttribute>, and generate a shape for the closed model through a witness type.
+The `Envelope<T>` sample uses this pattern; applying `GenerateShapeAttribute` directly to an open generic model is not supported by PolyType.
+
 ### Converter factories
 
 When one converter pattern applies to many types, implement <xref:Nerdbank.Json.IJsonConverterFactory> and register it with <xref:Nerdbank.Json.JsonSerializer.ConverterFactories?displayProperty=nameWithType>.
 
 [!code-csharp[](../../samples/cs/CustomConverters.cs#CustomConverterFactory)]
 
-While a factory is creating a converter, it can use <xref:Nerdbank.Json.JsonConverterFactoryContext> to resolve supporting converters.
+While a factory is creating a converter, it can use <xref:Nerdbank.Json.ConverterContext> to resolve supporting converters.
+Both converter contexts expose the active shape provider and support typed shapes, untyped shapes, witness types, and runtime-type lookup.
+Factories implementing <xref:PolyType.Abstractions.ITypeShapeFunc> can use <xref:Nerdbank.Json.JsonConverterFactoryExtensions.Invoke*> to enter a generic context without reflection-based generic activation.
+The `EnvelopeConverterFactory` sample uses reflective activation and is exercised only by the managed sample tests; prefer shape-based generic dispatch for NativeAOT.
+
+## Reference cycles in custom converters
+
+Call <xref:Nerdbank.Json.SerializationContext.ReportObjectConstructed*> after constructing an instance and before deserializing its members.
+When cycle-preserving deserialization is enabled, nested references can then resolve to that instance before the converter returns.
+Return the same instance that was reported.
+The call has no effect when cycle preservation is not active.
+
+## Targeted navigation in custom representations
+
+Override <xref:Nerdbank.Json.JsonConverter.SkipToPropertyValue*> and <xref:Nerdbank.Json.JsonConverter.SkipToIndexValue*> when a custom representation remaps logical members, array indices, or dictionary keys.
+The corresponding asynchronous hooks return whether the selected value was found.
+Use the asynchronous reader's structural methods when entering containers so the serializer can drain the enclosing envelope correctly.
+These are public converter hooks; the internal navigation dispatchers are not extension points.
 
 ## Version compatibility
 

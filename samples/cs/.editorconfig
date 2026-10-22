@@ -1,0 +1,11 @@
+[CustomConverters.cs]
+
+# Documentation snippets share a file and use adjacent region-marker comments.
+dotnet_diagnostic.SA1402.severity = none
+dotnet_diagnostic.SA1512.severity = none
+dotnet_diagnostic.SA1515.severity = none
+
+# Sample members do not require XML documentation.
+dotnet_diagnostic.SA1600.severity = none
+dotnet_diagnostic.SA1601.severity = none
+dotnet_diagnostic.CS1591.severity = none

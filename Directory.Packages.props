@@ -5,17 +5,21 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
     <MicrosoftTestingPlatformVersion>2.5.1</MicrosoftTestingPlatformVersion>
+    <PolyTypeVersion>1.4.1</PolyTypeVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Put repo-specific PackageVersion items in this group. -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
+    <PackageVersion Include="FSharp.Core" Version="10.1.402" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0-1.26328.17" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing" Version="1.1.4" />
     <PackageVersion Include="Microsoft.VisualStudio.Validation" Version="17.13.22" />
     <PackageVersion Include="Nerdbank.MessagePack" Version="1.4.82" />
-    <PackageVersion Include="PolyType" Version="1.4.1" />
+    <PackageVersion Include="PolyType" Version="$(PolyTypeVersion)" />
+    <PackageVersion Include="PolyType.Roslyn" Version="$(PolyTypeVersion)-unstable" />
     <PackageVersion Include="System.IO.Pipelines" Version="10.0.13" />
   </ItemGroup>
   <ItemGroup Label="Library.Template">

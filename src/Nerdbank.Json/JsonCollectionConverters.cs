@@ -29,11 +29,11 @@ internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonCon
 
 	protected JsonConverter<TElement> ElementConverter => this.elementConverter;
 
-	public override void Write(ref JsonWriter writer, TEnumerable? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TEnumerable? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -275,11 +275,11 @@ internal abstract class JsonDictionaryConverter<TDictionary, TKey, TValue> : Jso
 
 	protected JsonConverter<TValue> ValueConverter => this.valueConverter;
 
-	public override void Write(ref JsonWriter writer, TDictionary? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TDictionary? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -518,11 +518,11 @@ internal sealed class JsonListConverter<TCollection, TElement>(JsonConverter<TEl
 {
 	public override bool PreferAsyncSerialization => true;
 
-	public override void Write(ref JsonWriter writer, TCollection? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TCollection? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -653,11 +653,11 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 {
 	public override bool PreferAsyncSerialization => true;
 
-	public override void Write(ref JsonWriter writer, TDictionary? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TDictionary? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 

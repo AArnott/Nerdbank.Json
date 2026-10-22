@@ -1,9 +1,14 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
+
 #pragma warning disable SA1600 // Internal elements are intentionally undocumented in this file.
 
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 
@@ -25,15 +30,17 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 
 	public override object? VisitObject<T>(IObjectTypeShape<T> objectShape, object? state = null)
 	{
-		List<KeyValuePair<string, JsonSchema>> properties = [];
+		List<KeyValuePair<string, JsonSchemaObject>> properties = [];
 		List<string> required = [];
 		bool hasExtensionData = false;
 
 		HashSet<string> requiredConstructorParameters = new(StringComparer.Ordinal);
+		Dictionary<string, IParameterShape> constructorParameters = new(StringComparer.OrdinalIgnoreCase);
 		if (objectShape.Constructor is { } constructor)
 		{
 			foreach (IParameterShape parameter in constructor.Parameters)
 			{
+				constructorParameters[parameter.Name] = parameter;
 				if (parameter.IsRequired)
 				{
 					requiredConstructorParameters.Add(parameter.Name);
@@ -43,7 +50,7 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 
 		foreach (IPropertyShape property in objectShape.Properties)
 		{
-			if (HasExtensionDataAttribute(property.AttributeProvider))
+			if (property.PropertyType.Type == typeof(UnusedDataPacket))
 			{
 				hasExtensionData = true;
 				continue;
@@ -55,12 +62,29 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 			}
 
 			string serializedName = this.owner.GetSerializedPropertyName(property.Name, property.AttributeProvider);
-			JsonSchema propertySchema = this.context.GetSchema(property.PropertyType);
+			JsonSchemaObject propertySchema = this.owner.TryGetMemberCustomConverter(property.PropertyType, property.AttributeProvider, out JsonConverter? custom) && custom is not null
+				? this.context.GetJsonSchema(property.PropertyType, custom)
+				: this.context.GetJsonSchema(property.PropertyType);
 			if (IsMemberNullable(property))
 			{
 				propertySchema = propertySchema.MakeNullable();
 			}
 
+			constructorParameters.TryGetValue(property.Name, out IParameterShape? parameter);
+			if (parameter?.HasDefaultValue is true)
+			{
+				propertySchema["default"] = JsonSchemaExtensions.CreatePrimitiveValue(parameter.DefaultValue);
+			}
+			else
+			{
+				foreach (DefaultValueAttribute attribute in property.AttributeProvider.GetCustomAttributes<DefaultValueAttribute>(inherit: false))
+				{
+					propertySchema["default"] = JsonSchemaExtensions.CreatePrimitiveValue(attribute.Value);
+					break;
+				}
+			}
+
+			ApplyDescription(property.AttributeProvider, propertySchema);
 			properties.Add(new(serializedName, propertySchema));
 
 			if (requiredConstructorParameters.Contains(property.Name) || HasRequiredMemberAttribute(property.MemberInfo))
@@ -69,40 +93,50 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 			}
 		}
 
-		JsonSchema schema = new JsonSchema().Set("type", "object");
+		JsonSchemaObject schema = new JsonSchemaObject().Set("type", "object");
 		if (properties.Count > 0)
 		{
 			schema.SetMap("properties", properties);
 		}
 
-		if (required.Count > 0)
+		if (required.Count > 0 && (this.owner.SerializeDefaultValues & SerializeDefaultValuesPolicy.Required) != 0)
 		{
 			schema.SetStrings("required", required);
 		}
 
 		schema.Set("additionalProperties", hasExtensionData);
+		ApplyDescription(objectShape.AttributeProvider, schema);
 		return schema;
 	}
 
 	public override object? VisitEnumerable<TEnumerable, TElement>(IEnumerableTypeShape<TEnumerable, TElement> enumerableShape, object? state = null)
 	{
-		JsonSchema element = this.context.GetSchema(enumerableShape.ElementType);
+		JsonSchemaObject element = this.context.GetJsonSchema(enumerableShape.ElementType);
 		if (enumerableShape.Type.IsArray && enumerableShape.Rank > 1)
 		{
-			JsonSchema nested = element;
+			if (this.owner.MultiDimensionalArrayFormat == MultiDimensionalArrayFormat.Flat)
+			{
+				JsonSchemaObject dimensions = new JsonSchemaObject().Set("type", "array")
+					.Set("minItems", enumerableShape.Rank).Set("maxItems", enumerableShape.Rank)
+					.Set("items", new JsonSchemaObject().Set("type", "integer").Set("minimum", 0).Set("maximum", int.MaxValue));
+				JsonSchemaObject data = new JsonSchemaObject().Set("type", "array").Set("items", element);
+				return this.context.CreateTupleSchema([dimensions, data]).Set("minItems", 2).Set("maxItems", 2);
+			}
+
+			JsonSchemaObject nested = element;
 			for (int i = 0; i < enumerableShape.Rank; i++)
 			{
-				nested = new JsonSchema().Set("type", "array").Set("items", nested);
+				nested = new JsonSchemaObject().Set("type", "array").Set("items", nested);
 			}
 
 			return nested;
 		}
 
-		return new JsonSchema().Set("type", "array").Set("items", element);
+		return new JsonSchemaObject().Set("type", "array").Set("items", element);
 	}
 
 	public override object? VisitDictionary<TDictionary, TKey, TValue>(IDictionaryTypeShape<TDictionary, TKey, TValue> dictionaryShape, object? state = null)
-		=> new JsonSchema().Set("type", "object").Set("additionalProperties", this.context.GetSchema(dictionaryShape.ValueType));
+		=> new JsonSchemaObject().Set("type", "object").Set("additionalProperties", this.context.GetJsonSchema(dictionaryShape.ValueType));
 
 	public override object? VisitEnum<TEnum, TUnderlying>(IEnumTypeShape<TEnum, TUnderlying> enumShape, object? state = null)
 	{
@@ -112,33 +146,44 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 				.Select(name => this.owner.PropertyNamingPolicy?.ConvertName(name) ?? name)
 				.Distinct(StringComparer.Ordinal)
 				.ToList();
-			return new JsonSchema().Set("type", "string").SetStrings("enum", names);
+			return new JsonSchemaObject().Set("type", "string").SetStrings("enum", names);
 		}
 
-		return this.context.GetSchema(enumShape.UnderlyingType);
+		return this.context.GetJsonSchema(enumShape.UnderlyingType);
 	}
 
 	public override object? VisitOptional<TOptional, TElement>(IOptionalTypeShape<TOptional, TElement> optionalShape, object? state = null)
-		=> this.context.GetSchema(optionalShape.ElementType).MakeNullable();
+		=> this.context.GetJsonSchema(optionalShape.ElementType).MakeNullable();
 
 	public override object? VisitSurrogate<T, TSurrogate>(ISurrogateTypeShape<T, TSurrogate> surrogateShape, object? state = null)
-		=> this.context.GetSchema(surrogateShape.SurrogateType);
+		=> this.context.GetJsonSchema(surrogateShape.SurrogateType);
 
 	public override object? VisitUnion<TUnion>(IUnionTypeShape<TUnion> unionShape, object? state = null)
 	{
-		List<(object? Alias, JsonSchema CaseSchema)> cases = [];
+		List<(object? Alias, JsonSchemaObject CaseSchema)> cases = [];
 		foreach (IUnionCaseShape unionCase in unionShape.UnionCases)
 		{
 			object alias = unionCase.IsTagSpecified ? unionCase.Tag : unionCase.Name;
-			cases.Add((alias, this.context.GetSchema(unionCase.UnionCaseType)));
+			cases.Add((alias, this.context.GetJsonSchema(unionCase.UnionCaseType, preserveReferences: false)));
 		}
 
-		JsonSchema baseSchema = (JsonSchema)unionShape.BaseType.Accept(this)!;
+		JsonSchemaObject? baseSchema = RuntimeUnionBuilder.IsConstructible(unionShape.BaseType as IObjectTypeShape)
+			? (JsonSchemaObject)unionShape.BaseType.Accept(this)!
+			: null;
 		return this.context.CreateUnionEnvelope(cases, baseSchema);
 	}
 
 	public override object? VisitFunction<TFunction, TArgumentState, TResult>(IFunctionTypeShape<TFunction, TArgumentState, TResult> functionShape, object? state = null)
 		=> throw new NotSupportedException($"JSON schema generation does not support delegate types such as {functionShape.Type.FullName}.");
+
+	private static void ApplyDescription(IGenericCustomAttributeProvider attributes, JsonSchemaObject schema)
+	{
+		foreach (DescriptionAttribute attribute in attributes.GetCustomAttributes<DescriptionAttribute>(inherit: false))
+		{
+			schema["description"] = attribute.Description;
+			break;
+		}
+	}
 
 	private static bool IsMemberNullable(IPropertyShape property)
 	{
@@ -155,12 +200,6 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 
 		bool isNonNullableReference = property.HasSetter ? property.IsSetterNonNullable : property.IsGetterNonNullable;
 		return !isNonNullableReference;
-	}
-
-	private static bool HasExtensionDataAttribute(IGenericCustomAttributeProvider attributeProvider)
-	{
-		using IEnumerator<JsonExtensionDataAttribute> attributes = attributeProvider.GetCustomAttributes<JsonExtensionDataAttribute>(inherit: false).GetEnumerator();
-		return attributes.MoveNext();
 	}
 
 	private static bool HasRequiredMemberAttribute(MemberInfo? memberInfo)

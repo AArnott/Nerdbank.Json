@@ -3,8 +3,12 @@ items:
     href: features.md
   - name: Serialization Benchmarks
     href: benchmarking.md
+  - name: Platform Validation Handoff
+    href: platform-validation.md
   - name: Getting Started
     href: getting-started.md
+  - name: F# Contracts
+    href: fsharp.md
   - name: Unions
     href: unions.md
   - name: Runtime Union Configuration
@@ -15,6 +19,8 @@ items:
     href: serialization-callbacks.md
   - name: Collection Comparers
     href: collection-comparers.md
+  - name: Retaining Unknown Members
+    href: unused-data.md
   - name: Multidimensional Arrays
     href: multidimensional-arrays.md
   - name: Reference Preservation

@@ -15,5 +15,9 @@ public interface IJsonConverterFactory
 	/// <param name="shape">The PolyType shape describing <paramref name="type"/>, when available.</param>
 	/// <param name="context">A context that can resolve additional converters needed by the created converter.</param>
 	/// <returns>A converter if this factory applies to the type; otherwise, <see langword="null"/>.</returns>
-	JsonConverter? CreateConverter(Type type, ITypeShape? shape, in JsonConverterFactoryContext context);
+	/// <remarks>
+	/// Implement <see cref="ITypeShapeFunc"/> when a generic type parameter is needed, and call
+	/// <see cref="JsonConverterFactoryExtensions.Invoke{T}(T, ITypeShape, object?)"/> to enter that generic context.
+	/// </remarks>
+	JsonConverter? CreateConverter(Type type, ITypeShape? shape, in ConverterContext context);
 }

@@ -21,24 +21,8 @@ the method. Failing to do so corrupts writer state or throws at runtime.
 
 Return the writer as soon as you finish the synchronous write, then await or continue.
 
-```csharp
-// ✗ Bad: the writer is never returned before the method exits.
-public override ValueTask WriteAsync(JsonAsyncWriter writer, string? value, SerializationContext context)
-{
-    JsonWriter w = writer.CreateWriter();
-    w.WriteStringValue(value);
-    return default; // NBJson033
-}
-
-// ✓ Good
-public override async ValueTask WriteAsync(JsonAsyncWriter writer, string? value, SerializationContext context)
-{
-    JsonWriter w = writer.CreateWriter();
-    w.WriteStringValue(value);
-    writer.ReturnWriter(ref w);
-    await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
-}
-```
+After writing the scalar with <xref:Nerdbank.Json.JsonWriter.Write*>, call <xref:Nerdbank.Json.JsonAsyncWriter.ReturnWriter*> with the rental by `ref` before flushing or returning.
+See [writing a streaming custom converter](../docs/async-streaming.md#writing-a-streaming-custom-converter) for the rental lifetime requirements.
 
 ## When to suppress
 

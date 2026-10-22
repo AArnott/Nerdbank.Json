@@ -1,6 +1,8 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace Nerdbank.Json;
 
 /// <summary>
@@ -8,13 +10,17 @@ namespace Nerdbank.Json;
 /// </summary>
 /// <remarks>
 /// Initializes a new instance of the <see cref="JsonConverterAttribute"/> class.
+/// PolyType associates the converter's constructor with the attributed type or member's type,
+/// including closed instantiations of open generic converters.
 /// </remarks>
 /// <param name="converterType">The converter type to activate.</param>
 [AttributeUsage(AttributeTargets.Interface | AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Enum | AttributeTargets.Property | AttributeTargets.Field | AttributeTargets.Parameter, AllowMultiple = false, Inherited = false)]
-public sealed class JsonConverterAttribute(Type converterType) : Attribute
+[AssociatedTypeAttribute("converterType", TypeShapeRequirements.Constructor)]
+public class JsonConverterAttribute([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type converterType) : Attribute
 {
 	/// <summary>
 	/// Gets the converter type to activate.
 	/// </summary>
+	[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)]
 	public Type ConverterType { get; } = converterType ?? throw new ArgumentNullException(nameof(converterType));
 }

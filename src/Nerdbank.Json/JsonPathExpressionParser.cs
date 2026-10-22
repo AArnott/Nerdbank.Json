@@ -118,7 +118,7 @@ internal static class JsonPathExpressionParser
 
 				IPropertyShape property = FindProperty(objectShape, member.Name)
 					?? throw new NotSupportedException($"'{current.Type.FullName}' has no serializable member named '{member.Name}'.");
-				path = path.Member(owner.GetSerializedPropertyName(property.Name, property.AttributeProvider));
+				path = path.Append(JsonPathSegment.ForMember(owner.GetSerializedPropertyName(property.Name, property.AttributeProvider), property));
 				current = property.PropertyType;
 			}
 			else
@@ -142,7 +142,7 @@ internal static class JsonPathExpressionParser
 				_ => indexOrKey.ToString()!,
 			};
 			string serializedKey = dictionaryKeyNamingPolicy?.ConvertName(key) ?? key;
-			return (path.Member(serializedKey), dictionary.ValueType);
+			return (path.Append(JsonPathSegment.ForMember(serializedKey, key: indexOrKey)), dictionary.ValueType);
 		}
 
 		if (current is IEnumerableTypeShape enumerable)

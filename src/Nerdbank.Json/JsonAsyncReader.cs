@@ -74,6 +74,9 @@ public sealed class JsonAsyncReader : IDisposable
 	/// </summary>
 	public required CancellationToken CancellationToken { get; init; }
 
+	/// <summary>Gets the net number of containers entered through structural reader methods.</summary>
+	internal int NavigationDepth { get; private set; }
+
 	/// <summary>
 	/// Buffers the next complete JSON value from the pipe, fetching more bytes as needed.
 	/// </summary>
@@ -93,7 +96,7 @@ public sealed class JsonAsyncReader : IDisposable
 		long scanned = 0;
 		while (true)
 		{
-			if (this.hasBufferedRead && this.TryScan(ref scanned, out long end))
+			if (this.hasBufferedRead && this.TryScan(ref scanned, out long end, context))
 			{
 				this.valueEnd = end;
 				return;
@@ -127,6 +130,7 @@ public sealed class JsonAsyncReader : IDisposable
 	public void ReturnReader(ref JsonReader reader)
 	{
 		this.buffer = this.buffer.Slice(reader.BytesConsumed);
+		this.NavigationDepth += reader.NavigationDepth;
 		reader = default;
 		this.readerReturned = true;
 	}
@@ -330,7 +334,7 @@ public sealed class JsonAsyncReader : IDisposable
 	{
 		await this.BufferNextValueAsync(context).ConfigureAwait(false);
 		JsonReader sync = this.CreateBufferedReader();
-		string raw = sync.ReadRawValue();
+		string raw = sync.ReadRawValue(context);
 		this.ReturnReader(ref sync);
 		return raw;
 	}
@@ -359,7 +363,7 @@ public sealed class JsonAsyncReader : IDisposable
 				bool complete = false;
 				foreach (ReadOnlyMemory<byte> segment in this.buffer)
 				{
-					if (this.scanner.Scan(segment.Span, out int consumed))
+					if (this.scanner.Scan(segment.Span, out int consumed, context))
 					{
 						consumedTotal += consumed;
 						complete = true;
@@ -392,7 +396,7 @@ public sealed class JsonAsyncReader : IDisposable
 	/// so that a partially-navigated envelope can be validated and drained without buffering it.
 	/// </summary>
 	/// <param name="openContainers">The number of containers that were entered but not yet closed.</param>
-	/// <param name="context">The serialization context.</param>
+	/// <param name="context">The serialization context before entering the open containers. Its remaining depth includes those containers.</param>
 	/// <returns>A task that completes when the containers have been closed.</returns>
 	/// <exception cref="FormatException">Thrown if the stream ends before the containers are closed.</exception>
 	public async ValueTask CloseContainersAsync(int openContainers, SerializationContext context)
@@ -419,6 +423,11 @@ public sealed class JsonAsyncReader : IDisposable
 					ReadOnlySpan<byte> span = memory.Span;
 					for (int i = 0; i < span.Length; i++)
 					{
+						if ((i & 1023) == 0)
+						{
+							context.CancellationToken.ThrowIfCancellationRequested();
+						}
+
 						byte b = span[i];
 						switch (mode)
 						{
@@ -430,6 +439,8 @@ public sealed class JsonAsyncReader : IDisposable
 										break;
 									case (byte)'{':
 									case (byte)'[':
+										SerializationContext nestedContext = context with { MaxDepth = context.MaxDepth - depth };
+										nestedContext.DepthStep();
 										depth++;
 										break;
 									case (byte)'}':
@@ -546,7 +557,7 @@ public sealed class JsonAsyncReader : IDisposable
 	/// </summary>
 	/// <param name="context">The serialization context.</param>
 	/// <returns>A task that completes when the check passes.</returns>
-	/// <exception cref="FormatException">Thrown if trailing data is present.</exception>
+	/// <exception cref="FormatException">Thrown if trailing data or an unterminated block comment is present.</exception>
 	public async ValueTask EnsureFullyConsumedAsync(SerializationContext context)
 	{
 		int next = await this.PeekNextByteAsync().ConfigureAwait(false);
@@ -563,7 +574,7 @@ public sealed class JsonAsyncReader : IDisposable
 		// (for example a malformed-value FormatException), and throwing here would mask the original error.
 		if (this.hasBufferedRead)
 		{
-			this.pipeReader.AdvanceTo(this.buffer.Start, this.buffer.End);
+			this.pipeReader.AdvanceTo(this.buffer.Start, this.buffer.Start);
 			this.hasBufferedRead = false;
 		}
 	}
@@ -577,6 +588,10 @@ public sealed class JsonAsyncReader : IDisposable
 		}
 
 		this.buffer = this.buffer.Slice(1);
+		if (expected is (byte)'[' or (byte)'{')
+		{
+			this.NavigationDepth++;
+		}
 	}
 
 	private async ValueTask<bool> TryReadStructuralAsync(byte expected, SerializationContext context)
@@ -597,6 +612,7 @@ public sealed class JsonAsyncReader : IDisposable
 		if (first == endToken)
 		{
 			this.buffer = this.buffer.Slice(1);
+			this.NavigationDepth--;
 			return true;
 		}
 
@@ -616,6 +632,7 @@ public sealed class JsonAsyncReader : IDisposable
 					if (matched)
 					{
 						this.buffer = this.buffer.Slice(consumedThrough);
+						this.NavigationDepth--;
 						return true;
 					}
 
@@ -730,32 +747,47 @@ public sealed class JsonAsyncReader : IDisposable
 	private async ValueTask SkipByteOrderMarkAsync()
 	{
 		this.bomChecked = true;
-		while (this.buffer.Length < 3 && !this.isCompleted)
+		while (!this.TryCheckByteOrderMark() && !this.isCompleted)
 		{
 			if (!await this.ReadMoreAsync().ConfigureAwait(false))
 			{
 				break;
 			}
 		}
-
-		if (this.buffer.Length >= 3)
-		{
-			Span<byte> first3 = stackalloc byte[3];
-			this.buffer.Slice(0, 3).CopyTo(first3);
-			if (first3[0] == 0xEF && first3[1] == 0xBB && first3[2] == 0xBF)
-			{
-				this.buffer = this.buffer.Slice(3);
-			}
-		}
 	}
 
-	private bool TryScan(ref long scanned, out long endOffset)
+	private bool TryCheckByteOrderMark()
+	{
+		int length = (int)Math.Min(this.buffer.Length, 3);
+		if (length == 0)
+		{
+			return false;
+		}
+
+		Span<byte> prefix = stackalloc byte[3];
+		this.buffer.Slice(0, length).CopyTo(prefix);
+		ReadOnlySpan<byte> bom = [0xEF, 0xBB, 0xBF];
+		if (!prefix[..length].SequenceEqual(bom[..length]))
+		{
+			return true;
+		}
+
+		if (length < 3)
+		{
+			return false;
+		}
+
+		this.buffer = this.buffer.Slice(3);
+		return true;
+	}
+
+	private bool TryScan(ref long scanned, out long endOffset, SerializationContext context)
 	{
 		ReadOnlySequence<byte> tail = this.buffer.Slice(scanned);
 		long baseOffset = scanned;
 		foreach (ReadOnlyMemory<byte> segment in tail)
 		{
-			if (this.scanner.Scan(segment.Span, out int consumed))
+			if (this.scanner.Scan(segment.Span, out int consumed, context))
 			{
 				endOffset = baseOffset + consumed;
 				scanned = endOffset;
@@ -859,6 +891,11 @@ public sealed class JsonAsyncReader : IDisposable
 			offset += span.Length;
 		}
 
+		if (this.isCompleted && this.skipState is SkipState.BlockComment or SkipState.BlockCommentStar)
+		{
+			throw new FormatException("Unterminated JSON block comment.");
+		}
+
 		if (this.skipState == SkipState.Slash)
 		{
 			this.buffer = this.buffer.Slice(slashPos);
@@ -887,14 +924,14 @@ public sealed class JsonAsyncReader : IDisposable
 		}
 
 		ReadResult result = await this.pipeReader.ReadAsync(this.CancellationToken).ConfigureAwait(false);
+		this.buffer = result.Buffer;
+		this.isCompleted = result.IsCompleted;
+		this.hasBufferedRead = true;
 		if (result.IsCanceled)
 		{
 			throw new OperationCanceledException(this.CancellationToken);
 		}
 
-		this.buffer = result.Buffer;
-		this.isCompleted = result.IsCompleted;
-		this.hasBufferedRead = true;
 		return true;
 	}
 

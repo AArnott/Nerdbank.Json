@@ -17,7 +17,7 @@ public partial class JsonSerializerContextOverloadTests : TestBase
 
 	private readonly JsonSerializer serializer = new()
 	{
-		Converters = new ConverterCollection([new StateConverter()]),
+		Converters = ConverterCollection.Create([new StateConverter()]),
 	};
 
 	[Test]
@@ -141,7 +141,7 @@ public partial class JsonSerializerContextOverloadTests : TestBase
 	[Test]
 	public void ContextFromActiveOperationIsRejected()
 	{
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([new ReentrantConverter()]) };
+		JsonSerializer serializer = new() { Converters = ConverterCollection.Create([new ReentrantConverter()]) };
 
 		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() =>
 		{
@@ -204,8 +204,8 @@ public partial class JsonSerializerContextOverloadTests : TestBase
 
 	private sealed class StateConverter : JsonConverter<string>
 	{
-		public override void Write(ref JsonWriter writer, string? value, SerializationContext context)
-			=> writer.WriteStringValue(context[StateKey] as string);
+		public override void Write(ref JsonWriter writer, in string? value, SerializationContext context)
+			=> writer.Write(context[StateKey] as string);
 
 		public override string? Read(ref JsonReader reader, SerializationContext context)
 		{
@@ -218,7 +218,7 @@ public partial class JsonSerializerContextOverloadTests : TestBase
 	{
 		private readonly JsonSerializer inner = new();
 
-		public override void Write(ref JsonWriter writer, int value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context)
 			=> this.inner.Serialize(ref writer, "nested", StringShape, context);
 
 		public override int Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();

@@ -99,7 +99,7 @@ public sealed class JsonAsyncWriter
 	public ValueTask WriteNullAsync(SerializationContext context)
 	{
 		JsonWriter writer = this.CreateWriter();
-		writer.WriteNullValue();
+		writer.WriteNull();
 		this.ReturnWriter(ref writer);
 		return this.FlushIfAppropriateAsync(context);
 	}

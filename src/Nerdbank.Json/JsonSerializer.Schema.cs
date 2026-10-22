@@ -1,13 +1,17 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
+
 namespace Nerdbank.Json;
 
 public partial record JsonSerializer
 {
 #if NET
 	/// <inheritdoc cref="GetJsonSchema{T}(ITypeShape{T})"/>
-	public string GetJsonSchema<T>()
+	public JsonSchemaObject GetJsonSchema<T>()
 		where T : IShapeable<T> => this.GetJsonSchema(T.GetTypeShape());
 
 	/// <summary>
@@ -15,8 +19,8 @@ public partial record JsonSerializer
 	/// </summary>
 	/// <typeparam name="T">The type to describe.</typeparam>
 	/// <param name="options">The schema generation options.</param>
-	/// <returns>The JSON Schema document as a JSON string.</returns>
-	public string GetJsonSchema<T>(JsonSchemaOptions options)
+	/// <returns>The JSON Schema document as a JSON object.</returns>
+	public JsonSchemaObject GetJsonSchema<T>(JsonSchemaOptions options)
 		where T : IShapeable<T> => this.GetJsonSchema(T.GetTypeShape(), options);
 
 	/// <summary>
@@ -25,8 +29,8 @@ public partial record JsonSerializer
 	/// </summary>
 	/// <typeparam name="T">The type to describe.</typeparam>
 	/// <typeparam name="TProvider">A witness type that provides the shape for <typeparamref name="T"/>.</typeparam>
-	/// <returns>The JSON Schema document as a JSON string.</returns>
-	public string GetJsonSchema<T, TProvider>()
+	/// <returns>The JSON Schema document as a JSON object.</returns>
+	public JsonSchemaObject GetJsonSchema<T, TProvider>()
 		where TProvider : IShapeable<T> => this.GetJsonSchema(TProvider.GetTypeShape());
 
 	/// <summary>
@@ -35,24 +39,45 @@ public partial record JsonSerializer
 	/// <typeparam name="T">The type to describe.</typeparam>
 	/// <typeparam name="TProvider">A witness type that provides the shape for <typeparamref name="T"/>.</typeparam>
 	/// <param name="options">The schema generation options.</param>
-	/// <returns>The JSON Schema document as a JSON string.</returns>
-	public string GetJsonSchema<T, TProvider>(JsonSchemaOptions options)
+	/// <returns>The JSON Schema document as a JSON object.</returns>
+	public JsonSchemaObject GetJsonSchema<T, TProvider>(JsonSchemaOptions options)
 		where TProvider : IShapeable<T> => this.GetJsonSchema(TProvider.GetTypeShape(), options);
 #endif
+
+	/// <summary>Produces a JSON Schema using a type shape provider.</summary>
+	/// <typeparam name="T">The type to describe.</typeparam>
+	/// <param name="provider">The type shape provider.</param>
+	/// <returns>The JSON Schema document.</returns>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "Public API accepts an ITypeShapeProvider.")]
+	public JsonSchemaObject GetJsonSchema<T>(ITypeShapeProvider provider) => this.GetJsonSchema<T>(provider, JsonSchemaOptions.Default);
+
+	/// <summary>Produces a JSON Schema using a type shape provider and specified options.</summary>
+	/// <typeparam name="T">The type to describe.</typeparam>
+	/// <param name="provider">The type shape provider.</param>
+	/// <param name="options">The schema generation options.</param>
+	/// <returns>The JSON Schema document.</returns>
+	/// <exception cref="ArgumentException">The provider does not supply the requested type shape.</exception>
+	[System.Diagnostics.CodeAnalysis.SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "Public API accepts an ITypeShapeProvider.")]
+	public JsonSchemaObject GetJsonSchema<T>(ITypeShapeProvider provider, JsonSchemaOptions options)
+	{
+		Requires.NotNull(provider);
+		Requires.NotNull(options);
+		return this.GetJsonSchema(provider.GetTypeShape(typeof(T)) ?? throw new ArgumentException($"This provider had no type shape for {typeof(T)}.", nameof(provider)), options);
+	}
 
 	/// <summary>
 	/// Produces a JSON Schema (draft 2020-12 by default) document that describes how this serializer represents the given type.
 	/// </summary>
 	/// <typeparam name="T">The type to describe.</typeparam>
 	/// <param name="shape">The shape of the type.</param>
-	/// <returns>The JSON Schema document as a JSON string.</returns>
+	/// <returns>The JSON Schema document as a JSON object.</returns>
 	/// <remarks>
 	/// The schema reflects the effective configuration, including the property naming policy, enum-by-name serialization,
 	/// reference preservation, and runtime union configuration. Custom converters that do not override
 	/// <see cref="JsonConverter.GetJsonSchema(JsonSchemaContext, ITypeShape)"/> produce a permissive schema annotated with
 	/// a conspicuous comment rather than false precision.
 	/// </remarks>
-	public string GetJsonSchema<T>(ITypeShape<T> shape) => this.GetJsonSchema(shape, JsonSchemaOptions.Default);
+	public JsonSchemaObject GetJsonSchema<T>(ITypeShape<T> shape) => this.GetJsonSchema(shape, JsonSchemaOptions.Default);
 
 	/// <summary>
 	/// Produces a JSON Schema document that describes how this serializer represents the given type.
@@ -60,33 +85,33 @@ public partial record JsonSerializer
 	/// <typeparam name="T">The type to describe.</typeparam>
 	/// <param name="shape">The shape of the type.</param>
 	/// <param name="options">The schema generation options.</param>
-	/// <returns>The JSON Schema document as a JSON string.</returns>
+	/// <returns>The JSON Schema document as a JSON object.</returns>
 	/// <exception cref="ArgumentOutOfRangeException">The requested dialect is not supported.</exception>
-	public string GetJsonSchema<T>(ITypeShape<T> shape, JsonSchemaOptions options)
+	public JsonSchemaObject GetJsonSchema<T>(ITypeShape<T> shape, JsonSchemaOptions options)
 	{
 		Requires.NotNull(shape);
 		Requires.NotNull(options);
 		ValidateDialect(options);
-		return this.SerializeSchema(new JsonSchemaContext(this.ConverterCache, options.Dialect).GenerateDocument(shape));
+		return new JsonSchemaContext(this.ConverterCache, options.Dialect).GenerateDocument(shape);
 	}
 
 	/// <inheritdoc cref="GetJsonSchema{T}(ITypeShape{T})"/>
 	/// <param name="typeShape">The shape of the type.</param>
-	public string GetJsonSchema(ITypeShape typeShape) => this.GetJsonSchema(typeShape, JsonSchemaOptions.Default);
+	public JsonSchemaObject GetJsonSchema(ITypeShape typeShape) => this.GetJsonSchema(typeShape, JsonSchemaOptions.Default);
 
 	/// <summary>
 	/// Produces a JSON Schema document that describes how this serializer represents the given type.
 	/// </summary>
 	/// <param name="typeShape">The shape of the type.</param>
 	/// <param name="options">The schema generation options.</param>
-	/// <returns>The JSON Schema document as a JSON string.</returns>
+	/// <returns>The JSON Schema document as a JSON object.</returns>
 	/// <exception cref="ArgumentOutOfRangeException">The requested dialect is not supported.</exception>
-	public string GetJsonSchema(ITypeShape typeShape, JsonSchemaOptions options)
+	public JsonSchemaObject GetJsonSchema(ITypeShape typeShape, JsonSchemaOptions options)
 	{
 		Requires.NotNull(typeShape);
 		Requires.NotNull(options);
 		ValidateDialect(options);
-		return this.SerializeSchema(new JsonSchemaContext(this.ConverterCache, options.Dialect).GenerateDocument(typeShape));
+		return new JsonSchemaContext(this.ConverterCache, options.Dialect).GenerateDocument(typeShape);
 	}
 
 	private static void ValidateDialect(JsonSchemaOptions options)
@@ -95,12 +120,5 @@ public partial record JsonSerializer
 		{
 			throw new ArgumentOutOfRangeException(nameof(options), options.Dialect, "Unsupported JSON Schema dialect.");
 		}
-	}
-
-	private string SerializeSchema(JsonSchema document)
-	{
-		JsonWriter writer = new(SequencePool<byte>.Shared, new byte[4096]) { WriteIndented = this.WriteIndented };
-		document.Write(ref writer);
-		return writer.FlushAndGetString();
 	}
 }

@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project>
+  <!-- Applied after project-local analyzer identification and normal central package declarations. -->
+  <Import Project="Directory.Packages.Analyzers.props" Condition="'$(IsAnalyzerCompatibilityProject)' == 'true'" />
   <ItemGroup>
     <!-- Avoid compile error about missing namespace when combining ImplicitUsings with .NET Framework target frameworks. -->
     <Using Remove="System.Net.Http" Condition="'$(TargetFrameworkIdentifier)'=='.NETFramework'" />

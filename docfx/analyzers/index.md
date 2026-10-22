@@ -1,19 +1,53 @@
 # Nerdbank.Json analyzers
 
-The `Nerdbank.Json` package ships C# analyzers that flag invalid or unsafe usage at compile time. Diagnostics are
-reported as warnings or errors depending on severity.
+The `Nerdbank.Json` package ships C# analyzers that flag invalid or unsafe usage at compile time.
+Diagnostics include errors, warnings, and informational guidance.
 
 | Rule ID | Category | Severity | Summary |
 |---------|----------|----------|---------|
-| NBJson001 | Usage | Warning | Delegate-typed serializable members are not supported |
-| NBJson002 | Usage | Warning | Unsupported dictionary key types |
-| [NBJson003](../docs/collection-comparers.md) | Usage | Warning | `JsonCollectionComparer` must target a dictionary or set with a compatible comparer |
+| [NBJson001](NBJson001.md) | Usage | Warning | Serialized contracts contain unsupported delegate values |
+| [NBJson002](NBJson002.md) | Usage | Warning | Serialized dictionary keys cannot be represented as JSON property names |
+| [NBJson003](NBJson003.md) | Usage | Warning | `UseComparer` must target a dictionary or set with a compatible comparer or provider property |
+| [NBJson020](NBJson020.md) | Usage | Error | Attribute converter must be concrete and compatible with the decorated value type |
+| [NBJson021](NBJson021.md) | Usage | Error | Attribute converter requires a public parameterless constructor |
+| [NBJson030](NBJson030.md) | Usage | Warning | Do not construct or call the top-level serializer from a converter |
+| [NBJson031](NBJson031.md) | Usage | Warning | Synchronous converters must consume or produce one complete JSON value |
+| [NBJson032](NBJson032.md) | Usage | Info | Concrete converters should describe their JSON schema |
 | [NBJson033](NBJson033.md) | Usage | Error | Return the `JsonWriter` before awaiting, calling the `JsonAsyncWriter` again, or returning |
 | [NBJson034](NBJson034.md) | Usage | Error | Do not reuse a `JsonWriter` after returning it |
 | [NBJson035](NBJson035.md) | Usage | Error | Return the `JsonReader` before awaiting, calling the `JsonAsyncReader` again, or returning |
 | [NBJson036](NBJson036.md) | Usage | Error | Do not reuse a `JsonReader` after returning it |
 | [NBJson037](NBJson037.md) | Usage | Warning | Async converters should override `PreferAsyncSerialization` |
-| NBJson050 | Usage | Warning | Pass `JsonWriter`/ref structs by `ref` |
+| [NBJson050](NBJson050.md) | Usage | Warning | Pass `JsonReader` and `JsonWriter` parameters by `ref` |
+| [NBJson051](NBJson051.md) | Usage | Warning | Prefer statically resolved shape APIs on modern .NET |
+| [NBJson110](NBJson110.md) | Usage | Warning | Describe initialized serializable defaults with `DefaultValueAttribute` |
+
+## Converter and contract guidance
+
+[NBJson020](NBJson020.md) and [NBJson021](NBJson021.md) validate attribute-selected converter types before runtime activation.
+[NBJson030](NBJson030.md) directs converter authors to <xref:Nerdbank.Json.SerializationContext.GetConverter*> for nested values.
+[NBJson032](NBJson032.md) encourages schema customization without treating an undocumented format as an error.
+[NBJson110](NBJson110.md) identifies initialized defaults that shape metadata does not describe.
+Its code fix adds a matching <xref:System.ComponentModel.DefaultValueAttribute> for supported constant initializers without changing the initializer.
+
+## Shape contract analysis
+
+[NBJson001](NBJson001.md) and [NBJson002](NBJson002.md) analyze PolyType-generated roots, witnesses (including wildcard targets), and reachable object, collection, dictionary value, nullable, tuple, and declarative union graphs.
+Member diagnostics point to the member declaration and are deduplicated across roots.
+A directly unsupported witness target is diagnosed on its shape attribute.
+Direct <xref:Nerdbank.Json.JsonSerializer> calls using `ReflectionTypeShapeProvider.Default` or its directly obtained shapes are checked at the shape/provider argument instead.
+Creating a reflection shape for an unrelated purpose is not enough to trigger a warning.
+
+Explicit converters and recognizable closed marshalers change the wire contract and are respected.
+Ignored and nonpublic non-opted-in members are excluded.
+Read-only members require a known constructor binding or a recognizable mutable collection (a concrete collection with a public parameterless constructor).
+Constructor selection honors an explicit `[ConstructorShape]`, otherwise a public parameterless constructor or the sole public constructor.
+Ambiguous selection is not guessed; matching parameter converter overrides conservatively exclude the member even though serialization and deserialization can differ.
+Custom shape kinds, unrecognized or open marshalers, unsupported/inaccessible PolyType model nodes, and unknown generic arguments stop inference.
+
+The rules do not inspect arbitrary provider implementations, provider/shape values passed through locals or helpers, or runtime converter/union registrations.
+If runtime configuration deliberately supplies the missing representation, suppress the specific reviewed diagnostic rather than changing a valid contract.
+These conservative boundaries mean that absence of a warning is not proof of runtime support.
 
 ## Async converter safety (NBJson033–NBJson037)
 
@@ -35,11 +69,9 @@ that cannot be diagnosed precisely and statically without excessive false positi
 * **Lifecycle callbacks** (serialization callback interfaces/hooks). Whether a callback runs, its ordering relative to
   reference registration, and reentrancy are runtime behaviors. There is no statically invalid declaration to flag
   beyond what the compiler already enforces.
-* **Custom schema hook** (`JsonConverter.GetJsonSchema`). A converter that does not override it produces a permissive
-  ("any") schema, which is a valid, conservative default rather than an error. Requiring an override on every converter
-  would be high-noise, so schema completeness is validated by the JSON Schema export tests instead of an analyzer.
-* **Targeted-navigation hook** (`JsonConverter.TryNavigate*`). Not overriding it simply means expression/path navigation
-  cannot traverse *through* that converter, which is reported clearly at runtime. There is no statically invalid usage.
+* **Targeted-navigation hooks** (<xref:Nerdbank.Json.JsonConverter.SkipToPropertyValue*> and <xref:Nerdbank.Json.JsonConverter.SkipToIndexValue*>, plus their async counterparts).
+  The default implementation navigates plain objects and arrays; custom representations may need overrides.
+  There is no statically invalid declaration to flag.
 * **Runtime union configuration**. Unions are registered at runtime with explicitly supplied `ITypeShape` instances and
   generic helpers; ambiguity and insufficient evidence are validated at configuration time with precise exceptions. The
   registrations are values computed at runtime, so they are not statically analyzable.

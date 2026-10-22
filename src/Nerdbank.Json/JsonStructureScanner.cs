@@ -85,11 +85,18 @@ internal struct JsonStructureScanner
 	/// Receives the number of bytes from <paramref name="chunk"/> that belong to the framed value when the return value is
 	/// <see langword="true"/>; otherwise the full length of <paramref name="chunk"/>.
 	/// </param>
+	/// <param name="context">The active context, with the depth remaining before entering this value.</param>
 	/// <returns><see langword="true"/> if a complete top-level value boundary was found within this chunk; otherwise <see langword="false"/>.</returns>
-	public bool Scan(scoped ReadOnlySpan<byte> chunk, out int consumed)
+	public bool Scan(scoped ReadOnlySpan<byte> chunk, out int consumed, SerializationContext context)
 	{
+		context.CancellationToken.ThrowIfCancellationRequested();
 		for (int i = 0; i < chunk.Length; i++)
 		{
+			if ((i & 1023) == 0)
+			{
+				context.CancellationToken.ThrowIfCancellationRequested();
+			}
+
 			byte b = chunk[i];
 reprocess:
 			switch (this.mode)
@@ -114,6 +121,8 @@ reprocess:
 							break;
 						case (byte)'{':
 						case (byte)'[':
+							SerializationContext nestedContext = context with { MaxDepth = context.MaxDepth - this.depth };
+							nestedContext.DepthStep();
 							this.depth++;
 							this.contentStarted = true;
 							break;
@@ -266,7 +275,10 @@ reprocess:
 		}
 	}
 
-	private static bool IsScalarTerminator(byte b)
+	/// <summary>Determines whether a byte delimits a scalar JSON token.</summary>
+	/// <param name="b">The byte after the scalar.</param>
+	/// <returns>Whether the byte is whitespace or a JSON structural delimiter.</returns>
+	internal static bool IsScalarTerminator(byte b)
 		=> b is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n'
 			or (byte)',' or (byte)':' or (byte)'{' or (byte)'}' or (byte)'[' or (byte)']'
 			or (byte)'"' or (byte)'/';

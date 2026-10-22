@@ -11,26 +11,38 @@ using PolyType.Utilities;
 
 namespace Nerdbank.Json;
 
-internal sealed class ConverterCache
+internal sealed class ConverterCache : ITypeShapeFunc
 {
 	private readonly ConcurrentDictionary<(Type Type, Type Provider), ITypeShape> cachedTypeShapes = new();
+	private readonly ConcurrentDictionary<ITypeShape, CacheEntry> resolvedConverters = new(TypeShapeReferenceComparer.Instance);
 	private readonly JsonSerializerConfiguration configuration;
-	private object? lastConverter;
+	private readonly Func<ITypeShape, CacheEntry> createCacheEntry;
+	private CacheEntry? lastConverter;
 	private MultiProviderTypeCache? cachedConverters;
 	private MultiProviderTypeCache? nativeAotCachedConverters;
 
 	internal ConverterCache(JsonSerializerConfiguration configuration)
 	{
 		this.configuration = configuration;
+		this.createCacheEntry = shape => new(shape, (JsonConverter)shape.Invoke(this)!);
 	}
 
 	internal bool SerializeEnumValuesByName => this.configuration.SerializeEnumValuesByName;
 
+	/// <summary>Gets the policy determining whether required defaults are always written.</summary>
+	internal SerializeDefaultValuesPolicy SerializeDefaultValues => this.configuration.SerializeDefaultValues;
+
+	/// <summary>Gets the representation used for multidimensional arrays.</summary>
+	internal MultiDimensionalArrayFormat MultiDimensionalArrayFormat => this.configuration.MultiDimensionalArrayFormat;
+
 	internal JsonNamingPolicy? PropertyNamingPolicy => this.configuration.PropertyNamingPolicy;
+
+	/// <summary>Gets the policy used for serialized dictionary keys.</summary>
+	internal JsonNamingPolicy? DictionaryKeyNamingPolicy => this.configuration.DictionaryKeyNamingPolicy;
 
 	internal MessagePack.IComparerProvider? ComparerProvider => this.configuration.ComparerProvider;
 
-	internal bool HasRuntimeConverters => this.configuration.Converters.Count > 0 || this.configuration.ConverterTypes.Count > 0 || this.configuration.ConverterFactories.Count > 0;
+	internal bool HasRuntimeConverters => this.configuration.Converters.Count > 0 || this.configuration.ConverterTypes.Count > 0 || this.configuration.ConverterFactories.Length > 0;
 
 	internal StringComparer PropertyNameComparer => this.configuration.PropertyNameCaseInsensitive ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
@@ -40,35 +52,23 @@ internal sealed class ConverterCache
 
 	internal ReferencePreservationMode PreserveReferences => this.configuration.PreserveReferences;
 
-	internal JsonUnionConfiguration UnionConfiguration => this.configuration.UnionConfiguration;
+	internal DerivedTypeUnionCollection DerivedTypeUnions => this.configuration.DerivedTypeUnions;
 
-	private MultiProviderTypeCache CachedConverters
+	internal bool UseDiscriminatorObjects => this.configuration.UseDiscriminatorObjects;
+
+	private MultiProviderTypeCache CachedConverters => Volatile.Read(ref this.cachedConverters) ?? LazyInitializer.EnsureInitialized(ref this.cachedConverters, () => new()
 	{
-		get
-		{
-			this.cachedConverters ??= new()
-			{
-				DelayedValueFactory = new DelayedJsonConverterFactory(),
-				ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: false),
-			};
+		DelayedValueFactory = new DelayedJsonConverterFactory(),
+		ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: false),
+	})!;
 
-			return this.cachedConverters;
-		}
-	}
-
-	private MultiProviderTypeCache NativeAotCachedConverters
+	private MultiProviderTypeCache NativeAotCachedConverters => Volatile.Read(ref this.nativeAotCachedConverters) ?? LazyInitializer.EnsureInitialized(ref this.nativeAotCachedConverters, () => new()
 	{
-		get
-		{
-			this.nativeAotCachedConverters ??= new()
-			{
-				DelayedValueFactory = new DelayedJsonConverterFactory(),
-				ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: true),
-			};
+		DelayedValueFactory = new DelayedJsonConverterFactory(),
+		ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: true),
+	})!;
 
-			return this.nativeAotCachedConverters;
-		}
-	}
+	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state) => this.ResolveConverter(typeShape);
 
 #if NET
 	internal JsonConverter<T> GetOrAddConverter<T>()
@@ -79,27 +79,18 @@ internal sealed class ConverterCache
 #endif
 
 	internal JsonConverter<T> GetOrAddConverter<T>(ITypeShape<T> shape)
-	{
-#if NET
-		if (!RuntimeFeature.IsDynamicCodeSupported)
-		{
-			if (this.lastConverter is JsonConverter<T> lastConverter)
-			{
-				return lastConverter;
-			}
-
-			JsonConverter<T> converter = this.TryGetProfferedConverter(shape, visitor: null, out JsonConverter<T>? profferedConverter)
-				? profferedConverter
-				: (JsonConverter<T>)this.NativeAotCachedConverters.GetOrAdd(shape)!;
-			return (JsonConverter<T>)(this.lastConverter = this.WrapWithReferencePreservation(converter));
-		}
-#endif
-
-		return (JsonConverter<T>)(this.lastConverter is JsonConverter<T> cachedConverter ? cachedConverter : (this.lastConverter = this.CachedConverters.GetOrAdd(shape)!));
-	}
+		=> (JsonConverter<T>)this.GetOrAddConverter((ITypeShape)shape);
 
 	internal JsonConverter GetOrAddConverter(ITypeShape shape)
-		=> (JsonConverter)this.CachedConverters.GetOrAdd(shape)!;
+	{
+		CacheEntry? entry = Volatile.Read(ref this.lastConverter);
+		return entry is not null && ReferenceEquals(entry.Shape, shape)
+			? entry.Converter
+			: this.GetOrAddConverterSlow(shape);
+	}
+
+	internal JsonConverter GetOrAddConverter(Type type, ITypeShapeProvider provider)
+		=> this.GetOrAddConverter(provider.GetTypeShape(type) ?? throw new NotSupportedException($"The type shape provider '{provider.GetType().FullName}' does not provide a shape for '{type.FullName}'."));
 
 #if NET8_0
 	[RequiresDynamicCode("Dynamic shape resolution may require runtime-generated code.")]
@@ -221,13 +212,19 @@ internal sealed class ConverterCache
 			return true;
 		}
 
+		if (typeof(T) == typeof(RawJson))
+		{
+			converter = (JsonConverter<T>)(object)RawJsonConverter.Instance;
+			return true;
+		}
+
 		if (BuiltInJsonConverters.IsSupported(shape.Type))
 		{
 			converter = new BuiltInJsonConverter<T>();
 			return true;
 		}
 
-		if (this.configuration.UnionConfiguration.TryGetEntry(shape.Type, out object? unionEntry) && unionEntry is not null)
+		if (this.configuration.DerivedTypeUnions.TryGetDerivedTypeUnion(shape.Type, out DerivedTypeUnion? unionEntry) && unionEntry is not null)
 		{
 			visitor ??= new JsonStandardVisitor(this, this.NativeAotCachedConverters.GetScopedCache(shape).CreateGenerationContext(), directShapeDispatch: true);
 			converter = RuntimeUnionBuilder.Build(this, shape, unionEntry, visitor);
@@ -239,6 +236,14 @@ internal sealed class ConverterCache
 	}
 
 	internal bool ShouldPreserveReferences(Type type) => this.configuration.PreserveReferences != ReferencePreservationMode.Off && RequiresReferencePreservation(type);
+
+	/// <summary>Gets a converter applied directly to a member, if present.</summary>
+	/// <param name="shape">The member type shape.</param>
+	/// <param name="attributes">The member attributes.</param>
+	/// <param name="converter">Receives the converter.</param>
+	/// <returns>Whether a member-specific converter was found.</returns>
+	internal bool TryGetMemberCustomConverter(ITypeShape shape, IGenericCustomAttributeProvider attributes, out JsonConverter? converter)
+		=> TryGetConverterFromAttribute(shape.Type, shape, attributes, out converter);
 
 	internal bool TryGetCustomConverter(ITypeShape shape, out JsonConverter? converter)
 	{
@@ -268,6 +273,28 @@ internal sealed class ConverterCache
 
 	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
 
+	private JsonConverter GetOrAddConverterSlow(ITypeShape shape)
+	{
+		CacheEntry entry = this.resolvedConverters.GetOrAdd(shape, this.createCacheEntry);
+		Volatile.Write(ref this.lastConverter, entry);
+		return entry.Converter;
+	}
+
+	private JsonConverter<T> ResolveConverter<T>(ITypeShape<T> shape)
+	{
+#if NET
+		if (!RuntimeFeature.IsDynamicCodeSupported)
+		{
+			JsonConverter<T> converter = this.TryGetProfferedConverter(shape, visitor: null, out JsonConverter<T>? profferedConverter)
+				? profferedConverter
+				: (JsonConverter<T>)this.NativeAotCachedConverters.GetOrAdd(shape)!;
+			return this.WrapWithReferencePreservation(converter);
+		}
+#endif
+
+		return (JsonConverter<T>)this.CachedConverters.GetOrAdd(shape)!;
+	}
+
 	private bool TryGetRuntimeProfferedConverter(Type type, ITypeShape shape, out JsonConverter? converter)
 	{
 		if (this.configuration.Converters.TryGetConverter(type, out converter))
@@ -282,7 +309,7 @@ internal sealed class ConverterCache
 			return true;
 		}
 
-		JsonConverterFactoryContext context = new(this);
+		ConverterContext context = new(this, shape.Provider);
 		foreach (IJsonConverterFactory factory in this.configuration.ConverterFactories)
 		{
 			if ((converter = factory.CreateConverter(type, shape, context)) is not null)
@@ -295,11 +322,22 @@ internal sealed class ConverterCache
 		return false;
 	}
 
-	private static JsonConverter ActivateAssociatedConverterType(Type targetType, Type converterType, ITypeShape targetTypeShape)
+	private static JsonConverter ActivateAssociatedConverterType(Type targetType, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type converterType, ITypeShape targetTypeShape)
 	{
 		if (TryActivateAssociatedConverterType(converterType, targetTypeShape, out JsonConverter? converter))
 		{
 			return converter!;
+		}
+
+		if (!converterType.ContainsGenericParameters)
+		{
+			JsonConverter result = (JsonConverter)(Activator.CreateInstance(converterType) ?? throw new NotSupportedException($"Converter type '{converterType}' could not be instantiated."));
+			if (result.DataType != targetType)
+			{
+				throw new NotSupportedException($"Converter type '{converterType}' does not convert '{targetType}'.");
+			}
+
+			return result;
 		}
 
 		throw new NotSupportedException($"Converter type '{converterType}' registered for '{targetType}' must have an associated generated shape.");
@@ -315,5 +353,24 @@ internal sealed class ConverterCache
 
 		converter = null;
 		return false;
+	}
+
+	private sealed class TypeShapeReferenceComparer : IEqualityComparer<ITypeShape>
+	{
+		/// <summary>Gets the comparer for exact type shape identity.</summary>
+		internal static readonly TypeShapeReferenceComparer Instance = new();
+
+		public bool Equals(ITypeShape? x, ITypeShape? y) => ReferenceEquals(x, y);
+
+		public int GetHashCode(ITypeShape obj) => RuntimeHelpers.GetHashCode(obj);
+	}
+
+	private sealed class CacheEntry(ITypeShape shape, JsonConverter converter)
+	{
+		/// <summary>Gets the exact shape used to resolve the converter.</summary>
+		internal ITypeShape Shape { get; } = shape;
+
+		/// <summary>Gets the converter resolved for this shape.</summary>
+		internal JsonConverter Converter { get; } = converter;
 	}
 }

@@ -13,6 +13,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nerdbank.Json\Nerdbank.Json.csproj" />
+    <Compile Include="..\..\src\Nerdbank.Json\JsonInput.cs" Link="JsonInput.cs" />
+  </ItemGroup>
+
+  <!-- Documentation samples, including the reflective factory example, are exercised in the managed-only target. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <Compile Include="..\..\samples\cs\CustomConverters.cs" Link="Samples\CustomConverters.cs" />
+    <Compile Include="..\..\samples\cs\AsyncStreaming.cs" Link="Samples\AsyncStreaming.cs" />
+    <Compile Include="..\..\samples\cs\AnalyzerGuidance.cs" Link="Samples\AnalyzerGuidance.cs" />
   </ItemGroup>
 
   <ItemGroup>

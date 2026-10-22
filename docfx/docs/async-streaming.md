@@ -33,8 +33,18 @@ that arrays, maps, and objects stream member-by-member with bounded memory. A to
 elements is read one element at a time; a large object is read one property at a time — including
 objects that are constructed from constructor parameters — so processing begins before the closing
 brace arrives. Only an individual value that a custom converter reads with the default buffering hook,
-a raw extension-data value, or a single constructor argument is materialized at a time — never the
+a raw retained unknown-member value, or a single constructor argument is materialized at a time — never the
 enclosing document.
+
+### Asynchronous enumerable contracts
+
+<xref:System.Collections.Generic.IAsyncEnumerable`1> values are supported both at the root and within ordinary shaped models when using <xref:Nerdbank.Json.JsonSerializer.SerializeAsync*>.
+Each element is written before the next is requested, without materializing the sequence or requiring its count in advance.
+Cancellation is passed to the enumerator, and pipe backpressure pauses enumeration.
+Element converters retain their normal synchronous or asynchronous dispatch.
+
+Synchronous serialization rejects asynchronous-only enumerable contracts and directs callers to the asynchronous API.
+Deserialization accepts a JSON `null` but cannot construct an asynchronous enumerable from an array; use a supported collection contract instead.
 
 ## Behavior and ownership
 
@@ -42,16 +52,41 @@ enclosing document.
   disposed or completed by the serializer. You remain responsible for their lifetime.
 * **Cancellation** is honored throughout; a canceled token surfaces as an
   <xref:System.OperationCanceledException>.
-* **Trailing data** after the top-level value is rejected with a <xref:System.FormatException>, just
-  like the synchronous API. Trailing whitespace (and comments, when
-  <xref:Nerdbank.Json.JsonCommentHandling.Skip> is configured) is allowed.
+* **Caller-owned pipes** deserialize the first value and leave prefetched bytes unread and unexamined for the next operation.
+  Scalars require a token delimiter or end of input, and invalid scalar prefixes such as `truefalse` and `01` are rejected.
+* **Asynchronous streams** remain strict single-document inputs and reject trailing data.
+  Their temporary pipe can prefetch beyond the value, so completing it after a first-value read could discard bytes needed by a subsequent operation.
+  Use a caller-owned pipe for repeated first-value reads.
+* **String inputs** also require a complete document.
+  UTF-8 buffer and sequence overloads return the first value.
+  Synchronous stream overloads return the first value after buffering the stream to its end; they do not preserve a position for the next document.
+* **Operation failures** surface as <xref:Nerdbank.Json.JsonSerializationException>, retaining the causal exception.
+  Existing serialization exceptions retain their instance and error code.
+  Argument validation remains an argument error, and actual operation cancellation is not wrapped.
 * **Reference preservation** streams incrementally for built-in mutable objects, collections, and
   dictionaries, so an optional `$id`/`$value` envelope does not reintroduce whole-document buffering.
   Early registration still enables `AllowCycles` back-references. A custom converter that relies on the
   default asynchronous read is a clear, bounded fallback: only that one preserved value is buffered.
 * **Exact synchronous semantics are preserved:** duplicate-property detection, required and
-  non-nullable validation, extension data, lifecycle callbacks (including early cycle registration
+  non-nullable validation, retained unknown members, lifecycle callbacks (including early cycle registration
   ordering), comments, and trailing commas all behave identically to the synchronous API.
+
+### Reading successive values from a stream
+
+Create one caller-owned <xref:System.IO.Pipelines.PipeReader> over the stream and retain it for all reads.
+The existing pipe overloads return the first value and preserve prefetched bytes for the next call, even on a non-seekable stream.
+After creating the reader, access the input only through that reader, not directly through the underlying stream.
+Complete the reader only when all intended reads are finished; `leaveOpen: true` keeps the stream open, but does not transfer unread bytes back to it.
+
+[!code-csharp[](../../samples/cs/AsyncStreaming.cs#CallerOwnedReader)]
+
+The asynchronous `Stream` overloads intentionally do not provide this first-value behavior.
+They own a temporary pipe whose buffer may contain bytes beyond the current JSON value.
+Completing that pipe discards its unread bytes, and the `Stream` contract provides no general pushback operation to restore them.
+Rewinding would work only for some seekable streams, making behavior depend on the stream implementation rather than the serialization contract.
+Nerdbank.MessagePack documents possible read-ahead loss on its `Stream` overload; JSON instead keeps strict single-document validation rather than silently accepting that loss.
+No additional reader API or hidden per-stream cache is needed: the caller-owned pipe already supplies the required lifetime and buffering ownership.
+Strict HTTP request-body validation is unchanged: additional values, trailing garbage, and unterminated trailing comments remain invalid.
 
 ## Writing a streaming custom converter
 

@@ -12,7 +12,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 	public async Task MutableObject_ProcessesBeforeClosingBrace()
 	{
 		ProbeConverter probe = new();
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([probe]) };
+		JsonSerializer serializer = new() { Converters = ConverterCollection.Create([probe]) };
 		Pipe pipe = new();
 
 		ValueTask<MutableModel?> task = serializer.DeserializeAsync(pipe.Reader, Shape<MutableModel, MutableModel>());
@@ -35,7 +35,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 	public async Task ConstructorObject_ProcessesBeforeClosingBrace()
 	{
 		ProbeConverter probe = new();
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([probe]) };
+		JsonSerializer serializer = new() { Converters = ConverterCollection.Create([probe]) };
 		Pipe pipe = new();
 
 		ValueTask<CtorModel?> task = serializer.DeserializeAsync(pipe.Reader, Shape<CtorModel, CtorModel>());
@@ -60,7 +60,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 		JsonSerializer serializer = new()
 		{
 			PreserveReferences = ReferencePreservationMode.RejectCycles,
-			Converters = new ConverterCollection([probe]),
+			Converters = ConverterCollection.Create([probe]),
 		};
 		Pipe pipe = new();
 
@@ -102,7 +102,8 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 		ValueTask<MutableModel?> task = this.Serializer.DeserializeAsync(pipe.Reader, Shape<MutableModel, MutableModel>());
 		await WriteAsync(pipe.Writer, """{"a":1,"a":2}""");
 		await pipe.Writer.CompleteAsync();
-		await Assert.ThrowsAsync<JsonSerializationException>(async () => await task);
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () => await task);
+		Assert.Equal(JsonSerializationException.ErrorCode.DoublePropertyAssignment, exception.Code);
 	}
 
 	[Test]
@@ -112,7 +113,8 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 		ValueTask<CtorModel?> task = this.Serializer.DeserializeAsync(pipe.Reader, Shape<CtorModel, CtorModel>());
 		await WriteAsync(pipe.Writer, """{"a":1}""");
 		await pipe.Writer.CompleteAsync();
-		await Assert.ThrowsAsync<FormatException>(async () => await task);
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () => await task);
+		Assert.Equal(JsonSerializationException.ErrorCode.MissingRequiredProperty, exception.Code);
 	}
 
 	[Test]
@@ -136,8 +138,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 		Assert.NotNull(result);
 		Assert.Equal("Ada", result!.Name);
 		Assert.NotNull(result.ExtensionData);
-		Assert.Equal("true", result.ExtensionData!["unknown"]);
-		Assert.Equal("""{"nested":5}""", result.ExtensionData["extra"]);
+		Assert.Equal("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""", this.Serializer.Serialize(result));
 	}
 
 	[Test]
@@ -147,7 +148,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 		await WriteAsync(pipe.Writer, """{"a":1,"junk":{"deep":[1,2,3],"more":"x"},"b":2,"probe":"ok"}""");
 		await pipe.Writer.CompleteAsync();
 		ProbeConverter probe = new();
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([probe]) };
+		JsonSerializer serializer = new() { Converters = ConverterCollection.Create([probe]) };
 		MutableModel? result = await serializer.DeserializeAsync(pipe.Reader, Shape<MutableModel, MutableModel>());
 		Assert.NotNull(result);
 		Assert.Equal(1, result!.A);
@@ -212,8 +213,7 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 	{
 		public string? Name { get; set; }
 
-		[JsonExtensionData]
-		public Dictionary<string, string>? ExtensionData { get; set; }
+		public UnusedDataPacket? ExtensionData { get; set; }
 	}
 
 	[GenerateShape]
@@ -228,8 +228,8 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 	{
 		internal TaskCompletionSource<bool> Signal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-		public override void Write(ref JsonWriter writer, Probe value, SerializationContext context)
-			=> writer.WriteStringValue(value.Text);
+		public override void Write(ref JsonWriter writer, in Probe value, SerializationContext context)
+			=> writer.Write(value.Text);
 
 		public override Probe Read(ref JsonReader reader, SerializationContext context)
 		{

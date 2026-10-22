@@ -101,7 +101,7 @@ internal static class ManyModels
 		byte[] envelope = Encoding.UTF8.GetBytes("{\"meta\":\"x\",\"items\":[3,5,7],\"count\":3}");
 		using MemoryStream pathStream = new(envelope);
 		int sum = 0;
-		await foreach (int value in serializer.DeserializeArrayAtAsync(pathStream, JsonPath.Root.Member("items"), WitnessShape<int, IntWitness>()))
+		await foreach (int value in serializer.DeserializePathEnumerableAsync(pathStream, JsonPath.Root.Member("items"), WitnessShape<int, IntWitness>()))
 		{
 			sum += value;
 		}
@@ -130,8 +130,8 @@ internal static class ManyModels
 		DeviceSnapshot snapshot = CreateSnapshot();
 		string json = serializer.Serialize(snapshot);
 
-		string? name = serializer.DeserializeAt<DeviceSnapshot, string>(json, x => x.Name);
-		int cell = serializer.DeserializeAt<int, IntWitness>(json, JsonPath.Root.Member("grid").Index(1).Index(2));
+		string? name = serializer.DeserializePath<DeviceSnapshot, string>(json, new JsonSerializer.DeserializePathOptions<DeviceSnapshot, string>(x => x.Name));
+		int cell = serializer.DeserializePath<int, IntWitness>(json, JsonPath.Root.Member("grid").Index(1).Index(2));
 
 		if (name != "Weather station" || cell != 6)
 		{
@@ -140,10 +140,10 @@ internal static class ManyModels
 
 		JsonSerializer customSerializer = new()
 		{
-			Converters = new ConverterCollection([new CoordConverter()]),
+			Converters = ConverterCollection.Create([new CoordConverter()]),
 		};
 		string trackJson = customSerializer.Serialize(new Track(new Coord(3, 7)));
-		int y = customSerializer.DeserializeAt<Track, int>(trackJson, t => t.Position.Y);
+		int y = customSerializer.DeserializePath<Track, int>(trackJson, new JsonSerializer.DeserializePathOptions<Track, int>(t => t.Position.Y));
 		if (y != 7)
 		{
 			throw new InvalidOperationException("Navigation through a custom converter did not select the expected value.");
@@ -167,9 +167,9 @@ internal static class ManyModels
 			throw new InvalidOperationException("Untyped DOM round-trip failed.");
 		}
 
-		JsonSerializer untyped = serializer.WithUntypedConverters();
+		JsonSerializer untyped = serializer.WithObjectConverter().WithExpandoObjectConverter();
 		object? boxed = untyped.Deserialize<object, UntypedWitness>("""[1,2,3]""");
-		if (((JsonArray)boxed!).Count != 3)
+		if (((object?[])boxed!).Length != 3)
 		{
 			throw new InvalidOperationException("object opt-in round-trip failed.");
 		}
@@ -184,11 +184,18 @@ internal static class ManyModels
 	private static void VerifySchema()
 	{
 		JsonSerializer serializer = new();
-		string schema = serializer.GetJsonSchema<DeviceSnapshot>();
+		System.Text.Json.Nodes.JsonObject schema = serializer.GetJsonSchema<DeviceSnapshot>();
 
-		if (!schema.Contains("\"$schema\"") || !schema.Contains("\"type\":\"object\"") || !schema.Contains("\"deviceId\""))
+		if (schema["$schema"] is null || schema["type"]?[0]?.GetValue<string>() != "object" || schema["properties"]?["deviceId"] is null)
 		{
 			throw new InvalidOperationException("JSON schema export did not describe the model.");
+		}
+
+		JsonSerializer custom = new() { Converters = [new CoordConverter()] };
+		System.Text.Json.Nodes.JsonObject customSchema = custom.GetJsonSchema<Coord>(new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 });
+		if (customSchema["items"] is null || customSchema["minItems"]?.GetValue<int>() != 2)
+		{
+			throw new InvalidOperationException("Custom converter tuple schema helpers did not honor the selected dialect.");
 		}
 	}
 
@@ -196,19 +203,26 @@ internal static class ManyModels
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Payload>.Create()
-					.AddCase<TextPayload>("text", ShapeOf<TextPayload>())
-					.AddCase<NumberPayload>("number", ShapeOf<NumberPayload>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Payload> { { "text", ShapeOf<TextPayload>() }, { "number", ShapeOf<NumberPayload>() } }],
 		};
 
-		Payload value = new TextPayload("hello");
-		string json = serializer.Serialize<Payload>(value);
-		Payload roundTripped = serializer.Deserialize<Payload>(json)!;
-
-		if (roundTripped is not TextPayload { Text: "hello" })
+		foreach (bool useObjects in new[] { false, true })
 		{
-			throw new InvalidOperationException("Runtime union configuration did not round-trip.");
+			serializer = serializer with { UseDiscriminatorObjects = useObjects };
+			Payload value = new TextPayload("hello");
+			string json = serializer.Serialize<Payload>(value);
+			Payload roundTripped = serializer.Deserialize<Payload>(json)!;
+
+			if (roundTripped is not TextPayload { Text: "hello" })
+			{
+				throw new InvalidOperationException("Runtime union configuration did not round-trip.");
+			}
+
+			string schema = serializer.GetJsonSchema<Payload>().ToJsonString();
+			if (!schema.Contains(useObjects ? "\"required\":[\"text\"]" : "\"prefixItems\""))
+			{
+				throw new InvalidOperationException("Runtime union schema did not match the discriminator envelope.");
+			}
 		}
 	}
 
@@ -336,7 +350,7 @@ internal partial class DeviceSnapshot : IJsonSerializationCallbacks
 
 	public Dictionary<int, string> Tags { get; set; } = [];
 
-	[JsonCollectionComparer(typeof(CaseInsensitiveStringComparer))]
+	[UseComparer(typeof(CaseInsensitiveStringComparer))]
 	public Dictionary<string, string> Labels { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
 	public List<SensorReading> Readings { get; set; } = [];
@@ -402,12 +416,23 @@ internal partial record Coord(int X, int Y);
 
 internal sealed class CoordConverter : JsonConverter<Coord>
 {
-	public override void Write(ref JsonWriter writer, Coord? value, SerializationContext context)
+	public override System.Text.Json.Nodes.JsonObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape)
+	{
+		System.Text.Json.Nodes.JsonObject schema = context.CreateTupleSchema(
+			new System.Text.Json.Nodes.JsonArray(
+				new System.Text.Json.Nodes.JsonObject { ["type"] = "integer" },
+				new System.Text.Json.Nodes.JsonObject { ["type"] = "integer" }));
+		schema["minItems"] = CreateJsonValue(2);
+		schema["maxItems"] = CreateJsonValue(2);
+		return schema;
+	}
+
+	public override void Write(ref JsonWriter writer, in Coord? value, SerializationContext context)
 	{
 		writer.WriteStartArray();
-		writer.WriteNumberValue(value!.X);
+		writer.Write(value!.X);
 		writer.WriteValueSeparator();
-		writer.WriteNumberValue(value.Y);
+		writer.Write(value.Y);
 		writer.WriteEndArray();
 	}
 
@@ -421,11 +446,11 @@ internal sealed class CoordConverter : JsonConverter<Coord>
 		return new Coord(x, y);
 	}
 
-	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	public override bool SkipToPropertyValue(ref JsonReader reader, IPropertyShape propertyShape, SerializationContext context)
 	{
 		int index =
-			options.NameComparer.Equals(segment.Name, "x") ? 0 :
-			options.NameComparer.Equals(segment.Name, "y") ? 1 : -1;
+			propertyShape.Name == "X" ? 0 :
+			propertyShape.Name == "Y" ? 1 : -1;
 		if (index < 0)
 		{
 			return false;
@@ -439,7 +464,7 @@ internal sealed class CoordConverter : JsonConverter<Coord>
 
 		for (int i = 0; i < index; i++)
 		{
-			reader.SkipValue();
+			reader.Skip(context);
 			if (reader.TryReadEndArray())
 			{
 				return false;

@@ -11,6 +11,12 @@ In some cases secure defaults can impact required functionality.
 For the built-in converters in Nerdbank.Json, the primary knobs are <xref:Nerdbank.Json.SerializationContext.MaxDepth>, <xref:Nerdbank.Json.SerializationContext.Security>, and <xref:Nerdbank.Json.JsonSerializer.ComparerProvider?displayProperty=nameWithType>.
 The <xref:Nerdbank.Json.SecuritySettings> instance carried on <xref:Nerdbank.Json.SerializationContext> is also available for custom converters that want to honor additional application-specific policy.
 
+The optional ExpandoObject converter honors <xref:Nerdbank.Json.SecuritySettings.ExpandoObjectMaxPropertyCount>, which defaults to 128, on both reads and writes.
+This bounds the quadratic insertion cost of <xref:System.Dynamic.ExpandoObject> and prevents writing objects that cannot round-trip under the same limit.
+The separate <xref:Nerdbank.Json.SecuritySettings.MaxObjectMemberCount> limit defaults to 1,000,000 and bounds untyped object reads, including the native DOM.
+Both limits must be positive; <xref:Nerdbank.Json.SecuritySettings.TrustedData> lifts them to <xref:System.Int32.MaxValue>.
+JSON has no collection count headers, so collections grow incrementally rather than preallocating from an untrusted declared count.
+
 In this example, the serializer is configured with a custom depth limit while preserving the secure comparer behavior used for hash-based collections:
 
 [!code-csharp[](../../samples/cs/Security.cs#SetSecuritySettings_Custom)]
@@ -33,6 +39,13 @@ When the data to be deserialized has a legitimate need for deeper nesting than t
 
 [!code-csharp[](../../samples/cs/Security.cs#SetMaxDepth)]
 
+Unknown-property skipping, retained <xref:Nerdbank.Json.UnusedDataPacket> values, raw capture, and targeted navigation honor the active operation's remaining depth and cancellation token.
+Each skipped JSON object or array consumes one depth step, including empty containers; sibling values share the same remaining budget rather than decrementing it globally.
+Asynchronous framing and envelope draining enforce these limits while scanning, before buffering an over-budget value in full.
+Custom converters should pass their active context to <xref:Nerdbank.Json.JsonReader.Skip(Nerdbank.Json.SerializationContext)> or <xref:Nerdbank.Json.JsonReader.ReadRawValue(Nerdbank.Json.SerializationContext)> instead of starting a new budget.
+The parameterless raw-text convenience method uses a depth limit of 64.
+Known flattened multidimensional arrays retain their logical-array depth semantics; raw skipping counts their actual JSON containers.
+
 ## Hash collisions
 
 When deserializing data into a dictionary or any other collection that hashes a key to provide fast lookup times, an adversary may carefully choose the keys in the collection such that when deserialized, the hash codes will collide, reducing the performance of the collection from its typical O(1) or "constant time" performance to O(n) or "linear time" performance.
@@ -50,6 +63,10 @@ Doing so dramatically increases the cost to the attacker to carry out this attac
 
 Nerdbank.Json protects against such attacks by using a collision resistant hash function for all hash-based collections that accept an <xref:System.Collections.Generic.IEqualityComparer`1> during construction.
 Collision resistant hashing comes at a small perf cost during deserialization.
+
+Enabling <xref:Nerdbank.Json.JsonSerializer.InternStrings> does not bypass collision protection.
+Its operation-local cache uses randomized ordinal string hashing on modern .NET.
+On legacy runtimes, excessive deterministic hash collisions trigger a switch to collision-resistant hashing.
 
 This secure-by-default behavior may be overridden by setting the <xref:Nerdbank.Json.JsonSerializer.ComparerProvider?displayProperty=nameWithType> property.
 This property may be cleared of its default value to improve performance when deserializing trusted data, or you may wish to provide your own object that is aware of the particular hashing/equality needs of your data types.

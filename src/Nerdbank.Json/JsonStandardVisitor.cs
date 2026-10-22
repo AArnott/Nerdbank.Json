@@ -4,6 +4,7 @@
 #pragma warning disable SA1600 // Elements should be documented
 
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Reflection;
 using PolyType.Utilities;
 
@@ -11,8 +12,6 @@ namespace Nerdbank.Json;
 
 internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationContext context, bool directShapeDispatch) : TypeShapeVisitor, ITypeShapeFunc
 {
-	private static readonly object ExtensionDataSentinel = new();
-
 	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state)
 	{
 		// Work around https://github.com/dotnet/runtime/issues/134698 by keeping the NativeAOT dispatch direct.
@@ -36,9 +35,20 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 	{
 		JsonConverter<TElement> elementConverter = this.GetConverter(enumerableShape.ElementType, attributeProvider: null);
 
+		if (enumerableShape.IsAsyncEnumerable)
+		{
+			this.GetCollectionOptions(enumerableShape, enumerableShape.ElementType, enumerableShape.SupportedComparer, state as MemberComparerInfluence);
+			return new JsonAsyncEnumerableConverter<TEnumerable, TElement>(elementConverter);
+		}
+
 		if (enumerableShape.Type.IsArray && enumerableShape.Rank > 1)
 		{
-			return new JsonMultidimensionalArrayConverter<TEnumerable, TElement>(elementConverter, enumerableShape.Rank);
+			return owner.MultiDimensionalArrayFormat switch
+			{
+				MultiDimensionalArrayFormat.Nested => new JsonMultidimensionalArrayConverter<TEnumerable, TElement>(elementConverter, enumerableShape.Rank),
+				MultiDimensionalArrayFormat.Flat => new JsonFlattenedArrayConverter<TEnumerable, TElement>(elementConverter, enumerableShape.Rank),
+				_ => throw new NotSupportedException($"Unrecognized multidimensional array format: {owner.MultiDimensionalArrayFormat}."),
+			};
 		}
 
 		Func<TEnumerable, IEnumerable<TElement>> getEnumerable = enumerableShape.GetGetEnumerable();
@@ -78,35 +88,25 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		List<JsonProperty<T>> properties = [];
 		JsonExtensionData<T>? extensionData = null;
 		Dictionary<string, string> serializedPropertyNamesByClrName = new(StringComparer.OrdinalIgnoreCase);
-		HashSet<string> requiredProperties = new(StringComparer.OrdinalIgnoreCase);
-		if (objectShape.Constructor is not null)
-		{
-			foreach (IParameterShape parameter in objectShape.Constructor.Parameters)
-			{
-				if (parameter.IsRequired)
-				{
-					requiredProperties.Add(parameter.Name);
-				}
-			}
-		}
-
 		foreach (IPropertyShape property in objectShape.Properties)
 		{
-			if (HasExtensionDataAttribute(property.AttributeProvider))
+			if (property is IPropertyShape<T, UnusedDataPacket> unusedDataProperty)
 			{
 				if (extensionData is not null)
 				{
-					throw new NotSupportedException($"Type '{typeof(T).FullName}' declares more than one extension data property.");
+					throw new JsonSerializationException($"Type '{typeof(T).FullName}' declares more than one member of type '{typeof(UnusedDataPacket).FullName}'.");
 				}
 
-				extensionData = (JsonExtensionData<T>?)property.Accept(this, ExtensionDataSentinel)
-					?? throw new NotSupportedException($"Extension data member '{typeof(T).FullName}.{property.Name}' could not be analyzed.");
+				extensionData = new JsonExtensionData<T>(
+					unusedDataProperty.HasGetter ? unusedDataProperty.GetGetter() : null,
+					unusedDataProperty.HasSetter ? unusedDataProperty.GetSetter() : null);
 				continue;
 			}
 
 			serializedPropertyNamesByClrName[property.Name] = owner.GetSerializedPropertyName(property.Name, property.AttributeProvider);
-			bool isRequired = requiredProperties.Contains(property.Name) || HasRequiredMemberAttribute(property.MemberInfo);
-			if (property.Accept(this, isRequired) is JsonProperty<T> jsonProperty)
+			IParameterShape? matchingParameter = RuntimeUnionHelpers.GetMatchingConstructorParameter(objectShape, property);
+
+			if (property.Accept(this, matchingParameter) is JsonProperty<T> jsonProperty)
 			{
 				properties.Add(jsonProperty);
 			}
@@ -163,51 +163,30 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 
 	public override object? VisitProperty<TDeclaringType, TPropertyType>(IPropertyShape<TDeclaringType, TPropertyType> propertyShape, object? state = null)
 	{
-		if (ReferenceEquals(state, ExtensionDataSentinel))
-		{
-			if (!typeof(TPropertyType).IsClass)
-			{
-				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must be a reference-typed dictionary property.");
-			}
-
-			Getter<TDeclaringType, TPropertyType>? extensionGetter = propertyShape.HasGetter ? propertyShape.GetGetter() : null;
-			Setter<TDeclaringType, TPropertyType>? extensionSetter = propertyShape.HasSetter ? propertyShape.GetSetter() : null;
-			if (extensionGetter is null && extensionSetter is null)
-			{
-				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must be readable or writable.");
-			}
-
-			if (!typeof(IEnumerable<KeyValuePair<string, string>>).IsAssignableFrom(typeof(TPropertyType)))
-			{
-				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must implement IEnumerable<KeyValuePair<string, string>>.");
-			}
-
-			if (extensionSetter is null && !typeof(IDictionary<string, string>).IsAssignableFrom(typeof(TPropertyType)))
-			{
-				throw new NotSupportedException($"Getter-only extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must implement IDictionary<string, string>.");
-			}
-
-			if (extensionSetter is not null && !typeof(TPropertyType).IsAssignableFrom(typeof(Dictionary<string, string>)))
-			{
-				throw new NotSupportedException($"Extension data member '{typeof(TDeclaringType).FullName}.{propertyShape.Name}' must be assignable from Dictionary<string, string>.");
-			}
-
-			return new JsonExtensionData<TDeclaringType, TPropertyType>(extensionGetter, extensionSetter);
-		}
-
-		bool isRequired = state is bool required && required;
+		IParameterShape? constructorParameter = state as IParameterShape;
+		bool isRequired = RuntimeUnionHelpers.IsRequiredProperty(propertyShape, constructorParameter);
 		Getter<TDeclaringType, TPropertyType>? getter = propertyShape.HasGetter ? propertyShape.GetGetter() : null;
 		Setter<TDeclaringType, TPropertyType>? setter = propertyShape.HasSetter ? propertyShape.GetSetter() : null;
 		JsonConverter<TPropertyType> converter = this.GetConverter(propertyShape.PropertyType, propertyShape.AttributeProvider);
 		bool deserializeIntoExistingInstance = getter is not null && setter is null && converter is IJsonDeserializeInto<TPropertyType>;
-		if (getter is null && setter is null && !deserializeIntoExistingInstance)
+		if (setter is null && !deserializeIntoExistingInstance && constructorParameter is null)
 		{
 			return null;
 		}
 
 		string propertyName = owner.GetSerializedPropertyName(propertyShape.Name, propertyShape.AttributeProvider);
 		bool isNonNullableReferenceType = !typeof(TPropertyType).IsValueType && (propertyShape.IsSetterNonNullable || (!propertyShape.HasSetter && propertyShape.IsGetterNonNullable));
-		return new JsonProperty<TDeclaringType, TPropertyType>(propertyName, propertyShape.Name, getter, setter, converter, deserializeIntoExistingInstance, isRequired, isNonNullableReferenceType);
+		TPropertyType? defaultValue = default;
+		if (constructorParameter?.HasDefaultValue is true)
+		{
+			defaultValue = (TPropertyType?)constructorParameter.DefaultValue;
+		}
+		else if (propertyShape.AttributeProvider?.GetCustomAttributes<DefaultValueAttribute>(inherit: true).FirstOrDefault() is { Value: TPropertyType attributeDefault })
+		{
+			defaultValue = attributeDefault;
+		}
+
+		return new JsonProperty<TDeclaringType, TPropertyType>(propertyName, propertyShape.Name, getter, setter, converter, deserializeIntoExistingInstance, isRequired, isNonNullableReferenceType, defaultValue);
 	}
 
 	public override object? VisitSurrogate<T, TSurrogate>(ISurrogateTypeShape<T, TSurrogate> surrogateShape, object? state = null)
@@ -243,67 +222,40 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			}
 		}
 
-		return new JsonUnionConverter<TUnion>(baseConverter, getUnionCaseIndex, serializers, new ReadOnlyDictionary<int, JsonConverter>(deserializersByIntAlias), new ReadOnlyDictionary<string, JsonConverter>(deserializersByStringAlias));
+		return new JsonUnionConverter<TUnion>(baseConverter, getUnionCaseIndex, serializers, new ReadOnlyDictionary<int, JsonConverter>(deserializersByIntAlias), new ReadOnlyDictionary<string, JsonConverter>(deserializersByStringAlias), owner.UseDiscriminatorObjects);
 	}
 
 	public override object? VisitUnionCase<TUnionCase, TUnion>(IUnionCaseShape<TUnionCase, TUnion> unionCaseShape, object? state = null)
 	{
-		var caseConverter = (JsonConverter<TUnionCase>)unionCaseShape.UnionCaseType.Accept(this)!;
+		JsonConverter<TUnionCase> caseConverter = owner.TryGetCustomConverter(unionCaseShape.UnionCaseType, out JsonConverter? custom) && custom is not null
+			? (JsonConverter<TUnionCase>)custom
+			: (JsonConverter<TUnionCase>)unionCaseShape.UnionCaseType.Accept(this)!;
 		return new JsonUnionCaseConverter<TUnionCase, TUnion>(caseConverter, unionCaseShape.Marshaler);
 	}
 
 	public override object? VisitFunction<TFunction, TArgumentState, TResult>(IFunctionTypeShape<TFunction, TArgumentState, TResult> functionShape, object? state = null)
 		=> throw new NotSupportedException($"JSON serialization does not support delegate types such as {functionShape.Type.FullName}.");
 
-	private static bool HasExtensionDataAttribute(IGenericCustomAttributeProvider attributeProvider)
-	{
-		using IEnumerator<JsonExtensionDataAttribute> attributes = attributeProvider.GetCustomAttributes<JsonExtensionDataAttribute>(inherit: false).GetEnumerator();
-		if (!attributes.MoveNext())
-		{
-			return false;
-		}
-
-		return true;
-	}
-
-	private static bool HasRequiredMemberAttribute(MemberInfo? memberInfo)
-	{
-		if (memberInfo is null)
-		{
-			return false;
-		}
-
-		foreach (CustomAttributeData attribute in memberInfo.CustomAttributes)
-		{
-			if (attribute.AttributeType.FullName == "System.Runtime.CompilerServices.RequiredMemberAttribute")
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	private static bool TryGetCollectionComparerAttribute(IGenericCustomAttributeProvider? attributeProvider, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out Type? comparerType)
+	private static bool TryGetCollectionComparerAttribute(IGenericCustomAttributeProvider? attributeProvider, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out UseComparerAttribute? comparerAttribute)
 	{
 		if (attributeProvider is not null)
 		{
-			foreach (JsonCollectionComparerAttribute attribute in attributeProvider.GetCustomAttributes<JsonCollectionComparerAttribute>(inherit: false))
+			foreach (UseComparerAttribute attribute in attributeProvider.GetCustomAttributes<UseComparerAttribute>(inherit: false))
 			{
-				comparerType = attribute.ComparerType;
+				comparerAttribute = attribute;
 				return true;
 			}
 		}
 
-		comparerType = null;
+		comparerAttribute = null;
 		return false;
 	}
 
 	private static IComparer<TKey> AsComparer<TKey>(object comparer, ITypeShape collectionShape, Type comparerType)
-		=> comparer as IComparer<TKey> ?? throw new NotSupportedException($"The comparer type '{comparerType.FullName}' specified by {nameof(JsonCollectionComparerAttribute)} must implement IComparer<{typeof(TKey).FullName}> for collection type '{collectionShape.Type.FullName}'.");
+		=> comparer as IComparer<TKey> ?? throw new NotSupportedException($"The comparer type '{comparerType.FullName}' specified by {nameof(UseComparerAttribute)} must implement IComparer<{typeof(TKey).FullName}> for collection type '{collectionShape.Type.FullName}'.");
 
 	private static IEqualityComparer<TKey> AsEqualityComparer<TKey>(object comparer, ITypeShape collectionShape, Type comparerType)
-		=> comparer as IEqualityComparer<TKey> ?? throw new NotSupportedException($"The comparer type '{comparerType.FullName}' specified by {nameof(JsonCollectionComparerAttribute)} must implement IEqualityComparer<{typeof(TKey).FullName}> for collection type '{collectionShape.Type.FullName}'.");
+		=> comparer as IEqualityComparer<TKey> ?? throw new NotSupportedException($"The comparer type '{comparerType.FullName}' specified by {nameof(UseComparerAttribute)} must implement IEqualityComparer<{typeof(TKey).FullName}> for collection type '{collectionShape.Type.FullName}'.");
 
 	private JsonConverter<T> GetConverter<T>(ITypeShape<T> shape, IGenericCustomAttributeProvider? attributeProvider)
 	{
@@ -312,16 +264,16 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			return (JsonConverter<T>)converter;
 		}
 
-		if (TryGetCollectionComparerAttribute(attributeProvider, out Type? comparerType))
+		if (TryGetCollectionComparerAttribute(attributeProvider, out UseComparerAttribute? comparerAttribute))
 		{
 			if (shape.Kind is not (TypeShapeKind.Enumerable or TypeShapeKind.Dictionary))
 			{
-				throw new NotSupportedException($"{nameof(JsonCollectionComparerAttribute)} can only be applied to dictionary or set members, but it was applied to a member of type '{shape.Type.FullName}'.");
+				throw new NotSupportedException($"{nameof(UseComparerAttribute)} can only be applied to dictionary or set members, but it was applied to a member of type '{shape.Type.FullName}'.");
 			}
 
 			// Member-specific comparers bypass the per-type converter cache so that two members of the same
 			// collection type can carry different comparers.
-			return (JsonConverter<T>)owner.CreateConverter(shape, this, new MemberComparerInfluence(comparerType));
+			return (JsonConverter<T>)owner.CreateConverter(shape, this, new MemberComparerInfluence(comparerAttribute));
 		}
 
 		if (directShapeDispatch)
@@ -341,7 +293,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		{
 			if (requiredComparer == CollectionComparerOptions.None)
 			{
-				throw new NotSupportedException($"The collection type '{collectionShape.Type.FullName}' does not accept a custom comparer, so {nameof(JsonCollectionComparerAttribute)} cannot be applied to a member of this type.");
+				throw new NotSupportedException($"The collection type '{collectionShape.Type.FullName}' does not accept a custom comparer, so {nameof(UseComparerAttribute)} cannot be applied to a member of this type.");
 			}
 
 			object comparer = memberInfluence.ActivateComparer(collectionShape);
@@ -370,9 +322,9 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 	/// <summary>
 	/// Captures a member-specified comparer so a member-specific collection converter can be constructed.
 	/// </summary>
-	private sealed class MemberComparerInfluence(Type comparerType)
+	private sealed class MemberComparerInfluence(UseComparerAttribute attribute)
 	{
-		internal Type ComparerType => comparerType;
+		internal Type ComparerType => attribute.ComparerType;
 
 		/// <summary>
 		/// Activates the member-specified comparer using the source-generated shape associated with the collection type.
@@ -381,12 +333,32 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		/// <returns>The activated comparer instance.</returns>
 		internal object ActivateComparer(ITypeShape collectionShape)
 		{
-			if ((collectionShape.GetAssociatedTypeShape(comparerType) as IObjectTypeShape)?.GetDefaultConstructor() is Func<object> factory)
+			MethodInfo? propertyGetter = null;
+			if (attribute.MemberName is not null)
 			{
-				return factory() ?? throw new NotSupportedException($"The comparer type '{comparerType.FullName}' specified by {nameof(JsonCollectionComparerAttribute)} produced a null instance.");
+				PropertyInfo? property = attribute.ComparerType.GetProperty(attribute.MemberName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static);
+				if (property is not { GetMethod: { IsPublic: true } getter } || property.GetIndexParameters().Length != 0)
+				{
+					throw new NotSupportedException($"Unable to find public property '{attribute.MemberName}' on type '{attribute.ComparerType.FullName}' with a public parameterless getter.");
+				}
+
+				if (getter.IsStatic)
+				{
+					return getter.Invoke(null, null) ?? throw this.CreateNullPropertyValueError();
+				}
+
+				propertyGetter = getter;
 			}
 
-			throw new NotSupportedException($"The comparer type '{comparerType.FullName}' specified by {nameof(JsonCollectionComparerAttribute)} must declare a public parameterless constructor and have a source-generated shape associated with collection type '{collectionShape.Type.FullName}'.");
+			if ((collectionShape.GetAssociatedTypeShape(attribute.ComparerType) as IObjectTypeShape)?.GetDefaultConstructor() is Func<object> factory)
+			{
+				object instance = factory() ?? throw new NotSupportedException($"The comparer type '{attribute.ComparerType.FullName}' specified by {nameof(UseComparerAttribute)} produced a null instance.");
+				return propertyGetter is null ? instance : propertyGetter.Invoke(instance, null) ?? throw this.CreateNullPropertyValueError();
+			}
+
+			throw new NotSupportedException($"The comparer type '{attribute.ComparerType.FullName}' specified by {nameof(UseComparerAttribute)} must declare a public parameterless constructor and have a source-generated shape associated with collection type '{collectionShape.Type.FullName}'.");
 		}
+
+		private NotSupportedException CreateNullPropertyValueError() => new($"{attribute.ComparerType.FullName}.{attribute.MemberName} produced a null value.");
 	}
 }

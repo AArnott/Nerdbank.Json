@@ -1,3 +1,9 @@
+// Copyright (c) Andrew Arnott. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
+#pragma warning disable CS1591, SA1600 // Documentation samples do not require API documentation.
+#pragma warning disable SA1402 // Related sample types are kept together.
+
 using System.IO;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
@@ -15,6 +21,7 @@ public static class AsyncStreamingSample
 {
 	public static async Task RoundTripOverStreamAsync(Stream stream)
 	{
+		System.ArgumentNullException.ThrowIfNull(stream);
 		JsonSerializer serializer = new();
 
 		Reading[] readings = new Reading[10_000];
@@ -49,4 +56,27 @@ public static class AsyncStreamingSample
 		System.Console.WriteLine(result!.Source);
 	}
 }
+
 // </AsyncStreaming>
+
+// <CallerOwnedReader>
+public static class StreamFirstValuesSample
+{
+	public static async Task ReadTwoValuesAsync(Stream stream)
+	{
+		JsonSerializer serializer = new();
+		PipeReader reader = PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: true));
+		try
+		{
+			Reading? first = await serializer.DeserializeAsync<Reading>(reader);
+			Reading? second = await serializer.DeserializeAsync<Reading>(reader);
+			System.Console.WriteLine($"{first!.Value}, {second!.Value}");
+		}
+		finally
+		{
+			await reader.CompleteAsync();
+		}
+	}
+}
+
+// </CallerOwnedReader>

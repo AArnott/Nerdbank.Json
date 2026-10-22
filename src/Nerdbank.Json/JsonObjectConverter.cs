@@ -5,6 +5,7 @@
 #pragma warning disable SA1600 // Elements should be documented
 #pragma warning disable SA1649 // File name should match first type name
 
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Nerdbank.Json;
@@ -39,11 +40,11 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	public override bool PreferAsyncSerialization => true;
 
-	public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -128,6 +129,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		context.DepthStep();
 
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
+		UnusedDataPacket.Map? unused = null;
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
 		{
@@ -139,16 +141,24 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		{
 			string? propertyName = null;
 			JsonProperty<T>? property = null;
-			if (this.utf8PropertiesByName is not null && reader.TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> utf8PropertyName))
+			if (this.utf8PropertiesByName is not null && reader.TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> utf8PropertyName, out long start, out long length))
 			{
-				if (this.utf8PropertiesByName.TryGetValue(utf8PropertyName, out property))
+				if (utf8PropertyName.IsEmpty)
 				{
-					collisionDetection.MarkAsRead(property!.Index, property.Name);
+					property = this.FindSplitProperty(ref reader, start, length, out propertyName);
+				}
+				else if (!this.utf8PropertiesByName.TryGetValue(utf8PropertyName, out property))
+				{
+					propertyName = Encoding.UTF8.GetString(utf8PropertyName[1..^1]);
+				}
+
+				if (property is not null)
+				{
+					collisionDetection.MarkAsRead(property.Index, property.Name);
 				}
 				else
 				{
-					propertyName = Encoding.UTF8.GetString(utf8PropertyName[1..^1]);
-					collisionDetection.MarkAsRead(propertyName);
+					collisionDetection.MarkAsRead(propertyName!);
 				}
 			}
 			else
@@ -170,14 +180,14 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 			{
 				property.Read(ref reader, ref result, context);
 			}
-			else if (this.extensionData is not null)
+			else if (this.extensionData?.CanRead is true)
 			{
 				propertyName ??= property?.Name ?? throw new InvalidOperationException("The property name should be available for extension data.");
-				this.extensionData.Read(ref reader, ref result, propertyName);
+				(unused ??= new()).Add(propertyName, reader.ReadRawValue(context));
 			}
 			else
 			{
-				reader.SkipValue();
+				reader.Skip(context);
 			}
 
 			if (reader.TryReadEndObject())
@@ -188,6 +198,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 			reader.ReadValueSeparator();
 		}
 
+		this.extensionData?.Apply(ref result, unused);
 		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 	}
 
@@ -206,11 +217,26 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 	public async ValueTask<T> PopulateReferenceAsync(JsonAsyncReader reader, T instance, SerializationContext context)
 		=> await this.PopulateAsyncCore(reader, instance, context).ConfigureAwait(false);
 
+	private JsonProperty<T>? FindSplitProperty(ref JsonReader reader, long start, long length, out string? propertyName)
+	{
+		using JsonInput.Token token = reader.CopyToken(start, length, stackalloc byte[256]);
+		reader.ConsumeStringToken(start, length, token.Span);
+		if (this.utf8PropertiesByName!.TryGetValue(token.Span, out JsonProperty<T>? property))
+		{
+			propertyName = null;
+			return property;
+		}
+
+		propertyName = Encoding.UTF8.GetString(token.Span[1..^1]);
+		return null;
+	}
+
 	private async ValueTask<T> PopulateAsyncCore(JsonAsyncReader reader, T result, SerializationContext context)
 	{
 		context.DepthStep();
 
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
+		UnusedDataPacket.Map? unused = null;
 		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
 		if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
 		{
@@ -235,12 +261,9 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 			{
 				result = await property.ReadValueIntoAsync(reader, result, context).ConfigureAwait(false);
 			}
-			else if (this.extensionData is not null)
+			else if (this.extensionData?.CanRead is true)
 			{
-				await reader.BufferNextValueAsync(context).ConfigureAwait(false);
-				JsonReader syncReader = reader.CreateBufferedReader();
-				this.extensionData.Read(ref syncReader, ref result, propertyName);
-				reader.ReturnReader(ref syncReader);
+				(unused ??= new()).Add(propertyName, await reader.ReadRawValueAsync(context).ConfigureAwait(false));
 			}
 			else
 			{
@@ -255,125 +278,39 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 			await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
 		}
 
+		this.extensionData?.Apply(ref result, unused);
 		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 		return result;
 	}
 }
 
-internal abstract class JsonExtensionData<TDeclaring>
+internal sealed class JsonExtensionData<TDeclaring>
 {
-	internal abstract void Write(ref JsonWriter writer, TDeclaring value, ref bool first);
+	private readonly Getter<TDeclaring, UnusedDataPacket>? getter;
+	private readonly Setter<TDeclaring, UnusedDataPacket>? setter;
 
-	internal abstract void Read(ref JsonReader reader, ref TDeclaring value, string propertyName);
-
-	internal abstract Dictionary<string, string>? Read(ref JsonReader reader, string propertyName);
-
-	internal abstract void Apply(TDeclaring value, Dictionary<string, string> extensionData);
-}
-
-internal sealed class JsonExtensionData<TDeclaring, TProperty> : JsonExtensionData<TDeclaring>
-{
-	private readonly Getter<TDeclaring, TProperty>? getter;
-	private readonly Setter<TDeclaring, TProperty>? setter;
-
-	internal JsonExtensionData(Getter<TDeclaring, TProperty>? getter, Setter<TDeclaring, TProperty>? setter)
+	internal JsonExtensionData(Getter<TDeclaring, UnusedDataPacket>? getter, Setter<TDeclaring, UnusedDataPacket>? setter)
 	{
 		this.getter = getter;
 		this.setter = setter;
 	}
 
-	internal override void Write(ref JsonWriter writer, TDeclaring value, ref bool first)
+	internal bool CanRead => this.setter is not null;
+
+	internal void Write(ref JsonWriter writer, TDeclaring value, ref bool first)
 	{
-		if (this.getter is null)
+		if (this.getter?.Invoke(ref value) is UnusedDataPacket.Map packet)
 		{
-			return;
-		}
-
-		if (this.getter(ref value) is not IEnumerable<KeyValuePair<string, string>> entries)
-		{
-			return;
-		}
-
-		foreach (KeyValuePair<string, string> entry in entries)
-		{
-			if (!first)
-			{
-				writer.WriteValueSeparator();
-			}
-
-			writer.WritePropertyName(entry.Key);
-			writer.WriteRawValue(entry.Value);
-			first = false;
+			packet.WriteTo(ref writer, ref first);
 		}
 	}
 
-	internal override void Read(ref JsonReader reader, ref TDeclaring value, string propertyName)
+	internal void Apply(ref TDeclaring value, UnusedDataPacket.Map? packet)
 	{
-		IDictionary<string, string> dictionary = this.GetOrCreateWritableDictionary(ref value);
-		dictionary[propertyName] = reader.ReadRawValue();
-	}
-
-	internal override Dictionary<string, string>? Read(ref JsonReader reader, string propertyName)
-		=> new(StringComparer.Ordinal) { [propertyName] = reader.ReadRawValue() };
-
-	internal override void Apply(TDeclaring value, Dictionary<string, string> extensionData)
-	{
-		if (extensionData.Count == 0)
+		if (packet is not null && value is not null)
 		{
-			return;
+			this.setter?.Invoke(ref value, packet);
 		}
-
-		if (this.TryGetWritableDictionary(value, out IDictionary<string, string>? writable))
-		{
-			foreach (KeyValuePair<string, string> entry in extensionData)
-			{
-				writable![entry.Key] = entry.Value;
-			}
-
-			return;
-		}
-
-		if (this.setter is null)
-		{
-			throw new NotSupportedException($"Extension data property on '{typeof(TDeclaring).FullName}' cannot be assigned.");
-		}
-
-		var assigned = (TProperty)(object)extensionData;
-		this.setter!(ref value, assigned);
-	}
-
-	private IDictionary<string, string> GetOrCreateWritableDictionary(ref TDeclaring value)
-	{
-		if (this.TryGetWritableDictionary(value, out IDictionary<string, string>? existing))
-		{
-			return existing!;
-		}
-
-		if (this.setter is null)
-		{
-			throw new NotSupportedException($"Extension data property on '{typeof(TDeclaring).FullName}' must have a setter or return a writable dictionary instance.");
-		}
-
-		Dictionary<string, string> created = new(StringComparer.Ordinal);
-		this.setter!(ref value, (TProperty)(object)created);
-		return created;
-	}
-
-	private bool TryGetWritableDictionary(TDeclaring value, out IDictionary<string, string>? dictionary)
-	{
-		dictionary = null;
-		if (this.getter is null)
-		{
-			return false;
-		}
-
-		if (this.getter!(ref value) is IDictionary<string, string> writable)
-		{
-			dictionary = writable;
-			return true;
-		}
-
-		return false;
 	}
 }
 
@@ -397,11 +334,11 @@ internal abstract class JsonProperty<TDeclaring>
 
 	internal abstract bool CanDeserialize { get; }
 
-	internal abstract bool Write(ref JsonWriter writer, TDeclaring container, SerializationContext context, bool first);
+	internal abstract bool Write(ref JsonWriter writer, TDeclaring container, in SerializationContext context, bool first);
 
 	internal abstract ValueTask<bool> WriteAsync(JsonAsyncWriter writer, TDeclaring container, SerializationContext context, bool first);
 
-	internal abstract void Read(ref JsonReader reader, ref TDeclaring container, SerializationContext context);
+	internal abstract void Read(ref JsonReader reader, ref TDeclaring container, in SerializationContext context);
 
 	internal abstract ValueTask<TDeclaring> ReadValueIntoAsync(JsonAsyncReader reader, TDeclaring container, SerializationContext context);
 }
@@ -415,8 +352,9 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 	private readonly bool deserializeIntoExistingInstance;
 	private readonly bool isRequired;
 	private readonly bool isNonNullableReferenceType;
+	private readonly TProperty? defaultValue;
 
-	internal JsonProperty(string name, string memberName, Getter<TDeclaring, TProperty>? getter, Setter<TDeclaring, TProperty>? setter, JsonConverter<TProperty> converter, bool deserializeIntoExistingInstance = false, bool isRequired = false, bool isNonNullableReferenceType = false)
+	internal JsonProperty(string name, string memberName, Getter<TDeclaring, TProperty>? getter, Setter<TDeclaring, TProperty>? setter, JsonConverter<TProperty> converter, bool deserializeIntoExistingInstance = false, bool isRequired = false, bool isNonNullableReferenceType = false, TProperty? defaultValue = default)
 		: base(name)
 	{
 		this.memberName = memberName;
@@ -426,13 +364,14 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		this.deserializeIntoExistingInstance = deserializeIntoExistingInstance;
 		this.isRequired = isRequired;
 		this.isNonNullableReferenceType = isNonNullableReferenceType;
+		this.defaultValue = defaultValue;
 	}
 
 	internal override bool CanSerialize => this.getter is not null;
 
 	internal override bool CanDeserialize => this.setter is not null || this.deserializeIntoExistingInstance;
 
-	internal override bool Write(ref JsonWriter writer, TDeclaring container, SerializationContext context, bool first)
+	internal override bool Write(ref JsonWriter writer, TDeclaring container, in SerializationContext context, bool first)
 	{
 		if (this.getter is null)
 		{
@@ -480,7 +419,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		return true;
 	}
 
-	internal override void Read(ref JsonReader reader, ref TDeclaring container, SerializationContext context)
+	internal override void Read(ref JsonReader reader, ref TDeclaring container, in SerializationContext context)
 	{
 		if (this.setter is not null)
 		{
@@ -511,7 +450,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 
 		if (this.setter is null)
 		{
-			reader.SkipValue();
+			reader.Skip(context);
 			return;
 		}
 	}
@@ -556,7 +495,7 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 			return true;
 		}
 
-		if (!EqualityComparer<TProperty>.Default.Equals(value!, default!))
+		if (!EqualityComparer<TProperty>.Default.Equals(value!, this.defaultValue!))
 		{
 			return true;
 		}
@@ -564,11 +503,6 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		if (this.isRequired && (policy & SerializeDefaultValuesPolicy.Required) == SerializeDefaultValuesPolicy.Required)
 		{
 			return true;
-		}
-
-		if (value is null)
-		{
-			return (policy & SerializeDefaultValuesPolicy.ReferenceTypes) == SerializeDefaultValuesPolicy.ReferenceTypes;
 		}
 
 		if (typeof(TProperty).IsValueType)
@@ -584,17 +518,19 @@ internal sealed class Utf8PropertyLookup<TDeclaring>
 {
 	private readonly int[] buckets;
 	private readonly Entry[] entries;
+	private readonly int bucketMask;
 
 	internal Utf8PropertyLookup(JsonProperty<TDeclaring>[] properties)
 	{
 		this.buckets = new int[properties.Length];
 		this.entries = new Entry[properties.Length];
+		this.bucketMask = properties.Length > 0 && (properties.Length & (properties.Length - 1)) == 0 ? properties.Length - 1 : -1;
 		for (int i = 0; i < properties.Length; i++)
 		{
 			JsonProperty<TDeclaring> property = properties[i];
 			ReadOnlySpan<byte> name = property.EncodedName;
 			int hashCode = GetHashCode(name);
-			int bucketIndex = (hashCode & 0x7fffffff) % this.buckets.Length;
+			int bucketIndex = this.GetBucketIndex(hashCode);
 			this.entries[i] = new Entry(hashCode, this.buckets[bucketIndex] - 1, property);
 			this.buckets[bucketIndex] = i + 1;
 		}
@@ -603,7 +539,7 @@ internal sealed class Utf8PropertyLookup<TDeclaring>
 	internal bool TryGetValue(ReadOnlySpan<byte> name, out JsonProperty<TDeclaring>? property)
 	{
 		int hashCode = GetHashCode(name);
-		for (int i = this.buckets[(hashCode & 0x7fffffff) % this.buckets.Length] - 1; i >= 0; i = this.entries[i].Next)
+		for (int i = this.buckets[this.GetBucketIndex(hashCode)] - 1; i >= 0; i = this.entries[i].Next)
 		{
 			Entry entry = this.entries[i];
 			if (entry.HashCode == hashCode && name.SequenceEqual(entry.Property.EncodedName))
@@ -630,6 +566,10 @@ internal sealed class Utf8PropertyLookup<TDeclaring>
 			return hash;
 		}
 	}
+
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	private int GetBucketIndex(int hashCode)
+		=> this.bucketMask >= 0 ? hashCode & this.bucketMask : (hashCode & 0x7fffffff) % this.buckets.Length;
 
 	private readonly struct Entry
 	{

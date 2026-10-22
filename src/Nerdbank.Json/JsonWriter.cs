@@ -37,6 +37,7 @@ public ref struct JsonWriter
 	private BufferWriter writer;
 	private int depth;
 	private bool pendingPropertyValue;
+	private int reservedValueLength;
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="JsonWriter"/> struct.
@@ -90,12 +91,78 @@ public ref struct JsonWriter
 	/// <summary>
 	/// Ensures everything previously written has been flushed to the underlying <see cref="IBufferWriter{T}"/>.
 	/// </summary>
-	public void Flush() => this.writer.Commit();
+	public void Flush()
+	{
+		this.reservedValueLength = 0;
+		this.writer.Commit();
+	}
+
+	/// <summary>
+	/// Reserves contiguous space for one complete, trusted UTF-8 JSON value.
+	/// </summary>
+	/// <param name="length">The minimum number of payload bytes required. Zero requests a nonempty span.</param>
+	/// <returns>A borrowed span of at least <paramref name="length"/> bytes, excluding any enclosing indentation.</returns>
+	/// <remarks>
+	/// Fill the span and call <see cref="Advance"/> once with the complete value's byte length.
+	/// As with <see cref="WriteRaw(ReadOnlySpan{byte})"/>, syntax is not validated: fragments, property names,
+	/// separators, empty values, and multiple values are not supported.
+	/// Reservation does not consume a value or change container state, but may flush previously written bytes.
+	/// Each successful call replaces the previous reservation; unadvanced contents need not be preserved.
+	/// The span expires on another reservation, any write, <see cref="Advance"/>, <see cref="Flush"/>,
+	/// or returning this writer to <see cref="JsonAsyncWriter"/>. Do not copy a writer to share its reservation.
+	/// </remarks>
+	/// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is negative or too large for a contiguous reservation including indentation.</exception>
+	public Span<byte> GetSpan(int length)
+	{
+		Requires.Range(length >= 0, nameof(length));
+		int prefixLength = this.GetValuePrefixLength();
+		Requires.Range(Math.Max(length, 1) <= int.MaxValue - prefixLength - this.writer.UncommittedBytes, nameof(length));
+		this.reservedValueLength = 0;
+		Span<byte> span = this.writer.GetSpan(Math.Max(length, 1) + prefixLength);
+		this.reservedValueLength = Math.Min(span.Length - prefixLength, int.MaxValue - this.writer.UncommittedBytes - prefixLength);
+		return span.Slice(prefixLength, this.reservedValueLength);
+	}
+
+	/// <summary>
+	/// Commits one complete, trusted UTF-8 JSON value written into the latest <see cref="GetSpan"/> reservation.
+	/// </summary>
+	/// <param name="length">The number of payload bytes written, or zero to cancel the reservation without writing a value.</param>
+	/// <remarks>
+	/// A positive advance consumes the reservation and applies the same enclosing indentation and value bookkeeping
+	/// as <see cref="WriteRaw(ReadOnlySpan{byte})"/>. Payload contents are not validated, escaped, or reindented.
+	/// Callers still write enclosing separators explicitly. A zero advance is also allowed without a reservation.
+	/// Invalid advances leave the reservation, byte counters, and container state unchanged.
+	/// </remarks>
+	/// <exception cref="ArgumentOutOfRangeException"><paramref name="length"/> is negative or exceeds the reserved span.</exception>
+	/// <exception cref="InvalidOperationException">A positive advance has no active reservation.</exception>
+	public void Advance(int length)
+	{
+		Requires.Range(length >= 0, nameof(length));
+		if (length == 0)
+		{
+			this.reservedValueLength = 0;
+			return;
+		}
+
+		if (this.reservedValueLength == 0)
+		{
+			throw new InvalidOperationException("Call GetSpan before advancing a complete raw JSON value.");
+		}
+
+		Requires.Range(length <= this.reservedValueLength, nameof(length));
+		this.BeforeValueToken();
+		this.writer.Advance(length);
+	}
+
+	/// <summary>Creates a writer for a new destination using this writer's formatting options.</summary>
+	/// <param name="writer">The new destination.</param>
+	/// <returns>An independent writer with no inherited container or pending-property state.</returns>
+	public readonly JsonWriter Clone(IBufferWriter<byte> writer) => new(writer) { WriteIndented = this.WriteIndented };
 
 	/// <summary>
 	/// Writes the JSON <see langword="null"/> literal.
 	/// </summary>
-	public void WriteNullValue()
+	public void WriteNull()
 	{
 		this.BeforeValueToken();
 		this.WriteAscii("null"u8);
@@ -105,7 +172,7 @@ public ref struct JsonWriter
 	/// Writes a JSON boolean literal.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteBooleanValue(bool value)
+	public void Write(bool value)
 	{
 		this.BeforeValueToken();
 		this.WriteAscii(value ? "true"u8 : "false"u8);
@@ -126,6 +193,7 @@ public ref struct JsonWriter
 	/// </summary>
 	public void WriteEndObject()
 	{
+		this.reservedValueLength = 0;
 		ContainerState state = this.PopContainer(ContainerKind.Object);
 		if (this.WriteIndented && state.Count > 0)
 		{
@@ -150,6 +218,7 @@ public ref struct JsonWriter
 	/// </summary>
 	public void WriteEndArray()
 	{
+		this.reservedValueLength = 0;
 		ContainerState state = this.PopContainer(ContainerKind.Array);
 		if (this.WriteIndented && state.Count > 0)
 		{
@@ -164,6 +233,7 @@ public ref struct JsonWriter
 	/// </summary>
 	public void WriteValueSeparator()
 	{
+		this.reservedValueLength = 0;
 		this.WriteByte((byte)',');
 		if (this.WriteIndented)
 		{
@@ -186,7 +256,7 @@ public ref struct JsonWriter
 	/// Writes a JSON string value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteStringValue(string? value)
+	public void Write(string? value)
 	{
 		this.BeforeValueToken();
 		if (value is null)
@@ -202,17 +272,43 @@ public ref struct JsonWriter
 	/// Writes a JSON string value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteStringValue(ReadOnlySpan<char> value)
+	public void Write(ReadOnlySpan<char> value)
 	{
 		this.BeforeValueToken();
 		this.WriteQuotedString(value);
+	}
+
+	/// <summary>Writes decoded UTF-8 content as a JSON string, escaping quotes, backslashes, and control bytes.</summary>
+	/// <param name="value">Decoded UTF-8 bytes, not an already-escaped JSON token.</param>
+	/// <remarks>Non-ASCII bytes are preserved without Unicode validation or transcoding.</remarks>
+	public void WriteString(ReadOnlySpan<byte> value)
+	{
+		this.BeforeValueToken();
+		this.WriteByte((byte)'"');
+		this.WriteEscapedUtf8(value);
+		this.WriteByte((byte)'"');
+	}
+
+	/// <summary>Writes decoded, possibly segmented UTF-8 content as a JSON string.</summary>
+	/// <param name="value">Decoded UTF-8 bytes. UTF-8 code points may span segments.</param>
+	/// <remarks>Non-ASCII bytes are preserved without Unicode validation or transcoding.</remarks>
+	public void WriteString(scoped in ReadOnlySequence<byte> value)
+	{
+		this.BeforeValueToken();
+		this.WriteByte((byte)'"');
+		foreach (ReadOnlyMemory<byte> segment in value)
+		{
+			this.WriteEscapedUtf8(segment.Span);
+		}
+
+		this.WriteByte((byte)'"');
 	}
 
 	/// <summary>
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(byte value)
+	public void Write(byte value)
 	{
 		this.BeforeValueToken();
 #if NET8_0_OR_GREATER
@@ -226,7 +322,7 @@ public ref struct JsonWriter
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(sbyte value)
+	public void Write(sbyte value)
 	{
 		this.BeforeValueToken();
 #if NET8_0_OR_GREATER
@@ -240,7 +336,7 @@ public ref struct JsonWriter
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(short value)
+	public void Write(short value)
 	{
 		this.BeforeValueToken();
 #if NET8_0_OR_GREATER
@@ -254,7 +350,7 @@ public ref struct JsonWriter
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(ushort value)
+	public void Write(ushort value)
 	{
 		this.BeforeValueToken();
 #if NET8_0_OR_GREATER
@@ -268,7 +364,7 @@ public ref struct JsonWriter
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(int value)
+	public void Write(int value)
 	{
 		this.BeforeValueToken();
 #if NET8_0_OR_GREATER
@@ -282,7 +378,7 @@ public ref struct JsonWriter
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(uint value)
+	public void Write(uint value)
 	{
 		this.BeforeValueToken();
 #if NET8_0_OR_GREATER
@@ -296,7 +392,7 @@ public ref struct JsonWriter
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(long value)
+	public void Write(long value)
 	{
 		this.BeforeValueToken();
 #if NET8_0_OR_GREATER
@@ -310,7 +406,7 @@ public ref struct JsonWriter
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(ulong value)
+	public void Write(ulong value)
 	{
 		this.BeforeValueToken();
 #if NET8_0_OR_GREATER
@@ -324,8 +420,13 @@ public ref struct JsonWriter
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(float value)
+	public void Write(float value)
 	{
+		if (float.IsNaN(value) || float.IsInfinity(value))
+		{
+			throw new ArgumentOutOfRangeException(nameof(value), value, "JSON numbers must be finite.");
+		}
+
 		this.BeforeValueToken();
 #if NET8_0_OR_GREATER
 		this.WriteUtf8Formattable(value, maxLength: 32, format: "R");
@@ -338,8 +439,13 @@ public ref struct JsonWriter
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(double value)
+	public void Write(double value)
 	{
+		if (double.IsNaN(value) || double.IsInfinity(value))
+		{
+			throw new ArgumentOutOfRangeException(nameof(value), value, "JSON numbers must be finite.");
+		}
+
 		this.BeforeValueToken();
 #if NET8_0_OR_GREATER
 		this.WriteUtf8Formattable(value, maxLength: 32, format: "R");
@@ -352,7 +458,7 @@ public ref struct JsonWriter
 	/// Writes a JSON number value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteNumberValue(decimal value)
+	public void Write(decimal value)
 	{
 		this.BeforeValueToken();
 #if NET8_0_OR_GREATER
@@ -370,30 +476,54 @@ public ref struct JsonWriter
 	{
 		if (value is null)
 		{
-			this.WriteNullValue();
+			this.WriteNull();
 			return;
 		}
 
-		this.WriteStringValue(Convert.ToBase64String(value));
+		this.Write(Convert.ToBase64String(value));
 	}
 
 	/// <summary>
 	/// Writes a JSON Base64 string value.
 	/// </summary>
 	/// <param name="value">The value to write.</param>
-	public void WriteBase64StringValue(ReadOnlySpan<byte> value) => this.WriteStringValue(Convert.ToBase64String(value.ToArray()));
+	public void WriteBase64StringValue(ReadOnlySpan<byte> value) => this.Write(Convert.ToBase64String(value.ToArray()));
 
 	/// <summary>
 	/// Writes a raw JSON token.
 	/// </summary>
 	/// <param name="value">The raw JSON text to write.</param>
-	public void WriteRawValue(string value)
+	public void WriteRaw(string value)
 	{
 		Requires.NotNull(value);
 
 		this.BeforeValueToken();
 		this.WriteUtf8(value.AsSpan());
 	}
+
+	/// <summary>Writes raw UTF-8 JSON without validating or escaping it.</summary>
+	/// <param name="value">The UTF-8 JSON to write.</param>
+	public void WriteRaw(ReadOnlySpan<byte> value)
+	{
+		this.BeforeValueToken();
+		this.WriteBytes(value);
+	}
+
+	/// <summary>Writes a raw, possibly segmented UTF-8 JSON value without validating or escaping it.</summary>
+	/// <param name="value">The UTF-8 JSON to write.</param>
+	public void WriteRaw(scoped in ReadOnlySequence<byte> value)
+	{
+		this.BeforeValueToken();
+		foreach (ReadOnlyMemory<byte> segment in value)
+		{
+			this.WriteBytes(segment.Span);
+		}
+	}
+
+	/// <summary>Writes one raw JSON value after validating its syntax and the default depth limit.</summary>
+	/// <param name="value">The raw JSON value. An empty or default payload is invalid.</param>
+	/// <remarks>Preserves the exact UTF-8 bytes. Raw values must use strict JSON without comments or trailing commas.</remarks>
+	public void Write(RawJson value) => RawJsonConverter.Instance.Write(ref this, value, new());
 
 	/// <summary>
 	/// Flushes any uncommitted bytes to the underlying <see cref="IBufferWriter{T}"/> and returns the written bytes as a string.
@@ -474,7 +604,7 @@ public ref struct JsonWriter
 	internal void WritePropertyName(ReadOnlySpan<byte> utf8EncodedName)
 	{
 		ContainerState state = this.PreparePropertyName();
-		this.Write(utf8EncodedName);
+		this.WriteBytes(utf8EncodedName);
 		this.FinishPropertyName(state);
 	}
 
@@ -496,6 +626,7 @@ public ref struct JsonWriter
 
 	private void BeforeValueToken()
 	{
+		this.reservedValueLength = 0;
 		if (this.pendingPropertyValue)
 		{
 			this.pendingPropertyValue = false;
@@ -525,6 +656,19 @@ public ref struct JsonWriter
 
 		state.Count++;
 		this.SetStack(this.depth - 1, state);
+	}
+
+	private readonly int GetValuePrefixLength()
+	{
+		if (!this.WriteIndented || this.pendingPropertyValue || this.depth == 0)
+		{
+			return 0;
+		}
+
+		ContainerState state = this.GetStack(this.depth - 1);
+
+		// Leave room for BeforeValueToken without moving or overwriting the caller's payload.
+		return state.Kind == ContainerKind.Array ? checked((this.depth * 2) + (state.Count == 0 ? 1 : 0)) : 0;
 	}
 
 	private void PushContainer(ContainerKind kind)
@@ -611,6 +755,7 @@ public ref struct JsonWriter
 
 	private ContainerState PreparePropertyName()
 	{
+		this.reservedValueLength = 0;
 		ContainerState state = this.GetCurrentContainer(ContainerKind.Object);
 		if (this.WriteIndented)
 		{
@@ -673,6 +818,23 @@ public ref struct JsonWriter
 		this.WriteByte((byte)'"');
 	}
 
+	private void WriteEscapedUtf8(ReadOnlySpan<byte> value)
+	{
+		int start = 0;
+		for (int i = 0; i < value.Length; i++)
+		{
+			byte ch = value[i];
+			if (ch < 0x20 || ch is (byte)'"' or (byte)'\\')
+			{
+				this.WriteBytes(value[start..i]);
+				this.WriteEscapedChar((char)ch);
+				start = i + 1;
+			}
+		}
+
+		this.WriteBytes(value[start..]);
+	}
+
 	private static bool NeedsEscaping(char ch) => ch < 0x20 || ch is '"' or '\\';
 
 	[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -718,8 +880,7 @@ public ref struct JsonWriter
 #if NET8_0_OR_GREATER
 		// Fast path: bulk-copy runs of 7-bit ASCII (the common case for property names and typical
 		// string content) using a vectorized narrowing conversion instead of writing one byte at a time.
-		// Any non-ASCII content (including surrogate pairs) falls through to the char-by-char path below,
-		// which preserves the exact surrogate-validation and multi-byte UTF-8 encoding behavior.
+		// Non-ASCII content falls through to UTF-8 encoding and isolated-surrogate escaping below.
 		if (Ascii.IsValid(value))
 		{
 			Span<byte> buffer = this.writer.GetSpan(value.Length);
@@ -740,7 +901,8 @@ public ref struct JsonWriter
 
 			if (!char.IsHighSurrogate(ch) || i + 1 >= value.Length || !char.IsLowSurrogate(value[i + 1]))
 			{
-				throw new ArgumentException("The value contains an unmatched surrogate code point.", nameof(value));
+				this.WriteUnicodeEscape(ch);
+				continue;
 			}
 
 			int scalar = char.ConvertToUtf32(ch, value[++i]);
@@ -822,9 +984,9 @@ public ref struct JsonWriter
 		this.writer.Advance(1);
 	}
 
-	private void WriteAscii(ReadOnlySpan<byte> utf8Text) => this.Write(utf8Text);
+	private void WriteAscii(ReadOnlySpan<byte> utf8Text) => this.WriteBytes(utf8Text);
 
-	private void Write(ReadOnlySpan<byte> value)
+	private void WriteBytes(ReadOnlySpan<byte> value)
 	{
 		Span<byte> buffer = this.writer.GetSpan(value.Length);
 		value.CopyTo(buffer);

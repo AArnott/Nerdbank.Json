@@ -1,6 +1,10 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
+
 #pragma warning disable SA1600 // Internal converter members are intentionally undocumented in this file.
 
 namespace Nerdbank.Json;
@@ -41,27 +45,27 @@ internal sealed class JsonValueConverter : JsonConverter<JsonValue>
 		}
 	}
 
-	public override void Write(ref JsonWriter writer, JsonValue? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in JsonValue? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
 		switch (value.Kind)
 		{
 			case JsonValueKind.Null:
-				writer.WriteNullValue();
+				writer.WriteNull();
 				break;
 			case JsonValueKind.Boolean:
-				writer.WriteBooleanValue(((JsonBoolean)value).Value);
+				writer.Write(((JsonBoolean)value).Value);
 				break;
 			case JsonValueKind.String:
-				writer.WriteStringValue(((JsonString)value).Value);
+				writer.Write(((JsonString)value).Value);
 				break;
 			case JsonValueKind.Number:
-				writer.WriteRawValue(((JsonNumber)value).RawToken);
+				writer.WriteRaw(((JsonNumber)value).RawToken);
 				break;
 			case JsonValueKind.Array:
 				this.WriteArray(ref writer, (JsonArray)value, context);
@@ -117,7 +121,7 @@ internal sealed class JsonValueConverter : JsonConverter<JsonValue>
 		}
 	}
 
-	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
+	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 
 	private JsonObject ReadJsonObject(ref JsonReader reader, SerializationContext context)
 	{

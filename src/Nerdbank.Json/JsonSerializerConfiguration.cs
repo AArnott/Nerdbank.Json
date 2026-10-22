@@ -3,6 +3,8 @@
 
 #pragma warning disable SA1600 // Elements should be documented
 
+using System.Collections.Immutable;
+
 namespace Nerdbank.Json;
 
 internal record JsonSerializerConfiguration
@@ -10,9 +12,9 @@ internal record JsonSerializerConfiguration
 	internal static readonly JsonSerializerConfiguration Default = new();
 
 	private ConverterCache? converterCache;
-	private ConverterCollection converters = new();
-	private IReadOnlyList<IJsonConverterFactory> converterFactories = [];
-	private JsonConverterTypeCollection converterTypes = new();
+	private ConverterCollection converters = [];
+	private ImmutableArray<IJsonConverterFactory> converterFactories = [];
+	private ConverterTypeCollection converterTypes = [];
 	private bool allowTrailingCommas;
 	private MessagePack.IComparerProvider? comparerProvider = MessagePack.SecureComparerProvider.Default;
 	private DeserializeDefaultValuesPolicy deserializeDefaultValues;
@@ -21,13 +23,34 @@ internal record JsonSerializerConfiguration
 	private JsonNamingPolicy? propertyNamingPolicy = JsonNamingPolicy.CamelCase;
 	private JsonCommentHandling readCommentHandling;
 	private bool internStrings;
+	private MultiDimensionalArrayFormat multiDimensionalArrayFormat = MultiDimensionalArrayFormat.Nested;
 	private ReferencePreservationMode preserveReferences;
-	private JsonUnionConfiguration unionConfiguration = JsonUnionConfiguration.Default;
+	private DerivedTypeUnionCollection derivedTypeUnions = [];
 	private bool serializeEnumValuesByName;
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
 	private bool writeIndented;
+	private bool useDiscriminatorObjects;
 
-	internal ConverterCache ConverterCache => this.converterCache ??= new(this);
+	internal ConverterCache ConverterCache => Volatile.Read(ref this.converterCache) ?? LazyInitializer.EnsureInitialized(ref this.converterCache, () => new(this))!;
+
+	/// <summary>
+	/// Gets the format to use when serializing multi-dimensional arrays.
+	/// </summary>
+	/// <value>The default is <see cref="MultiDimensionalArrayFormat.Nested"/>.</value>
+	internal MultiDimensionalArrayFormat MultiDimensionalArrayFormat
+	{
+		get => this.multiDimensionalArrayFormat;
+		init
+		{
+			if (value is not MultiDimensionalArrayFormat.Nested and not MultiDimensionalArrayFormat.Flat)
+			{
+				throw new ArgumentOutOfRangeException(nameof(value));
+			}
+
+			this.multiDimensionalArrayFormat = value;
+			this.converterCache = null;
+		}
+	}
 
 	/// <summary>
 	/// Gets the runtime-registered converters that take precedence over built-in and shape-based converters.
@@ -45,7 +68,7 @@ internal record JsonSerializerConfiguration
 	/// <summary>
 	/// Gets the runtime-registered converter types that take precedence after <see cref="Converters"/>.
 	/// </summary>
-	internal JsonConverterTypeCollection ConverterTypes
+	internal ConverterTypeCollection ConverterTypes
 	{
 		get => this.converterTypes;
 		init
@@ -58,11 +81,16 @@ internal record JsonSerializerConfiguration
 	/// <summary>
 	/// Gets the runtime-registered converter factories that are consulted after <see cref="Converters"/> and <see cref="ConverterTypes"/>.
 	/// </summary>
-	internal IReadOnlyList<IJsonConverterFactory> ConverterFactories
+	internal ImmutableArray<IJsonConverterFactory> ConverterFactories
 	{
 		get => this.converterFactories;
 		init
 		{
+			if (value.IsDefault || value.Any(static factory => factory is null))
+			{
+				throw new ArgumentException("An initialized array of non-null factories is required.", nameof(value));
+			}
+
 			this.converterFactories = value;
 			this.converterCache = null;
 		}
@@ -216,12 +244,23 @@ internal record JsonSerializerConfiguration
 	/// <summary>
 	/// Gets the runtime union overrides applied during serialization and deserialization.
 	/// </summary>
-	internal JsonUnionConfiguration UnionConfiguration
+	internal DerivedTypeUnionCollection DerivedTypeUnions
 	{
-		get => this.unionConfiguration;
+		get => this.derivedTypeUnions;
 		init
 		{
-			this.unionConfiguration = value ?? throw new ArgumentNullException(nameof(value));
+			this.derivedTypeUnions = value ?? throw new ArgumentNullException(nameof(value));
+			this.converterCache = null;
+		}
+	}
+
+	/// <summary>Gets a value indicating whether unions use single-property object envelopes instead of two-element arrays.</summary>
+	internal bool UseDiscriminatorObjects
+	{
+		get => this.useDiscriminatorObjects;
+		init
+		{
+			this.useDiscriminatorObjects = value;
 			this.converterCache = null;
 		}
 	}

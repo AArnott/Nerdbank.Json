@@ -4,7 +4,6 @@
 #pragma warning disable CS1591 // Public analyzer types are intentionally undocumented in-source.
 #pragma warning disable SA1600 // Public analyzer types are intentionally undocumented in-source.
 
-using System.Collections.Frozen;
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -19,11 +18,12 @@ public class RefParametersForRefStructsAnalyzer : DiagnosticAnalyzer
 
 	public static readonly DiagnosticDescriptor UseRefParametersForRefStructsDiagnostic = new(
 		id: UseRefParametersForRefStructsDiagnosticId,
-		title: "Pass JsonWriter by ref",
+		title: "Pass JSON readers and writers by ref",
 		messageFormat: "'{0}' parameters should be passed by ref",
 		category: "Usage",
 		defaultSeverity: DiagnosticSeverity.Warning,
-		isEnabledByDefault: true);
+		isEnabledByDefault: true,
+		helpLinkUri: AnalyzerUtilities.GetHelpLink(UseRefParametersForRefStructsDiagnosticId));
 
 	public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [UseRefParametersForRefStructsDiagnostic];
 
@@ -38,14 +38,13 @@ public class RefParametersForRefStructsAnalyzer : DiagnosticAnalyzer
 		context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
 		context.RegisterCompilationStartAction(static compilationStartContext =>
 		{
-			INamedTypeSymbol? jsonWriter = compilationStartContext.Compilation.GetTypeByMetadataName("Nerdbank.Json.JsonWriter");
+			INamedTypeSymbol? jsonWriter = compilationStartContext.Compilation.GetTypeByMetadataName(KnownNames.Writer);
+			INamedTypeSymbol? jsonReader = compilationStartContext.Compilation.GetTypeByMetadataName(KnownNames.Reader);
 
-			if (jsonWriter is null)
+			if (jsonWriter is null && jsonReader is null)
 			{
 				return;
 			}
-
-			FrozenSet<ISymbol> guardedRefStructs = [jsonWriter];
 
 			compilationStartContext.RegisterSymbolAction(
 				symbolContext =>
@@ -53,7 +52,8 @@ public class RefParametersForRefStructsAnalyzer : DiagnosticAnalyzer
 					var method = (IMethodSymbol)symbolContext.Symbol;
 					foreach (IParameterSymbol parameter in method.Parameters)
 					{
-						if (parameter.RefKind == RefKind.None && guardedRefStructs.Contains(parameter.Type))
+						if (parameter.RefKind == RefKind.None &&
+							(SymbolEqualityComparer.Default.Equals(parameter.Type, jsonWriter) || SymbolEqualityComparer.Default.Equals(parameter.Type, jsonReader)))
 						{
 							Location? location = (
 								(ParameterSyntax?)parameter.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax(symbolContext.CancellationToken))?.Type?.GetLocation()

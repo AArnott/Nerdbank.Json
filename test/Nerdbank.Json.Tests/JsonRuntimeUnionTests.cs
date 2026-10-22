@@ -1,6 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+#pragma warning disable DuckTyping // Tests or demonstrates the experimental union strategy.
 using PolyType.Abstractions;
 
 public partial class JsonRuntimeUnionTests : TestBase
@@ -10,10 +11,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Shape2>.Create()
-					.AddCase("circle", Shape<Circle, Circle>())
-					.AddCase("square", Shape<Square, Square>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Shape2> { { "circle", Shape<Circle, Circle>() }, { "square", Shape<Square, Square>() } }],
 		};
 
 		Shape2 value = new Circle(2.5);
@@ -29,10 +27,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Shape2>.Create()
-					.AddCase(1, Shape<Circle, Circle>())
-					.AddCase(2, Shape<Square, Square>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Shape2> { { 1, Shape<Circle, Circle>() }, { 2, Shape<Square, Square>() } }],
 		};
 
 		Shape2 value = new Square(4);
@@ -46,8 +41,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Animal2>.Create().AddCase("feline", Shape<Cat2, Cat2>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Animal2> { { "feline", Shape<Cat2, Cat2>() } }],
 		};
 
 		Animal2 value = new Cat2("Milo", 9);
@@ -61,8 +55,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Animal2>.Create().IncludeGenerated().AddCase("dog", Shape<Dog2, Dog2>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Animal2> { { "Cat2", Shape<Cat2, Cat2>() }, { "dog", Shape<Dog2, Dog2>() } }],
 		};
 
 		Animal2 cat = new Cat2("Milo", 9);
@@ -80,7 +73,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithoutUnion<Animal2>(),
+			DerivedTypeUnions = [DerivedTypeUnion.CreateDisabled(typeof(Animal2))],
 		};
 
 		Animal2 value = new Animal2("Ada");
@@ -103,8 +96,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Shape2>.Create().AddCase("circle", Shape<Circle, Circle>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Shape2> { { "circle", Shape<Circle, Circle>() } }],
 		};
 
 		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""["square",{"side":4}]""", Shape<Shape2, Shape2>()));
@@ -115,8 +107,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Shape2>.Create().AddCase("circle", Shape<Circle, Circle>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Shape2> { { "circle", Shape<Circle, Circle>() } }],
 		};
 
 		ShapeContainer value = new() { Shape = new Circle(1) };
@@ -132,11 +123,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Shape2>.Create()
-					.AddCase("circle", Shape<Circle, Circle>())
-					.AddCase("square", Shape<Square, Square>())
-					.UseDuckTyping()),
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<Shape2, Shape2>(), Shape<Circle, Circle>(), Shape<Square, Square>())],
 		};
 
 		Shape2 value = new Circle(2.5);
@@ -153,11 +140,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Overlap>.Create()
-					.AddCase("a", Shape<OverlapA, OverlapA>())
-					.AddCase("b", Shape<OverlapB, OverlapB>())
-					.UseDuckTyping()),
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<Overlap, Overlap>(), Shape<OverlapA, OverlapA>(), Shape<OverlapB, OverlapB>())],
 		};
 
 		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"shared":1,"a":2,"b":3}""", Shape<Overlap, Overlap>()));
@@ -169,11 +152,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Shape2>.Create()
-					.AddCase("circle", Shape<Circle, Circle>())
-					.AddCase("square", Shape<Square, Square>())
-					.UseDuckTyping()),
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<Shape2, Shape2>(), Shape<Circle, Circle>(), Shape<Square, Square>())],
 		};
 
 		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"unrelated":1}""", Shape<Shape2, Shape2>()));
@@ -183,15 +162,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	[Test]
 	public void DuckTyping_CaseWithoutRequiredProperties_Throws()
 	{
-		JsonSerializer serializer = new()
-		{
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Shape2>.Create()
-					.AddCase("empty", Shape<EmptyShape, EmptyShape>())
-					.UseDuckTyping()),
-		};
-
-		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{}""", Shape<Shape2, Shape2>()));
+		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<Shape2, Shape2>(), Shape<EmptyShape, EmptyShape>(), Shape<Circle, Circle>()));
 	}
 
 	[Test]
@@ -199,9 +170,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Unions = JsonUnionConfiguration.Default
-				.WithUnion(JsonUnion<Wrapper>.Create().AddCase("shape", Shape<ShapeWrapper, ShapeWrapper>()))
-				.WithUnion(JsonUnion<Shape2>.Create().AddCase("circle", Shape<Circle, Circle>())),
+			DerivedTypeUnions = [new DerivedShapeMapping<Wrapper> { { "shape", Shape<ShapeWrapper, ShapeWrapper>() } }, new DerivedShapeMapping<Shape2> { { "circle", Shape<Circle, Circle>() } }],
 		};
 
 		Wrapper value = new ShapeWrapper(new Circle(1));
@@ -215,9 +184,8 @@ public partial class JsonRuntimeUnionTests : TestBase
 	{
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([new CircleConverter()]),
-			Unions = JsonUnionConfiguration.Default.WithUnion(
-				JsonUnion<Shape2>.Create().AddCase("circle", Shape<Circle, Circle>())),
+			Converters = ConverterCollection.Create([new CircleConverter()]),
+			DerivedTypeUnions = [new DerivedShapeMapping<Shape2> { { "circle", Shape<Circle, Circle>() } }],
 		};
 
 		Shape2 value = new Circle(3);
@@ -266,13 +234,26 @@ public partial class JsonRuntimeUnionTests : TestBase
 		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{/* c */"radius":2.5}""", Shape<Shape2, Shape2>()));
 	}
 
+	[Test]
+	public async Task DuckTyping_RawCapturePreservesDepthBudget()
+	{
+		JsonSerializer serializer = DuckSerializer() with { StartingContext = new SerializationContext { MaxDepth = 2 } };
+		const string accepted = """{"radius":2.5,"unknown":[]}""";
+		const string rejected = """{"radius":2.5,"unknown":[[]]}""";
+		Assert.Equal(new Circle(2.5), serializer.Deserialize(accepted, Shape<Shape2, Shape2>()));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize(rejected, Shape<Shape2, Shape2>()));
+		Assert.IsType<InvalidOperationException>(exception.InnerException);
+
+		using MemoryStream goodStream = new(System.Text.Encoding.UTF8.GetBytes(accepted));
+		Assert.Equal(new Circle(2.5), await serializer.DeserializeAsync(goodStream, Shape<Shape2, Shape2>()));
+		using MemoryStream badStream = new(System.Text.Encoding.UTF8.GetBytes(rejected));
+		exception = await Assert.ThrowsAsync<JsonSerializationException>(async () => await serializer.DeserializeAsync(badStream, Shape<Shape2, Shape2>()));
+		Assert.IsType<InvalidOperationException>(exception.InnerException);
+	}
+
 	private static JsonSerializer DuckSerializer() => new()
 	{
-		Unions = JsonUnionConfiguration.Default.WithUnion(
-			JsonUnion<Shape2>.Create()
-				.AddCase("circle", Shape<Circle, Circle>())
-				.AddCase("square", Shape<Square, Square>())
-				.UseDuckTyping()),
+		DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<Shape2, Shape2>(), Shape<Circle, Circle>(), Shape<Square, Square>())],
 	};
 
 	private static ITypeShape<T> Shape<T, TProvider>()
@@ -327,17 +308,17 @@ public partial class JsonRuntimeUnionTests : TestBase
 
 	private sealed class CircleConverter : JsonConverter<Circle>
 	{
-		public override void Write(ref JsonWriter writer, Circle? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in Circle? value, SerializationContext context)
 		{
 			if (value is null)
 			{
-				writer.WriteNullValue();
+				writer.WriteNull();
 				return;
 			}
 
 			writer.WriteStartObject();
 			writer.WritePropertyName("r");
-			writer.WriteNumberValue(value.Radius);
+			writer.Write(value.Radius);
 			writer.WriteEndObject();
 		}
 

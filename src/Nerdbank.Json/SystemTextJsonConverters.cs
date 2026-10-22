@@ -6,7 +6,9 @@
 #pragma warning disable SA1649 // File name should match first type name
 
 using System.Text.Json;
-using System.Text.Json.Nodes;
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
 
 namespace Nerdbank.Json;
 
@@ -31,46 +33,46 @@ internal sealed class SystemTextJsonElementConverter : JsonConverter<JsonElement
 
 	public override JsonElement Read(ref JsonReader reader, SerializationContext context)
 	{
-		using JsonDocument document = JsonDocument.Parse(reader.ReadRawValue(), SystemTextJsonInterop.DocumentOptions);
+		using JsonDocument document = JsonDocument.Parse(reader.ReadRawValue(context), SystemTextJsonInterop.DocumentOptions);
 		return document.RootElement.Clone();
 	}
 
-	public override void Write(ref JsonWriter writer, JsonElement value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in JsonElement value, SerializationContext context)
 	{
 		if (value.ValueKind == System.Text.Json.JsonValueKind.Undefined)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
-		writer.WriteRawValue(value.GetRawText());
+		writer.WriteRaw(value.GetRawText());
 	}
 
-	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
+	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 }
 
 /// <summary>
-/// Bridges the mutable <see cref="JsonNode"/> object model to the wire by round-tripping through raw JSON text.
+/// Bridges the mutable <see cref="JsonSchemaNode"/> object model to the wire by round-tripping through raw JSON text.
 /// </summary>
-internal sealed class SystemTextJsonNodeConverter : JsonConverter<JsonNode>
+internal sealed class SystemTextJsonNodeConverter : JsonConverter<JsonSchemaNode>
 {
 	internal static readonly SystemTextJsonNodeConverter Instance = new();
 
-	public override JsonNode? Read(ref JsonReader reader, SerializationContext context)
-		=> JsonNode.Parse(reader.ReadRawValue(), nodeOptions: null, SystemTextJsonInterop.DocumentOptions);
+	public override JsonSchemaNode? Read(ref JsonReader reader, SerializationContext context)
+		=> JsonSchemaNode.Parse(reader.ReadRawValue(context), nodeOptions: null, SystemTextJsonInterop.DocumentOptions);
 
-	public override void Write(ref JsonWriter writer, JsonNode? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in JsonSchemaNode? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
-		writer.WriteRawValue(value.ToJsonString());
+		writer.WriteRaw(value.ToJsonString());
 	}
 
-	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
+	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 }
 
 /// <summary>
@@ -81,18 +83,18 @@ internal sealed class SystemTextJsonDocumentConverter : JsonConverter<JsonDocume
 	internal static readonly SystemTextJsonDocumentConverter Instance = new();
 
 	public override JsonDocument? Read(ref JsonReader reader, SerializationContext context)
-		=> JsonDocument.Parse(reader.ReadRawValue(), SystemTextJsonInterop.DocumentOptions);
+		=> JsonDocument.Parse(reader.ReadRawValue(context), SystemTextJsonInterop.DocumentOptions);
 
-	public override void Write(ref JsonWriter writer, JsonDocument? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in JsonDocument? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
-		writer.WriteRawValue(value.RootElement.GetRawText());
+		writer.WriteRaw(value.RootElement.GetRawText());
 	}
 
-	public override JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
+	public override JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => new();
 }

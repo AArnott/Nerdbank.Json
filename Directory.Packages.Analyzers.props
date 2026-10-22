@@ -1,0 +1,33 @@
+<Project>
+  <!-- Shipping analyzers support Roslyn 4.11 / Visual Studio 17.11 hosts.
+       https://learn.microsoft.com/visualstudio/extensibility/roslyn-version-support -->
+  <PropertyGroup>
+    <CodeAnalysisVersionForAnalyzers>4.11.0</CodeAnalysisVersionForAnalyzers>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Update="Microsoft.CodeAnalysis.CSharp" Version="$(CodeAnalysisVersionForAnalyzers)" />
+    <PackageVersion Update="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="$(CodeAnalysisVersionForAnalyzers)" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Common" Version="$(CodeAnalysisVersionForAnalyzers)" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="$(CodeAnalysisVersionForAnalyzers)" />
+    <!-- Pin the compiler-host dependency closure independently of application dependencies. -->
+    <PackageVersion Include="System.Collections.Immutable" Version="8.0.0" />
+    <PackageVersion Update="System.Memory" Version="4.5.5" />
+    <PackageVersion Update="System.Buffers" Version="4.5.1" />
+    <PackageVersion Include="System.Numerics.Vectors" Version="4.5.0" />
+    <PackageVersion Include="System.Text.Encoding.CodePages" Version="7.0.0" />
+    <PackageVersion Include="System.Reflection.Metadata" Version="8.0.0" />
+    <PackageVersion Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
+    <PackageVersion Include="System.Threading.Tasks.Extensions" Version="4.5.4" />
+    <PackageVersion Include="Humanizer.Core" Version="2.14.1" />
+    <PackageVersion Include="System.Threading.Channels" Version="7.0.0" />
+    <PackageVersion Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
+    <PackageVersion Update="System.IO.Pipelines" Version="8.0.0" />
+    <PackageVersion Include="System.Composition" Version="8.0.0" />
+    <PackageVersion Include="System.Composition.AttributedModel" Version="8.0.0" />
+    <PackageVersion Include="System.Composition.Convention" Version="8.0.0" />
+    <PackageVersion Include="System.Composition.Hosting" Version="8.0.0" />
+    <PackageVersion Include="System.Composition.Runtime" Version="8.0.0" />
+    <PackageVersion Include="System.Composition.TypedParts" Version="8.0.0" />
+  </ItemGroup>
+</Project>

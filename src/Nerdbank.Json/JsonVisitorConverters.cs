@@ -33,6 +33,8 @@ internal readonly struct JsonUnionCaseMetadata<TUnion>
 
 	internal JsonConverter Converter { get; }
 
+	internal string ObjectAlias => JsonUnionObjectEnvelope.GetAlias(this.usesIntegerAlias ? this.intAlias : null, this.stringAlias);
+
 	internal static JsonUnionCaseMetadata<TUnion> Create(string alias, JsonConverter converter) => new(alias, converter);
 
 	internal static JsonUnionCaseMetadata<TUnion> Create(int alias, JsonConverter converter) => new(alias, converter);
@@ -41,11 +43,11 @@ internal readonly struct JsonUnionCaseMetadata<TUnion>
 	{
 		if (this.usesIntegerAlias)
 		{
-			writer.WriteNumberValue(this.intAlias);
+			writer.Write(this.intAlias);
 		}
 		else
 		{
-			writer.WriteStringValue(this.stringAlias);
+			writer.Write(this.stringAlias);
 		}
 	}
 }
@@ -65,11 +67,11 @@ internal sealed class JsonOptionalConverter<TOptional, TElement> : JsonConverter
 		this.createSome = createSome;
 	}
 
-	public override void Write(ref JsonWriter writer, TOptional? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TOptional? value, SerializationContext context)
 	{
 		if (!this.deconstructor(value, out TElement? element))
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -104,12 +106,12 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 		}
 	}
 
-	public override void Write(ref JsonWriter writer, TEnum value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TEnum value, SerializationContext context)
 	{
 		var underlyingValue = (TUnderlying)(object)value;
 		if (this.namesByValue?.TryGetValue(underlyingValue, out string? name) == true)
 		{
-			writer.WriteStringValue(name);
+			writer.Write(name);
 			return;
 		}
 
@@ -188,7 +190,7 @@ internal sealed class JsonSurrogateConverter<T, TSurrogate> : JsonConverter<T>
 		this.surrogateConverter = surrogateConverter;
 	}
 
-	public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 		=> this.surrogateConverter.Write(ref writer, this.shape.Marshaler.Marshal(value), context);
 
 	public override T? Read(ref JsonReader reader, SerializationContext context)
@@ -202,25 +204,54 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 	private readonly JsonUnionCaseMetadata<TUnion>[] serializers;
 	private readonly IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias;
 	private readonly IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias;
+	private readonly JsonUnionObjectEnvelope? objectEnvelope;
 
-	internal JsonUnionConverter(JsonConverter<TUnion>? baseConverter, Getter<TUnion, int> getUnionCaseIndex, JsonUnionCaseMetadata<TUnion>[] serializers, IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias, IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias)
+	internal JsonUnionConverter(JsonConverter<TUnion>? baseConverter, Getter<TUnion, int> getUnionCaseIndex, JsonUnionCaseMetadata<TUnion>[] serializers, IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias, IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias, bool useDiscriminatorObjects)
 	{
 		this.baseConverter = baseConverter;
 		this.getUnionCaseIndex = getUnionCaseIndex;
 		this.serializers = serializers;
 		this.deserializersByIntAlias = deserializersByIntAlias;
 		this.deserializersByStringAlias = deserializersByStringAlias;
+		if (useDiscriminatorObjects)
+		{
+			this.objectEnvelope = new(baseConverter);
+			foreach (JsonUnionCaseMetadata<TUnion> entry in serializers)
+			{
+				this.objectEnvelope.Add(entry.ObjectAlias, entry.Converter);
+			}
+		}
 	}
 
-	public override void Write(ref JsonWriter writer, TUnion? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TUnion? value, SerializationContext context)
 	{
 		if (!typeof(TUnion).IsValueType && value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
 		context.DepthStep();
+
+		if (this.objectEnvelope is not null)
+		{
+			writer.WriteStartObject();
+			JsonConverter objectConverter;
+			if (value is not null && this.TryGetSerializer(value, out JsonUnionCaseMetadata<TUnion> objectCase))
+			{
+				writer.WritePropertyName(objectCase.ObjectAlias);
+				objectConverter = objectCase.Converter;
+			}
+			else
+			{
+				writer.WritePropertyName(JsonUnionObjectEnvelope.BaseAlias);
+				objectConverter = this.baseConverter ?? throw new NotSupportedException($"The base union type '{typeof(TUnion).FullName}' cannot be serialized directly.");
+			}
+
+			objectConverter.WriteObject(ref writer, value, context);
+			writer.WriteEndObject();
+			return;
+		}
 
 		writer.WriteStartArray();
 		JsonConverter converter;
@@ -231,7 +262,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 		else
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			converter = this.baseConverter ?? throw new NotSupportedException($"No union case is registered for type '{value?.GetType().FullName}', and the base type '{typeof(TUnion).FullName}' cannot be serialized directly.");
 		}
 
@@ -248,6 +279,14 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 
 		context.DepthStep();
+
+		if (this.objectEnvelope is not null)
+		{
+			JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader);
+			TUnion? objectValue = (TUnion?)objectConverter.ReadObject(ref reader, context);
+			JsonUnionObjectEnvelope.ReadEndObject(ref reader);
+			return objectValue;
+		}
 
 		reader.ReadStartArray();
 		JsonConverter converter;
@@ -268,8 +307,15 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		return value;
 	}
 
-	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	internal override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
+		if (this.objectEnvelope is not null)
+		{
+			JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader);
+			context.DepthStep();
+			return objectConverter.SkipToValue(ref reader, in segment, context);
+		}
+
 		reader.ReadStartArray();
 		JsonConverter? converter;
 		if (reader.TryReadNull())
@@ -290,11 +336,20 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 
 		reader.ReadValueSeparator();
-		return converter.TryNavigate(ref reader, in segment, options);
+		context.DepthStep();
+		return converter.SkipToValue(ref reader, in segment, context);
 	}
 
-	public override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+	internal override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
+		if (this.objectEnvelope is not null)
+		{
+			JsonConverter objectConverter = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context).ConfigureAwait(false);
+			context.DepthStep();
+			int objectInner = await objectConverter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
+			return objectInner < 0 ? -1 : objectInner + 1;
+		}
+
 		await reader.ReadStartArrayAsync(context).ConfigureAwait(false);
 		JsonConverter? converter;
 		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
@@ -315,7 +370,8 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 
 		await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
-		int inner = await converter.TryNavigateAsync(reader, segment, options, context).ConfigureAwait(false);
+		context.DepthStep();
+		int inner = await converter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
 		return inner < 0 ? -1 : inner + 1;
 	}
 
@@ -364,17 +420,17 @@ internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter
 		this.marshaler = marshaler;
 	}
 
-	public override void Write(ref JsonWriter writer, TUnion? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TUnion? value, SerializationContext context)
 		=> this.inner.Write(ref writer, this.marshaler.Unmarshal(value), context);
 
 	public override TUnion? Read(ref JsonReader reader, SerializationContext context)
 		=> this.marshaler.Marshal(this.inner.Read(ref reader, context));
 
-	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
-		=> this.inner.TryNavigate(ref reader, in segment, options);
+	internal override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> this.inner.SkipToValue(ref reader, in segment, context);
 
-	public override ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
-		=> this.inner.TryNavigateAsync(reader, segment, options, context);
+	internal override ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> this.inner.SkipToValueAsync(reader, segment, context);
 }
 
 internal sealed class JsonConstructorVisitorState<TDeclaring>
@@ -491,11 +547,11 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 	public override bool PreferAsyncSerialization => true;
 
-	public override void Write(ref JsonWriter writer, TDeclaring? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in TDeclaring? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -572,7 +628,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 		TArgumentState argumentState = this.argumentStateFactory();
 		HashSet<string> assignedParameters = new(StringComparer.Ordinal);
-		Dictionary<string, string>? extensionData = null;
+		UnusedDataPacket.Map? extensionData = null;
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
 		reader.ReadStartObject();
 		if (!reader.TryReadEndObject())
@@ -595,13 +651,13 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 					parameter.Read(ref reader, ref argumentState, context);
 				}
-				else if (this.extensionData is not null)
+				else if (this.extensionData?.CanRead is true)
 				{
-					(extensionData ??= new Dictionary<string, string>(StringComparer.Ordinal))[propertyName] = reader.ReadRawValue();
+					(extensionData ??= new()).Add(propertyName, reader.ReadRawValue(context));
 				}
 				else
 				{
-					reader.SkipValue();
+					reader.Skip(context);
 				}
 
 				if (reader.TryReadEndObject())
@@ -618,7 +674,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		TDeclaring result = this.constructor(ref argumentState);
 		if (this.extensionData is not null && extensionData is not null)
 		{
-			this.extensionData.Apply(result, extensionData);
+			this.extensionData.Apply(ref result, extensionData);
 		}
 
 		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
@@ -637,7 +693,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 		TArgumentState argumentState = this.argumentStateFactory();
 		HashSet<string> assignedParameters = new(StringComparer.Ordinal);
-		Dictionary<string, string>? extensionData = null;
+		UnusedDataPacket.Map? extensionData = null;
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
 		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
 		if (!await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
@@ -659,9 +715,9 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 					argumentState = await parameter.ReadIntoAsync(reader, argumentState, context).ConfigureAwait(false);
 				}
-				else if (this.extensionData is not null)
+				else if (this.extensionData?.CanRead is true)
 				{
-					(extensionData ??= new Dictionary<string, string>(StringComparer.Ordinal))[propertyName] = await reader.ReadRawValueAsync(context).ConfigureAwait(false);
+					(extensionData ??= new()).Add(propertyName, await reader.ReadRawValueAsync(context).ConfigureAwait(false));
 				}
 				else
 				{
@@ -682,7 +738,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		TDeclaring result = this.constructor(ref argumentState);
 		if (this.extensionData is not null && extensionData is not null)
 		{
-			this.extensionData.Apply(result, extensionData);
+			this.extensionData.Apply(ref result, extensionData);
 		}
 
 		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
@@ -707,7 +763,10 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 			if (missingRequiredParameters is not null)
 			{
-				throw new FormatException($"Missing required constructor parameters: {string.Join(", ", missingRequiredParameters)}.");
+				throw new JsonSerializationException($"Missing required constructor parameters: {string.Join(", ", missingRequiredParameters)}.")
+				{
+					Code = JsonSerializationException.ErrorCode.MissingRequiredProperty,
+				};
 			}
 		}
 	}

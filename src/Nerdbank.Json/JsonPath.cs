@@ -75,7 +75,10 @@ public sealed class JsonPath
 		return builder.ToString();
 	}
 
-	private JsonPath Append(JsonPathSegment segment)
+	/// <summary>Appends a segment with optional converter navigation metadata.</summary>
+	/// <param name="segment">The segment to append.</param>
+	/// <returns>The extended path.</returns>
+	internal JsonPath Append(JsonPathSegment segment)
 	{
 		JsonPathSegment[] combined = new JsonPathSegment[this.segments.Length + 1];
 		Array.Copy(this.segments, combined, this.segments.Length);

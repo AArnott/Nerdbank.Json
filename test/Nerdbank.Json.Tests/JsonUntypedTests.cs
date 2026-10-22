@@ -85,7 +85,9 @@ public class JsonUntypedTests : TestBase
 	{
 		JsonSerializer serializer = new() { StartingContext = new SerializationContext { MaxDepth = 4 } };
 		string json = "[[[[[1]]]]]";
-		Assert.Throws<InvalidOperationException>(() => serializer.DeserializeJsonValue(json));
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.DeserializeJsonValue(json));
+		Assert.IsType<InvalidOperationException>(error.InnerException);
+		Assert.Contains("maximum depth", error.InnerException.Message, StringComparison.Ordinal);
 	}
 
 	[Test]
@@ -95,7 +97,8 @@ public class JsonUntypedTests : TestBase
 		{
 			StartingContext = new SerializationContext { Security = new SecuritySettings { MaxObjectMemberCount = 2 } },
 		};
-		Assert.Throws<FormatException>(() => serializer.DeserializeJsonValue("""{"a":1,"b":2,"c":3}"""));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => serializer.DeserializeJsonValue("""{"a":1,"b":2,"c":3}"""));
+		Assert.IsType<FormatException>(exception.InnerException);
 	}
 
 	[Test]
@@ -121,7 +124,8 @@ public class JsonUntypedTests : TestBase
 	[Test]
 	public void TrailingData_Throws()
 	{
-		Assert.Throws<FormatException>(() => this.Serializer.DeserializeJsonValue("[1,2] garbage"));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.DeserializeJsonValue("[1,2] garbage"));
+		Assert.IsType<FormatException>(exception.InnerException);
 	}
 
 	[Test]

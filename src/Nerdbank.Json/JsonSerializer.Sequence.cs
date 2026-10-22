@@ -9,6 +9,49 @@ namespace Nerdbank.Json;
 
 public partial record JsonSerializer
 {
+	/// <summary>Streams the array selected by a typed path, without buffering the enclosing document.</summary>
+	/// <typeparam name="TRoot">The root document type.</typeparam>
+	/// <typeparam name="TElement">The element type.</typeparam>
+	/// <param name="reader">The input pipe. Ownership is controlled by <paramref name="options"/>.</param>
+	/// <param name="shape">The root type shape.</param>
+	/// <param name="options">The path and enumeration options.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <returns>The selected array elements.</returns>
+	/// <remarks>Full enumeration drains the JSON envelope. Early disposal leaves the pipe at the last consumed token, not at a new JSON document.</remarks>
+	public IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement>(PipeReader reader, ITypeShape<TRoot> shape, StreamingEnumerationOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
+	{
+		Requires.NotNull(reader);
+		Requires.NotNull(shape);
+		Requires.NotNull(options);
+		Requires.NotNull(options.Path);
+		(JsonPath path, JsonConverter?[] converters, ITypeShape<TElement> elementShape) = JsonPathExpressionParser.ParseSequence(options.Path, shape, this.ConverterCache, this.DictionaryKeyNamingPolicy);
+		return this.DeserializeOwnedPathEnumerableAsync(reader, path, converters, elementShape, options.EmptySequenceForUndiscoverablePath, options.LeaveOpen, cancellationToken);
+	}
+
+	/// <inheritdoc cref="DeserializePathEnumerableAsync{TRoot, TElement}(PipeReader, ITypeShape{TRoot}, StreamingEnumerationOptions{TRoot, TElement}, CancellationToken)" path="/*[not(self::param)]"/>
+	/// <param name="stream">The input stream, which remains open.</param>
+	/// <param name="shape">The root type shape.</param>
+	/// <param name="options">The path and enumeration options. The internally created pipe is always completed.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	public async IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement>(Stream stream, ITypeShape<TRoot> shape, StreamingEnumerationOptions<TRoot, TElement> options, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+	{
+		Requires.NotNull(stream);
+		Requires.NotNull(shape);
+		Requires.NotNull(options);
+		PipeReader reader = PipeReader.Create(stream, StreamPipeReaderOptions);
+		try
+		{
+			await foreach (TElement? element in this.DeserializePathEnumerableAsync(reader, shape, options with { LeaveOpen = true }, cancellationToken).ConfigureAwait(false))
+			{
+				yield return element;
+			}
+		}
+		finally
+		{
+			await reader.CompleteAsync().ConfigureAwait(false);
+		}
+	}
+
 	/// <summary>
 	/// Asynchronously streams the elements of a top-level JSON array, reading only enough to produce each element on demand.
 	/// </summary>
@@ -17,38 +60,12 @@ public partial record JsonSerializer
 	/// <param name="shape">The shape of <typeparamref name="T"/>.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>An asynchronous sequence of elements.</returns>
-	public async IAsyncEnumerable<T?> DeserializeArrayAsync<T>(PipeReader reader, ITypeShape<T> shape, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+	public IAsyncEnumerable<T?> DeserializeArrayAsync<T>(PipeReader reader, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(reader);
 		Requires.NotNull(shape);
 		this.ThrowIfSequenceStreamingUnsupported();
-
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
-		{
-			CancellationToken = context.CancellationToken,
-		};
-		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
-
-		if (!await asyncReader.TryReadNullAsync(context).ConfigureAwait(false))
-		{
-			await asyncReader.ReadStartArrayAsync(context).ConfigureAwait(false);
-			if (!await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
-			{
-				while (true)
-				{
-					yield return await asyncReader.ReadValueAsync(converter, context).ConfigureAwait(false);
-					if (await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
-					{
-						break;
-					}
-
-					await asyncReader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
-				}
-			}
-		}
-
-		await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+		return NormalizeSequenceExceptions(this.DeserializeArrayCoreAsync(reader, shape, cancellationToken), cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken);
 	}
 
 	/// <summary>
@@ -77,62 +94,45 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
-	/// Asynchronously streams the values of a newline-delimited JSON (NDJSON / JSON Lines) document, where each value is
-	/// framed on its own line.
+	/// Asynchronously streams JSON values using the selected framing.
 	/// </summary>
 	/// <typeparam name="T">The value type.</typeparam>
 	/// <param name="reader">The pipe to read from. It is advanced but never completed by this method.</param>
 	/// <param name="shape">The shape of <typeparamref name="T"/>.</param>
+	/// <param name="options">The framing options. The default is newline-delimited JSON.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>An asynchronous sequence of values.</returns>
-	/// <exception cref="FormatException">Thrown if two values are not separated by a line terminator.</exception>
-	public async IAsyncEnumerable<T?> DeserializeNewlineDelimitedAsync<T>(PipeReader reader, ITypeShape<T> shape, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+	/// <exception cref="JsonSerializationException">Thrown if deserialization or newline framing fails.</exception>
+	public IAsyncEnumerable<T?> DeserializeEnumerableAsync<T>(PipeReader reader, ITypeShape<T> shape, SequenceOptions options = default, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(reader);
 		Requires.NotNull(shape);
-		this.ThrowIfSequenceStreamingUnsupported();
-
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+		ValidateSequenceOptions(options);
+		if (options.Format == JsonSequenceFormat.JsonArray)
 		{
-			CancellationToken = context.CancellationToken,
-		};
-		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
-
-		bool first = true;
-		while (true)
-		{
-			(int next, bool sawLineTerminator) = await asyncReader.PeekNextByteAcrossLinesAsync().ConfigureAwait(false);
-			if (next == -1)
-			{
-				break;
-			}
-
-			if (!first && !sawLineTerminator)
-			{
-				throw new FormatException("Newline-delimited JSON values must be separated by a line terminator.");
-			}
-
-			first = false;
-			yield return await asyncReader.ReadValueAsync(converter, context).ConfigureAwait(false);
+			return this.DeserializeArrayAsync(reader, shape, cancellationToken);
 		}
+
+		this.ThrowIfSequenceStreamingUnsupported();
+		return NormalizeSequenceExceptions(this.DeserializeNewlineDelimitedCoreAsync(reader, shape, cancellationToken), cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken);
 	}
 
 	/// <summary>
-	/// Asynchronously streams the values of a newline-delimited JSON document from a stream.
+	/// Asynchronously streams JSON values from a stream using the selected framing.
 	/// </summary>
 	/// <typeparam name="T">The value type.</typeparam>
 	/// <param name="stream">The stream to read from. It is read but not disposed or closed by this method.</param>
 	/// <param name="shape">The shape of <typeparamref name="T"/>.</param>
+	/// <param name="options">The framing options. The default is newline-delimited JSON.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>An asynchronous sequence of values.</returns>
-	public async IAsyncEnumerable<T?> DeserializeNewlineDelimitedAsync<T>(Stream stream, ITypeShape<T> shape, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+	public async IAsyncEnumerable<T?> DeserializeEnumerableAsync<T>(Stream stream, ITypeShape<T> shape, SequenceOptions options = default, [EnumeratorCancellation] CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(stream);
 		PipeReader reader = PipeReader.Create(stream, StreamPipeReaderOptions);
 		try
 		{
-			await foreach (T? element in this.DeserializeNewlineDelimitedAsync(reader, shape, cancellationToken).ConfigureAwait(false))
+			await foreach (T? element in this.DeserializeEnumerableAsync(reader, shape, options, cancellationToken).ConfigureAwait(false))
 			{
 				yield return element;
 			}
@@ -155,12 +155,12 @@ public partial record JsonSerializer
 	/// <param name="missingBehavior">Controls behavior when the path is not found.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>An asynchronous sequence of elements.</returns>
-	public IAsyncEnumerable<TElement?> DeserializeArrayAtAsync<TElement>(PipeReader reader, JsonPath path, ITypeShape<TElement> elementShape, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
+	public IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TElement>(PipeReader reader, JsonPath path, ITypeShape<TElement> elementShape, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(reader);
 		Requires.NotNull(path);
 		Requires.NotNull(elementShape);
-		return this.DeserializeArrayAtCoreAsync(reader, path, null, elementShape, missingBehavior, cancellationToken);
+		return this.DeserializePathEnumerableCoreAsync(reader, path, null, elementShape, missingBehavior, cancellationToken);
 	}
 
 	/// <summary>
@@ -173,7 +173,7 @@ public partial record JsonSerializer
 	/// <param name="missingBehavior">Controls behavior when the path is not found.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>An asynchronous sequence of elements.</returns>
-	public async IAsyncEnumerable<TElement?> DeserializeArrayAtAsync<TElement>(Stream stream, JsonPath path, ITypeShape<TElement> elementShape, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+	public async IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TElement>(Stream stream, JsonPath path, ITypeShape<TElement> elementShape, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, [EnumeratorCancellation] CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(stream);
 		Requires.NotNull(path);
@@ -181,60 +181,7 @@ public partial record JsonSerializer
 		PipeReader reader = PipeReader.Create(stream, StreamPipeReaderOptions);
 		try
 		{
-			await foreach (TElement? element in this.DeserializeArrayAtCoreAsync(reader, path, null, elementShape, missingBehavior, cancellationToken).ConfigureAwait(false))
-			{
-				yield return element;
-			}
-		}
-		finally
-		{
-			await reader.CompleteAsync().ConfigureAwait(false);
-		}
-	}
-
-	/// <summary>
-	/// Asynchronously streams the elements of a JSON array selected by a member-access expression inside an object or
-	/// array envelope. The expression is parsed but never compiled, so this overload is NativeAOT-safe and can traverse
-	/// intermediate union or custom-converter representations.
-	/// </summary>
-	/// <typeparam name="TRoot">The root document type.</typeparam>
-	/// <typeparam name="TElement">The element type.</typeparam>
-	/// <param name="reader">The pipe to read from. It is advanced but never completed by this method.</param>
-	/// <param name="path">An expression such as <c>x =&gt; x.Items</c> selecting an <see cref="IEnumerable{T}"/>.</param>
-	/// <param name="rootShape">The shape of <typeparamref name="TRoot"/>.</param>
-	/// <param name="missingBehavior">Controls behavior when the path is not found.</param>
-	/// <param name="cancellationToken">A cancellation token.</param>
-	/// <returns>An asynchronous sequence of elements.</returns>
-	public IAsyncEnumerable<TElement?> DeserializeArrayAtAsync<TRoot, TElement>(PipeReader reader, Expression<Func<TRoot, IEnumerable<TElement>>> path, ITypeShape<TRoot> rootShape, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
-	{
-		Requires.NotNull(reader);
-		Requires.NotNull(path);
-		Requires.NotNull(rootShape);
-		(JsonPath parsedPath, JsonConverter?[] converters, ITypeShape<TElement> elementShape) = JsonPathExpressionParser.ParseSequence(path, rootShape, this.ConverterCache, this.DictionaryKeyNamingPolicy);
-		return this.DeserializeArrayAtCoreAsync(reader, parsedPath, converters, elementShape, missingBehavior, cancellationToken);
-	}
-
-	/// <summary>
-	/// Asynchronously streams the elements of a JSON array selected by a member-access expression from a stream.
-	/// </summary>
-	/// <typeparam name="TRoot">The root document type.</typeparam>
-	/// <typeparam name="TElement">The element type.</typeparam>
-	/// <param name="stream">The stream to read from. It is read but not disposed or closed by this method.</param>
-	/// <param name="path">An expression selecting an <see cref="IEnumerable{T}"/>.</param>
-	/// <param name="rootShape">The shape of <typeparamref name="TRoot"/>.</param>
-	/// <param name="missingBehavior">Controls behavior when the path is not found.</param>
-	/// <param name="cancellationToken">A cancellation token.</param>
-	/// <returns>An asynchronous sequence of elements.</returns>
-	public async IAsyncEnumerable<TElement?> DeserializeArrayAtAsync<TRoot, TElement>(Stream stream, Expression<Func<TRoot, IEnumerable<TElement>>> path, ITypeShape<TRoot> rootShape, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-	{
-		Requires.NotNull(stream);
-		Requires.NotNull(path);
-		Requires.NotNull(rootShape);
-		(JsonPath parsedPath, JsonConverter?[] converters, ITypeShape<TElement> elementShape) = JsonPathExpressionParser.ParseSequence(path, rootShape, this.ConverterCache, this.DictionaryKeyNamingPolicy);
-		PipeReader reader = PipeReader.Create(stream, StreamPipeReaderOptions);
-		try
-		{
-			await foreach (TElement? element in this.DeserializeArrayAtCoreAsync(reader, parsedPath, converters, elementShape, missingBehavior, cancellationToken).ConfigureAwait(false))
+			await foreach (TElement? element in this.DeserializePathEnumerableCoreAsync(reader, path, null, elementShape, missingBehavior, cancellationToken).ConfigureAwait(false))
 			{
 				yield return element;
 			}
@@ -262,31 +209,38 @@ public partial record JsonSerializer
 		Requires.NotNull(shape);
 
 		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
-		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
-
-		JsonWriter syncWriter = asyncWriter.CreateWriter();
-		syncWriter.WriteStartArray();
-		asyncWriter.ReturnWriter(ref syncWriter);
-
-		bool first = true;
-		await foreach (T value in values.WithCancellation(context.CancellationToken).ConfigureAwait(false))
+		try
 		{
-			if (!first)
+			JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
+			JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
+
+			JsonWriter syncWriter = asyncWriter.CreateWriter();
+			syncWriter.WriteStartArray();
+			asyncWriter.ReturnWriter(ref syncWriter);
+
+			bool first = true;
+			await foreach (T value in values.WithCancellation(context.CancellationToken).ConfigureAwait(false))
 			{
-				syncWriter = asyncWriter.CreateWriter();
-				syncWriter.WriteValueSeparator();
-				asyncWriter.ReturnWriter(ref syncWriter);
+				if (!first)
+				{
+					syncWriter = asyncWriter.CreateWriter();
+					syncWriter.WriteValueSeparator();
+					asyncWriter.ReturnWriter(ref syncWriter);
+				}
+
+				first = false;
+				await asyncWriter.WriteValueAsync(converter, value, context).ConfigureAwait(false);
 			}
 
-			first = false;
-			await asyncWriter.WriteValueAsync(converter, value, context).ConfigureAwait(false);
+			syncWriter = asyncWriter.CreateWriter();
+			syncWriter.WriteEndArray();
+			asyncWriter.ReturnWriter(ref syncWriter);
+			await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
 		}
-
-		syncWriter = asyncWriter.CreateWriter();
-		syncWriter.WriteEndArray();
-		asyncWriter.ReturnWriter(ref syncWriter);
-		await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during serialization.", ex);
+		}
 	}
 
 	/// <summary>
@@ -301,61 +255,146 @@ public partial record JsonSerializer
 	public async ValueTask SerializeArrayAsync<T>(Stream stream, IAsyncEnumerable<T> values, ITypeShape<T> shape, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(stream);
+		Requires.NotNull(values);
+		Requires.NotNull(shape);
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		await this.SerializeArrayAsync(writer, values, shape, cancellationToken).ConfigureAwait(false);
-		await writer.CompleteAsync().ConfigureAwait(false);
+		CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken;
+		await CompleteStreamSerializationAsync(writer, this.SerializeArrayAsync(writer, values, shape, cancellationToken), effectiveCancellationToken).ConfigureAwait(false);
 	}
 
 	/// <summary>
-	/// Asynchronously serializes an <see cref="IAsyncEnumerable{T}"/> as newline-delimited JSON (one value per line).
+	/// Asynchronously serializes an <see cref="IAsyncEnumerable{T}"/> using the selected JSON framing.
 	/// </summary>
 	/// <typeparam name="T">The value type.</typeparam>
 	/// <param name="writer">The pipe to write to. It is flushed but never completed by this method.</param>
 	/// <param name="values">The asynchronous source of values.</param>
 	/// <param name="shape">The shape of <typeparamref name="T"/>.</param>
+	/// <param name="options">The framing options. The default is newline-delimited JSON.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>A task tracking the serialization.</returns>
-	public async ValueTask SerializeNewlineDelimitedAsync<T>(PipeWriter writer, IAsyncEnumerable<T> values, ITypeShape<T> shape, CancellationToken cancellationToken = default)
+	public async ValueTask SerializeEnumerableAsync<T>(PipeWriter writer, IAsyncEnumerable<T> values, ITypeShape<T> shape, SequenceOptions options = default, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(writer);
 		Requires.NotNull(values);
 		Requires.NotNull(shape);
-
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		JsonAsyncWriter asyncWriter = new(writer, writeIndented: false);
-		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
-
-		await foreach (T value in values.WithCancellation(context.CancellationToken).ConfigureAwait(false))
+		ValidateSequenceOptions(options);
+		if (options.Format == JsonSequenceFormat.JsonArray)
 		{
-			await asyncWriter.WriteValueAsync(converter, value, context).ConfigureAwait(false);
-			JsonWriter syncWriter = asyncWriter.CreateWriter();
-			syncWriter.WriteRawValue("\n");
-			asyncWriter.ReturnWriter(ref syncWriter);
-			await asyncWriter.FlushIfAppropriateAsync(context).ConfigureAwait(false);
+			await this.SerializeArrayAsync(writer, values, shape, cancellationToken).ConfigureAwait(false);
+			return;
 		}
 
-		await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
+		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		try
+		{
+			JsonAsyncWriter asyncWriter = new(writer, writeIndented: false);
+			JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
+
+			await foreach (T value in values.WithCancellation(context.CancellationToken).ConfigureAwait(false))
+			{
+				await asyncWriter.WriteValueAsync(converter, value, context).ConfigureAwait(false);
+				JsonWriter syncWriter = asyncWriter.CreateWriter();
+				syncWriter.WriteRaw("\n");
+				asyncWriter.ReturnWriter(ref syncWriter);
+				await asyncWriter.FlushIfAppropriateAsync(context).ConfigureAwait(false);
+			}
+
+			await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during serialization.", ex);
+		}
 	}
 
 	/// <summary>
-	/// Asynchronously serializes an <see cref="IAsyncEnumerable{T}"/> as newline-delimited JSON to a stream.
+	/// Asynchronously serializes an <see cref="IAsyncEnumerable{T}"/> to a stream using the selected JSON framing.
 	/// </summary>
 	/// <typeparam name="T">The value type.</typeparam>
 	/// <param name="stream">The stream to write to. It is flushed but not disposed or closed by this method.</param>
 	/// <param name="values">The asynchronous source of values.</param>
 	/// <param name="shape">The shape of <typeparamref name="T"/>.</param>
+	/// <param name="options">The framing options. The default is newline-delimited JSON.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
 	/// <returns>A task tracking the serialization.</returns>
-	public async ValueTask SerializeNewlineDelimitedAsync<T>(Stream stream, IAsyncEnumerable<T> values, ITypeShape<T> shape, CancellationToken cancellationToken = default)
+	public async ValueTask SerializeEnumerableAsync<T>(Stream stream, IAsyncEnumerable<T> values, ITypeShape<T> shape, SequenceOptions options = default, CancellationToken cancellationToken = default)
 	{
 		Requires.NotNull(stream);
+		Requires.NotNull(values);
+		Requires.NotNull(shape);
+		ValidateSequenceOptions(options);
 		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		await this.SerializeNewlineDelimitedAsync(writer, values, shape, cancellationToken).ConfigureAwait(false);
-		await writer.CompleteAsync().ConfigureAwait(false);
+		CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken;
+		await CompleteStreamSerializationAsync(writer, this.SerializeEnumerableAsync(writer, values, shape, options, cancellationToken), effectiveCancellationToken).ConfigureAwait(false);
 	}
 
 #pragma warning disable SA1202 // Keep the private core enumerator adjacent to its public entry points.
-	private async IAsyncEnumerable<TElement?> DeserializeArrayAtCoreAsync<TElement>(PipeReader reader, JsonPath path, JsonConverter?[]? converters, ITypeShape<TElement> elementShape, MissingPathBehavior missingBehavior, [EnumeratorCancellation] CancellationToken cancellationToken)
+	private async IAsyncEnumerable<T?> DeserializeArrayCoreAsync<T>(PipeReader reader, ITypeShape<T> shape, [EnumeratorCancellation] CancellationToken cancellationToken)
+	{
+		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+		{
+			CancellationToken = context.CancellationToken,
+		};
+		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
+
+		if (!await asyncReader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			context.DepthStep();
+			await asyncReader.ReadStartArrayAsync(context).ConfigureAwait(false);
+			if (!await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+			{
+				while (true)
+				{
+					yield return await asyncReader.ReadValueAsync(converter, context).ConfigureAwait(false);
+					if (await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+					{
+						break;
+					}
+
+					await asyncReader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+				}
+			}
+		}
+
+		await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+	}
+
+	private async IAsyncEnumerable<T?> DeserializeNewlineDelimitedCoreAsync<T>(PipeReader reader, ITypeShape<T> shape, [EnumeratorCancellation] CancellationToken cancellationToken)
+	{
+		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+		{
+			CancellationToken = context.CancellationToken,
+		};
+		JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
+
+		bool first = true;
+		while (true)
+		{
+			(int next, bool sawLineTerminator) = await asyncReader.PeekNextByteAcrossLinesAsync().ConfigureAwait(false);
+			if (next == -1)
+			{
+				break;
+			}
+
+			if (!first && !sawLineTerminator)
+			{
+				throw new FormatException("Newline-delimited JSON values must be separated by a line terminator.");
+			}
+
+			first = false;
+			yield return await asyncReader.ReadValueAsync(converter, context).ConfigureAwait(false);
+		}
+	}
+
+	private IAsyncEnumerable<TElement?> DeserializePathEnumerableCoreAsync<TElement>(PipeReader reader, JsonPath path, JsonConverter?[]? converters, ITypeShape<TElement> elementShape, MissingPathBehavior missingBehavior, CancellationToken cancellationToken, bool nullIsMissing = false)
+	{
+		this.ThrowIfSequenceStreamingUnsupported();
+		return NormalizeSequenceExceptions(this.DeserializePathEnumerableIteratorAsync(reader, path, converters, elementShape, missingBehavior, cancellationToken, nullIsMissing), cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken);
+	}
+
+	private async IAsyncEnumerable<TElement?> DeserializePathEnumerableIteratorAsync<TElement>(PipeReader reader, JsonPath path, JsonConverter?[]? converters, ITypeShape<TElement> elementShape, MissingPathBehavior missingBehavior, [EnumeratorCancellation] CancellationToken cancellationToken, bool nullIsMissing)
 	{
 		this.ThrowIfSequenceStreamingUnsupported();
 
@@ -380,20 +419,29 @@ public partial record JsonSerializer
 			yield break;
 		}
 
-		if (!await asyncReader.TryReadNullAsync(context).ConfigureAwait(false))
+		if (await asyncReader.TryReadNullAsync(context).ConfigureAwait(false))
 		{
-			await asyncReader.ReadStartArrayAsync(context).ConfigureAwait(false);
-			if (!await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+			if (nullIsMissing && missingBehavior == MissingPathBehavior.Throw)
+			{
+				throw new JsonPathNotFoundException(path.ToString());
+			}
+		}
+		else
+		{
+			SerializationContext elementContext = context with { MaxDepth = context.MaxDepth - asyncReader.NavigationDepth };
+			elementContext.DepthStep();
+			await asyncReader.ReadStartArrayAsync(elementContext).ConfigureAwait(false);
+			if (!await asyncReader.TryReadEndArrayAsync(elementContext).ConfigureAwait(false))
 			{
 				while (true)
 				{
-					yield return await asyncReader.ReadValueAsync(converter, context).ConfigureAwait(false);
-					if (await asyncReader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+					yield return await asyncReader.ReadValueAsync(converter, elementContext).ConfigureAwait(false);
+					if (await asyncReader.TryReadEndArrayAsync(elementContext).ConfigureAwait(false))
 					{
 						break;
 					}
 
-					await asyncReader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+					await asyncReader.ReadValueSeparatorAsync(elementContext).ConfigureAwait(false);
 				}
 			}
 		}
@@ -402,11 +450,75 @@ public partial record JsonSerializer
 		await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
 	}
 
+	private async IAsyncEnumerable<TElement?> DeserializeOwnedPathEnumerableAsync<TElement>(PipeReader reader, JsonPath path, JsonConverter?[] converters, ITypeShape<TElement> shape, bool emptyForMissing, bool leaveOpen, [EnumeratorCancellation] CancellationToken cancellationToken)
+	{
+		try
+		{
+			await foreach (TElement? element in this.DeserializePathEnumerableCoreAsync(reader, path, converters, shape, emptyForMissing ? MissingPathBehavior.ReturnDefault : MissingPathBehavior.Throw, cancellationToken, nullIsMissing: true).ConfigureAwait(false))
+			{
+				yield return element;
+			}
+		}
+		finally
+		{
+			if (!leaveOpen)
+			{
+				await reader.CompleteAsync().ConfigureAwait(false);
+			}
+		}
+	}
+
+	private static async IAsyncEnumerable<T?> NormalizeSequenceExceptions<T>(IAsyncEnumerable<T?> sequence, CancellationToken operationCancellationToken, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+	{
+		IAsyncEnumerator<T?> enumerator = sequence.GetAsyncEnumerator(cancellationToken);
+		try
+		{
+			while (true)
+			{
+				T? value;
+				try
+				{
+					if (!await enumerator.MoveNextAsync().ConfigureAwait(false))
+					{
+						break;
+					}
+
+					value = enumerator.Current;
+				}
+				catch (Exception ex) when (ShouldWrapSerializationException(ex, operationCancellationToken) && ShouldWrapSerializationException(ex, cancellationToken))
+				{
+					throw new JsonSerializationException("An error occurred during deserialization.", ex);
+				}
+
+				yield return value;
+			}
+		}
+		finally
+		{
+			try
+			{
+				await enumerator.DisposeAsync().ConfigureAwait(false);
+			}
+			catch (Exception ex) when (ShouldWrapSerializationException(ex, operationCancellationToken) && ShouldWrapSerializationException(ex, cancellationToken))
+			{
+				throw new JsonSerializationException("An error occurred during deserialization.", ex);
+			}
+		}
+	}
+
 	private void ThrowIfSequenceStreamingUnsupported()
 	{
 		if (this.PreserveReferences != ReferencePreservationMode.Off)
 		{
 			throw new NotSupportedException("Asynchronous sequence streaming is not supported when reference preservation is enabled, because reference metadata wraps every value.");
+		}
+	}
+
+	private static void ValidateSequenceOptions(SequenceOptions options)
+	{
+		if (options.Format is not (JsonSequenceFormat.NDJson or JsonSequenceFormat.JsonArray))
+		{
+			throw new ArgumentOutOfRangeException(nameof(options), options.Format, "Unsupported JSON sequence format.");
 		}
 	}
 
@@ -419,21 +531,13 @@ public partial record JsonSerializer
 	public IAsyncEnumerable<T?> DeserializeArrayAsync<T>(Stream stream, CancellationToken cancellationToken = default)
 		where T : IShapeable<T> => this.DeserializeArrayAsync(stream, T.GetTypeShape(), cancellationToken);
 
-	/// <inheritdoc cref="DeserializeNewlineDelimitedAsync{T}(PipeReader, ITypeShape{T}, CancellationToken)"/>
-	public IAsyncEnumerable<T?> DeserializeNewlineDelimitedAsync<T>(PipeReader reader, CancellationToken cancellationToken = default)
-		where T : IShapeable<T> => this.DeserializeNewlineDelimitedAsync(reader, T.GetTypeShape(), cancellationToken);
+	/// <inheritdoc cref="DeserializeEnumerableAsync{T}(PipeReader, ITypeShape{T}, SequenceOptions, CancellationToken)"/>
+	public IAsyncEnumerable<T?> DeserializeEnumerableAsync<T>(PipeReader reader, SequenceOptions options = default, CancellationToken cancellationToken = default)
+		where T : IShapeable<T> => this.DeserializeEnumerableAsync(reader, T.GetTypeShape(), options, cancellationToken);
 
-	/// <inheritdoc cref="DeserializeNewlineDelimitedAsync{T}(Stream, ITypeShape{T}, CancellationToken)"/>
-	public IAsyncEnumerable<T?> DeserializeNewlineDelimitedAsync<T>(Stream stream, CancellationToken cancellationToken = default)
-		where T : IShapeable<T> => this.DeserializeNewlineDelimitedAsync(stream, T.GetTypeShape(), cancellationToken);
-
-	/// <inheritdoc cref="DeserializeArrayAtAsync{TRoot, TElement}(PipeReader, Expression{Func{TRoot, IEnumerable{TElement}}}, ITypeShape{TRoot}, MissingPathBehavior, CancellationToken)"/>
-	public IAsyncEnumerable<TElement?> DeserializeArrayAtAsync<TRoot, TElement>(PipeReader reader, Expression<Func<TRoot, IEnumerable<TElement>>> path, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
-		where TRoot : IShapeable<TRoot> => this.DeserializeArrayAtAsync(reader, path, TRoot.GetTypeShape(), missingBehavior, cancellationToken);
-
-	/// <inheritdoc cref="DeserializeArrayAtAsync{TRoot, TElement}(Stream, Expression{Func{TRoot, IEnumerable{TElement}}}, ITypeShape{TRoot}, MissingPathBehavior, CancellationToken)"/>
-	public IAsyncEnumerable<TElement?> DeserializeArrayAtAsync<TRoot, TElement>(Stream stream, Expression<Func<TRoot, IEnumerable<TElement>>> path, MissingPathBehavior missingBehavior = MissingPathBehavior.Throw, CancellationToken cancellationToken = default)
-		where TRoot : IShapeable<TRoot> => this.DeserializeArrayAtAsync(stream, path, TRoot.GetTypeShape(), missingBehavior, cancellationToken);
+	/// <inheritdoc cref="DeserializeEnumerableAsync{T}(Stream, ITypeShape{T}, SequenceOptions, CancellationToken)"/>
+	public IAsyncEnumerable<T?> DeserializeEnumerableAsync<T>(Stream stream, SequenceOptions options = default, CancellationToken cancellationToken = default)
+		where T : IShapeable<T> => this.DeserializeEnumerableAsync(stream, T.GetTypeShape(), options, cancellationToken);
 
 	/// <inheritdoc cref="SerializeArrayAsync{T}(PipeWriter, IAsyncEnumerable{T}, ITypeShape{T}, CancellationToken)"/>
 	public ValueTask SerializeArrayAsync<T>(PipeWriter writer, IAsyncEnumerable<T> values, CancellationToken cancellationToken = default)
@@ -443,13 +547,33 @@ public partial record JsonSerializer
 	public ValueTask SerializeArrayAsync<T>(Stream stream, IAsyncEnumerable<T> values, CancellationToken cancellationToken = default)
 		where T : IShapeable<T> => this.SerializeArrayAsync(stream, values, T.GetTypeShape(), cancellationToken);
 
-	/// <inheritdoc cref="SerializeNewlineDelimitedAsync{T}(PipeWriter, IAsyncEnumerable{T}, ITypeShape{T}, CancellationToken)"/>
-	public ValueTask SerializeNewlineDelimitedAsync<T>(PipeWriter writer, IAsyncEnumerable<T> values, CancellationToken cancellationToken = default)
-		where T : IShapeable<T> => this.SerializeNewlineDelimitedAsync(writer, values, T.GetTypeShape(), cancellationToken);
+	/// <inheritdoc cref="SerializeEnumerableAsync{T}(PipeWriter, IAsyncEnumerable{T}, ITypeShape{T}, SequenceOptions, CancellationToken)"/>
+	public ValueTask SerializeEnumerableAsync<T>(PipeWriter writer, IAsyncEnumerable<T> values, SequenceOptions options = default, CancellationToken cancellationToken = default)
+		where T : IShapeable<T> => this.SerializeEnumerableAsync(writer, values, T.GetTypeShape(), options, cancellationToken);
 
-	/// <inheritdoc cref="SerializeNewlineDelimitedAsync{T}(Stream, IAsyncEnumerable{T}, ITypeShape{T}, CancellationToken)"/>
-	public ValueTask SerializeNewlineDelimitedAsync<T>(Stream stream, IAsyncEnumerable<T> values, CancellationToken cancellationToken = default)
-		where T : IShapeable<T> => this.SerializeNewlineDelimitedAsync(stream, values, T.GetTypeShape(), cancellationToken);
+	/// <inheritdoc cref="SerializeEnumerableAsync{T}(Stream, IAsyncEnumerable{T}, ITypeShape{T}, SequenceOptions, CancellationToken)"/>
+	public ValueTask SerializeEnumerableAsync<T>(Stream stream, IAsyncEnumerable<T> values, SequenceOptions options = default, CancellationToken cancellationToken = default)
+		where T : IShapeable<T> => this.SerializeEnumerableAsync(stream, values, T.GetTypeShape(), options, cancellationToken);
 #endif
 #pragma warning restore SA1202
+
+	/// <summary>Specifies the framing for asynchronous JSON sequence serialization and deserialization.</summary>
+	public record struct SequenceOptions
+	{
+		/// <summary>Gets the framing format. The default is <see cref="JsonSequenceFormat.NDJson"/>.</summary>
+		public JsonSequenceFormat Format { get; init; }
+	}
+
+	/// <summary>Options for streaming a selected JSON array.</summary>
+	/// <typeparam name="TRoot">The envelope type.</typeparam>
+	/// <typeparam name="TElement">The array element type.</typeparam>
+	/// <param name="Path">The expression selecting the array.</param>
+	public record StreamingEnumerationOptions<TRoot, TElement>(Expression<Func<TRoot, IEnumerable<TElement>>> Path)
+	{
+		/// <summary>Gets a value indicating whether the caller's pipe remains open after completion or early disposal.</summary>
+		public bool LeaveOpen { get; init; }
+
+		/// <summary>Gets a value indicating whether a missing or null array produces an empty sequence.</summary>
+		public bool EmptySequenceForUndiscoverablePath { get; init; }
+	}
 }

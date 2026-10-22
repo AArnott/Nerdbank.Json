@@ -29,11 +29,11 @@ public static class UntypedJsonSample
 	// Opt in to converters for object / ExpandoObject / JsonValue members.
 	public static void ObjectAndExpando()
 	{
-		JsonSerializer serializer = new JsonSerializer().WithUntypedConverters();
+		JsonSerializer serializer = new JsonSerializer().WithObjectConverter().WithExpandoObjectConverter();
 
-		// A member typed as `object` deserializes to a boxed JsonValue.
+		// A member typed as `object` deserializes to primitives, dictionaries, and arrays.
 		object? boxed = serializer.Deserialize<object, Witness>("""[1,2,3]""");
-		System.Console.WriteLine(((JsonArray)boxed!).Count);
+		System.Console.WriteLine(((object?[])boxed!).Length);
 
 		// ExpandoObject round-trips as a JSON object (note: reconstruction is O(n^2)).
 		ExpandoObject expando = serializer.Deserialize<ExpandoObject, Witness>("""{"a":1,"b":true}""")!;

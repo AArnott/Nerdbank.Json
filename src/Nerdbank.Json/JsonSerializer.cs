@@ -3,6 +3,7 @@
 
 #pragma warning disable SA1600 // Internal helper members added for overload forwarding are intentionally undocumented.
 
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 
 namespace Nerdbank.Json;
@@ -15,8 +16,16 @@ namespace Nerdbank.Json;
 /// This type is immutable and thread-safe.
 /// </para>
 /// <para>
-/// Synchronous serialization and deserialization failures are reported as <see cref="JsonSerializationException"/>.
-/// The original exception is available as the inner exception; cancellation and argument validation errors are not wrapped.
+/// Serialization and deserialization operation failures, including asynchronous sequence enumeration, are reported as
+/// <see cref="JsonSerializationException"/>. Existing serialization exceptions retain their instance and error code;
+/// other failures retain their original cause as the inner exception. Argument validation and
+/// <see cref="OperationCanceledException"/> when the operation's cancellation token is canceled are not wrapped.
+/// </para>
+/// <para>
+/// UTF-8 buffers and caller-owned readers deserialize the first value, leaving subsequent values unread by the parser.
+/// String overloads validate a complete JSON document. Asynchronous stream overloads also validate a complete document:
+/// their temporary pipe may read ahead, so returning early could discard unread bytes when that pipe is completed.
+/// Use a caller-owned <see cref="System.IO.Pipelines.PipeReader"/> to preserve trailing data across asynchronous operations.
 /// </para>
 /// <para>
 /// When targeting .NET Standard 2.0 or .NET Framework, some important methods are available only as extension methods,
@@ -35,6 +44,13 @@ public partial record JsonSerializer
 	/// Gets the starting context to begin serializations and deserializations with.
 	/// </summary>
 	public SerializationContext StartingContext { get; init; } = new();
+
+	/// <inheritdoc cref="JsonSerializerConfiguration.MultiDimensionalArrayFormat"/>
+	public MultiDimensionalArrayFormat MultiDimensionalArrayFormat
+	{
+		get => this.configuration.MultiDimensionalArrayFormat;
+		init => this.configuration = this.configuration with { MultiDimensionalArrayFormat = value };
+	}
 
 	/// <inheritdoc cref="JsonSerializerConfiguration.PropertyNamingPolicy"/>
 	public JsonNamingPolicy? PropertyNamingPolicy
@@ -72,14 +88,14 @@ public partial record JsonSerializer
 	}
 
 	/// <inheritdoc cref="JsonSerializerConfiguration.ConverterTypes"/>
-	public JsonConverterTypeCollection ConverterTypes
+	public ConverterTypeCollection ConverterTypes
 	{
 		get => this.configuration.ConverterTypes;
 		init => this.configuration = this.configuration with { ConverterTypes = value };
 	}
 
 	/// <inheritdoc cref="JsonSerializerConfiguration.ConverterFactories"/>
-	public IReadOnlyList<IJsonConverterFactory> ConverterFactories
+	public ImmutableArray<IJsonConverterFactory> ConverterFactories
 	{
 		get => this.configuration.ConverterFactories;
 		init => this.configuration = this.configuration with { ConverterFactories = value };
@@ -157,11 +173,24 @@ public partial record JsonSerializer
 	/// <summary>
 	/// Gets the runtime union configuration that adds, replaces, extends, or disables shape-generated unions.
 	/// </summary>
-	/// <value>The default value is <see cref="JsonUnionConfiguration.Default"/>.</value>
-	public JsonUnionConfiguration Unions
+	/// <value>The default value is an empty collection.</value>
+	public DerivedTypeUnionCollection DerivedTypeUnions
 	{
-		get => this.configuration.UnionConfiguration;
-		init => this.configuration = this.configuration with { UnionConfiguration = value };
+		get => this.configuration.DerivedTypeUnions;
+		init => this.configuration = this.configuration with { DerivedTypeUnions = value };
+	}
+
+	/// <summary>Gets a value indicating whether unions use single-property object envelopes instead of two-element arrays.</summary>
+	/// <value>The default is <see langword="false"/>.</value>
+	/// <remarks>
+	/// Integer aliases become invariant-culture property names. The reserved <c>$base</c> property identifies a base-contract fallback.
+	/// Aliases that collide as property names or use <c>$base</c> are rejected in object mode.
+	/// Reference preservation continues to use <c>$id</c>, <c>$ref</c>, and <c>$value</c>.
+	/// </remarks>
+	public bool UseDiscriminatorObjects
+	{
+		get => this.configuration.UseDiscriminatorObjects;
+		init => this.configuration = this.configuration with { UseDiscriminatorObjects = value };
 	}
 
 	/// <summary>
@@ -180,12 +209,12 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(shape);
 
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		SerializationContext context = this.CreateSerializationContext(shape.Provider, cancellationToken);
 		try
 		{
 			this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, context);
 		}
-		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException(ex.Message, ex);
 		}
@@ -207,12 +236,12 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(shape);
 
-		SerializationContext context = this.CreateSerializationContext(startingContext);
+		SerializationContext context = this.CreateSerializationContext(startingContext) with { TypeShapeProvider = shape.Provider };
 		try
 		{
 			this.ConverterCache.GetOrAddConverter(shape).WriteObject(ref writer, value, context);
 		}
-		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException(ex.Message, ex);
 		}
@@ -265,12 +294,12 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(shape);
 
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		SerializationContext context = this.CreateSerializationContext(shape.Provider, cancellationToken);
 		try
 		{
 			return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, context);
 		}
-		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException(ex.Message, ex);
 		}
@@ -292,12 +321,12 @@ public partial record JsonSerializer
 	{
 		Requires.NotNull(shape);
 
-		SerializationContext context = this.CreateSerializationContext(startingContext);
+		SerializationContext context = this.CreateSerializationContext(startingContext) with { TypeShapeProvider = shape.Provider };
 		try
 		{
 			return this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref reader, context);
 		}
-		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException(ex.Message, ex);
 		}
@@ -339,6 +368,16 @@ public partial record JsonSerializer
 		return this.DeserializeCore(ref reader, shape, this.CreateSerializationContext(startingContext));
 	}
 
+	/// <summary>Creates an operation context for use by derived serializers.</summary>
+	/// <param name="provider">The shape provider for the operation.</param>
+	/// <param name="cancellationToken">A cancellation token.</param>
+	/// <returns>The initialized context.</returns>
+	protected SerializationContext CreateSerializationContext(ITypeShapeProvider provider, CancellationToken cancellationToken = default)
+	{
+		Requires.NotNull(provider);
+		return this.CreateSerializationContext(cancellationToken) with { TypeShapeProvider = provider };
+	}
+
 	private static bool RequiresReferencePreservation(Type type) => !type.IsValueType && !BuiltInJsonConverters.IsSupported(type);
 
 	private static void ThrowIfOperationInProgress(in SerializationContext startingContext)
@@ -353,6 +392,7 @@ public partial record JsonSerializer
 
 	private void SerializeCore<T>(ref JsonWriter writer, in T? value, ITypeShape<T> shape, SerializationContext context)
 	{
+		context = context with { TypeShapeProvider = shape.Provider };
 		try
 		{
 			if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TrySerialize(ref writer, value))
@@ -363,7 +403,7 @@ public partial record JsonSerializer
 
 			this.ConverterCache.GetOrAddConverter(shape).Write(ref writer, value, context);
 		}
-		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException(ex.Message, ex);
 		}
@@ -371,6 +411,7 @@ public partial record JsonSerializer
 
 	private T? DeserializeCore<T>(ref JsonReader reader, ITypeShape<T> shape, SerializationContext context)
 	{
+		context = context with { TypeShapeProvider = shape.Provider };
 		try
 		{
 			if (this.CanUseBuiltInFastPath(typeof(T)) && BuiltInJsonConverters.TryDeserialize(ref reader, context, out T value))
@@ -381,11 +422,14 @@ public partial record JsonSerializer
 
 			return this.ConverterCache.GetOrAddConverter(shape).Read(ref reader, context);
 		}
-		catch (Exception ex) when (ex is not JsonSerializationException and not OperationCanceledException)
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException(ex.Message, ex);
 		}
 	}
+
+	private static bool ShouldWrapSerializationException(Exception exception, CancellationToken cancellationToken)
+		=> exception is not JsonSerializationException && (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested);
 
 	private static void EnsureFullyConsumed(ref JsonReader reader)
 	{

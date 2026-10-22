@@ -11,10 +11,10 @@ namespace Nerdbank.Json;
 /// or an array element by index.
 /// </summary>
 /// <remarks>
-/// This is passed to <see cref="JsonConverter.TryNavigate(ref JsonReader, in JsonNavigationSegment, JsonNavigationOptions)"/>
+/// This is passed to the internal converter navigation helpers
 /// so a converter can translate a logical segment into a navigation over its own JSON representation.
 /// </remarks>
-public readonly struct JsonNavigationSegment
+internal readonly struct JsonNavigationSegment
 {
 	private readonly byte[]? utf8Name;
 
@@ -28,6 +28,8 @@ public readonly struct JsonNavigationSegment
 		this.Index = segment.Index;
 		this.Name = segment.Name;
 		this.utf8Name = segment.Utf8Name;
+		this.PropertyShape = segment.PropertyShape;
+		this.Key = segment.Kind == JsonPathSegmentKind.Index ? segment.Index : segment.Key ?? segment.Name;
 	}
 
 	/// <summary>
@@ -49,12 +51,18 @@ public readonly struct JsonNavigationSegment
 	/// Gets the precomputed UTF-8 encoding of <see cref="Name"/> used by the raw-token fast path.
 	/// </summary>
 	internal ReadOnlySpan<byte> Utf8Name => this.utf8Name;
+
+	/// <summary>Gets the logical property selected by an expression.</summary>
+	internal IPropertyShape? PropertyShape { get; }
+
+	/// <summary>Gets the logical dictionary key or array index selected by an expression.</summary>
+	internal object? Key { get; }
 }
 
 /// <summary>
 /// Options that flow through targeted-deserialization navigation.
 /// </summary>
-public readonly struct JsonNavigationOptions
+internal readonly struct JsonNavigationOptions
 {
 	/// <summary>
 	/// Initializes a new instance of the <see cref="JsonNavigationOptions"/> struct.

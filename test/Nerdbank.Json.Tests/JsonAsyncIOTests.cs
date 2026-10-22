@@ -1,6 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Buffers;
 using System.IO.Pipelines;
 using System.Text;
 using System.Threading.Tasks;
@@ -69,8 +70,9 @@ public partial class JsonAsyncIOTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"name":"x","age":1,"values":[]} garbage""");
 		using ChunkedStream stream = new(utf8, chunkSize: 3);
-		await Assert.ThrowsAsync<FormatException>(async () =>
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
 			await this.Serializer.DeserializeAsync(stream, Shape<Record, Record>()));
+		Assert.IsType<FormatException>(exception.InnerException);
 	}
 
 	[Test]
@@ -81,6 +83,254 @@ public partial class JsonAsyncIOTests : TestBase
 		using ChunkedStream stream = new(utf8, chunkSize: 5);
 		Record? result = await serializer.DeserializeAsync(stream, Shape<Record, Record>());
 		AssertRecord(new Record("x", 1, []), result);
+	}
+
+	[Test]
+	[Arguments("/*")]
+	[Arguments("/* unterminated")]
+	[Arguments("/**")]
+	[Arguments("/* unterminated *")]
+	[Arguments("/* unterminated **")]
+	[Arguments("/*/")]
+	[Arguments("/* closed */ /*")]
+	[Arguments("// line\n/* unterminated")]
+	public async Task Deserialize_UnterminatedTrailingComment_Throws(string suffix)
+	{
+		JsonSerializer serializer = new() { ReadCommentHandling = JsonCommentHandling.Skip };
+		string json = "\"value\" " + suffix;
+		ITypeShape<string> shape = Shape<string, Witness>();
+		JsonSerializationException syncException = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize(json, shape));
+		Assert.IsType<FormatException>(syncException.InnerException);
+
+		foreach (int chunkSize in new[] { 1, 2, 3, int.MaxValue })
+		{
+			byte[] utf8 = Encoding.UTF8.GetBytes(json);
+			using ChunkedStream typedStream = new(utf8, chunkSize);
+			JsonSerializationException typedException = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
+				await serializer.DeserializeAsync(typedStream, shape));
+			Assert.IsType<FormatException>(typedException.InnerException);
+			Assert.True(typedStream.CanRead);
+
+			using ChunkedStream untypedStream = new(utf8, chunkSize);
+			JsonSerializationException untypedException = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
+				await serializer.DeserializeObjectAsync(untypedStream, shape));
+			Assert.IsType<FormatException>(untypedException.InnerException);
+			Assert.True(untypedStream.CanRead);
+		}
+	}
+
+	[Test]
+	[Arguments("")]
+	[Arguments(" \t\r\n")]
+	[Arguments("//")]
+	[Arguments("// final comment")]
+	[Arguments("/**/")]
+	[Arguments("/* closed */")]
+	[Arguments("/* closed ***/ \t\r\n")]
+	[Arguments("/* closed */ // final comment")]
+	[Arguments("// line\r\n/* closed */")]
+	public async Task Deserialize_TrailingCommentTrivia_Allowed(string suffix)
+	{
+		JsonSerializer serializer = new() { ReadCommentHandling = JsonCommentHandling.Skip };
+		string json = "\"value\" " + suffix;
+		ITypeShape<string> shape = Shape<string, Witness>();
+		Assert.Equal("value", serializer.Deserialize(json, shape));
+
+		foreach (int chunkSize in new[] { 1, 2, 3, int.MaxValue })
+		{
+			byte[] utf8 = Encoding.UTF8.GetBytes(json);
+			using ChunkedStream typedStream = new(utf8, chunkSize);
+			Assert.Equal("value", await serializer.DeserializeAsync(typedStream, shape));
+			using ChunkedStream untypedStream = new(utf8, chunkSize);
+			Assert.Equal("value", await serializer.DeserializeObjectAsync(untypedStream, shape));
+		}
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task Deserialize_TrailingComment_PipeReturnsFirstValueAndPreservesBytes(bool untyped)
+	{
+		JsonSerializer serializer = new() { ReadCommentHandling = JsonCommentHandling.Skip };
+		ITypeShape<string> shape = Shape<string, Witness>();
+		Pipe pipe = new();
+		byte[] trailing = Encoding.UTF8.GetBytes(" /* unterminated");
+		byte[] input = [.. Encoding.UTF8.GetBytes("\"value\""), .. trailing];
+		await pipe.Writer.WriteAsync(input);
+		using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(10));
+		try
+		{
+			object? result = untyped
+				? await serializer.DeserializeObjectAsync(pipe.Reader, shape, cancellation.Token)
+				: await serializer.DeserializeAsync(pipe.Reader, shape, cancellation.Token);
+			Assert.Equal("value", result);
+
+			ReadResult remaining = await pipe.Reader.ReadAsync(cancellation.Token);
+			Assert.Equal(trailing, remaining.Buffer.ToArray());
+			pipe.Reader.AdvanceTo(remaining.Buffer.End);
+		}
+		finally
+		{
+			await pipe.Writer.CompleteAsync();
+			await pipe.Reader.CompleteAsync();
+		}
+	}
+
+	[Test]
+	[Arguments(false, false)]
+	[Arguments(false, true)]
+	[Arguments(true, false)]
+	[Arguments(true, true)]
+	public async Task Deserialize_CallerOwnedStreamPipe_PreservesSuccessiveValues(bool untyped, bool useStartingContext)
+	{
+		const string first = """{"name":"first","age":1,"values":[]}""";
+		const string second = """{"name":"second","age":2,"values":[]}""";
+		const string suffix = " /* unexamined trailing bytes";
+		byte[] input = Encoding.UTF8.GetBytes(first + " " + second + suffix);
+		foreach (int chunkSize in new[] { 1, 3, int.MaxValue })
+		{
+			using ChunkedStream stream = new(input, chunkSize);
+			PipeReader reader = PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: true));
+			using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(10));
+			SerializationContext context = new() { CancellationToken = cancellation.Token };
+			try
+			{
+				AssertRecord(new Record("first", 1, []), await ReadNextAsync());
+				if (chunkSize == int.MaxValue)
+				{
+					Assert.True(stream.Position > Encoding.UTF8.GetByteCount(first));
+				}
+
+				AssertRecord(new Record("second", 2, []), await ReadNextAsync());
+				using MemoryStream remaining = new();
+				await reader.CopyToAsync(remaining, cancellation.Token);
+				Assert.Equal(suffix, Encoding.UTF8.GetString(remaining.ToArray()));
+			}
+			finally
+			{
+				await reader.CompleteAsync();
+			}
+
+			Assert.True(stream.CanRead);
+
+			async ValueTask<Record?> ReadNextAsync()
+			{
+				if (untyped)
+				{
+					return (Record?)(useStartingContext
+						? await this.Serializer.DeserializeObjectAsync(reader, Shape<Record, Record>(), context)
+						: await this.Serializer.DeserializeObjectAsync(reader, Shape<Record, Record>(), cancellation.Token));
+				}
+
+				return useStartingContext
+					? await this.Serializer.DeserializeAsync(reader, Shape<Record, Record>(), context)
+					: await this.Serializer.DeserializeAsync(reader, Shape<Record, Record>(), cancellation.Token);
+			}
+		}
+	}
+
+	[Test]
+	[Arguments(false, false)]
+	[Arguments(false, true)]
+	[Arguments(true, false)]
+	[Arguments(true, true)]
+	public async Task Deserialize_StreamOverloads_RejectAdditionalValuesRegardlessOfSeekability(bool untyped, bool useStartingContext)
+	{
+		byte[] input = Encoding.UTF8.GetBytes("""{"name":"first","age":1,"values":[]} {"name":"second","age":2,"values":[]}""");
+		foreach (Stream stream in new Stream[] { new MemoryStream(input), new ChunkedStream(input, 1), new ChunkedStream(input, int.MaxValue) })
+		{
+			using (stream)
+			{
+				JsonSerializationException error = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
+				{
+					if (untyped)
+					{
+						if (useStartingContext)
+						{
+							await this.Serializer.DeserializeObjectAsync(stream, Shape<Record, Record>(), new SerializationContext());
+						}
+						else
+						{
+							await this.Serializer.DeserializeObjectAsync(stream, Shape<Record, Record>());
+						}
+					}
+					else if (useStartingContext)
+					{
+						await this.Serializer.DeserializeAsync(stream, Shape<Record, Record>(), new SerializationContext());
+					}
+					else
+					{
+						await this.Serializer.DeserializeAsync(stream, Shape<Record, Record>());
+					}
+				});
+				Assert.IsType<FormatException>(error.InnerException);
+				Assert.True(stream.CanRead);
+			}
+		}
+	}
+
+#if NET8_0
+	[Test]
+	public async Task Deserialize_CallerOwnedStreamPipe_DocumentationSample()
+	{
+		using ChunkedStream stream = new(Encoding.UTF8.GetBytes("""{"kind":"temperature","value":1} {"kind":"humidity","value":2}"""), int.MaxValue);
+		await StreamFirstValuesSample.ReadTwoValuesAsync(stream);
+		Assert.True(stream.CanRead);
+	}
+#endif
+
+	[Test]
+	[Arguments("/*")]
+	[Arguments("/* body")]
+	[Arguments("/**")]
+	public async Task Reader_PeekUnterminatedComment_Throws(string comment)
+	{
+		foreach (bool acrossLines in new[] { false, true })
+		{
+			using ChunkedStream stream = new(Encoding.UTF8.GetBytes(comment), chunkSize: 1);
+			PipeReader pipe = PipeReader.Create(stream);
+			try
+			{
+				using JsonAsyncReader reader = new(pipe, commentHandling: JsonCommentHandling.Skip) { CancellationToken = default };
+				await Assert.ThrowsAsync<FormatException>(async () =>
+				{
+					if (acrossLines)
+					{
+						await reader.PeekNextByteAcrossLinesAsync();
+					}
+					else
+					{
+						await reader.PeekNextByteAsync();
+					}
+				});
+			}
+			finally
+			{
+				await pipe.CompleteAsync();
+			}
+		}
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task Reader_PeekUnterminatedComment_CancellationThrows(bool acrossLines)
+	{
+		Pipe pipe = new();
+		await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes("/* body"));
+		using CancellationTokenSource cancellation = new();
+		try
+		{
+			using JsonAsyncReader reader = new(pipe.Reader, commentHandling: JsonCommentHandling.Skip) { CancellationToken = cancellation.Token };
+			Task pending = acrossLines ? reader.PeekNextByteAcrossLinesAsync().AsTask() : reader.PeekNextByteAsync().AsTask();
+			cancellation.Cancel();
+			await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+		}
+		finally
+		{
+			await pipe.Writer.CompleteAsync();
+			await pipe.Reader.CompleteAsync();
+		}
 	}
 
 	[Test]
@@ -184,7 +434,7 @@ public partial class JsonAsyncIOTests : TestBase
 		TrackingConverter converter = new();
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([converter]),
+			Converters = ConverterCollection.Create([converter]),
 		};
 
 		Tracked value = new("hello");
@@ -206,7 +456,7 @@ public partial class JsonAsyncIOTests : TestBase
 		await pipe.Writer.WriteAsync(utf8);
 		await pipe.Writer.CompleteAsync();
 		using JsonAsyncReader reader = new(pipe.Reader) { CancellationToken = default };
-		SerializationContext context = default;
+		SerializationContext context = new();
 		await reader.BufferNextValueAsync(context);
 		JsonReader sync = reader.CreateBufferedReader();
 		Assert.Throws<InvalidOperationException>(() => reader.CreateBufferedReader());
@@ -261,6 +511,7 @@ public partial class JsonAsyncIOTests : TestBase
 	internal partial record Tracked(string Text);
 
 	[GenerateShapeFor<int>]
+	[GenerateShapeFor<string>]
 	[GenerateShapeFor<Record[]>]
 	[GenerateShapeFor<int[]>]
 	[GenerateShapeFor<Dictionary<string, int>>]
@@ -274,8 +525,8 @@ public partial class JsonAsyncIOTests : TestBase
 
 		internal int ReadAsyncCalls { get; private set; }
 
-		public override void Write(ref JsonWriter writer, Tracked? value, SerializationContext context)
-			=> writer.WriteStringValue(value?.Text);
+		public override void Write(ref JsonWriter writer, in Tracked? value, SerializationContext context)
+			=> writer.Write(value?.Text);
 
 		public override Tracked? Read(ref JsonReader reader, SerializationContext context)
 		{
@@ -287,7 +538,7 @@ public partial class JsonAsyncIOTests : TestBase
 		{
 			this.WriteAsyncCalls++;
 			JsonWriter syncWriter = writer.CreateWriter();
-			syncWriter.WriteStringValue(value?.Text);
+			syncWriter.Write(value?.Text);
 			writer.ReturnWriter(ref syncWriter);
 			await writer.FlushIfAppropriateAsync(context);
 		}

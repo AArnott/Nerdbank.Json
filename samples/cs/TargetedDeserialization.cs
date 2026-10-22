@@ -19,23 +19,23 @@ string json =
 
 // Ergonomic expression overload: parsed but never compiled, so it is NativeAOT-safe.
 // CLR member names are translated to serialized names automatically.
-string city = serializer.DeserializeAt<Weather, string>(json, w => w.Location.City)!;
+string city = serializer.DeserializePath<Weather, string>(json, new JsonSerializer.DeserializePathOptions<Weather, string>(w => w.Location.City))!;
 
 // Pre-parsed path: build once, reuse on hot paths. Names are the serialized (wire) names.
 JsonPath secondReadingValue = JsonPath.Root.Member("readings").Index(1).Member("value");
-double humidity = serializer.DeserializeAt<double, Weather>(json, secondReadingValue);
+double humidity = serializer.DeserializePath<double, Weather>(json, secondReadingValue);
 
 // A missing path can throw or return the default value.
-string? missing = serializer.DeserializeAt<Weather, string>(json, w => w.Location.Country, MissingPathBehavior.ReturnDefault);
+string? missing = serializer.DeserializePath<Weather, string>(json, new JsonSerializer.DeserializePathOptions<Weather, string>(w => w.Location.Country) { DefaultForUndiscoverablePath = true });
 // </TargetedDeserialization>
 System.Console.WriteLine($"{city} {humidity} {missing}");
 
 JsonSerializer pointSerializer = new()
 {
-	Converters = new ConverterCollection([new PointConverter()]),
+	Converters = ConverterCollection.Create([new PointConverter()]),
 };
 string pointJson = pointSerializer.Serialize(new Sensor(new Point(3, 7)), Sensor.GetTypeShape());
-int y = pointSerializer.DeserializeAt<Sensor, int>(pointJson, s => s.Position.Y);
+int y = pointSerializer.DeserializePath<Sensor, int>(pointJson, new JsonSerializer.DeserializePathOptions<Sensor, int>(s => s.Position.Y));
 System.Console.WriteLine($"{pointJson} y={y}");
 
 [GenerateShape]
@@ -45,17 +45,17 @@ public partial record Sensor(Point Position);
 public partial record Point(int X, int Y);
 
 // <NavigationHook>
-// A custom converter that stores a Point as the positional array [x, y] overrides TryNavigate so a
+// A custom converter that stores a Point as the positional array [x, y] overrides SkipToPropertyValue so a
 // path such as s => s.Position.Y can traverse *through* the converter's representation. Without the
 // override the navigator would only understand plain objects and arrays.
 public sealed class PointConverter : JsonConverter<Point>
 {
-	public override void Write(ref JsonWriter writer, Point? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in Point? value, SerializationContext context)
 	{
 		writer.WriteStartArray();
-		writer.WriteNumberValue(value!.X);
+		writer.Write(value!.X);
 		writer.WriteValueSeparator();
-		writer.WriteNumberValue(value.Y);
+		writer.Write(value.Y);
 		writer.WriteEndArray();
 	}
 
@@ -69,12 +69,11 @@ public sealed class PointConverter : JsonConverter<Point>
 		return new Point(x, y);
 	}
 
-	public override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
+	public override bool SkipToPropertyValue(ref JsonReader reader, PolyType.Abstractions.IPropertyShape propertyShape, SerializationContext context)
 	{
-		// The segment carries the serialized member name (naming policy already applied).
 		int index =
-			options.NameComparer.Equals(segment.Name, "x") ? 0 :
-			options.NameComparer.Equals(segment.Name, "y") ? 1 : -1;
+			propertyShape.Name == "X" ? 0 :
+			propertyShape.Name == "Y" ? 1 : -1;
 		if (index < 0)
 		{
 			return false;
@@ -88,7 +87,7 @@ public sealed class PointConverter : JsonConverter<Point>
 
 		for (int i = 0; i < index; i++)
 		{
-			reader.SkipValue();
+			reader.Skip(context);
 			if (reader.TryReadEndArray())
 			{
 				return false;

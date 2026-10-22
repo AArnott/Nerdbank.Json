@@ -4,11 +4,19 @@
 using System.Text;
 using Microsoft.AspNetCore.Mvc.Formatters;
 
-namespace Nerdbank.Json.AspNetCore.Tests;
+namespace Nerdbank.Json.AspNetCoreMvcFormatter.Tests;
 
 public class OutputFormatterTests : FormatterTestBase
 {
-	private readonly NerdbankJsonOutputFormatter formatter = new(new JsonSerializer(), Provider);
+	private readonly JsonOutputFormatter formatter = new(Provider);
+
+	[Test]
+	public void Constructors_ValidateArguments()
+	{
+		Assert.Throws<ArgumentNullException>(() => new JsonOutputFormatter(null!));
+		Assert.Throws<ArgumentNullException>(() => new JsonOutputFormatter(null!, new JsonSerializer()));
+		Assert.Throws<ArgumentNullException>(() => new JsonOutputFormatter(Provider, null!));
+	}
 
 	[Test]
 	public async Task WriteAsync_SerializesModel()
@@ -43,13 +51,41 @@ public class OutputFormatterTests : FormatterTestBase
 	[Test]
 	public async Task WriteAsync_HonorsSerializerOptions()
 	{
-		NerdbankJsonOutputFormatter indenting = new(new JsonSerializer { WriteIndented = true }, Provider);
+		JsonOutputFormatter indenting = new(Provider, new JsonSerializer { WriteIndented = true });
 		(OutputFormatterWriteContext context, MemoryStream body) = CreateOutputContext(typeof(Person), new Person("Ada", 36));
 
 		await indenting.WriteAsync(context);
 
 		string json = Encoding.UTF8.GetString(body.ToArray());
 		Assert.Contains("\n", json);
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task WriteAsync_RuntimeType_LeavesBodyOpen(bool utf16)
+	{
+		(OutputFormatterWriteContext context, MemoryStream body) = CreateOutputContext(typeof(object), new Person("Ada", 36), utf16 ? "application/json; charset=utf-16" : "application/json");
+
+		await this.formatter.WriteAsync(context);
+
+		Encoding encoding = utf16 ? Encoding.Unicode : Encoding.UTF8;
+		Assert.Equal("""{"name":"Ada","age":36}""", encoding.GetString(body.ToArray()));
+		Assert.True(body.CanWrite);
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task WriteAsync_Cancellation_Throws(bool utf16)
+	{
+		using CancellationTokenSource cts = new();
+		cts.Cancel();
+		(OutputFormatterWriteContext context, MemoryStream body) = CreateOutputContext(typeof(Person), new Person("Ada", 36), utf16 ? "application/json; charset=utf-16" : "application/json", cts.Token);
+
+		await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await this.formatter.WriteAsync(context));
+
+		Assert.True(body.CanWrite);
 	}
 
 	[Test]

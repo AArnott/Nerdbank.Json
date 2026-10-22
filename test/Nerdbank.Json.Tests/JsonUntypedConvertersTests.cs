@@ -1,8 +1,12 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Dynamic;
+using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Microsoft.CSharp.RuntimeBinder;
 using PolyType;
 using PolyType.Abstractions;
 using JsonSerializer = Nerdbank.Json.JsonSerializer;
@@ -10,14 +14,16 @@ using StjNode = System.Text.Json.Nodes.JsonNode;
 
 public partial class JsonUntypedConvertersTests : TestBase
 {
-	private readonly JsonSerializer untyped = new JsonSerializer().WithUntypedConverters();
+	private readonly JsonSerializer untyped = new JsonSerializer().WithObjectConverter().WithExpandoObjectConverter().WithJsonValueConverter();
 
 	[Test]
-	public void Object_TopLevel_DeserializesToJsonValue()
+	public void Object_TopLevel_DeserializesToPrimitives()
 	{
 		object? value = this.untyped.Deserialize<object, Witness>("""{"a":1,"b":[true,null]}""");
-		JsonValue jsonValue = Assert.IsType<JsonObject>(value);
-		Assert.Equal(2, ((JsonObject)jsonValue).Count);
+		IReadOnlyDictionary<object, object?> members = Assert.IsAssignableFrom<IReadOnlyDictionary<object, object?>>(value);
+		Assert.Equal(2, members.Count);
+		Assert.Equal(1UL, members["a"]);
+		Assert.Equal(new object?[] { true, null }, Assert.IsType<object[]>(members["b"]));
 	}
 
 	[Test]
@@ -74,8 +80,8 @@ public partial class JsonUntypedConvertersTests : TestBase
 
 		Holder? result = this.untyped.Deserialize<Holder>(json);
 		Assert.NotNull(result);
-		JsonArray arr = Assert.IsType<JsonArray>(result.Value);
-		Assert.Equal(3, arr.Count);
+		object?[] arr = Assert.IsType<object[]>(result.Value);
+		Assert.Equal(3, arr.Length);
 		Assert.Equal("t", result.Tag);
 	}
 
@@ -104,8 +110,8 @@ public partial class JsonUntypedConvertersTests : TestBase
 		ExpandoObject expando = Assert.IsType<ExpandoObject>(value);
 		IDictionary<string, object?> members = expando;
 		Assert.Equal(3, members.Count);
-		Assert.Equal("Ada", ((JsonString)members["name"]!).Value);
-		Assert.Equal(36, ((JsonNumber)members["age"]!).GetInt64());
+		Assert.Equal("Ada", members["name"]);
+		Assert.Equal(36UL, members["age"]);
 
 		string json = this.untyped.Serialize<ExpandoObject, Witness>(expando);
 		Assert.Equal("""{"name":"Ada","age":36,"active":true}""", json);
@@ -117,7 +123,7 @@ public partial class JsonUntypedConvertersTests : TestBase
 		JsonSerializer limited = new JsonSerializer
 		{
 			StartingContext = new SerializationContext { Security = new SecuritySettings { MaxObjectMemberCount = 1 } },
-		}.WithUntypedConverters();
+		}.WithObjectConverter().WithExpandoObjectConverter();
 		Assert.Throws<JsonSerializationException>(() => limited.Deserialize<ExpandoObject, Witness>("""{"a":1,"b":2}"""));
 	}
 
@@ -159,12 +165,150 @@ public partial class JsonUntypedConvertersTests : TestBase
 		Assert.Throws<JsonSerializationException>(() => this.untyped.Deserialize<object, Witness>("""{"a":1,"a":2}"""));
 	}
 
+	[Test]
+	public void RuntimeShapedObjectUsesContextProvider()
+	{
+		Holder value = new() { Value = new RuntimeModel { Name = "Ada" } };
+		Assert.Equal("""{"value":{"name":"Ada"},"tag":null}""", this.untyped.Serialize(value));
+	}
+
+	[Test]
+	public async Task RuntimeShapedObjectAsync()
+	{
+		using MemoryStream stream = new();
+		await this.untyped.SerializeAsync(stream, (object)new RuntimeModel { Name = "Ada" }, Shape<object, Witness>());
+		Assert.Equal("""{"name":"Ada"}""", System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+	}
+
+	[Test]
+	public void DynamicObjectAndNestedExpandoMembers()
+	{
+		JsonSerializer serializer = new JsonSerializer().WithDynamicObjectConverter();
+		object? value = serializer.Deserialize<object, Witness>("""{"name":"Ada","nested":{"active":true}}""");
+		IDynamicMetaObjectProvider dynamicObject = Assert.IsAssignableFrom<IDynamicMetaObjectProvider>(value);
+		Assert.Contains("name", dynamicObject.GetMetaObject(Expression.Constant(value)).GetDynamicMemberNames());
+		IReadOnlyDictionary<object, object?> map = Assert.IsAssignableFrom<IReadOnlyDictionary<object, object?>>(value);
+		Assert.IsAssignableFrom<IDynamicMetaObjectProvider>(map["nested"]);
+		Assert.Equal("""{"name":"Ada","nested":{"active":true}}""", serializer.Serialize<object, Witness>(value));
+
+		ExpandoObject expando = this.untyped.Deserialize<ExpandoObject, Witness>("""{"nested":{"active":true}}""")!;
+		Assert.IsAssignableFrom<IDynamicMetaObjectProvider>(((IDictionary<string, object?>)expando)["nested"]);
+#if NET
+		if (RuntimeFeature.IsDynamicCodeSupported)
+#endif
+		{
+			AssertDynamicAccess(value!, expando);
+		}
+	}
+
+	[Test]
+	public void GranularRegistrationsRejectDuplicates()
+	{
+		Assert.Throws<ArgumentException>(() => this.untyped.WithObjectConverter());
+		Assert.Throws<ArgumentException>(() => this.untyped.WithDynamicObjectConverter());
+		Assert.Throws<ArgumentException>(() => this.untyped.WithExpandoObjectConverter());
+		Assert.Throws<ArgumentException>(() => this.untyped.WithJsonValueConverter());
+		JsonSerializer serializer = new JsonSerializer().WithSystemTextJsonConverters();
+		Assert.Throws<ArgumentException>(() => serializer.WithSystemTextJsonConverters());
+	}
+
+	[Test]
+	public void PrimitiveNumberTypesAndNativeNumberFidelity()
+	{
+		Assert.IsType<ulong>(this.untyped.Deserialize<object, Witness>("18446744073709551615"));
+		Assert.IsType<long>(this.untyped.Deserialize<object, Witness>("-9223372036854775808"));
+		Assert.IsType<double>(this.untyped.Deserialize<object, Witness>("1.5"));
+		Assert.Throws<JsonSerializationException>(() => this.untyped.Deserialize<object, Witness>("1e999"));
+		JsonNumber number = this.untyped.Deserialize<JsonNumber, Witness>("123456789012345678901234567890.00100e99")!;
+		Assert.Equal("123456789012345678901234567890.00100e99", number.RawToken);
+		Assert.Equal(number.RawToken, this.untyped.Serialize<JsonNumber, Witness>(number));
+	}
+
+	[Test]
+	[Arguments(ReferencePreservationMode.AllowCycles)]
+	[Arguments(ReferencePreservationMode.RejectCycles)]
+	public void RuntimeShapedObjectIsWrappedOnlyOnce(ReferencePreservationMode mode)
+	{
+		JsonSerializer serializer = this.untyped with { PreserveReferences = mode };
+		string json = serializer.Serialize<object, Witness>(new RuntimeModel { Name = "Ada" });
+		Assert.Equal("""{"$id":1,"$value":{"name":"Ada"}}""", json);
+		IReadOnlyDictionary<object, object?> result = Assert.IsAssignableFrom<IReadOnlyDictionary<object, object?>>(serializer.Deserialize<object, Witness>(json));
+		Assert.Equal("Ada", result["name"]);
+	}
+
+	[Test]
+	public async Task RuntimeShapedObjectCycleAsync()
+	{
+		JsonSerializer serializer = this.untyped with { PreserveReferences = ReferencePreservationMode.AllowCycles };
+		ReferenceRuntimeModel value = new();
+		value.Next = value;
+		using MemoryStream stream = new();
+		await serializer.SerializeAsync(stream, (object)value, Shape<object, Witness>());
+		Assert.Equal("""{"$id":1,"$value":{"next":{"$ref":1}}}""", System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+		stream.Position = 0;
+		object? result = await serializer.DeserializeAsync(stream, Shape<object, Witness>());
+		IReadOnlyDictionary<object, object?> dictionary = Assert.IsAssignableFrom<IReadOnlyDictionary<object, object?>>(result);
+		Assert.Same(result, dictionary["next"]);
+	}
+
+	[Test]
+	public void DictionaryAndExpandoCycles()
+	{
+		JsonSerializer serializer = this.untyped with { PreserveReferences = ReferencePreservationMode.AllowCycles };
+		Dictionary<object, object?> dictionary = [];
+		dictionary["self"] = dictionary;
+		string json = serializer.Serialize<object, Witness>(dictionary);
+		object? result = serializer.Deserialize<object, Witness>(json);
+		Assert.Same(result, Assert.IsAssignableFrom<IReadOnlyDictionary<object, object?>>(result)["self"]);
+
+		ExpandoObject expando = new();
+		((IDictionary<string, object?>)expando)["self"] = expando;
+		json = serializer.Serialize<ExpandoObject, Witness>(expando);
+		ExpandoObject roundTrip = serializer.Deserialize<ExpandoObject, Witness>(json)!;
+		Assert.Same(roundTrip, ((IDictionary<string, object?>)roundTrip)["self"]);
+	}
+
+#if NET
+	[RequiresDynamicCode("C# dynamic binding requires runtime code generation.")]
+	[UnconditionalSuppressMessage("Trimming", "IL2026", Justification = "Only called in untrimmed managed test runs. Native tests validate dictionary access instead.")]
+#endif
+	private static void AssertDynamicAccess(object value, ExpandoObject expando)
+	{
+		dynamic model = value;
+		Assert.Equal("Ada", (string)model.name);
+		Assert.Equal("Ada", (string)model["name"]);
+		Assert.True((bool)model.nested.active);
+		Assert.True((bool)model["nested"]["active"]);
+		Assert.Equal(2, ((IReadOnlyDictionary<object, object?>)value).Count);
+		Assert.Throws<RuntimeBinderException>(() => (object)model.Count);
+		Assert.Throws<RuntimeBinderException>(() => (object)model.missing);
+		Assert.Throws<RuntimeBinderException>(() => (object)model["missing"]);
+		Assert.Throws<RuntimeBinderException>(() => (object)model["name", "nested"]);
+		Assert.Throws<RuntimeBinderException>(() => model.name = "Grace");
+		Assert.Throws<RuntimeBinderException>(() => model["name"] = "Grace");
+		Assert.Throws<RuntimeBinderException>(() => model.name());
+		dynamic dynamicExpando = expando;
+		Assert.True((bool)dynamicExpando.nested.active);
+	}
+
 	private static ITypeShape<T> Shape<T, TProvider>()
 #if NET
 		where TProvider : IShapeable<T> => TProvider.GetTypeShape();
 #else
 		=> TypeShapeResolver.ResolveDynamicOrThrow<T, TProvider>();
 #endif
+
+	[GenerateShape]
+	public partial class RuntimeModel
+	{
+		public string? Name { get; set; }
+	}
+
+	[GenerateShape]
+	public partial class ReferenceRuntimeModel
+	{
+		public object? Next { get; set; }
+	}
 
 	[GenerateShape]
 	public partial class Holder
@@ -185,5 +329,7 @@ public partial class JsonUntypedConvertersTests : TestBase
 	[GenerateShapeFor<StjNode>]
 	[GenerateShapeFor<JsonElement>]
 	[GenerateShapeFor<JsonDocument>]
+	[GenerateShapeFor<JsonNumber>]
+	[GenerateShapeFor<RuntimeModel>]
 	private partial class Witness;
 }

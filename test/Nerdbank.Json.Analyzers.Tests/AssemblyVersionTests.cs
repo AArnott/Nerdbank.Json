@@ -10,6 +10,9 @@ public class AssemblyVersionTests
 	[Test]
 	public void NerdbankJsonAnalyzers() => AssertRevisionIsNonZero(typeof(global::Nerdbank.Json.Analyzers.JsonShapeUsageAnalyzer).Assembly);
 
+	[Test]
+	public void NerdbankJsonCodeFixes() => AssertRevisionIsNonZero(typeof(global::Nerdbank.Json.Analyzers.CodeFixes.DefaultValueInitializerCodeFix).Assembly);
+
 	private static void AssertRevisionIsNonZero(System.Reflection.Assembly assembly)
 	{
 		System.Reflection.AssemblyName name = assembly.GetName();

@@ -6,6 +6,8 @@
         <IsPackable>false</IsPackable>
         <IsAnalyzerProject>true</IsAnalyzerProject>
         <IsRoslynComponent>true</IsRoslynComponent>
+        <!-- Select the deliberate compiler-host compatibility pins, not application package versions. -->
+        <IsAnalyzerCompatibilityProject>true</IsAnalyzerCompatibilityProject>
         <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
     </PropertyGroup>
 

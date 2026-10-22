@@ -7,6 +7,40 @@ using PolyType.Abstractions;
 
 public partial class JsonObjectSerializerTests : TestBase
 {
+#if NET
+	[Test]
+	[NotInParallel]
+	public void Serialize_CachedObjectGraph_DoesNotAllocate()
+	{
+		Person value = new()
+		{
+			Name = "Ada",
+			Age = 37,
+			Address = new Address { City = "Seattle", PostalCode = 98101 },
+		};
+		ITypeShape<Person> shape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<Person>()!;
+		ArrayBufferWriter<byte> buffer = new();
+		const string ExpectedJson = """{"name":"Ada","age":37,"address":{"city":"Seattle","postalCode":98101}}""";
+		for (int i = 0; i < 1000; i++)
+		{
+			buffer.Clear();
+			this.Serializer.Serialize(buffer, value, shape);
+		}
+
+		Assert.Equal(ExpectedJson, Encoding.UTF8.GetString(buffer.WrittenSpan));
+		long before = GC.GetAllocatedBytesForCurrentThread();
+		for (int i = 0; i < 1000; i++)
+		{
+			buffer.Clear();
+			this.Serializer.Serialize(buffer, value, shape);
+		}
+
+		long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+		Assert.Equal(0L, allocated);
+		Assert.Equal(ExpectedJson, Encoding.UTF8.GetString(buffer.WrittenSpan));
+	}
+#endif
+
 	[Test]
 	public void Deserialize_ObjectGraph_FromMultiSegmentUtf8Sequence()
 	{
@@ -94,11 +128,84 @@ public partial class JsonObjectSerializerTests : TestBase
 	}
 
 	[Test]
-	public void Deserialize_EmptyObjectGraph_IgnoresUnknownProperty()
+	[Arguments("{}")]
+	[Arguments("""{"unknown":1}""")]
+	public void Deserialize_EmptyObjectGraph_IgnoresUnknownProperty(string json)
 	{
-		EmptyContainer? value = this.Serializer.Deserialize<EmptyContainer>("""{"unknown":1}""");
+		EmptyContainer? value = this.Serializer.Deserialize<EmptyContainer>(json);
 
 		Assert.NotNull(value);
+	}
+
+	[Test]
+	[Arguments("""{"Aa":1,"BB":2,"Ua":3,"café":4}""")]
+	[Arguments("""{"café":4,"C#":{"nested":[1,2]},"Ua":3,"BB":2,"Aa":1}""")]
+	[Arguments("""{"caf\u00e9":4,"Ua":3,"B\u0042":2,"\u0041a":1,"C#":false}""")]
+	public void Deserialize_ObjectGraph_PowerOfTwoPropertyCount_ResolvesCollisions(string json)
+	{
+		this.Serializer = new() { PropertyNamingPolicy = null };
+		PowerOfTwoPropertyContainer? value = this.Serializer.Deserialize<PowerOfTwoPropertyContainer>(Encoding.UTF8.GetBytes(json));
+
+		Assert.NotNull(value);
+		Assert.Equal(1, value.First);
+		Assert.Equal(2, value.Second);
+		Assert.Equal(3, value.Third);
+		Assert.Equal(4, value.Unicode);
+	}
+
+	[Test]
+	[Arguments("""{"Aa":1,"BB":2,"Ua":3,"café":4,"abcde":5}""")]
+	[Arguments("""{"abcde":5,"café":4,"C#":{"nested":[1,2]},"Ua":3,"BB":2,"Aa":1}""")]
+	[Arguments("""{"abcde":5,"caf\u00e9":4,"Ua":3,"B\u0042":2,"\u0041a":1,"C#":false}""")]
+	public void Deserialize_ObjectGraph_NonPowerOfTwoPropertyCount_ResolvesCollisions(string json)
+	{
+		this.Serializer = new() { PropertyNamingPolicy = null };
+		NonPowerOfTwoPropertyContainer? value = this.Serializer.Deserialize<NonPowerOfTwoPropertyContainer>(Encoding.UTF8.GetBytes(json));
+
+		Assert.NotNull(value);
+		Assert.Equal(1, value.First);
+		Assert.Equal(2, value.Second);
+		Assert.Equal(3, value.Third);
+		Assert.Equal(4, value.Unicode);
+		Assert.Equal(5, value.NegativeHash);
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public void Deserialize_ObjectGraph_CollidingPropertyNames_CaseInsensitiveFallback(bool escapedNames)
+	{
+		this.Serializer = new() { PropertyNamingPolicy = null, PropertyNameCaseInsensitive = true };
+		string json = escapedNames
+			? """{"ABC\u0044E":5,"CAF\u00e9":4,"uA":3,"b\u0062":2,"\u0061A":1,"C#":false}"""
+			: """{"ABCDE":5,"CAFé":4,"uA":3,"bb":2,"aA":1,"C#":false}""";
+		byte[] utf8 = Encoding.UTF8.GetBytes(json);
+
+		PowerOfTwoPropertyContainer? powerOfTwo = this.Serializer.Deserialize<PowerOfTwoPropertyContainer>(utf8);
+		NonPowerOfTwoPropertyContainer? nonPowerOfTwo = this.Serializer.Deserialize<NonPowerOfTwoPropertyContainer>(utf8);
+
+		Assert.NotNull(powerOfTwo);
+		Assert.Equal(1, powerOfTwo.First);
+		Assert.Equal(2, powerOfTwo.Second);
+		Assert.Equal(3, powerOfTwo.Third);
+		Assert.Equal(4, powerOfTwo.Unicode);
+		Assert.NotNull(nonPowerOfTwo);
+		Assert.Equal(1, nonPowerOfTwo.First);
+		Assert.Equal(2, nonPowerOfTwo.Second);
+		Assert.Equal(3, nonPowerOfTwo.Third);
+		Assert.Equal(4, nonPowerOfTwo.Unicode);
+		Assert.Equal(5, nonPowerOfTwo.NegativeHash);
+	}
+
+	[Test]
+	[Arguments("""{"unknown":false,"uri":"value"}""")]
+	[Arguments("""{"\u0075ri":"value","unknown":false}""")]
+	public void Deserialize_ObjectGraph_SingleProperty_ResolvesName(string json)
+	{
+		RenamedPropertyContainer? value = this.Serializer.Deserialize<RenamedPropertyContainer>(Encoding.UTF8.GetBytes(json));
+
+		Assert.NotNull(value);
+		Assert.Equal("value", value.URLValue);
 	}
 
 	[Test]
@@ -122,8 +229,7 @@ public partial class JsonObjectSerializerTests : TestBase
 		Assert.NotNull(value);
 		Assert.Equal("Ada", value.Name);
 		Assert.NotNull(value.ExtensionData);
-		Assert.Equal("true", value.ExtensionData!["unknown"]);
-		Assert.Equal("""{"nested":5}""", value.ExtensionData["extra"]);
+		Assert.Equal("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""", this.Serializer.Serialize(value));
 	}
 
 	[Test]
@@ -161,15 +267,7 @@ public partial class JsonObjectSerializerTests : TestBase
 	[Test]
 	public void Serialize_ObjectGraph_WritesExtensionDataMembers()
 	{
-		ExtensionDataPerson value = new()
-		{
-			Name = "Ada",
-			ExtensionData = new Dictionary<string, string>
-			{
-				["unknown"] = "true",
-				["extra"] = """{"nested":5}""",
-			},
-		};
+		ExtensionDataPerson value = this.Serializer.Deserialize<ExtensionDataPerson>("""{"name":"Ada","unknown":true,"extra":{"nested":5}}""")!;
 
 		string json = this.Serializer.Serialize(value);
 
@@ -442,6 +540,44 @@ public partial class JsonObjectSerializerTests : TestBase
 	{
 	}
 
+	// Including quotes, Aa and BB have equal hashes; Ua shares their bucket for both 4 and 5 buckets.
+	// The unknown name C# has the same hash as Aa and BB.
+	[GenerateShape]
+	internal partial class PowerOfTwoPropertyContainer
+	{
+		[PropertyShape(Name = "Aa")]
+		public int First { get; set; }
+
+		[PropertyShape(Name = "BB")]
+		public int Second { get; set; }
+
+		[PropertyShape(Name = "Ua")]
+		public int Third { get; set; }
+
+		[PropertyShape(Name = "café")]
+		public int Unicode { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class NonPowerOfTwoPropertyContainer
+	{
+		[PropertyShape(Name = "Aa")]
+		public int First { get; set; }
+
+		[PropertyShape(Name = "BB")]
+		public int Second { get; set; }
+
+		[PropertyShape(Name = "Ua")]
+		public int Third { get; set; }
+
+		[PropertyShape(Name = "café")]
+		public int Unicode { get; set; }
+
+		// The quoted UTF-8 name has a negative hash, exercising positive-hash modulus.
+		[PropertyShape(Name = "abcde")]
+		public int NegativeHash { get; set; }
+	}
+
 	[GenerateShape]
 	internal partial class Address
 	{
@@ -455,8 +591,7 @@ public partial class JsonObjectSerializerTests : TestBase
 	{
 		public string? Name { get; set; }
 
-		[JsonExtensionData]
-		public Dictionary<string, string>? ExtensionData { get; set; }
+		public UnusedDataPacket? ExtensionData { get; set; }
 	}
 
 	[GenerateShape]

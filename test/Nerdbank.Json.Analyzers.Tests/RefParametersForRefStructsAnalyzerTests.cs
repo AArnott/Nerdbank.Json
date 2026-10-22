@@ -39,4 +39,41 @@ public class RefParametersForRefStructsAnalyzerTests
 
 		await VerifyCS.VerifyAnalyzerAsync(source);
 	}
+
+	[Test]
+	public Task MethodWithJsonReaderParameterMissingRef()
+		=> VerifyCS.VerifyAnalyzerAsync(
+			/* lang=c#-test */ """
+			using Reader = Nerdbank.Json.JsonReader;
+			class Test
+			{
+				public void Read({|NBJson050:Reader|} reader) { }
+			}
+			""");
+
+	[Test]
+	public Task ReaderWithExplicitPassingConvention()
+		=> VerifyCS.VerifyAnalyzerAsync(
+			/* lang=c#-test */ """
+			using Nerdbank.Json;
+			class Test
+			{
+				public void Read(ref JsonReader reader) { }
+				public void Snapshot(in JsonReader reader) { }
+				public void Create(out JsonReader reader) { reader = default; }
+			}
+			""");
+
+	[Test]
+	public Task AsynchronousAndUnrelatedReadersAreNotRefStructs()
+		=> VerifyCS.VerifyAnalyzerAsync(
+			/* lang=c#-test */ """
+			using Nerdbank.Json;
+			class JsonReader { }
+			class Test
+			{
+				public void Read(JsonReader reader) { }
+				public void ReadAsync(JsonAsyncReader reader) { }
+			}
+			""");
 }

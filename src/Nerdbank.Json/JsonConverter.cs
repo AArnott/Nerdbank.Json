@@ -1,9 +1,14 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
+
 #pragma warning disable SA1402 // File may only contain a single type
 #pragma warning disable SA1600 // Internal helper elements are intentionally undocumented in this file.
 
+using System.Globalization;
 using PolyType.Utilities;
 
 namespace Nerdbank.Json;
@@ -37,7 +42,85 @@ public abstract class JsonConverter
 	/// <see langword="null"/> is returned, the exporter emits a permissive schema annotated with a conspicuous
 	/// comment rather than pretending to know the representation.
 	/// </returns>
-	public virtual JsonSchema? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => null;
+	public virtual JsonSchemaObject? GetJsonSchema(JsonSchemaContext context, ITypeShape typeShape) => null;
+
+	/// <summary>Skips to the value of a logical property in this converter's representation.</summary>
+	/// <param name="reader">The reader positioned at this converter's value.</param>
+	/// <param name="propertyShape">The logical property to select.</param>
+	/// <param name="context">The serialization context.</param>
+	/// <returns>Whether the property was found, with the reader ready to read its value.</returns>
+	public virtual bool SkipToPropertyValue(ref JsonReader reader, IPropertyShape propertyShape, SerializationContext context)
+	{
+		Requires.NotNull(propertyShape);
+		context.CancellationToken.ThrowIfCancellationRequested();
+		JsonNavigationSegment segment = CreatePropertySegment(propertyShape, context);
+		return this.TryNavigate(ref reader, in segment, GetNavigationOptions(context), context);
+	}
+
+	/// <summary>Skips to the value at a logical array index or dictionary key.</summary>
+	/// <param name="reader">The reader positioned at this converter's value.</param>
+	/// <param name="index">The array index or dictionary key.</param>
+	/// <param name="context">The serialization context.</param>
+	/// <returns>Whether the value was found, with the reader ready to read it.</returns>
+	public virtual bool SkipToIndexValue(ref JsonReader reader, object? index, SerializationContext context)
+	{
+		context.CancellationToken.ThrowIfCancellationRequested();
+		JsonNavigationSegment segment = CreateIndexSegment(index, reader.PeekValueToken() == '[', context);
+		return this.TryNavigate(ref reader, in segment, GetNavigationOptions(context), context);
+	}
+
+	/// <summary>Asynchronously skips to the value of a logical property without buffering its enclosing value.</summary>
+	/// <param name="reader">The asynchronous reader.</param>
+	/// <param name="propertyShape">The logical property to select.</param>
+	/// <param name="context">The serialization context.</param>
+	/// <returns>Whether the property was found, with the reader ready to read its value.</returns>
+	/// <remarks>Use the reader's structural methods to enter containers so envelope draining can account for them.</remarks>
+	public virtual async ValueTask<bool> SkipToPropertyValueAsync(JsonAsyncReader reader, IPropertyShape propertyShape, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		Requires.NotNull(propertyShape);
+		context.CancellationToken.ThrowIfCancellationRequested();
+		return await this.TryNavigateAsync(reader, CreatePropertySegment(propertyShape, context), GetNavigationOptions(context), context).ConfigureAwait(false) >= 0;
+	}
+
+	/// <summary>Asynchronously skips to a logical array index or dictionary key.</summary>
+	/// <param name="reader">The asynchronous reader.</param>
+	/// <param name="index">The array index or dictionary key.</param>
+	/// <param name="context">The serialization context.</param>
+	/// <returns>Whether the value was found, with the reader ready to read it.</returns>
+	/// <remarks>Use the reader's structural methods to enter containers so envelope draining can account for them.</remarks>
+	public virtual async ValueTask<bool> SkipToIndexValueAsync(JsonAsyncReader reader, object? index, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		context.CancellationToken.ThrowIfCancellationRequested();
+		JsonNavigationSegment segment = CreateIndexSegment(index, await reader.PeekNextByteAsync().ConfigureAwait(false) == '[', context);
+		return await this.TryNavigateAsync(reader, segment, GetNavigationOptions(context), context).ConfigureAwait(false) >= 0;
+	}
+
+	/// <summary>Writes an untyped value.</summary>
+	/// <param name="writer">The destination writer.</param>
+	/// <param name="value">The value to write.</param>
+	/// <param name="context">The operation context.</param>
+	public abstract void WriteObject(ref JsonWriter writer, object? value, SerializationContext context);
+
+	/// <summary>Reads an untyped value.</summary>
+	/// <param name="reader">The source reader.</param>
+	/// <param name="context">The operation context.</param>
+	/// <returns>The deserialized value.</returns>
+	public abstract object? ReadObject(ref JsonReader reader, SerializationContext context);
+
+	/// <summary>Writes an untyped value asynchronously.</summary>
+	/// <param name="writer">The destination writer.</param>
+	/// <param name="value">The value to write.</param>
+	/// <param name="context">The operation context.</param>
+	/// <returns>A task tracking the write.</returns>
+	public abstract ValueTask WriteObjectAsync(JsonAsyncWriter writer, object? value, SerializationContext context);
+
+	/// <summary>Reads an untyped value asynchronously.</summary>
+	/// <param name="reader">The source reader.</param>
+	/// <param name="context">The operation context.</param>
+	/// <returns>The deserialized value.</returns>
+	public abstract ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context);
 
 	/// <summary>
 	/// Advances the reader from this converter's value to the child value selected by a targeted-deserialization segment.
@@ -45,18 +128,19 @@ public abstract class JsonConverter
 	/// <param name="reader">The reader positioned at this converter's JSON value.</param>
 	/// <param name="segment">The member or index to navigate into.</param>
 	/// <param name="options">The navigation options (name comparer and case sensitivity).</param>
+	/// <param name="context">The serialization context.</param>
 	/// <returns>
 	/// <see langword="true"/> with the reader positioned at the selected child value; otherwise <see langword="false"/>
 	/// when the child is absent (a missing path).
 	/// </returns>
 	/// <remarks>
 	/// The default implementation navigates a self-describing JSON object or array using raw token skipping. Converters
-	/// whose representation is not a plain object or array (such as unions that emit a <c>[discriminator, payload]</c>
-	/// envelope, or custom converters that remap members) should override this method to translate the segment into a
-	/// navigation over their representation, typically by delegating to the converter of the underlying value.
+	/// whose representation is not a plain object or array should expose logical navigation by overriding
+	/// <see cref="SkipToPropertyValue"/> and <see cref="SkipToIndexValue"/>.
+	/// This internal dispatcher supplies raw-token navigation for built-in representations.
 	/// </remarks>
-	public virtual bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options)
-		=> JsonTargetedNavigator.NavigateRawToken(ref reader, in segment, options);
+	internal virtual bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> JsonTargetedNavigator.NavigateRawToken(ref reader, in segment, options, context);
 
 	/// <summary>
 	/// Asynchronously advances the reader from this converter's value toward the child selected by a targeted-navigation
@@ -72,27 +156,75 @@ public abstract class JsonConverter
 	/// </returns>
 	/// <remarks>
 	/// The default implementation navigates a self-describing JSON object or array using the asynchronous reader.
-	/// Converters whose representation is a union envelope or a custom shape should override this method to translate the
-	/// segment into a navigation over their representation, typically by delegating to the converter of the underlying
-	/// value and adding the number of containers they themselves opened.
+	/// Custom converters expose asynchronous logical navigation through <see cref="SkipToPropertyValueAsync"/> and
+	/// <see cref="SkipToIndexValueAsync"/>, using the reader's structural methods to track opened containers.
+	/// This internal dispatcher accounts for built-in representations.
 	/// </remarks>
-	public virtual ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+	internal virtual ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 		=> JsonAsyncTargetedNavigator.NavigateRawTokenAsync(reader, segment, options, context);
 
-	internal abstract void WriteObject(ref JsonWriter writer, object? value, SerializationContext context);
+	/// <summary>Dispatches a parsed expression segment to the public converter navigation hook.</summary>
+	/// <param name="reader">The reader at the current value.</param>
+	/// <param name="segment">The logical expression segment.</param>
+	/// <param name="context">The active serialization context.</param>
+	/// <returns>Whether the selected value was found.</returns>
+	internal bool SkipToValue(ref JsonReader reader, in JsonNavigationSegment segment, SerializationContext context)
+		=> segment.PropertyShape is { } property
+			? this.SkipToPropertyValue(ref reader, property, context)
+			: this.SkipToIndexValue(ref reader, segment.Key, context);
 
-	internal abstract object? ReadObject(ref JsonReader reader, SerializationContext context);
+	/// <summary>Dispatches a navigation hook while accounting for containers entered by a custom converter.</summary>
+	/// <param name="reader">The asynchronous reader.</param>
+	/// <param name="segment">The logical expression segment.</param>
+	/// <param name="context">The active serialization context.</param>
+	/// <returns>The open container count, or a negative value if the path is missing.</returns>
+	internal async ValueTask<int> SkipToValueAsync(JsonAsyncReader reader, JsonNavigationSegment segment, SerializationContext context)
+	{
+		int depth = reader.NavigationDepth;
+		bool found = segment.PropertyShape is { } property
+			? await this.SkipToPropertyValueAsync(reader, property, context).ConfigureAwait(false)
+			: await this.SkipToIndexValueAsync(reader, segment.Key, context).ConfigureAwait(false);
+		return found ? reader.NavigationDepth - depth : -1;
+	}
 
-	internal abstract ValueTask WriteObjectAsync(JsonAsyncWriter writer, object? value, SerializationContext context);
+	/// <summary>Gets this converter without its reference-preservation wrapper.</summary>
+	/// <returns>The converter for the underlying value representation.</returns>
+	internal virtual JsonConverter UnwrapReferencePreservation() => this;
 
-	internal abstract ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context);
+	private static JsonNavigationSegment CreatePropertySegment(IPropertyShape propertyShape, SerializationContext context)
+		=> new(JsonPathSegment.ForMember(context.Cache.GetSerializedPropertyName(propertyShape.Name, propertyShape.AttributeProvider), propertyShape));
+
+	private static JsonNavigationSegment CreateIndexSegment(object? index, bool isArray, SerializationContext context)
+	{
+		if (index is null)
+		{
+			throw new ArgumentNullException(nameof(index));
+		}
+
+		if (isArray)
+		{
+			if (index is not int value || value < 0)
+			{
+				throw new ArgumentOutOfRangeException(nameof(index), index, "JSON array navigation requires a non-negative integer index.");
+			}
+
+			return new(JsonPathSegment.ForIndex(value));
+		}
+
+		string key = index is IFormattable formattable ? formattable.ToString(null, CultureInfo.InvariantCulture) : index.ToString()!;
+		key = context.Cache.DictionaryKeyNamingPolicy?.ConvertName(key) ?? key;
+		return new(JsonPathSegment.ForMember(key, key: index));
+	}
+
+	private static JsonNavigationOptions GetNavigationOptions(SerializationContext context)
+		=> new(context.Cache.PropertyNameComparer, context.Cache.PropertyNameComparer.Equals("a", "A"));
 }
 
 /// <summary>
 /// Base type for JSON converters that handle a specific .NET type.
 /// </summary>
 /// <typeparam name="T">The .NET type handled by the converter.</typeparam>
-public abstract class JsonConverter<T> : JsonConverter
+public abstract partial class JsonConverter<T> : JsonConverter
 {
 	internal override Type DataType => typeof(T);
 
@@ -102,7 +234,7 @@ public abstract class JsonConverter<T> : JsonConverter
 	/// <param name="writer">The writer to receive the JSON value.</param>
 	/// <param name="value">The value to write.</param>
 	/// <param name="context">Context for the serialization operation.</param>
-	public abstract void Write(ref JsonWriter writer, T? value, SerializationContext context);
+	public abstract void Write(ref JsonWriter writer, in T? value, SerializationContext context);
 
 	/// <summary>
 	/// Reads a value from JSON.
@@ -157,22 +289,26 @@ public abstract class JsonConverter<T> : JsonConverter
 		return result;
 	}
 
-	internal sealed override void WriteObject(ref JsonWriter writer, object? value, SerializationContext context)
+	/// <inheritdoc/>
+	public sealed override void WriteObject(ref JsonWriter writer, object? value, SerializationContext context)
 		=> this.Write(ref writer, (T?)value, context);
 
-	internal sealed override object? ReadObject(ref JsonReader reader, SerializationContext context)
+	/// <inheritdoc/>
+	public sealed override object? ReadObject(ref JsonReader reader, SerializationContext context)
 		=> this.Read(ref reader, context);
 
-	internal sealed override ValueTask WriteObjectAsync(JsonAsyncWriter writer, object? value, SerializationContext context)
+	/// <inheritdoc/>
+	public sealed override ValueTask WriteObjectAsync(JsonAsyncWriter writer, object? value, SerializationContext context)
 		=> this.WriteAsync(writer, (T?)value, context);
 
-	internal sealed override async ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context)
+	/// <inheritdoc/>
+	public sealed override async ValueTask<object?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context)
 		=> await this.ReadAsync(reader, context).ConfigureAwait(false);
 }
 
 internal sealed class BuiltInJsonConverter<T> : JsonConverter<T>
 {
-	public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 	{
 		if (BuiltInJsonConverters.RequiresNestedContext(typeof(T)))
 		{
@@ -216,7 +352,7 @@ internal sealed class DelayedJsonConverterFactory : IDelayedValueFactory
 
 	private sealed class DelayedJsonConverter<T>(DelayedValue<JsonConverter> self) : JsonConverter<T>
 	{
-		public override void Write(ref JsonWriter writer, T? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 			=> ((JsonConverter<T>)self.Result).Write(ref writer, value, context);
 
 		public override T? Read(ref JsonReader reader, SerializationContext context)

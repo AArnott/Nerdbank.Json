@@ -1,61 +1,93 @@
+// Copyright (c) Andrew Arnott. All rights reserved.
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
+
 using System;
 using Nerdbank.Json;
 using PolyType;
 
-partial class CustomConvertersSamples
+public partial class CustomConvertersSamples
 {
+	// <DeferredRawJson>
+	public static string RoundTripRawEnvelope(string json)
+	{
+		JsonSerializer serializer = new();
+		RawEnvelope envelope = serializer.Deserialize<RawEnvelope>(json)!;
+		// Deserialization owns these bytes, so they can be retained after the source is released.
+		return serializer.Serialize(envelope);
+	}
+
+	// </DeferredRawJson>
+
 	// <CustomConverterRegisteredAtRuntime>
-	void CustomConverterRegisteredAtRuntime()
+	private void CustomConverterRegisteredAtRuntime()
 	{
 		JsonSerializer serializer = new()
 		{
-			Converters = new ConverterCollection([new FooConverter()]),
+			Converters = ConverterCollection.Create([new FooConverter()]),
 		};
 	}
+
 	// </CustomConverterRegisteredAtRuntime>
 
 	// <CustomOpenGenericConverterRegisteredAtRuntime>
-	void CustomOpenGenericConverterRegisteredAtRuntime()
+	private void CustomOpenGenericConverterRegisteredAtRuntime()
 	{
 		JsonSerializer genericSerializer = new()
 		{
-			ConverterTypes = new JsonConverterTypeCollection([typeof(EnvelopeConverter<>)]),
+			ConverterTypes = ConverterTypeCollection.Create([typeof(EnvelopeConverter<>)]),
 		};
 	}
+
 	// </CustomOpenGenericConverterRegisteredAtRuntime>
 
 	// <CustomConverterFactory>
-	void CustomConverterFactory()
+	private void CustomConverterFactory()
 	{
 		JsonSerializer factorySerializer = new()
 		{
 			ConverterFactories = [new EnvelopeConverterFactory()],
 		};
 	}
+
 	// </CustomConverterFactory>
+
+	// <RawEnvelopeModel>
+	[GenerateShape]
+	public partial class RawEnvelope
+	{
+		public string? Method { get; set; }
+
+		public RawJson Payload { get; set; }
+	}
+
+	// </RawEnvelopeModel>
 }
 
 // <YourOwnConverter>
+// <CustomConverterByAttribute>
 [GenerateShape]
+[JsonConverter(typeof(FooConverter))]
 public partial class Foo
 {
 	public string? Name { get; set; }
 }
 
+// </CustomConverterByAttribute>
+
 public sealed class FooConverter : JsonConverter<Foo>
 {
-	public override void Write(ref JsonWriter writer, Foo? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in Foo? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
 		context.DepthStep();
 		writer.WriteStartObject();
 		writer.WritePropertyName("name");
-		writer.WriteStringValue(value.Name?.ToUpperInvariant());
+		writer.Write(value.Name?.ToUpperInvariant());
 		writer.WriteEndObject();
 	}
 
@@ -71,7 +103,10 @@ public sealed class FooConverter : JsonConverter<Foo>
 		string propertyName = reader.ReadRequiredString();
 		reader.ReadNameSeparator();
 		string? name = reader.ReadString();
-		reader.ReadEndObject();
+		if (!reader.TryReadEndObject())
+		{
+			throw new JsonSerializationException("Expected the end of the object.");
+		}
 
 		if (!string.Equals(propertyName, "name", StringComparison.Ordinal))
 		{
@@ -84,7 +119,42 @@ public sealed class FooConverter : JsonConverter<Foo>
 		return new Foo { Name = name?.ToLowerInvariant() };
 	}
 }
+
 // </YourOwnConverter>
+
+// <DirectWriterBuffer>
+[GenerateShape]
+[JsonConverter(typeof(DirectNumberConverter))]
+public partial class DirectNumber
+{
+	public long Value { get; set; }
+}
+
+public sealed class DirectNumberConverter : JsonConverter<DirectNumber>
+{
+	public override void Write(ref JsonWriter writer, in DirectNumber? value, SerializationContext context)
+	{
+		if (value is null)
+		{
+			writer.WriteNull();
+			return;
+		}
+
+		// A signed 64-bit integer requires at most 20 UTF-8 bytes.
+		Span<byte> destination = writer.GetSpan(20);
+		if (!JsonPrimitives.TryWrite(destination, value.Value, out int bytesWritten))
+		{
+			throw new InvalidOperationException("The reserved number buffer was too small.");
+		}
+
+		writer.Advance(bytesWritten);
+	}
+
+	public override DirectNumber? Read(ref JsonReader reader, SerializationContext context)
+		=> reader.TryReadNull() ? null : new DirectNumber { Value = reader.ReadInt64() };
+}
+
+// </DirectWriterBuffer>
 
 // <DelegateSubValues>
 [GenerateShape]
@@ -101,16 +171,16 @@ public partial class Inner
 
 public sealed class WrapperConverter : JsonConverter<Wrapper>
 {
-	public override void Write(ref JsonWriter writer, Wrapper? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in Wrapper? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
 		context.DepthStep();
-		JsonConverter<Inner> innerConverter = context.GetConverter(Inner.GetTypeShape());
+		JsonConverter<Inner> innerConverter = context.GetConverter<Inner>();
 		writer.WriteStartObject();
 		writer.WritePropertyName("value");
 		innerConverter.Write(ref writer, value.Value, context);
@@ -125,25 +195,21 @@ public sealed class WrapperConverter : JsonConverter<Wrapper>
 		}
 
 		context.DepthStep();
-		JsonConverter<Inner> innerConverter = context.GetConverter(Inner.GetTypeShape());
+		JsonConverter<Inner> innerConverter = context.GetConverter<Inner>();
 		reader.ReadStartObject();
 		reader.ReadRequiredString();
 		reader.ReadNameSeparator();
 		Inner? value = innerConverter.Read(ref reader, context);
-		reader.ReadEndObject();
+		if (!reader.TryReadEndObject())
+		{
+			throw new JsonSerializationException("Expected the end of the object.");
+		}
+
 		return new Wrapper { Value = value };
 	}
 }
-// </DelegateSubValues>
 
-// <CustomConverterByAttribute>
-[GenerateShape]
-[JsonConverter(typeof(FooConverter))]
-public partial class FooByAttribute
-{
-	public string? Name { get; set; }
-}
-// </CustomConverterByAttribute>
+// </DelegateSubValues>
 
 // <CustomConverterByAttributeOnMember>
 [GenerateShape]
@@ -154,13 +220,14 @@ public partial class MemberAttributedContainer
 }
 
 [GenerateShape]
-public partial class ParameterAttributedContainer([property: JsonConverter(typeof(FooConverter))] Foo? value)
+public partial class ParameterAttributedContainer([JsonConverter(typeof(FooConverter))] Foo? value)
 {
 	public Foo? Value { get; } = value;
 }
+
 // </CustomConverterByAttributeOnMember>
 
-[GenerateShape]
+[AssociatedTypeShape(typeof(EnvelopeConverter<>))]
 public partial class Envelope<T>
 {
 	public T? Value { get; set; }
@@ -169,11 +236,11 @@ public partial class Envelope<T>
 public sealed class EnvelopeConverter<T> : JsonConverter<Envelope<T>>
 	where T : IShapeable<T>
 {
-	public override void Write(ref JsonWriter writer, Envelope<T>? value, SerializationContext context)
+	public override void Write(ref JsonWriter writer, in Envelope<T>? value, SerializationContext context)
 	{
 		if (value is null)
 		{
-			writer.WriteNullValue();
+			writer.WriteNull();
 			return;
 		}
 
@@ -196,15 +263,20 @@ public sealed class EnvelopeConverter<T> : JsonConverter<Envelope<T>>
 		reader.ReadRequiredString();
 		reader.ReadNameSeparator();
 		T? value = context.GetConverter(T.GetTypeShape()).Read(ref reader, context);
-		reader.ReadEndObject();
+		if (!reader.TryReadEndObject())
+		{
+			throw new JsonSerializationException("Expected the end of the object.");
+		}
+
 		return new Envelope<T> { Value = value };
 	}
 }
 
 public sealed class EnvelopeConverterFactory : IJsonConverterFactory
 {
-	public JsonConverter? CreateConverter(Type type, ITypeShape? shape, in JsonConverterFactoryContext context)
+	public JsonConverter? CreateConverter(Type type, ITypeShape? shape, in ConverterContext context)
 	{
+		ArgumentNullException.ThrowIfNull(type);
 		if (!type.IsGenericType || type.GetGenericTypeDefinition() != typeof(Envelope<>))
 		{
 			return null;
@@ -215,16 +287,16 @@ public sealed class EnvelopeConverterFactory : IJsonConverterFactory
 		return (JsonConverter?)Activator.CreateInstance(converterType, context);
 	}
 
-	private sealed class FactoryEnvelopeConverter<T>(JsonConverterFactoryContext context) : JsonConverter<Envelope<T>>
+	private sealed class FactoryEnvelopeConverter<T>(ConverterContext context) : JsonConverter<Envelope<T>>
 		where T : IShapeable<T>
 	{
 		private readonly JsonConverter<T> valueConverter = context.GetConverter(T.GetTypeShape());
 
-		public override void Write(ref JsonWriter writer, Envelope<T>? value, SerializationContext serializationContext)
+		public override void Write(ref JsonWriter writer, in Envelope<T>? value, SerializationContext serializationContext)
 		{
 			if (value is null)
 			{
-				writer.WriteNullValue();
+				writer.WriteNull();
 				return;
 			}
 
@@ -247,7 +319,11 @@ public sealed class EnvelopeConverterFactory : IJsonConverterFactory
 			reader.ReadRequiredString();
 			reader.ReadNameSeparator();
 			T? value = this.valueConverter.Read(ref reader, serializationContext);
-			reader.ReadEndObject();
+			if (!reader.TryReadEndObject())
+			{
+				throw new JsonSerializationException("Expected the end of the object.");
+			}
+
 			return new Envelope<T> { Value = value };
 		}
 	}

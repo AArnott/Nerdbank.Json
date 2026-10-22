@@ -19,21 +19,8 @@ write again.
 
 ## How to fix violations
 
-```csharp
-// ✗ Bad
-JsonWriter w = writer.CreateWriter();
-writer.ReturnWriter(ref w);
-w.WriteNullValue(); // NBJson034
-
-// ✓ Good
-JsonWriter w = writer.CreateWriter();
-w.WriteNullValue();
-writer.ReturnWriter(ref w);
-
-JsonWriter w2 = writer.CreateWriter();
-w2.WriteEndObject();
-writer.ReturnWriter(ref w2);
-```
+Finish all writes through the rental before calling <xref:Nerdbank.Json.JsonAsyncWriter.ReturnWriter*>.
+If more synchronous writing is needed later, call <xref:Nerdbank.Json.JsonAsyncWriter.CreateWriter> to obtain a new rental, then return that rental before continuing asynchronous work.
 
 ## When to suppress
 

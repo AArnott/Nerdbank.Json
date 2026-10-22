@@ -22,8 +22,8 @@ to read.
 
 Each preserved value is wrapped in a metadata object: the first occurrence is written as
 `{"$id":N,"$value":<value>}`, and later occurrences (including cycle back-edges) are written
-as `{"$ref":N}`. The reserved property names `$id`, `$ref`, and `$value` do not collide with
-serialized members because members never begin with `$` in the generated shape model.
+as `{"$ref":N}`.
+The reserved property names `$id`, `$ref`, and `$value` belong to the outer envelope; ordinary contract members are nested inside its `$value`.
 
 [!code-csharp[](../../samples/cs/ReferenceCycles.cs#ReferenceCycles)]
 

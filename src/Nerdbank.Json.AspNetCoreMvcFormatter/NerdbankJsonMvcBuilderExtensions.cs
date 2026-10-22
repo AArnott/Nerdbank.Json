@@ -4,7 +4,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Formatters;
 using Nerdbank.Json;
-using Nerdbank.Json.AspNetCore;
+using Nerdbank.Json.AspNetCoreMvcFormatter;
 using PolyType;
 
 namespace Microsoft.Extensions.DependencyInjection;
@@ -71,8 +71,8 @@ public static class NerdbankJsonMvcBuilderExtensions
 				RemoveByType(mvc.OutputFormatters, typeof(SystemTextJsonOutputFormatter));
 			}
 
-			NerdbankJsonInputFormatter input = new(serializer, shapeProvider);
-			NerdbankJsonOutputFormatter output = new(serializer, shapeProvider);
+			JsonInputFormatter input = new(shapeProvider, serializer);
+			JsonOutputFormatter output = new(shapeProvider, serializer);
 
 			if (options.InsertFirst)
 			{

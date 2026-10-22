@@ -5,7 +5,7 @@
 
 using PolyType;
 
-namespace Nerdbank.Json.AspNetCore.Tests;
+namespace Nerdbank.Json.AspNetCoreMvcFormatter.Tests;
 
 [GenerateShape]
 public partial record Person(string Name, int Age);

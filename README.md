@@ -5,28 +5,42 @@
 
 Nerdbank.Json is a UTF-8 JSON serializer being built in the same general shape as Nerdbank.MessagePack, but without layering on top of System.Text.Json, Newtonsoft.Json, or any other serializer.
 
-The current implementation includes a low-level writer/reader pair, a built-in converter table for common .NET types, and an initial PolyType-backed object serializer for mutable object graphs. It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`, `net472`, and `netstandard2.0`.
+The implementation includes low-level UTF-8 readers and writers, built-in converters for common .NET types, and PolyType-backed serialization for mutable and constructor-bound object graphs.
+It supports incremental asynchronous streaming, reference preservation, unions, targeted deserialization, and JSON Schema generation.
+It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`, `net472`, and `netstandard2.0`.
 
 ## Features
 
 * Direct UTF-8 JSON writing to `IBufferWriter<byte>`.
+* Direct writer-buffer reservations for complete trusted JSON values through `GetSpan` / `Advance`, plus overloaded stateless boolean and numeric primitives for all integer widths, single/double precision, and decimal.
+* Borrowed segmented UTF-8 parsing, decoded UTF-8 string views, token inspection, and stateless scalar primitives.
+* Caller-owned scratch for split numeric/property tokens and incremental string decoding, with pooled fallbacks for large tokens rather than fixed token-size limits.
+* `RawJson` values with explicit borrowed/owned lifetimes and automatic owned deserialization.
 * RFC 8259 string escaping, limited to the characters that must be escaped.
 * Built-in serialization and deserialization for common .NET primitive and BCL types.
-* PolyType-driven serialization for object graphs with settable properties.
-* Mutable `ICollection<T>` implementations with public parameterless constructors, including `List<T>`.
-* Mutable `IDictionary<string, TValue>` implementations with public parameterless constructors, including `Dictionary<string, TValue>`.
+* PolyType-driven serialization for mutable objects, records, and immutable objects with mapped constructor parameters.
+* Mutable and parameterized collections and dictionaries, including read-only and immutable types when their PolyType shapes supply construction support.
+* Dictionaries with supported simple scalar or enum keys, getter-only mutable collection population, and rectangular multidimensional arrays with nested or flat representations.
 * camelCase property naming by default, configurable with `JsonNamingPolicy`.
 * Optional indented output for human-readable JSON.
 * Optional case-insensitive property-name matching during deserialization.
 * Optional enum-name serialization with numeric fallback for unnamed values.
-* Runtime custom converter registration with converter instances, converter types, or converter factories.
-* Attribute-driven custom converter registration on types, properties, and constructor parameters.
-* Optional unknown-member retention through `JsonExtensionDataAttribute`.
+* Runtime custom converter registration with immutable converter instance/type collections or converter factories using `ConverterContext`.
+* Attribute-driven custom converter registration on types, properties, and constructor parameters, with automatic generated constructor associations for ordinary and open-generic converters.
+* Optional unknown-member retention through a member of type `UnusedDataPacket`.
 * Built-in byte buffer handling using Base64 JSON strings.
 * Optional trailing-comma and comment skipping support during deserialization.
 * Configurable deserialization policy for missing required values and non-nullable reference validation.
-* Optional acyclic reference preservation.
-* Synchronous stream and async stream overloads.
+* Optional reference preservation for repeated references, with either cycle rejection or support for cycles through mutable objects and collections.
+* Synchronous stream APIs and incremental asynchronous stream/pipe serialization with cancellation and backpressure.
+* Asynchronous sequence reading and writing through `DeserializeEnumerableAsync` and `SerializeEnumerableAsync`, with `SequenceOptions` selecting `JsonSequenceFormat.NDJson` or `JsonSequenceFormat.JsonArray`.
+* Targeted `DeserializePath` by JSON path or member-access options, and `DeserializePathEnumerableAsync` for arrays selected inside an envelope.
+* Shape-declared unions and runtime `DerivedTypeUnions` mappings, with array or single-property discriminator envelopes.
+* JSON Schema draft 4, draft 7, and draft 2020-12 export as `System.Text.Json.Nodes.JsonObject`, separate from the native JSON DOM.
+* Serialization callbacks, operation-scoped string interning, collection comparers, and configurable security limits.
+* Opt-in native JSON DOM, untyped object, `ExpandoObject`, and System.Text.Json DOM converters.
+* A separate ASP.NET Core MVC formatter package using explicitly supplied type shapes.
+* A self-checking F# sample covering records, options, and discriminated unions.
 * Multi-targeting across modern .NET and .NET Framework.
 * Test-driven development with focused round-trip coverage for the current built-in type surface.
 
@@ -40,6 +54,7 @@ The current built-in serializer supports:
 * `DateTime`, `DateTimeOffset`, `TimeSpan`
 * `Guid`, `Version`, `Uri`, `CultureInfo`, `Encoding`
 * `byte[]`, `Memory<byte>`, `ReadOnlyMemory<byte>`
+* `RawJson` for exact UTF-8 token retention
 * `System.Drawing.Color`, `System.Drawing.Point`
 * On .NET 8 and later: `Half`, `Int128`, `UInt128`, `DateOnly`, `TimeOnly`, `Rune`
 
@@ -54,7 +69,7 @@ string json = serializer.Serialize(new DateTimeOffset(2024, 7, 1, 12, 34, 56, Ti
 DateTimeOffset value = serializer.Deserialize<DateTimeOffset>(json);
 ```
 
-For mutable object graphs, annotate your root type with `GenerateShape` and use the same serializer APIs:
+For object graphs, annotate your root type with `GenerateShape` and use the same serializer APIs:
 
 ```csharp
 using Nerdbank.Json;
@@ -104,9 +119,9 @@ To override built-in or shape-based handling for specific types at runtime:
 ```csharp
 JsonSerializer serializer = new()
 {
-	Converters = new JsonConverterCollection(new JsonConverter[] { new MyCustomConverter() }),
-	ConverterTypes = new JsonConverterTypeCollection(new[] { typeof(MyOpenGenericConverter<>) }),
-	ConverterFactories = new IJsonConverterFactory[] { new MyFactory() },
+	Converters = [new MyCustomConverter()],
+	ConverterTypes = [typeof(MyOpenGenericConverter<>)],
+	ConverterFactories = [new MyFactory()],
 };
 ```
 
@@ -138,24 +153,77 @@ public partial class Person
 {
 	public string? Name { get; set; }
 
-	[JsonExtensionData]
-	public Dictionary<string, string>? ExtensionData { get; set; }
+	public UnusedDataPacket? UnusedData { get; set; }
 }
 ```
+
+The packet retains raw JSON values, including their original numeric text.
+A setter is required to capture unknown members; a getter is required to write a supplied packet.
+Private packet fields or properties can be included with `[PropertyShape]`.
+
+To read a selected member without materializing the enclosing object:
+
+```csharp
+JsonSerializer.DeserializePathOptions<Person, int> options = new(person => person.Age);
+int age = serializer.DeserializePath<Person, int>(json, options);
+```
+
+To stream a top-level JSON array instead of the default NDJSON framing:
+
+```csharp
+JsonSerializer.SequenceOptions options = new() { Format = JsonSequenceFormat.JsonArray };
+await foreach (Person? person in serializer.DeserializeEnumerableAsync<Person>(stream, options))
+{
+	Console.WriteLine(person?.Name);
+}
+```
+
+Rectangular multidimensional arrays default to `MultiDimensionalArrayFormat.Nested`.
+Set `JsonSerializer.MultiDimensionalArrayFormat` to `MultiDimensionalArrayFormat.Flat` to use the tuple `[[dimension lengths], [flat elements]]`, preserving empty dimensions.
 
 ## Design Notes
 
 * The low-level JSON writer does not delegate to another serializer.
 * String escaping follows RFC 8259 requirements instead of aggressively escaping extra characters.
-* This repository is intended to grow toward the richer converter and visitor architecture used by Nerdbank.MessagePack.
-* The current object-graph layer supports mutable types with settable properties, uses camelCase property names by default, and can either ignore unknown JSON properties or retain them in an extension-data dictionary.
-* Mutable `ICollection<T>` and `IDictionary<string, TValue>` implementations with public parameterless constructors are supported through the same converter cache.
+* The converter and visitor architecture uses PolyType shapes, including source-generated shapes for NativeAOT-safe contracts.
+* The object-graph layer supports settable properties and mapped constructor parameters, uses camelCase property names by default, and can either ignore unknown JSON properties or retain them in an `UnusedDataPacket` member.
+* Collection and dictionary construction follows the supplied PolyType shape: mutable collections are populated directly, while parameterized collections are constructed from buffered elements.
 * Runtime-registered converters are consulted before built-in and PolyType-generated converters.
+* Synchronous custom converters override `Write(ref JsonWriter writer, in T? value, SerializationContext context)`; public sealed object-method overrides support non-generic invocation.
+* Low-level scalar output uses `JsonWriter.Write`, `WriteNull`, and `WriteRaw`; typed numeric input uses methods such as `JsonReader.ReadInt32` and `ReadDouble`.
+* Custom representations expose logical navigation through `SkipToPropertyValue` and `SkipToIndexValue`, with corresponding asynchronous hooks.
+* Unknown-value skipping, raw capture, and targeted navigation preserve the active remaining-depth budget and cancellation token; `JsonReader.Skip(context)` does not consume siblings' budgets.
 * `JsonConverterAttribute` can override converter selection for a type, property, or constructor parameter.
-* `JsonExtensionDataAttribute` can capture unknown JSON members as raw JSON text for forward-compatible round-tripping.
+* A member of type `UnusedDataPacket` captures unknown JSON members as raw JSON text for forward-compatible round-tripping, without an extension-data attribute.
 * Deserialization can optionally skip comments and accept trailing commas.
-* Current stream overloads buffer the full payload before reading or writing; incremental streaming APIs will come later.
+* Asynchronous stream and pipe APIs process built-in objects and collections incrementally; custom converters using the default asynchronous hooks buffer their individual values.
+* UTF-8 buffers, sequences, and caller-owned pipes deserialize the first value; caller pipes retain unread prefetched bytes. Synchronous streams return the first value after buffering through EOF.
+* String and asynchronous stream deserialization remain strict single-document operations. Use a caller-owned pipe for repeated first-value reads; temporary async-stream pipes cannot safely preserve read-ahead for the next operation.
+* Operation failures use `JsonSerializationException` and retain their causal exception or existing error code; argument validation and actual cancellation remain distinct.
+* Cyclic back-references require early registration of mutable instances; immutable or constructor-bound objects cannot be back-referenced while under construction.
+* Targeted deserialization and sequence streaming do not support reference preservation.
 
 ## Status
 
-The built-in type surface listed above is working and covered by focused serializer tests. PolyType-backed mutable object graphs and stream/async overloads are now available in an initial form. Broader contract features, constructor-based materialization, and incremental streaming remain under active development.
+The implemented feature surface is described in the [feature guide](docfx/docs/features.md), with dedicated guides for streaming, unions, schema generation, reference preservation, and MVC integration.
+MessagePack-aligned scalar overloads and direct writer-buffer APIs are implemented; JSON-specific contract differences and remaining stateless string/container breadth are explicit, not a claim of perfect binary parity.
+Dictionary keys are limited to supported simple types, collections without construction support are serialization-only, and getter-only scalar or immutable properties require constructor binding to be populated.
+
+Full platform validation of source `a28b0ef` (2026-10-21) passes on Windows and WSL Ubuntu 26.04: **4,409 Windows and 3,405 Linux managed tests**, with zero failures or skips, including all 163 analyzer tests on each OS.
+On each OS, NativeAOT core tests on .NET 9 and 10 total **2,034 passes, zero failures, and four known platform-input skips**; all four native fixtures publish with warnings as errors and execute, the F# self-check passes, and native image guards pass without recalibrating budgets.
+Only NativeAOT creation of non-zero-lower-bound array inputs skips; managed normalization assertions remain intact.
+The final source also passed DocFX with zero warnings/errors and formatting verification.
+MVC retains strict single-JSON-body validation.
+String tokens enforce JSON lexical grammar rather than Unicode well-formedness: CLR reads use UTF-8 replacement fallback and preserve `\uXXXX` code units, including lone surrogates.
+Raw JSON and unescaped UTF-8 views preserve source bytes; UTF-8 string writes escape quotes, backslashes, and controls without validating non-ASCII payloads, while CLR writes escape lone surrogates.
+
+Matched Medium performance evidence, causal fixes, exact native sizes, and artifact locations are recorded in [TODO.md](TODO.md) and the [benchmark guide](docfx/docs/benchmarking.md).
+Original object allocation parity is preserved, but full speed restoration is **not** claimed; remaining timing tradeoffs and suspected sources are logged as non-blocking performance follow-ups rather than reasons to defer preferred APIs.
+macOS arm64 CI has executed the build, tests, and native fixtures; its measured **5.6566 MiB** broad image informed the explicitly approved **5.65 +/- 0.2 MiB** baseline, while the [platform validation guide](docfx/docs/platform-validation.md) remains available for independent validation.
+In a dedicated checkout of this branch on the Mac, run `pwsh -NoProfile -File ./tools/Validate-Platform.ps1 -ArtifactDirectory ./obj/platform-macos` and return the complete evidence directory without changing size budgets.
+
+Segmented parsing, owned raw values, UTF-8 string/token APIs, scalar `JsonPrimitives`, and NBJson001/NBJson002/NBJson031/NBJson051 are implemented.
+Stateless decoded strings and general raw/container framing remain outside the implemented primitive contract; use the stateful reader/writer and borrowed raw APIs for these JSON-specific operations.
+Experimental duck typing validates candidates against object contract metadata but remains an experimental selection strategy.
+Async-stream first-value reads cannot safely retain prefetch; use caller-owned pipes.
+See [TODO.md](TODO.md) for final evidence, constraints, and superseded checkpoints.

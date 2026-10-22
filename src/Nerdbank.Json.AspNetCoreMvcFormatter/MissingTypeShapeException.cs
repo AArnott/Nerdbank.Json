@@ -3,7 +3,7 @@
 
 using PolyType;
 
-namespace Nerdbank.Json.AspNetCore;
+namespace Nerdbank.Json.AspNetCoreMvcFormatter;
 
 /// <summary>
 /// The exception thrown when the configured <see cref="ITypeShapeProvider"/> does not contain a shape for a type that

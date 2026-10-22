@@ -22,13 +22,40 @@ internal sealed class JsonReferenceEqualityTracker
 		this.allowCycles = mode == ReferencePreservationMode.AllowCycles;
 	}
 
+	internal void ReportObjectConstructed(object? value, int referenceId)
+	{
+		if (!this.allowCycles || value is null)
+		{
+			return;
+		}
+
+		if (this.deserializedObjects.TryGetValue(referenceId, out object? existing))
+		{
+			if (!ReferenceEquals(existing, value))
+			{
+				throw new InvalidOperationException("A converter reported different instances for the same reference id.");
+			}
+
+			return;
+		}
+
+		this.deserializedObjects.Add(referenceId, value);
+	}
+
+	/// <summary>Determines whether an enclosing converter is already writing this object's reference envelope.</summary>
+	/// <param name="value">The value being written.</param>
+	/// <param name="referenceId">The current reference id.</param>
+	/// <returns>Whether the current envelope belongs to this value.</returns>
+	internal bool IsWritingObject(object value, int referenceId)
+		=> referenceId != 0 && this.serializedObjects.TryGetValue(value, out (int ReferenceId, bool Done) entry) && entry.ReferenceId == referenceId && !entry.Done;
+
 	internal void WriteObject(ref JsonWriter writer, object value, JsonConverter inner, SerializationContext context)
 	{
 		if (this.TryGetSerializedObject(value, out int referenceId))
 		{
 			writer.WriteStartObject();
 			writer.WritePropertyName("$ref");
-			writer.WriteNumberValue(referenceId);
+			writer.Write(referenceId);
 			writer.WriteEndObject();
 			return;
 		}
@@ -38,10 +65,10 @@ internal sealed class JsonReferenceEqualityTracker
 
 		writer.WriteStartObject();
 		writer.WritePropertyName("$id");
-		writer.WriteNumberValue(assignedReferenceId);
+		writer.Write(assignedReferenceId);
 		writer.WriteValueSeparator();
 		writer.WritePropertyName("$value");
-		inner.WriteObject(ref writer, value, context);
+		inner.WriteObject(ref writer, value, context with { ReferenceId = assignedReferenceId });
 		writer.WriteEndObject();
 
 		this.serializedObjects[value] = (assignedReferenceId, true);
@@ -109,14 +136,14 @@ internal sealed class JsonReferenceEqualityTracker
 			(this.inProgressUnregisteredIds ??= []).Add(assignedReferenceId);
 			try
 			{
-				value = inner.Read(ref reader, context) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
+				value = inner.Read(ref reader, context with { ReferenceId = assignedReferenceId }) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
 			}
 			finally
 			{
 				this.inProgressUnregisteredIds.Remove(assignedReferenceId);
 			}
 
-			this.deserializedObjects.Add(assignedReferenceId, value);
+			this.ReportObjectConstructed(value, assignedReferenceId);
 		}
 		else
 		{
@@ -139,7 +166,7 @@ internal sealed class JsonReferenceEqualityTracker
 			JsonWriter refWriter = writer.CreateWriter();
 			refWriter.WriteStartObject();
 			refWriter.WritePropertyName("$ref");
-			refWriter.WriteNumberValue(referenceId);
+			refWriter.Write(referenceId);
 			refWriter.WriteEndObject();
 			writer.ReturnWriter(ref refWriter);
 			await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
@@ -152,12 +179,12 @@ internal sealed class JsonReferenceEqualityTracker
 		JsonWriter headerWriter = writer.CreateWriter();
 		headerWriter.WriteStartObject();
 		headerWriter.WritePropertyName("$id");
-		headerWriter.WriteNumberValue(assignedReferenceId);
+		headerWriter.Write(assignedReferenceId);
 		headerWriter.WriteValueSeparator();
 		headerWriter.WritePropertyName("$value");
 		writer.ReturnWriter(ref headerWriter);
 
-		await inner.WriteObjectAsync(writer, value, context).ConfigureAwait(false);
+		await inner.WriteObjectAsync(writer, value, context with { ReferenceId = assignedReferenceId }).ConfigureAwait(false);
 
 		JsonWriter footerWriter = writer.CreateWriter();
 		footerWriter.WriteEndObject();
@@ -228,14 +255,14 @@ internal sealed class JsonReferenceEqualityTracker
 			(this.inProgressUnregisteredIds ??= []).Add(assignedReferenceId);
 			try
 			{
-				value = await inner.ReadAsync(reader, context).ConfigureAwait(false) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
+				value = await inner.ReadAsync(reader, context with { ReferenceId = assignedReferenceId }).ConfigureAwait(false) ?? throw new FormatException("Reference-preserved values may not deserialize to null.");
 			}
 			finally
 			{
 				this.inProgressUnregisteredIds.Remove(assignedReferenceId);
 			}
 
-			this.deserializedObjects.Add(assignedReferenceId, value);
+			this.ReportObjectConstructed(value, assignedReferenceId);
 		}
 		else
 		{

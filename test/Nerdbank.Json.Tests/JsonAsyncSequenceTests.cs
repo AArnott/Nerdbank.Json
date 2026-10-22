@@ -1,6 +1,7 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text;
@@ -9,6 +10,202 @@ using PolyType.Abstractions;
 
 public partial class JsonAsyncSequenceTests : TestBase
 {
+	[Test]
+	public async Task RawPath_WitnessOverloads()
+	{
+		byte[] bytes = Encoding.UTF8.GetBytes("""{"items":[1,2]}""");
+		using MemoryStream stream = new(bytes);
+		JsonPath path = JsonPath.Root.Member("items");
+		Assert.Equal([1, 2], await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<int, Witness>(stream, path)));
+		Pipe pipe = new();
+		await WriteAsync(pipe.Writer, """{"items":[1,2]}""");
+		await pipe.Writer.CompleteAsync();
+		Assert.Equal([1, 2], await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<int, Witness>(pipe.Reader, path)));
+		await pipe.Reader.CompleteAsync();
+	}
+
+	[Test]
+	public async Task PathOptions_EarlyDisposal_DoesNotMarkUnreadBytesExamined()
+	{
+		Pipe pipe = new();
+		await WriteAsync(pipe.Writer, """{"inner":{"items":[1,2,3]}}""");
+		JsonSerializer.StreamingEnumerationOptions<Envelope, int> options = new(x => x.Inner.Items) { LeaveOpen = true };
+		await foreach (int value in this.Serializer.DeserializePathEnumerableAsync<Envelope, int, Envelope>(pipe.Reader, options))
+		{
+			Assert.Equal(1, value);
+			break;
+		}
+
+		Assert.True(pipe.Reader.TryRead(out ReadResult remaining));
+		Assert.Equal(",2,3]}}", Encoding.UTF8.GetString(remaining.Buffer.ToArray()));
+		pipe.Reader.AdvanceTo(remaining.Buffer.End);
+		await pipe.Writer.CompleteAsync();
+		await pipe.Reader.CompleteAsync();
+	}
+
+	[Test]
+	public async Task IndexHook_CustomEnvelope_TracksOpenContainers()
+	{
+		JsonSerializer serializer = new() { Converters = [new WrappedArrayConverter()] };
+		const string json = """{"groups":{"data":[{"items":[1]},{"items":[2,3]}],"tail":true},"tail":42}""";
+		using ChunkedStream stream = new(Encoding.UTF8.GetBytes(json), 1);
+		JsonSerializer.StreamingEnumerationOptions<GroupEnvelope, int> options = new(x => x.Groups[1].Items);
+		Assert.Equal([2, 3], await CollectAsync(serializer.DeserializePathEnumerableAsync(stream, Shape<GroupEnvelope, GroupEnvelope>(), options)));
+		Assert.Equal(3, serializer.DeserializePath(json, Shape<GroupEnvelope, GroupEnvelope>(), new JsonSerializer.DeserializePathOptions<GroupEnvelope, int>(x => x.Groups[1].Items[1])));
+
+		JsonSerializer shallow = serializer with { StartingContext = new SerializationContext { MaxDepth = 4 } };
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => shallow.DeserializePath(json, Shape<GroupEnvelope, GroupEnvelope>(), new JsonSerializer.DeserializePathOptions<GroupEnvelope, int>(x => x.Groups[1].Items[1])));
+		Assert.IsType<InvalidOperationException>(error.InnerException);
+		using ChunkedStream shallowStream = new(Encoding.UTF8.GetBytes(json), 1);
+		error = await Assert.ThrowsAsync<JsonSerializationException>(async () => await CollectAsync(shallow.DeserializePathEnumerableAsync(shallowStream, Shape<GroupEnvelope, GroupEnvelope>(), options)));
+		Assert.IsType<InvalidOperationException>(error.InnerException);
+	}
+
+	[Test]
+	[Arguments(JsonSequenceFormat.NDJson, "1\n2\n3\n")]
+	[Arguments(JsonSequenceFormat.JsonArray, "[1,2,3]")]
+	public async Task Enumerable_Options_RoundTrip(JsonSequenceFormat format, string expected)
+	{
+		JsonSerializer.SequenceOptions options = new() { Format = format };
+		using MemoryStream stream = new();
+		await this.Serializer.SerializeEnumerableAsync<int, Witness>(stream, Produce(), options);
+		Assert.Equal(expected, Encoding.UTF8.GetString(stream.ToArray()));
+		stream.Position = 0;
+		Assert.Equal([1, 2, 3], await CollectAsync(this.Serializer.DeserializeEnumerableAsync<int, Witness>(stream, options)));
+		Assert.True(stream.CanRead);
+		Pipe pipe = new();
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+		await this.Serializer.SerializeEnumerableAsync<int, Witness>(pipe.Writer, Produce(), options, timeout.Token);
+		await pipe.Writer.CompleteAsync();
+		Assert.Equal([1, 2, 3], await CollectAsync(this.Serializer.DeserializeEnumerableAsync<int, Witness>(pipe.Reader, options, timeout.Token)));
+		await pipe.Reader.CompleteAsync();
+
+		static async IAsyncEnumerable<int> Produce()
+		{
+			await Task.Yield();
+			yield return 1;
+			yield return 2;
+			yield return 3;
+		}
+	}
+
+	[Test]
+	public async Task Enumerable_NDJson_CommentsRespectFraming()
+	{
+		JsonSerializer serializer = new() { ReadCommentHandling = JsonCommentHandling.Skip };
+		JsonSerializer.SequenceOptions options = new() { Format = JsonSequenceFormat.NDJson };
+		using ChunkedStream stream = new(Encoding.UTF8.GetBytes("// head\n1\n/* between */2\n"), 1);
+		Assert.Equal([1, 2], await CollectAsync(serializer.DeserializeEnumerableAsync<int, Witness>(stream, options)));
+		using ChunkedStream invalid = new(Encoding.UTF8.GetBytes("1/* no newline */2"), 1);
+		JsonSerializationException error = await Assert.ThrowsAsync<JsonSerializationException>(async () => await CollectAsync(serializer.DeserializeEnumerableAsync<int, Witness>(invalid, options)));
+		Assert.IsType<FormatException>(error.InnerException);
+	}
+
+	[Test]
+	[Arguments(JsonSequenceFormat.NDJson, "1\n")]
+	[Arguments(JsonSequenceFormat.JsonArray, "[1,")]
+	public async Task Enumerable_CancellationAndNoReadAhead(JsonSequenceFormat format, string preamble)
+	{
+		Pipe pipe = new();
+		using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+		await WriteAsync(pipe.Writer, preamble);
+		IAsyncEnumerator<int> enumerator = this.Serializer.DeserializeEnumerableAsync<int, Witness>(pipe.Reader, new() { Format = format }, cts.Token).GetAsyncEnumerator();
+		try
+		{
+			Assert.True(await enumerator.MoveNextAsync());
+			Assert.Equal(1, enumerator.Current);
+			cts.Cancel();
+			await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await enumerator.MoveNextAsync());
+		}
+		finally
+		{
+			await enumerator.DisposeAsync();
+			await pipe.Writer.CompleteAsync();
+			await pipe.Reader.CompleteAsync();
+		}
+	}
+
+	[Test]
+	public async Task Enumerable_Options_RejectUnknownFormat()
+	{
+		JsonSerializer.SequenceOptions options = new() { Format = (JsonSequenceFormat)99 };
+		using MemoryStream stream = new();
+		await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await CollectAsync(this.Serializer.DeserializeEnumerableAsync<int, Witness>(stream, options)));
+		await Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () => await this.Serializer.SerializeEnumerableAsync<int, Witness>(stream, Empty(), options));
+
+		static async IAsyncEnumerable<int> Empty()
+		{
+			await Task.Yield();
+			yield break;
+		}
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task PathOptions_OwnsPipeUnlessLeaveOpen(bool leaveOpen)
+	{
+		Pipe pipe = new();
+		await WriteAsync(pipe.Writer, """{"inner":{"items":[1,2]},"tail":true}""");
+		await pipe.Writer.CompleteAsync();
+		JsonSerializer.StreamingEnumerationOptions<Envelope, int> options = new(x => x.Inner.Items) { LeaveOpen = leaveOpen };
+		Assert.Equal([1, 2], await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(pipe.Reader, Shape<Envelope, Envelope>(), options)));
+		if (leaveOpen)
+		{
+			ReadResult remaining = await pipe.Reader.ReadAsync();
+			Assert.True(remaining.IsCompleted);
+			Assert.True(remaining.Buffer.IsEmpty);
+			pipe.Reader.AdvanceTo(remaining.Buffer.End);
+			await pipe.Reader.CompleteAsync();
+		}
+		else
+		{
+			await Assert.ThrowsAsync<InvalidOperationException>(async () => await pipe.Reader.ReadAsync());
+		}
+	}
+
+	[Test]
+	[Arguments("""{"inner":{"items":null}}""")]
+	[Arguments("""{"inner":null}""")]
+	[Arguments("""{"inner":{}}""")]
+	public async Task PathOptions_MissingOrNull(string json)
+	{
+		JsonSerializer.StreamingEnumerationOptions<Envelope, int> options = new(x => x.Inner.Items);
+		using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+		await Assert.ThrowsAsync<JsonPathNotFoundException>(async () => await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, Shape<Envelope, Envelope>(), options)));
+		stream.Position = 0;
+		Assert.Empty(await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<Envelope, int, Envelope>(stream, options with { EmptySequenceForUndiscoverablePath = true })));
+		Assert.True(stream.CanRead);
+	}
+
+	[Test]
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task PathOptions_EarlyDisposal(bool leaveOpen)
+	{
+		Pipe pipe = new();
+		await WriteAsync(pipe.Writer, """{"inner":{"items":[1,2,3]}}""");
+		await pipe.Writer.CompleteAsync();
+		JsonSerializer.StreamingEnumerationOptions<Envelope, int> options = new(x => x.Inner.Items) { LeaveOpen = leaveOpen };
+		await foreach (int value in this.Serializer.DeserializePathEnumerableAsync(pipe.Reader, Shape<Envelope, Envelope>(), options))
+		{
+			Assert.Equal(1, value);
+			break;
+		}
+
+		if (leaveOpen)
+		{
+			ReadResult remaining = await pipe.Reader.ReadAsync();
+			Assert.Equal(",2,3]}}", Encoding.UTF8.GetString(remaining.Buffer.ToArray()));
+			pipe.Reader.AdvanceTo(remaining.Buffer.End);
+			await pipe.Reader.CompleteAsync();
+		}
+		else
+		{
+			await Assert.ThrowsAsync<InvalidOperationException>(async () => await pipe.Reader.ReadAsync());
+		}
+	}
+
 	[Test]
 	public async Task Array_RoundTrips_Chunked()
 	{
@@ -45,8 +242,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("[1,2] garbage");
 		using ChunkedStream stream = new(utf8, 3);
-		await Assert.ThrowsAsync<FormatException>(async () =>
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
 			await CollectAsync(this.Serializer.DeserializeArrayAsync(stream, Shape<int, Witness>())));
+		Assert.IsType<FormatException>(exception.InnerException);
 	}
 
 	[Test]
@@ -54,8 +252,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""[{"id":1,"name":"a"},{"id":"oops","name":"b"}]""");
 		using ChunkedStream stream = new(utf8, 4);
-		await Assert.ThrowsAsync<FormatException>(async () =>
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
 			await CollectAsync(this.Serializer.DeserializeArrayAsync(stream, Shape<Item, Item>())));
+		Assert.IsType<FormatException>(exception.InnerException);
 	}
 
 	[Test]
@@ -126,7 +325,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 		for (int chunk = 1; chunk <= 4; chunk++)
 		{
 			using ChunkedStream stream = new(utf8, chunk);
-			List<Item> result = await CollectAsync(this.Serializer.DeserializeNewlineDelimitedAsync(stream, Shape<Item, Item>()));
+			List<Item> result = await CollectAsync(this.Serializer.DeserializeEnumerableAsync(stream, Shape<Item, Item>()));
 			Assert.Equal([new Item(1, "a"), new Item(2, "b"), new Item(3, "c")], result);
 		}
 	}
@@ -136,7 +335,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("   \n  \n");
 		using ChunkedStream stream = new(utf8, 2);
-		List<int> result = await CollectAsync(this.Serializer.DeserializeNewlineDelimitedAsync(stream, Shape<int, Witness>()));
+		List<int> result = await CollectAsync(this.Serializer.DeserializeEnumerableAsync(stream, Shape<int, Witness>()));
 		Assert.Empty(result);
 	}
 
@@ -145,8 +344,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("1 2\n");
 		using ChunkedStream stream = new(utf8, 1);
-		await Assert.ThrowsAsync<FormatException>(async () =>
-			await CollectAsync(this.Serializer.DeserializeNewlineDelimitedAsync(stream, Shape<int, Witness>())));
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
+			await CollectAsync(this.Serializer.DeserializeEnumerableAsync(stream, Shape<int, Witness>())));
+		Assert.IsType<FormatException>(exception.InnerException);
 	}
 
 	[Test]
@@ -156,7 +356,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 		for (int chunk = 1; chunk <= 6; chunk++)
 		{
 			using ChunkedStream stream = new(utf8, chunk);
-			List<int> result = await CollectAsync(this.Serializer.DeserializeArrayAtAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>()));
+			List<int> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>()));
 			Assert.Equal([10, 20, 30], result);
 		}
 	}
@@ -167,7 +367,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"other":[1,2]}""");
 		using ChunkedStream stream = new(utf8, 3);
 		await Assert.ThrowsAsync<JsonPathNotFoundException>(async () =>
-			await CollectAsync(this.Serializer.DeserializeArrayAtAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>())));
+			await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>())));
 	}
 
 	[Test]
@@ -175,7 +375,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"other":[1,2]}""");
 		using ChunkedStream stream = new(utf8, 3);
-		List<int> result = await CollectAsync(this.Serializer.DeserializeArrayAtAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>(), MissingPathBehavior.ReturnDefault));
+		List<int> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>(), MissingPathBehavior.ReturnDefault));
 		Assert.Empty(result);
 	}
 
@@ -184,7 +384,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"items":null,"count":0}""");
 		using ChunkedStream stream = new(utf8, 3);
-		List<int> result = await CollectAsync(this.Serializer.DeserializeArrayAtAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>()));
+		List<int> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>()));
 		Assert.Empty(result);
 	}
 
@@ -193,8 +393,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"items":42}""");
 		using ChunkedStream stream = new(utf8, 3);
-		await Assert.ThrowsAsync<FormatException>(async () =>
-			await CollectAsync(this.Serializer.DeserializeArrayAtAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>())));
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
+			await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("items"), Shape<int, Witness>())));
+		Assert.IsType<FormatException>(exception.InnerException);
 	}
 
 	[Test]
@@ -202,26 +403,61 @@ public partial class JsonAsyncSequenceTests : TestBase
 	{
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"inner":{"items":[7,8,9]},"trailing":true}""");
 		using ChunkedStream stream = new(utf8, 2);
-		List<int> result = await CollectAsync(this.Serializer.DeserializeArrayAtAsync<Envelope, int>(stream, e => e.Inner.Items, Shape<Envelope, Envelope>()));
+		List<int> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<Envelope, int>(stream, Shape<Envelope, Envelope>(), new(e => e.Inner.Items)));
 		Assert.Equal([7, 8, 9], result);
 	}
 
 	[Test]
-	public async Task PathExpression_ThroughUnion()
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task PathExpression_ThroughUnion(bool useObjects)
 	{
-		byte[] utf8 = Encoding.UTF8.GetBytes("""{"pet":["Cat",{"toys":["ball","mouse"],"lives":9}]}""");
+		this.Serializer = this.Serializer with { UseDiscriminatorObjects = useObjects };
+		byte[] utf8 = Encoding.UTF8.GetBytes(useObjects
+			? """{"pet":{"Cat":{"toys":["ball","mouse"],"lives":9}}}"""
+			: """{"pet":["Cat",{"toys":["ball","mouse"],"lives":9}]}""");
 		using ChunkedStream stream = new(utf8, 3);
-		List<string> result = await CollectAsync(this.Serializer.DeserializeArrayAtAsync<UnionEnvelope, string>(stream, e => e.Pet.Toys, Shape<UnionEnvelope, UnionEnvelope>()));
+		List<string> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<UnionEnvelope, string>(stream, Shape<UnionEnvelope, UnionEnvelope>(), new(e => e.Pet.Toys)));
 		Assert.Equal(["ball", "mouse"], result);
+	}
+
+	[Test]
+	[Arguments(false, false)]
+	[Arguments(false, true)]
+	[Arguments(true, false)]
+	[Arguments(true, true)]
+	public async Task PathExpression_ThroughUnion_UsesCustomCaseNavigationHooks(bool useObjects, bool runtimeMapping)
+	{
+		JsonSerializer serializer = this.Serializer with
+		{
+			UseDiscriminatorObjects = useObjects,
+			Converters = [new CatToysConverter()],
+		};
+		if (runtimeMapping)
+		{
+			serializer = serializer with { DerivedTypeUnions = [new DerivedShapeMapping<Animal> { { "Cat", Shape<Cat, Cat>() } }] };
+		}
+
+		string json = useObjects
+			? """{"pet":{"Cat":{"wire":["ball","mouse"]}},"tail":true}"""
+			: """{"pet":["Cat",{"wire":["ball","mouse"]}],"tail":true}""";
+		string expectedUnion = useObjects ? """{"Cat":{"wire":["ball","mouse"]}}""" : """["Cat",{"wire":["ball","mouse"]}]""";
+		Animal pet = new Cat(["ball", "mouse"], 9);
+		Assert.Equal(expectedUnion, serializer.Serialize(pet, Shape<Animal, Animal>()));
+		Cat roundtrip = Assert.IsType<Cat>(serializer.Deserialize(expectedUnion, Shape<Animal, Animal>()));
+		Assert.Equal(pet.Toys, roundtrip.Toys);
+		Assert.Equal("mouse", serializer.DeserializePath(json, Shape<UnionEnvelope, UnionEnvelope>(), new JsonSerializer.DeserializePathOptions<UnionEnvelope, string>(e => e.Pet.Toys[1])));
+		using ChunkedStream stream = new(Encoding.UTF8.GetBytes(json), 1);
+		Assert.Equal(["ball", "mouse"], await CollectAsync(serializer.DeserializePathEnumerableAsync<UnionEnvelope, string>(stream, Shape<UnionEnvelope, UnionEnvelope>(), new(e => e.Pet.Toys))));
 	}
 
 	[Test]
 	public async Task PathExpression_ThroughCustomConverter()
 	{
-		JsonSerializer serializer = new() { Converters = new ConverterCollection([new CustomListConverter()]) };
+		JsonSerializer serializer = new() { Converters = ConverterCollection.Create([new CustomListConverter()]) };
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"list":{"v":[1,2,3]}}""");
 		using ChunkedStream stream = new(utf8, 2);
-		List<int> result = await CollectAsync(serializer.DeserializeArrayAtAsync<CustomEnvelope, int>(stream, e => e.List.Values, Shape<CustomEnvelope, CustomEnvelope>()));
+		List<int> result = await CollectAsync(serializer.DeserializePathEnumerableAsync<CustomEnvelope, int>(stream, Shape<CustomEnvelope, CustomEnvelope>(), new(e => e.List.Values)));
 		Assert.Equal([1, 2, 3], result);
 	}
 
@@ -231,8 +467,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 		// A pre-parsed (wire) path cannot traverse a union envelope; it needs converter metadata.
 		byte[] utf8 = Encoding.UTF8.GetBytes("""{"pet":["Cat",{"toys":[1]}]}""");
 		using ChunkedStream stream = new(utf8, 4);
-		await Assert.ThrowsAsync<NotSupportedException>(async () =>
-			await CollectAsync(this.Serializer.DeserializeArrayAtAsync(stream, JsonPath.Root.Member("pet").Member("toys"), Shape<int, Witness>())));
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
+			await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("pet").Member("toys"), Shape<int, Witness>())));
+		Assert.IsType<NotSupportedException>(exception.InnerException);
 	}
 
 	[Test]
@@ -261,9 +498,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 	public async Task SerializeNewlineDelimited_RoundTrips()
 	{
 		using MemoryStream stream = new();
-		await this.Serializer.SerializeNewlineDelimitedAsync(stream, Source(), Shape<Item, Item>());
+		await this.Serializer.SerializeEnumerableAsync(stream, Source(), Shape<Item, Item>());
 		stream.Position = 0;
-		List<Item> result = await CollectAsync(this.Serializer.DeserializeNewlineDelimitedAsync(stream, Shape<Item, Item>()));
+		List<Item> result = await CollectAsync(this.Serializer.DeserializeEnumerableAsync(stream, Shape<Item, Item>()));
 		Assert.Equal([new Item(1, "a"), new Item(2, "b")], result);
 
 		static async IAsyncEnumerable<Item> Source()
@@ -308,6 +545,33 @@ public partial class JsonAsyncSequenceTests : TestBase
 	internal partial record Inner(int[] Items);
 
 	[GenerateShape]
+	internal partial record GroupEnvelope(Inner[] Groups);
+
+	private sealed class WrappedArrayConverter : JsonConverter<Inner[]>
+	{
+		public override void Write(ref JsonWriter writer, in Inner[]? value, SerializationContext context) => throw new NotSupportedException();
+
+		public override Inner[]? Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();
+
+		public override bool SkipToIndexValue(ref JsonReader reader, object? index, SerializationContext context)
+		{
+			reader.ReadStartObject();
+			Assert.Equal("data", reader.ReadRequiredString());
+			reader.ReadNameSeparator();
+			context.DepthStep();
+			return base.SkipToIndexValue(ref reader, index, context);
+		}
+
+		public override async ValueTask<bool> SkipToIndexValueAsync(JsonAsyncReader reader, object? index, SerializationContext context)
+		{
+			await reader.ReadStartObjectAsync(context);
+			Assert.Equal("data", await reader.ReadPropertyNameAsync(context));
+			context.DepthStep();
+			return await base.SkipToIndexValueAsync(reader, index, context);
+		}
+	}
+
+	[GenerateShape]
 	[DerivedTypeShape(typeof(Cat))]
 	internal partial record Animal(string[] Toys);
 
@@ -316,6 +580,82 @@ public partial class JsonAsyncSequenceTests : TestBase
 
 	[GenerateShape]
 	internal partial record UnionEnvelope(Animal Pet);
+
+	private sealed class CatToysConverter : JsonConverter<Cat>
+	{
+		public override void Write(ref JsonWriter writer, in Cat? value, SerializationContext context)
+		{
+			if (value is null)
+			{
+				writer.WriteNull();
+				return;
+			}
+
+			writer.WriteStartObject();
+			writer.WritePropertyName("wire");
+			writer.WriteStartArray();
+			for (int i = 0; i < value.Toys.Length; i++)
+			{
+				if (i > 0)
+				{
+					writer.WriteValueSeparator();
+				}
+
+				writer.Write(value.Toys[i]);
+			}
+
+			writer.WriteEndArray();
+			writer.WriteEndObject();
+		}
+
+		public override Cat? Read(ref JsonReader reader, SerializationContext context)
+		{
+			if (reader.TryReadNull())
+			{
+				return null;
+			}
+
+			reader.ReadStartObject();
+			Assert.Equal("wire", reader.ReadRequiredString());
+			reader.ReadNameSeparator();
+			reader.ReadStartArray();
+			List<string> toys = [];
+			if (!reader.TryReadEndArray())
+			{
+				do
+				{
+					toys.Add(reader.ReadRequiredString());
+					if (reader.TryReadEndArray())
+					{
+						break;
+					}
+
+					reader.ReadValueSeparator();
+				}
+				while (true);
+			}
+
+			Assert.True(reader.TryReadEndObject());
+			return new Cat(toys.ToArray(), 9);
+		}
+
+		public override bool SkipToPropertyValue(ref JsonReader reader, IPropertyShape propertyShape, SerializationContext context)
+		{
+			Assert.Equal(nameof(Animal.Toys), propertyShape.Name);
+			reader.ReadStartObject();
+			Assert.Equal("wire", reader.ReadRequiredString());
+			reader.ReadNameSeparator();
+			return true;
+		}
+
+		public override async ValueTask<bool> SkipToPropertyValueAsync(JsonAsyncReader reader, IPropertyShape propertyShape, SerializationContext context)
+		{
+			Assert.Equal(nameof(Animal.Toys), propertyShape.Name);
+			await reader.ReadStartObjectAsync(context);
+			Assert.Equal("wire", await reader.ReadPropertyNameAsync(context));
+			return true;
+		}
+	}
 
 	[GenerateShape]
 	internal partial record CustomEnvelope(CustomList List);
@@ -329,7 +669,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 
 	internal sealed class CustomListConverter : JsonConverter<CustomList>
 	{
-		public override void Write(ref JsonWriter writer, CustomList? value, SerializationContext context)
+		public override void Write(ref JsonWriter writer, in CustomList? value, SerializationContext context)
 		{
 			writer.WriteStartObject();
 			writer.WritePropertyName("v");
@@ -343,7 +683,7 @@ public partial class JsonAsyncSequenceTests : TestBase
 				}
 
 				first = false;
-				writer.WriteNumberValue(item);
+				writer.Write(item);
 			}
 
 			writer.WriteEndArray();
@@ -375,16 +715,16 @@ public partial class JsonAsyncSequenceTests : TestBase
 			return new CustomList(values.ToArray());
 		}
 
-		public override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		public override async ValueTask<bool> SkipToPropertyValueAsync(JsonAsyncReader reader, IPropertyShape propertyShape, SerializationContext context)
 		{
 			await reader.ReadStartObjectAsync(context);
 			string name = await reader.ReadPropertyNameAsync(context);
-			if (name == "v" && options.NameComparer.Equals(segment.Name, "values"))
+			if (name == "v" && propertyShape.Name == "Values")
 			{
-				return 1;
+				return true;
 			}
 
-			return -1;
+			return false;
 		}
 	}
 
