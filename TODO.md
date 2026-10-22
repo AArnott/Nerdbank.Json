@@ -138,6 +138,28 @@ This isolates an actual setup cost: the numeric Double helper shrinks from 1,531
 After a badly unstable/reversing original-core repeat, separately matched affinity-16 Medium A/B/A/B runs show short Single/Double/Decimal wins in both pairs and about 17%/15% numeric-array improvements, with unchanged allocations; long/ordinary-object results remain qualified in the benchmark guide.
 The retained code changes only the private copy boundary, not the copy algorithm, public APIs, numeric helper logic, or lexical/cursor/exception contracts. All 5,265 managed tests pass, including 176 input-contract cases; fresh paired traces and generated code corroborate the boundary rather than implying total CPU ratios.
 
+## Renewed performance validation checkpoint (shipping source `90d2d39`)
+
+The six accepted production improvements and reusable numeric coverage are committed; rejected/inconclusive alternatives remain only on named local branches, with complete Medium/error/allocation/disassembly/profile evidence in the benchmark guide.
+Fresh full-platform runs validate the clean shipping source above, not a historical API-only checkpoint.
+
+| Check | Windows x64 | WSL Ubuntu Linux x64 |
+|---|---:|---:|
+| Managed passed; failures/skips | 5,265; 0/0 | 4,047; 0/0 |
+| NativeAOT passed (.NET 9 + 10); failures/known skips | 2,462; 0/4 | 2,462; 0/4 |
+| Release/native warnings-as-errors, F# self-check, all four native fixtures | Pass | Pass |
+| Broad image bytes / MiB | 6,118,400 / 5.8349609375 | 6,327,352 / 6.0342330933 |
+| Existing broad guard (center +/- 0.2 MiB) | Pass (5.79) | Pass (5.88) |
+| Uncalibrated minimal image bytes / MiB | 2,798,592 / 2.6689453125 | 3,018,688 / 2.8788452148 |
+
+The four native skips per OS are exclusively unsupported nonzero-lower-bound input-array creation, two per native framework; managed assertions remain intact.
+Formatting verification, isolated platform-script tests, image-measurement contracts, and DocFX warnings-as-errors pass.
+Full reports are `obj\renewed-throughput-windows-90d2d39\validation.json` and the isolated WSL clone's `obj/renewed-throughput-linux-90d2d39/validation.json`, with summaries retained in session artifacts.
+No baseline, runtime feature, test assertion, or supported public API was weakened to achieve these results.
+Cold-start elapsed time and hardware counters were not measured; smaller JIT bodies/frame setup and successful native size guards must not be promoted into a universal startup-speed claim.
+General original-speed parity remains unproved, shared-host drift is explicit, and per-byte segmented cursor access remains a profiled future lead rather than an API blocker.
+macOS CI was green at the prior operator-approved calibration; the new performance head still needs its fresh macOS CI run, not a reused old result.
+
 ## Current macOS CI calibration (operator-approved)
 
 GitHub Actions run `39676067406` at `78a9fc9` executes the macOS build, tests, and native fixtures successfully; its broad native image is 5,931,376 bytes (5.6566009521484375 MiB).

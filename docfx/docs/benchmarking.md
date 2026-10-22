@@ -463,4 +463,21 @@ Compare sizes only for the same fixture, RID, SDK, and publish configuration.
 The minimal size report must supplement rather than replace the broader [AotNativeConsole fixture](https://github.com/AArnott/Nerdbank.Json/blob/main/test/AotNativeConsole/Program.cs) and the runtime and size regression guard for that workload.
 The root-all [AotCompatibilityTest fixture](https://github.com/AArnott/Nerdbank.Json/blob/main/test/AotCompatibilityTest/Program.cs) serves a different purpose: checking the shipping API surface with the native compiler.
 Do not root the entire shipping assembly in the minimal size fixture, because doing so would change the measurement.
-These fixtures describe the validation surfaces; native execution and size results must be verified for the integrated code before claiming they pass.
+These fixtures describe distinct validation surfaces; the following checkpoint verifies the integrated performance changes rather than inferring native compatibility from managed timing.
+
+### Integrated performance checkpoint
+
+Fresh clean-source platform runs at `90d2d39` pass the full Release managed/native/F# matrix and all four native fixtures on Windows x64 and WSL Ubuntu Linux x64.
+Windows passes 5,265 managed tests and Linux 4,047; each OS passes 2,462 NativeAOT core tests across .NET 9/10, with zero failures and the same four known nonzero-lower-bound input-array skips.
+The broad image guard retains the reviewed centers and +/- 0.2 MiB tolerance; the minimal workload remains explicitly uncalibrated.
+
+| Fixture | Windows x64 bytes / MiB | Linux x64 bytes / MiB | Result |
+|---|---:|---:|---|
+| Broad `AotNativeConsole` | 6,118,400 / 5.8349609375 | 6,327,352 / 6.0342330933 | Within existing 5.79/5.88 MiB centers +/- 0.2 |
+| Minimal `AotSizeTest` | 2,798,592 / 2.6689453125 | 3,018,688 / 2.8788452148 | Round-trip/measurement contract passes; not calibrated |
+
+Release builds and native publishes use warnings as errors; formatting verification, isolated platform-validator tests and DocFX also pass.
+Source-linked input tests run under NativeAOT as well as managed runtimes, including borrowed MemoryManager blocks, cursor independence and logical ranges above 2 GiB without allocating multi-gigabyte storage.
+These platform runs validate correctness and image budgets, not Linux throughput parity, hardware counters, cold-start elapsed time, or the new head's still-pending macOS execution.
+The SIMD cache is isolated from ordinary reader-struct initialization, and outlined copy code shrinks the measured hot JIT bodies, but no universal startup-speed claim is made.
+Reports are retained at `obj\renewed-throughput-windows-90d2d39\validation.json` and the isolated WSL clone's `obj/renewed-throughput-linux-90d2d39/validation.json`, with copies in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d` as `files\renewed-throughput-windows-validation.json` and `files\renewed-throughput-linux-validation.json`.
