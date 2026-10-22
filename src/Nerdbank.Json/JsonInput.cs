@@ -169,7 +169,7 @@ internal readonly ref struct JsonInput
 			return offset < 0 ? -1 : start + offset;
 		}
 
-		return this.IndexOfSegmentedDelimiter(start);
+		return this.segments.IndexOfSegmentedDelimiter(start);
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
@@ -191,20 +191,6 @@ internal readonly ref struct JsonInput
 				ArrayPool<byte>.Shared.Return(rented);
 			}
 		}
-	}
-
-	[MethodImpl(MethodImplOptions.NoInlining)]
-	private long IndexOfSegmentedDelimiter(long start)
-	{
-		for (long index = start; index < this.Length; index++)
-		{
-			if (this[index] is (byte)'"' or (byte)'\\')
-			{
-				return index;
-			}
-		}
-
-		return -1;
 	}
 
 	/// <summary>A borrowed or temporarily rented token, consumed within its caller's scratch lifetime.</summary>
@@ -335,6 +321,28 @@ internal readonly ref struct JsonInput
 			}
 
 			return this.memory.Span[checked((int)(index - this.start))];
+		}
+
+		/// <summary>Finds the next quote or backslash using only the byte cursor.</summary>
+		/// <param name="start">The absolute offset at which to start searching.</param>
+		/// <returns>The absolute delimiter offset, or -1.</returns>
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		internal long IndexOfSegmentedDelimiter(long start)
+		{
+			while (start < this.Sequence.Length)
+			{
+				this.GetByte(start);
+				ReadOnlySpan<byte> remaining = this.memory.Span[checked((int)(start - this.start))..];
+				int offset = remaining.IndexOfAny((byte)'"', (byte)'\\');
+				if (offset >= 0)
+				{
+					return start + offset;
+				}
+
+				start += remaining.Length;
+			}
+
+			return -1;
 		}
 
 		private SequencePosition GetSlicePosition(long offset)

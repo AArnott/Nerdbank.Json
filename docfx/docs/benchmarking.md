@@ -317,6 +317,42 @@ The original A1 write controls were unstable and much slower than later runs, de
 The full 5,117-test managed matrix passes, including zero/singleton bucket counts, high-bit hashes, collision chains at power-of-two and other sizes, escaped/Unicode names, misses and case-insensitive fallback.
 Reports and disassembly are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\bucket-mask-baseline-A1`, `files\bucket-mask-baseline-A2`, `files\bucket-mask-candidate-B1`, and `files\bucket-mask-confirm-B2`.
 
+### Per-block segmented delimiter search
+
+After numeric cursor rewinds were removed, warmed property-name profiles still attributed 6.64% exclusive / 24.22% inclusive sampled thread time to bytewise segmented delimiter search, with byte access itself at 26.52% exclusive.
+The retained search positions the existing byte cursor once per memory block, then borrows the remaining span and uses `IndexOfAny` for quote/backslash. It does not move the independent token-slice cursor, add state or allocations, validate Unicode, or treat controls as delimiters; callers retain lexical validation and failure positions.
+The existing byte cursor still handles backward searches, empty/clipped segments and long offsets. The contiguous path is unchanged.
+
+`SegmentedStringRunBenchmarks` makes an early escape followed by a 32- or 4,096-byte ordinary run, with 3/64/4,096-byte blocks; the short cases fitting one block are contiguous controls.
+Setup validates the result and full byte consumption. Existing tiny-segment numbers, names, escaped/unescaped strings and ordinary objects remain fixed controls.
+Serial .NET 9 Medium A/B/A/B results use the settings above; all times below are ns and errors are 99.9% confidence-interval half-widths.
+
+| Operation | Original A1 mean +/- error | Candidate B1 mean +/- error | Original A2 mean +/- error | Candidate B2 mean +/- error | B/op, all |
+|---|---:|---:|---:|---:|---:|
+| ObjectDeserializeSmall_NerdbankJson | 413.91 +/- 21.46 | 413.05 +/- 46.29 | 400.65 +/- 16.81 | 376.47 +/- 8.58 | 200 |
+| ObjectDeserializeWide_NerdbankJson | 1281.66 +/- 11.22 | 1377.69 +/- 102.40 | 1321.93 +/- 25.00 | 1257.77 +/- 25.11 | 664 |
+| ObjectSerializeSmall_NerdbankJson | 196.77 +/- 4.04 | 217.20 +/- 35.14 | 196.66 +/- 4.73 | 187.35 +/- 4.78 | 0 |
+| ObjectSerializeWide_NerdbankJson | 493.63 +/- 8.72 | 605.74 +/- 107.78 | 497.80 +/- 17.80 | 491.14 +/- 9.94 | 0 |
+| SegmentedStringRunReadString(RunLength: 32, SegmentSize: 3) | 555.53 +/- 6.74 | 535.85 +/- 27.96 | 554.91 +/- 15.66 | 510.72 +/- 17.61 | 192 |
+| SegmentedStringRunReadString(RunLength: 32, SegmentSize: 64) | 73.18 +/- 2.75 | 75.80 +/- 2.94 | 77.57 +/- 2.79 | 74.54 +/- 1.89 | 88 |
+| SegmentedStringRunReadString(RunLength: 32, SegmentSize: 4096) | 72.40 +/- 0.56 | 75.55 +/- 1.62 | 82.80 +/- 6.87 | 75.51 +/- 0.80 | 88 |
+| SegmentedStringRunReadString(RunLength: 4096, SegmentSize: 3) | 54788.00 +/- 854.30 | 52299.81 +/- 1611.38 | 56632.50 +/- 1367.50 | 50946.50 +/- 1447.31 | 8376 |
+| SegmentedStringRunReadString(RunLength: 4096, SegmentSize: 64) | 30245.02 +/- 200.34 | 3247.80 +/- 143.99 | 30373.91 +/- 660.20 | 3031.42 +/- 74.57 | 8376 |
+| SegmentedStringRunReadString(RunLength: 4096, SegmentSize: 4096) | 28799.34 +/- 215.65 | 833.34 +/- 13.20 | 29317.11 +/- 770.01 | 846.11 +/- 31.07 | 8376 |
+| SegmentedTokenNumbers | 5740.14 +/- 91.87 | 5944.53 +/- 47.63 | 5796.19 +/- 48.54 | 6081.21 +/- 74.32 | 104 |
+| SegmentedTokenPropertyNames | 6204.75 +/- 417.57 | 6094.41 +/- 84.34 | 5910.51 +/- 121.55 | 6677.48 +/- 656.60 | 768 |
+| SegmentedTokenUnescapedString | 3547.93 +/- 174.13 | 3487.22 +/- 84.09 | 3447.64 +/- 36.19 | 3622.92 +/- 161.04 | 1024 |
+| SegmentedTokenEscapedString | 10333.97 +/- 243.44 | 8704.46 +/- 170.24 | 10271.50 +/- 87.45 | 9073.60 +/- 325.74 | 1024 |
+
+For the 4,096-byte run, repeated original/candidate comparisons improve about 10x at 64-byte blocks and 35x at 4,096-byte blocks; three-byte fragmentation remains dominated by navigation/copying and improves only about 5-10%.
+The existing dense escaped-string case improves about 12-16%, with unchanged allocations. This is not a general segmented-string or object-speed claim.
+The numeric control instead becomes about 3.6%/4.9% slower in the two candidate runs despite not calling delimiter search; this repeatable adjacent cost remains an explicit follow-up, not a discarded outlier or an attributed scanning tradeoff. JIT/code-layout effects are a hypothesis, not a demonstrated cause.
+Property-name and unescaped-string controls vary, and B1 object/write controls are particularly unstable. B2 object reads also improve without using the new segmented path; these uncontrolled changes are not claimed as wins.
+All 5,173 managed tests pass. Of 116 direct input-contract cases, the original source passes 92 functional cases and fails exactly the 24 new deterministic per-block work-count cases; the candidate passes all 116.
+Tests compare bytewise cursor/result parity, all non-delimiter byte values, empty/clipped/truncated inputs, backward searches, source mutation, borrowed/non-array-backed storage, save/restore, independent peeks/shared copies, and offsets beyond 2 GiB.
+The work-count test proves at most two memory-span accesses per visited nonempty block rather than per character, without a timing assertion.
+Reports are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d` under `files\segment-runs-baseline-A1`, `files\segment-runs-baseline-A2`, `files\segment-runs-candidate-B1`, and `files\segment-runs-confirm-B2`.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.

@@ -126,6 +126,10 @@ Property lookup now caches a mask for power-of-two bucket counts; all other coun
 Disassembly confirms the wide-object hot path uses AND instead of signed division. Repeated Medium wide medians are 1,460/1,416 ns original and 1,337/1,329 ns candidate; the repeat mean improves about 5.7% with unchanged 664 B allocation.
 Small-object timings overlap uncertainty, and initial write controls drifted badly; the full A/B/A/B table is retained in the benchmark guide rather than claiming a universal improvement.
 All 5,117 managed tests pass with a warning-free Release build, including zero/singleton/power-of-two/non-power-of-two lookup, high-bit hashes, collisions, Unicode/escaped names, misses, and case-insensitive fallback.
+Segmented delimiter search now borrows one memory span per block instead of probing every byte; it preserves the independent token-slice cursor and all lexical/failure/cursor contracts.
+Repeated Medium long-run cases improve about 10x/35x at 64/4,096-byte segmentation and dense escaped strings about 12-16%; allocations are unchanged. Tiny fragmentation benefits much less.
+All 5,173 managed tests pass, including 116 direct input cases and deterministic per-block span-access bounds (the original fails precisely those 24 work-count cases).
+The unchanged numeric control is 3.6%/4.9% slower in the two candidate runs; this is logged explicitly for the next numeric-copy/setup investigation rather than hidden behind the string wins.
 
 ## Current macOS CI calibration (operator-approved)
 
