@@ -397,6 +397,60 @@ Matching serial .NET 9 Medium A/B results follow, in ns with 99.9% confidence-in
 Reports and disassembly are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\numeric-scratch-baseline-A1` and `files\numeric-scratch-candidate-B1`.
 The next credible copy-path hypothesis is avoiding full end-position traversal and a temporary sequence slice when copying a known-length split token, not duplicating the numeric parser or limiting valid token lengths.
 
+### Retained: outline the existing segmented token copy
+
+The simpler fix keeps the original `Slice(...).CopyTo(...)` algorithm and introduces only a non-inlined internal copy boundary on the segmented path.
+The contiguous path, numeric helpers, token ownership/pooling, lexical grammar, exceptions, range prevalidation, byte/token-slice cursors, and public APIs are unchanged.
+The measured cause is **inlined sequence-copy machinery inflating numeric reader code and local-frame initialization**, not the source-level disposable token syntax.
+For `ReadDoubleSegmented`, captured JIT code falls from 1,531 to 666 native bytes and its fixed local frame falls from 0x168 to 0x90 bytes (excluding the separate 128-byte scratch reservation and register saves).
+The shared outlined BCL copy helper is 460 bytes in the captured disassembly; it replaces duplicated inlined work rather than adding eleven numeric fallback methods.
+
+Three copy candidates were tested, not merely assumed equivalent:
+
+| Candidate | Local preservation | Numeric control, mean +/- error ns (affinity 2) | Generated Double helper | Disposition |
+|---|---|---:|---|---|
+| Original BCL slice/copy, inlined | `1c5776b` | 6040.68 +/- 60.98 | 1,531 B; 0x168 frame | Baseline A1 |
+| Direct block loop, inlined | `perf/segment-direct-copy` at `2913b9c` | 6310.11 +/- 320.88 | 1,868 B; 0x138 frame | Rejected: no convincing gain |
+| Direct block loop, outlined | `perf/segment-copy-outlined` at `3ac4fc2` | 4817.15 +/- 182.59 | 666 B; 0x90 frame | Promising, superseded by simpler BCL implementation |
+| Original BCL slice/copy, outlined | Retained implementation | 5591.39 +/- 246.31 | 666 B; 0x90 frame | Repeat on a separately labeled core below |
+
+The original-core repeat became substantially unstable: original A2 numeric control was 6743.36 +/- 156.52 ns, while outlined B4 was 7402.18 +/- 916.22 ns (median 7968.74 ns), reversing the first comparison.
+Unchanged small/wide reads also rose from 427/1414 to 595/1842 ns and writes from 203/568 to 230/602 ns in that pair.
+These results are retained, not normalized against writes or discarded to manufacture a win.
+All 23 cells, medians, distributions and disassembly are preserved under `numeric-scratch-baseline-A1`, `segment-copy-candidate-B1`, `segment-copy-outlined-B2`, `segment-copy-simple-B3`, `segment-copy-baseline-A2`, and `segment-copy-simple-confirm-B4` in the session artifacts.
+
+A separate matched Medium A/B/A/B sequence therefore uses affinity **16**, after observing host activity, with the same .NET 9 runtime, two launches, ten warmups, fifteen measurements, production-default JIT and user power plan.
+These numbers must not be compared directly with affinity-2 historical results.
+All times below are ns; errors are 99.9% confidence-interval half-widths.
+
+| Operation | Original A3 mean +/- error | Outlined B5 mean +/- error | Original A4 mean +/- error | Outlined B6 mean +/- error | B/op, all |
+|---|---:|---:|---:|---:|---:|
+| ObjectDeserializeSmall_NerdbankJson | 459.17 +/- 3.39 | 578.52 +/- 107.45 | 509.30 +/- 18.79 | 504.05 +/- 10.52 | 200 |
+| ObjectDeserializeWide_NerdbankJson | 1530.11 +/- 64.96 | 1584.38 +/- 51.99 | 1612.55 +/- 99.44 | 1543.57 +/- 36.64 | 664 |
+| ObjectSerializeSmall_NerdbankJson | 224.76 +/- 4.86 | 237.03 +/- 9.15 | 250.61 +/- 11.34 | 221.09 +/- 5.24 | 0 |
+| ObjectSerializeWide_NerdbankJson | 611.84 +/- 9.74 | 626.87 +/- 18.72 | 606.93 +/- 24.73 | 573.83 +/- 19.67 | 0 |
+| SegmentedNumericScratchReadDouble(TokenLength: 9) | 226.16 +/- 8.81 | 198.97 +/- 10.68 | 226.64 +/- 11.39 | 191.72 +/- 9.04 | 104 |
+| SegmentedNumericScratchReadSingle(TokenLength: 9) | 242.85 +/- 5.89 | 208.25 +/- 6.48 | 227.84 +/- 8.55 | 185.31 +/- 5.62 | 104 |
+| SegmentedNumericScratchReadDecimal(TokenLength: 9) | 213.50 +/- 8.18 | 187.29 +/- 8.81 | 228.85 +/- 8.01 | 170.17 +/- 4.54 | 104 |
+| SegmentedNumericScratchReadDouble(TokenLength: 129) | 1500.98 +/- 40.05 | 1680.14 +/- 93.83 | 1642.96 +/- 86.96 | 1409.08 +/- 26.86 | 104 |
+| SegmentedNumericScratchReadSingle(TokenLength: 129) | 1550.28 +/- 38.80 | 1569.54 +/- 50.76 | 1548.60 +/- 59.36 | 1393.56 +/- 45.54 | 104 |
+| SegmentedNumericScratchReadDecimal(TokenLength: 129) | 1495.45 +/- 60.45 | 1447.26 +/- 78.91 | 1490.83 +/- 149.83 | 1321.61 +/- 48.62 | 104 |
+| SegmentedTokenNumbers | 7499.51 +/- 176.19 | 6221.74 +/- 120.79 | 7236.81 +/- 379.75 | 6143.11 +/- 770.60 | 104 |
+| SegmentedTokenPropertyNames | 9635.70 +/- 1834.97 | 7167.16 +/- 166.62 | 7292.45 +/- 473.19 | 6884.15 +/- 276.57 | 768 |
+| SegmentedTokenUnescapedString | 4358.35 +/- 148.23 | 4307.52 +/- 98.37 | 4145.14 +/- 182.59 | 3915.35 +/- 178.39 | 1024 |
+| SegmentedTokenEscapedString | 10699.16 +/- 405.20 | 10721.88 +/- 283.36 | 10202.81 +/- 473.31 | 9582.49 +/- 96.73 | 1024 |
+
+The nine-byte Single/Double/Decimal cases improve in both pairs, and the numeric-array control improves about 17%/15%, with the last candidate array distribution still noisy.
+Long pooled spellings do not show a consistent penalty or benefit across repeats; the first long-Double candidate is slower and the repeat faster, so no long-token speed claim is made.
+Property-name timings and unchanged object/write controls also drift; this is a targeted short split-token improvement, not complete original serializer-speed restoration.
+The full 5,265-test managed matrix passes, including 176 direct input-contract cases that passed against the original implementation before timing.
+New copy coverage checks all small ranges, empty/clipped/non-array-backed blocks, >2 GiB logical offsets, borrowed mutation, peeks/copies/restores, original exception types/parameter names and no writes before invalid-range failure.
+
+Separate paired warm affinity-2 traces corroborate the code boundary: `ReadDoubleSegmented` exclusive sampled share moves from 20.47% to 8.19%, while the now-separate copy helper appears at 11.91%.
+This is a redistribution of attribution, not a claim of a 60% total CPU reduction; elapsed-time evidence is the unprofiled table above.
+Byte-cursor access remains a material lead (23.18% original / 26.56% outlined exclusive share) after setup work shrinks; these relative shares do not establish its absolute CPU cost.
+Reports are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d` under `files\copy-quiet-baseline-A3`, `files\copy-quiet-simple-B5`, `files\copy-quiet-baseline-A4`, and `files\copy-quiet-simple-confirm-B6`; paired traces are `files\numbers-copy-original.nettrace` and `files\numbers-copy-outlined.nettrace` with text summaries.
+
 ## Native image size
 
 Native executable size is a separate measurement from throughput and managed allocations.

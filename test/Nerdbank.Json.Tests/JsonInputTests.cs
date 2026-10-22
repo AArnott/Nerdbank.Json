@@ -10,6 +10,178 @@ public class JsonInputTests
 	[Arguments(1)]
 	[Arguments(2)]
 	[Arguments(3)]
+	[Arguments(4)]
+	[Arguments(5)]
+	public void CopyTo_AllRangesMatchSlicesWithoutChangingByteCursor(int layout)
+	{
+		ReadOnlySequence<byte> sequence = CreateInput(layout);
+		JsonInput input = new(sequence);
+		if (sequence.Length > 0)
+		{
+			_ = input[0];
+		}
+
+		(ReadOnlyMemory<byte> Memory, SequencePosition Next, long Start) cursor = input.SaveCursor();
+		for (int direction = 0; direction < 2; direction++)
+		{
+			for (long index = 0; index <= sequence.Length; index++)
+			{
+				long start = direction == 0 ? index : sequence.Length - index;
+				for (int length = 0; length <= sequence.Length - start; length++)
+				{
+					byte[] destination = new byte[length + 2];
+					destination.AsSpan().Fill(0xcc);
+					input.CopyTo(start, destination.AsSpan(1, length));
+					Assert.Equal(sequence.Slice(start, length).ToArray(), destination.AsSpan(1, length).ToArray());
+					Assert.Equal((byte)0xcc, destination[0]);
+					Assert.Equal((byte)0xcc, destination[^1]);
+					Assert.Equal(cursor, input.SaveCursor());
+				}
+			}
+		}
+	}
+
+	[Test]
+	[Arguments(0)]
+	[Arguments(1)]
+	[Arguments(2)]
+	[Arguments(3)]
+	[Arguments(4)]
+	[Arguments(5)]
+	public void CopyTo_InvalidRangesPreserveExceptionsAndDoNotWrite(int layout)
+	{
+		ReadOnlySequence<byte> sequence = CreateInput(layout);
+		JsonInput input = new(sequence);
+		(long Start, int Length)[] ranges =
+		[
+			(-1, 0), (-1, 2), (sequence.Length + 1, 0),
+			(sequence.Length, 1), (0, (int)sequence.Length + 1),
+			(1, (int)sequence.Length + 1), (long.MaxValue, 0),
+			(long.MaxValue, 2), (long.MinValue, 0),
+		];
+		foreach ((long start, int length) in ranges)
+		{
+			input.CopyTo(sequence.Length, Span<byte>.Empty);
+			byte[] destination = new byte[length];
+			destination.AsSpan().Fill(0xcc);
+			Exception expected;
+			if (sequence.IsSingleSegment)
+			{
+				expected = Assert.IsAssignableFrom<Exception>(GetContiguousCopyException(sequence.First, start, destination));
+			}
+			else
+			{
+				expected = Assert.IsType<ArgumentOutOfRangeException>(GetSliceException(sequence, start, length));
+			}
+
+			Exception? actual = GetCopyException(input, start, destination);
+			Assert.NotNull(actual);
+			Assert.Equal(expected.GetType(), actual.GetType());
+			if (expected is ArgumentException argumentException)
+			{
+				Assert.Equal(argumentException.ParamName, Assert.IsAssignableFrom<ArgumentException>(actual).ParamName);
+			}
+
+			Assert.All(destination, value => Assert.Equal((byte)0xcc, value));
+			byte[] recovered = new byte[(int)sequence.Length];
+			input.CopyTo(0, recovered);
+			Assert.Equal(sequence.ToArray(), recovered);
+		}
+	}
+
+	[Test]
+	public void CopyTo_InterleavedCopiesPeeksAndRestoresPreserveCursors()
+	{
+		ReadOnlySequence<byte> sequence = CreateInput(1);
+		JsonInput input = new(sequence);
+		JsonInput reference = new(sequence);
+		Assert.Equal((byte)'b', input[1]);
+		(ReadOnlyMemory<byte> Memory, SequencePosition Next, long Start) saved = input.SaveCursor();
+		JsonInput copy = input;
+		JsonInput peek = input.CreatePeekInput();
+		(long Start, int Length)[] ranges = [(1, 7), (3, 4), (0, 8), (8, 0), (4, 4), (2, 5)];
+		foreach ((long start, int length) in ranges)
+		{
+			byte[] destination = new byte[length];
+			copy.CopyTo(start, destination);
+			ReadOnlySequence<byte> expected = reference.SliceSequence(start, length)!.Value;
+			Assert.Equal(expected.ToArray(), destination);
+			Assert.Equal(reference.SliceSequence(start, 0)!.Value.Start, input.SliceSequence(start, 0)!.Value.Start);
+			Assert.Equal(saved, input.SaveCursor());
+			peek.CopyTo(sequence.Length - length, destination);
+			Assert.Equal(sequence.Slice(sequence.Length - length, length).ToArray(), destination);
+			Assert.Equal(saved, input.SaveCursor());
+		}
+
+		Assert.Equal((byte)'h', input[7]);
+		input.RestoreCursor(saved);
+		Assert.Equal(saved, copy.SaveCursor());
+		byte[] restored = new byte[7];
+		input.CopyTo(1, restored);
+		Assert.Equal("bcdefgh"u8.ToArray(), restored);
+		Assert.Equal(saved, input.SaveCursor());
+	}
+
+	[Test]
+	public void CopyTo_MemoryManagerBlocksAndClippedEndAreBorrowed()
+	{
+		using CountingMemoryManager first = new("xabc"u8.ToArray());
+		using CountingMemoryManager last = new("defy"u8.ToArray());
+		using CountingMemoryManager empty = new([]);
+		ReadOnlyMemory<byte> emptyMemory = empty.Memory;
+		ReadOnlySequence<byte> sequence = CreateSequence(emptyMemory, first.Memory, emptyMemory, last.Memory, emptyMemory).Slice(1, 6);
+		JsonInput input = new(sequence);
+		byte[] destination = new byte[6];
+		input.CopyTo(0, destination);
+		Assert.Equal("abcdef"u8.ToArray(), destination);
+		first.GetSpan()[2] = (byte)'B';
+		last.GetSpan()[1] = (byte)'E';
+		input.CopyTo(1, destination.AsSpan(0, 4));
+		Assert.Equal("BcdEef"u8.ToArray(), destination);
+
+		int firstCalls = first.GetSpanCalls;
+		int lastCalls = last.GetSpanCalls;
+		destination.AsSpan().Fill(0xcc);
+		Assert.IsType<ArgumentOutOfRangeException>(GetCopyException(input, 1, destination));
+		Assert.All(destination, value => Assert.Equal((byte)0xcc, value));
+		Assert.Equal(firstCalls, first.GetSpanCalls);
+		Assert.Equal(lastCalls, last.GetSpanCalls);
+		input.CopyTo(sequence.Length, Span<byte>.Empty);
+	}
+
+	[Test]
+	public void CopyTo_LongOffsetsAreNotNarrowed()
+	{
+		byte[] block = new byte[1024 * 1024];
+		block[^1] = (byte)'w';
+		Segment first = new(block);
+		Segment last = first;
+		for (int i = 1; i < 2048; i++)
+		{
+			last = last.Append(block);
+		}
+
+		last = last.Append(ReadOnlyMemory<byte>.Empty).Append("xyz"u8.ToArray()).Append(ReadOnlyMemory<byte>.Empty);
+		ReadOnlySequence<byte> sequence = new(first, 0, last, 0);
+		JsonInput input = new(sequence);
+		long offset = (long)int.MaxValue + 1;
+		byte[] destination = new byte[4];
+		input.CopyTo(offset - 1, destination);
+		Assert.Equal("wxyz"u8.ToArray(), destination);
+		input.CopyTo(0, destination);
+		Assert.Equal(new byte[4], destination);
+		input.CopyTo(offset, destination.AsSpan(0, 3));
+		Assert.Equal("xyz\0"u8.ToArray(), destination);
+		Assert.IsType<ArgumentOutOfRangeException>(GetCopyException(input, offset + 1, destination));
+		Assert.Equal("xyz\0"u8.ToArray(), destination);
+		input.CopyTo(sequence.Length, Span<byte>.Empty);
+	}
+
+	[Test]
+	[Arguments(0)]
+	[Arguments(1)]
+	[Arguments(2)]
+	[Arguments(3)]
 	public void IndexOfDelimiter_AllPositionsAndStartsMatchBytewiseScan(int layout)
 	{
 		byte[] ordinary = [0, 1, 9, 10, 13, 31, 32, 127, 128, 192, 255, 226, 130, 172, (byte)'a', (byte)'z'];
@@ -447,6 +619,40 @@ public class JsonInputTests
 			return null;
 		}
 		catch (ArgumentOutOfRangeException ex)
+		{
+			return ex;
+		}
+	}
+
+	private static Exception? GetCopyException(JsonInput input, long start, byte[] destination)
+	{
+		try
+		{
+			input.CopyTo(start, destination);
+			return null;
+		}
+		catch (ArgumentOutOfRangeException ex)
+		{
+			return ex;
+		}
+		catch (OverflowException ex)
+		{
+			return ex;
+		}
+	}
+
+	private static Exception? GetContiguousCopyException(ReadOnlyMemory<byte> memory, long start, byte[] destination)
+	{
+		try
+		{
+			memory.Span.Slice(checked((int)start), destination.Length).CopyTo(destination);
+			return null;
+		}
+		catch (ArgumentOutOfRangeException ex)
+		{
+			return ex;
+		}
+		catch (OverflowException ex)
 		{
 			return ex;
 		}

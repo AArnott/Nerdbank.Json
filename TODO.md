@@ -133,6 +133,10 @@ The unchanged numeric control is 3.6%/4.9% slower in the two candidate runs; thi
 The direct-stack numeric scratch experiment is rejected and preserved only at `perf/numeric-scratch-setup` (`90f3982`): 6.041 versus 6.029 us for the numeric-array control is inconclusive, Single/Decimal do not improve, and the same 0x168-byte frame remains while native helper code grows.
 Only reusable short/pooled numeric benchmarks and 127/128/129/4,096-byte fraction/overflow contracts are retained; all 128 numeric-scanning tests passed on the original production source and all 5,205 tests passed on the candidate.
 Next: test a direct known-length segmented copy that reuses the token-start cursor without walking the token end twice; do not duplicate numeric parsing, cap valid spellings, or infer timing from source-level cleanup.
+The direct-copy loop did not justify replacing the BCL algorithm: inlined B1 is inconclusive (`2913b9c`), and promising outlined B2 (`3ac4fc2`) is superseded by the simpler retained original-slice/copy implementation behind a non-inlined segmented helper.
+This isolates an actual setup cost: the numeric Double helper shrinks from 1,531 to 666 JIT bytes and its fixed local frame from 0x168 to 0x90, with unchanged token ownership and parsing.
+After a badly unstable/reversing original-core repeat, separately matched affinity-16 Medium A/B/A/B runs show short Single/Double/Decimal wins in both pairs and about 17%/15% numeric-array improvements, with unchanged allocations; long/ordinary-object results remain qualified in the benchmark guide.
+The retained code changes only the private copy boundary, not the copy algorithm, public APIs, numeric helper logic, or lexical/cursor/exception contracts. All 5,265 managed tests pass, including 176 input-contract cases; fresh paired traces and generated code corroborate the boundary rather than implying total CPU ratios.
 
 ## Current macOS CI calibration (operator-approved)
 

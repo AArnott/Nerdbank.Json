@@ -117,7 +117,7 @@ internal readonly ref struct JsonInput
 		}
 		else
 		{
-			this.segments.Slice(start, destination.Length).CopyTo(destination);
+			this.segments.CopyTo(start, destination);
 		}
 	}
 
@@ -273,6 +273,13 @@ internal readonly ref struct JsonInput
 		/// <param name="length">The token length.</param>
 		/// <returns>The borrowed token.</returns>
 		internal ReadOnlySequence<byte> Slice(long offset, long length) => this.Sequence.Slice(this.GetSlicePosition(offset), length);
+
+		/// <summary>Outlines sequence slicing and copying to keep token-reader stack frames small.</summary>
+		/// <param name="offset">The absolute range offset.</param>
+		/// <param name="destination">The destination, whose length specifies the range length.</param>
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		internal void CopyTo(long offset, Span<byte> destination)
+			=> this.Slice(offset, destination.Length).CopyTo(destination);
 
 		/// <summary>Checks contiguous availability without traversing to the end of the range.</summary>
 		/// <param name="offset">The absolute range offset.</param>
