@@ -17,7 +17,7 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing" Version="1.1.4" />
     <PackageVersion Include="Microsoft.VisualStudio.Validation" Version="17.13.22" />
-    <PackageVersion Include="Nerdbank.MessagePack" Version="1.4.82" />
+    <PackageVersion Include="Nerdbank.MessagePack" Version="1.4.95" />
     <PackageVersion Include="PolyType" Version="$(PolyTypeVersion)" />
     <PackageVersion Include="PolyType.Roslyn" Version="$(PolyTypeVersion)-unstable" />
     <PackageVersion Include="System.IO.Pipelines" Version="10.0.13" />
