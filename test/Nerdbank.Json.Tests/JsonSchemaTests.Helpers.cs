@@ -55,7 +55,7 @@ public partial class JsonSchemaTests
 				Assert.Equal("Preserved", existing["description"]!.GetValue<string>());
 				Assert.Equal(1, existing["minItems"]!.GetValue<int>());
 				return tuple;
-			})]),
+			}),]),
 		};
 		JsonSchemaObject schema = serializer.GetJsonSchema(Shape<Opaque, Opaque>(), new JsonSchemaOptions { Dialect = dialect });
 		Assert.Contains(keyword, schema.ToJsonString(), StringComparison.Ordinal);
@@ -70,7 +70,7 @@ public partial class JsonSchemaTests
 			{
 				["type"] = "array",
 				["items"] = context.GetJsonSchema(Shape<TreeNode, TreeNode>()),
-			})]),
+			}),]),
 		};
 		JsonSchemaObject schema = serializer.GetJsonSchema(Shape<Opaque, Opaque>());
 		Assert.Contains("#/$defs/TreeNode", schema.ToJsonString(), StringComparison.Ordinal);
@@ -84,7 +84,7 @@ public partial class JsonSchemaTests
 		{
 			Converters = ConverterCollection.Create([new CallbackSchemaConverter(context => context.Dialect == JsonSchemaDialect.Draft4
 				? throw new NotSupportedException("Draft 4 is not supported by this converter.")
-				: new JsonSchemaObject { ["const"] = "opaque", ["customKeyword"] = new JsonSchemaArray(1, true, "text") })]),
+				: new JsonSchemaObject { ["const"] = "opaque", ["customKeyword"] = new JsonSchemaArray(1, true, "text") }),]),
 		};
 		Assert.Throws<NotSupportedException>(() => serializer.GetJsonSchema(Shape<Opaque, Opaque>(), new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft4 }));
 		Assert.Contains("customKeyword", serializer.GetJsonSchema(Shape<Opaque, Opaque>()).ToJsonString(), StringComparison.Ordinal);

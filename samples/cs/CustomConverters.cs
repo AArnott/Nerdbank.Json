@@ -292,7 +292,7 @@ public sealed class EnvelopeConverterFactory : IJsonConverterFactory
 	{
 		private readonly JsonConverter<T> valueConverter = context.GetConverter(T.GetTypeShape());
 
-		public override void Write(ref JsonWriter writer, in Envelope<T>? value, SerializationContext serializationContext)
+		public override void Write(ref JsonWriter writer, in Envelope<T>? value, SerializationContext context)
 		{
 			if (value is null)
 			{
@@ -300,25 +300,25 @@ public sealed class EnvelopeConverterFactory : IJsonConverterFactory
 				return;
 			}
 
-			serializationContext.DepthStep();
+			context.DepthStep();
 			writer.WriteStartObject();
 			writer.WritePropertyName("value");
-			this.valueConverter.Write(ref writer, value.Value, serializationContext);
+			this.valueConverter.Write(ref writer, value.Value, context);
 			writer.WriteEndObject();
 		}
 
-		public override Envelope<T>? Read(ref JsonReader reader, SerializationContext serializationContext)
+		public override Envelope<T>? Read(ref JsonReader reader, SerializationContext context)
 		{
 			if (reader.TryReadNull())
 			{
 				return null;
 			}
 
-			serializationContext.DepthStep();
+			context.DepthStep();
 			reader.ReadStartObject();
 			reader.ReadRequiredString();
 			reader.ReadNameSeparator();
-			T? value = this.valueConverter.Read(ref reader, serializationContext);
+			T? value = this.valueConverter.Read(ref reader, context);
 			if (!reader.TryReadEndObject())
 			{
 				throw new JsonSerializationException("Expected the end of the object.");

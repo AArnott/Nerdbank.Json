@@ -665,9 +665,9 @@ public partial class JsonAsyncSequenceTests : TestBase
 
 	[GenerateShapeFor<int>]
 	[GenerateShapeFor<Item[]>]
-	internal partial class Witness;
+	private partial class Witness;
 
-	internal sealed class CustomListConverter : JsonConverter<CustomList>
+	private sealed class CustomListConverter : JsonConverter<CustomList>
 	{
 		public override void Write(ref JsonWriter writer, in CustomList? value, SerializationContext context)
 		{
