@@ -124,7 +124,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	public T CreateReferenceInstance() => this.factory();
 
-	public void PopulateReference(ref JsonReader reader, ref T result, SerializationContext context)
+	public void PopulateReference(ref JsonReader reader, ref T instance, SerializationContext context)
 	{
 		context.DepthStep();
 
@@ -133,7 +133,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
 		{
-			(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+			(instance as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 			return;
 		}
 
@@ -178,7 +178,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 			if (property is not null && property.CanDeserialize)
 			{
-				property.Read(ref reader, ref result, context);
+				property.Read(ref reader, ref instance, context);
 			}
 			else if (this.extensionData?.CanRead is true)
 			{
@@ -198,8 +198,8 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 			reader.ReadValueSeparator();
 		}
 
-		this.extensionData?.Apply(ref result, unused);
-		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+		this.extensionData?.Apply(ref instance, unused);
+		(instance as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 	}
 
 	public override async ValueTask<T?> ReadAsync(JsonAsyncReader reader, SerializationContext context)

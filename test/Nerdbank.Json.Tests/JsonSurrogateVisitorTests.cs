@@ -35,8 +35,8 @@ public partial class JsonObjectSerializerTests
 
 		internal class Marshaler : IMarshaler<SurrogateBackedType, MarshaledType?>
 		{
-			public SurrogateBackedType? Unmarshal(MarshaledType? surrogate)
-				=> surrogate.HasValue ? new(surrogate.Value.A, surrogate.Value.B) : null;
+			public SurrogateBackedType? Unmarshal(MarshaledType? value)
+				=> value.HasValue ? new(value.Value.A, value.Value.B) : null;
 
 			public MarshaledType? Marshal(SurrogateBackedType? value)
 				=> value is null ? null : new(value.a, value.b);

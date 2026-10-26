@@ -428,21 +428,6 @@ public partial record JsonSerializer
 		}
 	}
 
-	private static bool ShouldWrapSerializationException(Exception exception, CancellationToken cancellationToken)
-		=> exception is not JsonSerializationException && (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested);
-
-	private static void EnsureFullyConsumed(ref JsonReader reader)
-	{
-		try
-		{
-			reader.EnsureFullyConsumed();
-		}
-		catch (FormatException ex)
-		{
-			throw new JsonSerializationException(ex.Message, ex);
-		}
-	}
-
 	private bool CanUseBuiltInFastPath(Type type) => !this.ConverterCache.HasRuntimeConverters && (this.PreserveReferences == ReferencePreservationMode.Off || !RequiresReferencePreservation(type));
 
 	private SerializationContext CreateSerializationContext(CancellationToken cancellationToken)

@@ -111,13 +111,11 @@ public sealed class JsonConverterAttributeAnalyzer : DiagnosticAnalyzer
 							current = current.BaseType;
 						}
 
-						DiagnosticDescriptor? rule = !compatible || current is null ? InvalidConverterType :
-							!converter.InstanceConstructors.Any(c => c.Parameters.IsEmpty && c.DeclaredAccessibility == Accessibility.Public) ? ConverterMissingDefaultCtor : null;
+						DiagnosticDescriptor? rule = !compatible || current is null ? InvalidConverterType : !converter.InstanceConstructors.Any(c => c.Parameters.IsEmpty && c.DeclaredAccessibility == Accessibility.Public) ? ConverterMissingDefaultCtor : null;
 						if (rule is not null)
 						{
 							SyntaxNode? syntax = attribute.ApplicationSyntaxReference?.GetSyntax(context.CancellationToken);
-							Location? location = syntax is AttributeSyntax { ArgumentList.Arguments: [var argument, ..] }
-								? argument.GetLocation() : syntax?.GetLocation();
+							Location? location = syntax is AttributeSyntax { ArgumentList.Arguments: [var argument, ..] } ? argument.GetLocation() : syntax?.GetLocation();
 							context.ReportDiagnostic(Diagnostic.Create(rule, location, valueType.ToDisplayString()));
 						}
 					}

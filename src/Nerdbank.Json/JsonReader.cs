@@ -118,7 +118,7 @@ public ref struct JsonReader
 		(byte)'"' => JsonValueKind.String,
 		(byte)'[' => JsonValueKind.Array,
 		(byte)'{' => JsonValueKind.Object,
-		(byte)'-' or >= (byte)'0' and <= (byte)'9' => JsonValueKind.Number,
+		(byte)'-' or (>= (byte)'0' and <= (byte)'9') => JsonValueKind.Number,
 		_ => throw new FormatException("Expected a JSON value."),
 	};
 
@@ -719,50 +719,42 @@ public ref struct JsonReader
 
 	private static byte ParseByte(ReadOnlySpan<byte> token)
 	{
-		return Utf8Parser.TryParse(token, out byte value, out int consumed) && consumed == token.Length
-			? value : byte.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		return Utf8Parser.TryParse(token, out byte value, out int consumed) && consumed == token.Length ? value : byte.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
 	}
 
 	private static sbyte ParseSByte(ReadOnlySpan<byte> token)
 	{
-		return Utf8Parser.TryParse(token, out sbyte value, out int consumed) && consumed == token.Length
-			? value : sbyte.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		return Utf8Parser.TryParse(token, out sbyte value, out int consumed) && consumed == token.Length ? value : sbyte.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
 	}
 
 	private static short ParseInt16(ReadOnlySpan<byte> token)
 	{
-		return Utf8Parser.TryParse(token, out short value, out int consumed) && consumed == token.Length
-			? value : short.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		return Utf8Parser.TryParse(token, out short value, out int consumed) && consumed == token.Length ? value : short.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
 	}
 
 	private static ushort ParseUInt16(ReadOnlySpan<byte> token)
 	{
-		return Utf8Parser.TryParse(token, out ushort value, out int consumed) && consumed == token.Length
-			? value : ushort.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		return Utf8Parser.TryParse(token, out ushort value, out int consumed) && consumed == token.Length ? value : ushort.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
 	}
 
 	private static int ParseInt32(ReadOnlySpan<byte> token)
 	{
-		return Utf8Parser.TryParse(token, out int value, out int consumed) && consumed == token.Length
-			? value : int.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		return Utf8Parser.TryParse(token, out int value, out int consumed) && consumed == token.Length ? value : int.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
 	}
 
 	private static uint ParseUInt32(ReadOnlySpan<byte> token)
 	{
-		return Utf8Parser.TryParse(token, out uint value, out int consumed) && consumed == token.Length
-			? value : uint.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		return Utf8Parser.TryParse(token, out uint value, out int consumed) && consumed == token.Length ? value : uint.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
 	}
 
 	private static long ParseInt64(ReadOnlySpan<byte> token)
 	{
-		return Utf8Parser.TryParse(token, out long value, out int consumed) && consumed == token.Length
-			? value : long.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		return Utf8Parser.TryParse(token, out long value, out int consumed) && consumed == token.Length ? value : long.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
 	}
 
 	private static ulong ParseUInt64(ReadOnlySpan<byte> token)
 	{
-		return Utf8Parser.TryParse(token, out ulong value, out int consumed) && consumed == token.Length
-			? value : ulong.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
+		return Utf8Parser.TryParse(token, out ulong value, out int consumed) && consumed == token.Length ? value : ulong.Parse(Encoding.UTF8.GetString(token), NumberStyles.Integer, CultureInfo.InvariantCulture);
 	}
 
 	private static float ParseSingle(ReadOnlySpan<byte> token)
@@ -787,8 +779,7 @@ public ref struct JsonReader
 
 	private static decimal ParseDecimal(ReadOnlySpan<byte> token)
 	{
-		return Utf8Parser.TryParse(token, out decimal value, out int consumed) && consumed == token.Length
-			? value : decimal.Parse(Encoding.UTF8.GetString(token), NumberStyles.Float, CultureInfo.InvariantCulture);
+		return Utf8Parser.TryParse(token, out decimal value, out int consumed) && consumed == token.Length ? value : decimal.Parse(Encoding.UTF8.GetString(token), NumberStyles.Float, CultureInfo.InvariantCulture);
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
