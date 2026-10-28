@@ -3,7 +3,11 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Text;
 using PolyType.SourceGenerator;
+using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
+using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
 
 public partial class CSharpUnionTests : TestBase
 {
@@ -71,15 +75,106 @@ public partial class CSharpUnionTests : TestBase
 		Assert.Equal("""{"Int32":42}""", this.LastSerializedJson);
 	}
 
-	[Test]
-	public async Task AsyncRoundtrip()
+	[Test, MatrixDataSource]
+	public async Task AsyncRoundtrip(bool discriminatorObjects)
 	{
+		this.Serializer = this.Serializer with { UseDiscriminatorObjects = discriminatorObjects };
 		using MemoryStream stream = new();
 		Nested value = new(new Nested(true));
 		await this.Serializer.SerializeAsync(stream, value);
 		stream.Position = 0;
 		Nested result = (await this.Serializer.DeserializeAsync<Nested>(stream))!;
 		Assert.Equal(true, Assert.IsType<Nested>(result.Value).Value);
+	}
+
+	[Test, MatrixDataSource]
+	public async Task AsyncEnumerablePayload(bool discriminatorObjects)
+	{
+		this.Serializer = this.Serializer with { UseDiscriminatorObjects = discriminatorObjects };
+		using MemoryStream stream = new();
+		await this.Serializer.SerializeAsync(stream, new StreamingUnion(new StreamingPayload { Values = ValuesAsync() }));
+		Assert.Equal(
+			discriminatorObjects ? """{"StreamingPayload":{"values":[1,2]}}""" : """["StreamingPayload",{"values":[1,2]}]""",
+			Encoding.UTF8.GetString(stream.ToArray()));
+
+		static async IAsyncEnumerable<int> ValuesAsync()
+		{
+			yield return 1;
+			await Task.Yield();
+			yield return 2;
+		}
+	}
+
+	[Test, MatrixDataSource]
+	public async Task AsyncOnlyPayloadConverter(bool discriminatorObjects, bool integerAlias)
+	{
+		this.Serializer = this.Serializer with
+		{
+			UseDiscriminatorObjects = discriminatorObjects,
+			Converters = [new AsyncOnlyIntConverter()],
+			UnionTypeAliasProvider = integerAlias ? new UnionCaseMappingCollection([new(typeof(Scalar)) { { 7, typeof(int) } }]) : null,
+		};
+		using MemoryStream stream = new();
+		await this.Serializer.SerializeAsync(stream, new ScalarHolder { Value = new Scalar(42) });
+		string alias = integerAlias ? "7" : "Int32";
+		string expected = discriminatorObjects
+			? "{\"value\":{\"" + alias + "\":42}}"
+			: """{"value":[""" + (integerAlias ? alias : "\"" + alias + "\"") + ",42]}";
+		Assert.Equal(expected, Encoding.UTF8.GetString(stream.ToArray()));
+		stream.Position = 0;
+		ScalarHolder result = (await this.Serializer.DeserializeAsync<ScalarHolder>(stream))!;
+		Assert.Equal(42, result.Value.Value);
+	}
+
+	[Test]
+	[Arguments("""{"Int32":42,"String":"extra"}""")]
+	[Arguments("""["Int32",42,43]""")]
+	[Arguments("""["Unknown",42]""")]
+	public async Task AsyncRead_InvalidEnvelope_Throws(string json)
+	{
+		this.Serializer = this.Serializer with { UseDiscriminatorObjects = json[0] == '{' };
+		using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+		await Assert.ThrowsAsync<JsonSerializationException>(() => this.Serializer.DeserializeAsync<Scalar>(stream).AsTask());
+	}
+
+	[Test, MatrixDataSource]
+	public async Task AsyncNulls(bool discriminatorObjects)
+	{
+		this.Serializer = this.Serializer with { UseDiscriminatorObjects = discriminatorObjects };
+		using MemoryStream payloadStream = new();
+		await this.Serializer.SerializeAsync(payloadStream, default(Scalar));
+		Assert.Equal(discriminatorObjects ? """{"String":null}""" : """["String",null]""", Encoding.UTF8.GetString(payloadStream.ToArray()));
+		payloadStream.Position = 0;
+		Assert.Null((await this.Serializer.DeserializeAsync<Scalar>(payloadStream)).Value);
+
+		using MemoryStream unionStream = new();
+		await this.Serializer.SerializeAsync<PetClass>(unionStream, null);
+		Assert.Equal("null", Encoding.UTF8.GetString(unionStream.ToArray()));
+		unionStream.Position = 0;
+		Assert.Null(await this.Serializer.DeserializeAsync<PetClass>(unionStream));
+	}
+
+	[Test, MatrixDataSource]
+	public async Task AsyncReferences(bool discriminatorObjects)
+	{
+		this.Serializer = this.Serializer with
+		{
+			UseDiscriminatorObjects = discriminatorObjects,
+			PreserveReferences = ReferencePreservationMode.RejectCycles,
+		};
+		Dog dog = new("Rover", 10);
+		using MemoryStream payloadStream = new();
+		await this.Serializer.SerializeAsync(payloadStream, new Pets { First = new Pet(dog), Second = new Pet(dog) });
+		payloadStream.Position = 0;
+		Pets payloads = (await this.Serializer.DeserializeAsync<Pets>(payloadStream))!;
+		Assert.Same(payloads.First.Value, payloads.Second.Value);
+
+		PetClass pet = new(dog);
+		using MemoryStream unionStream = new();
+		await this.Serializer.SerializeAsync(unionStream, new ClassPets { First = pet, Second = pet });
+		unionStream.Position = 0;
+		ClassPets unions = (await this.Serializer.DeserializeAsync<ClassPets>(unionStream))!;
+		Assert.Same(unions.First, unions.Second);
 	}
 
 	[Test]
@@ -107,6 +202,21 @@ public partial class CSharpUnionTests : TestBase
 		Assert.Contains("\"const\":\"Int32\"", schema);
 		Assert.Contains("\"const\":\"String\"", schema);
 		Assert.DoesNotContain("\"const\":null", schema);
+	}
+
+	[Test, MatrixDataSource]
+	public void Schema_NullPayload(bool discriminatorObjects)
+	{
+		this.Serializer = this.Serializer with { UseDiscriminatorObjects = discriminatorObjects };
+		Assert.Null(this.Roundtrip(default(Scalar))!.Value);
+		Assert.Equal(discriminatorObjects ? """{"String":null}""" : """["String",null]""", this.LastSerializedJson);
+		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<Scalar>()!);
+		JsonSchemaArray cases = schema["oneOf"]!.AsArray();
+		JsonSchemaNode? stringCase = Assert.Single(cases, candidate => discriminatorObjects
+			? candidate!["properties"]!["String"] is not null
+			: candidate!["prefixItems"]![0]!["const"]!.GetValue<string>() == "String");
+		JsonSchemaNode? payloadSchema = discriminatorObjects ? stringCase!["properties"]!["String"] : stringCase!["prefixItems"]![1];
+		Assert.Equal("""{"type":["string","null"]}""", payloadSchema!.ToJsonString());
 	}
 
 	[Test]
@@ -195,6 +305,9 @@ public partial class CSharpUnionTests : TestBase
 
 	[GenerateShape]
 	public partial union Numeric(int, bool);
+
+	[GenerateShape]
+	public partial union StreamingUnion(StreamingPayload, int);
 #pragma warning restore SA1201
 
 	[Union, GenerateShape]
@@ -229,6 +342,18 @@ public partial class CSharpUnionTests : TestBase
 		}
 	}
 
+	[GenerateShape]
+	public partial class StreamingPayload
+	{
+		public IAsyncEnumerable<int>? Values { get; set; }
+	}
+
+	[GenerateShape]
+	public partial class ScalarHolder
+	{
+		public Scalar Value { get; set; }
+	}
+
 	[Union, GenerateShape]
 	public sealed partial class PetClass
 	{
@@ -261,4 +386,24 @@ public partial class CSharpUnionTests : TestBase
 
 	[GenerateShapeFor<HashSet<Nested>>]
 	public partial class SetWitness;
+
+	private sealed class AsyncOnlyIntConverter : JsonConverter<int>
+	{
+		public override bool PreferAsyncSerialization => true;
+
+		public override int Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();
+
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => throw new NotSupportedException();
+
+		public override async ValueTask<int> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+			=> int.Parse(await reader.ReadNumberTokenAsync(context), System.Globalization.CultureInfo.InvariantCulture);
+
+		public override ValueTask WriteAsync(JsonAsyncWriter writer, int value, SerializationContext context)
+		{
+			JsonWriter syncWriter = writer.CreateWriter();
+			syncWriter.Write(value);
+			writer.ReturnWriter(ref syncWriter);
+			return writer.FlushIfAppropriateAsync(context);
+		}
+	}
 }

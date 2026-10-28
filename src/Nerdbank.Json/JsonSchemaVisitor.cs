@@ -167,7 +167,8 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 			IUnionCaseShape unionCase = unionShape.UnionCases[i];
 			DerivedTypeIdentifier identifier = aliases[i];
 			object alias = identifier.Type == DerivedTypeIdentifier.AliasType.Integer ? identifier.IntAlias : identifier.StringAlias;
-			cases.Add((alias, this.context.GetJsonSchema(unionCase.UnionCaseType, preserveReferences: unionShape.UnionKind == UnionTypeShapeKind.CSharpUnion)));
+			JsonSchemaObject caseSchema = this.context.GetJsonSchema(unionCase.UnionCaseType, preserveReferences: unionShape.UnionKind == UnionTypeShapeKind.CSharpUnion);
+			cases.Add((alias, unionCase.IsNullable ? caseSchema.MakeNullable() : caseSchema));
 		}
 
 		JsonSchemaObject? baseSchema = unionShape.UnionKind != UnionTypeShapeKind.CSharpUnion && RuntimeUnionBuilder.IsConstructible(unionShape.BaseType as IObjectTypeShape)

@@ -82,6 +82,18 @@ public partial class JsonObjectSerializerTests
 		Assert.Contains("no constructible base type", exception.Message);
 	}
 
+	[Test, MatrixDataSource]
+	public async Task AsyncUnionRoundtrip(bool discriminatorObjects, bool derived)
+	{
+		this.Serializer = this.Serializer with { UseDiscriminatorObjects = discriminatorObjects };
+		Animal value = derived ? new Cat("Milo", 9) : new Animal("Milo");
+		using MemoryStream stream = new();
+		await this.Serializer.SerializeAsync(stream, value);
+		Assert.Equal(this.Serializer.Serialize(value), System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+		stream.Position = 0;
+		Assert.Equal(value, await this.Serializer.DeserializeAsync<Animal>(stream));
+	}
+
 	[GenerateShape]
 	internal partial record CatWithParameterizedConstructor(string Name, int Lives) : IAnimal;
 

@@ -107,6 +107,8 @@ C# unions have no base-type fallback.
 
 The default two-element array envelope and <xref:Nerdbank.Json.JsonSerializer.UseDiscriminatorObjects?displayProperty=nameWithType> both apply to C# unions.
 Payload converters, reference preservation, asynchronous serialization, and generated JSON schemas work with these unions as well.
+Asynchronous operations forward to the payload converters, including asynchronous-only converters and payloads containing <xref:System.Collections.Generic.IAsyncEnumerable`1>.
+Generated schemas allow null payloads for nullable cases in either envelope format.
 The `union` keyword examples require C# 15 and .NET 11, or union compiler polyfills when targeting earlier frameworks.
 
 ### Custom C# union case identifiers
