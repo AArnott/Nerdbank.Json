@@ -449,8 +449,7 @@ internal sealed class CoordConverter : JsonConverter<Coord>
 	public override bool SkipToPropertyValue(ref JsonReader reader, IPropertyShape propertyShape, SerializationContext context)
 	{
 		int index =
-			propertyShape.Name == "X" ? 0 :
-			propertyShape.Name == "Y" ? 1 : -1;
+			propertyShape.Name == "X" ? 0 : propertyShape.Name == "Y" ? 1 : -1;
 		if (index < 0)
 		{
 			return false;

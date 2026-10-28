@@ -468,57 +468,11 @@ public partial record JsonSerializer
 		}
 	}
 
-	private static async IAsyncEnumerable<T?> NormalizeSequenceExceptions<T>(IAsyncEnumerable<T?> sequence, CancellationToken operationCancellationToken, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-	{
-		IAsyncEnumerator<T?> enumerator = sequence.GetAsyncEnumerator(cancellationToken);
-		try
-		{
-			while (true)
-			{
-				T? value;
-				try
-				{
-					if (!await enumerator.MoveNextAsync().ConfigureAwait(false))
-					{
-						break;
-					}
-
-					value = enumerator.Current;
-				}
-				catch (Exception ex) when (ShouldWrapSerializationException(ex, operationCancellationToken) && ShouldWrapSerializationException(ex, cancellationToken))
-				{
-					throw new JsonSerializationException("An error occurred during deserialization.", ex);
-				}
-
-				yield return value;
-			}
-		}
-		finally
-		{
-			try
-			{
-				await enumerator.DisposeAsync().ConfigureAwait(false);
-			}
-			catch (Exception ex) when (ShouldWrapSerializationException(ex, operationCancellationToken) && ShouldWrapSerializationException(ex, cancellationToken))
-			{
-				throw new JsonSerializationException("An error occurred during deserialization.", ex);
-			}
-		}
-	}
-
 	private void ThrowIfSequenceStreamingUnsupported()
 	{
 		if (this.PreserveReferences != ReferencePreservationMode.Off)
 		{
 			throw new NotSupportedException("Asynchronous sequence streaming is not supported when reference preservation is enabled, because reference metadata wraps every value.");
-		}
-	}
-
-	private static void ValidateSequenceOptions(SequenceOptions options)
-	{
-		if (options.Format is not (JsonSequenceFormat.NDJson or JsonSequenceFormat.JsonArray))
-		{
-			throw new ArgumentOutOfRangeException(nameof(options), options.Format, "Unsupported JSON sequence format.");
 		}
 	}
 

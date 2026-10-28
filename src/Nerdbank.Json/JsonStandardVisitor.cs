@@ -236,8 +236,8 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		JsonConverter<TUnionCase> caseConverter = state == CSharpUnionCaseSentinel
 			? this.GetConverter(unionCaseShape.UnionCaseType, attributeProvider: null)
 			: owner.TryGetCustomConverter(unionCaseShape.UnionCaseType, out JsonConverter? custom) && custom is not null
-			? (JsonConverter<TUnionCase>)custom
-			: (JsonConverter<TUnionCase>)unionCaseShape.UnionCaseType.Accept(this)!;
+				? (JsonConverter<TUnionCase>)custom
+				: (JsonConverter<TUnionCase>)unionCaseShape.UnionCaseType.Accept(this)!;
 		return new JsonUnionCaseConverter<TUnionCase, TUnion>(caseConverter, unionCaseShape.Marshaler);
 	}
 

@@ -1,8 +1,9 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-#pragma warning disable CS1591, SA1600 // Documentation samples do not require API documentation.
+#pragma warning disable CS1591, SA1600, SA1601 // Documentation samples do not require API documentation.
 #pragma warning disable SA1512, SA1513, SA1515 // Documentation region markers.
+#pragma warning disable SA1649 // Documentation samples share a file.
 
 using Nerdbank.Json;
 using PolyType;

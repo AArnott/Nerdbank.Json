@@ -403,8 +403,7 @@ public partial class JsonTargetedDeserializationTests : TestBase
 		public override bool SkipToPropertyValue(ref JsonReader reader, IPropertyShape propertyShape, SerializationContext context)
 		{
 			int target =
-				propertyShape.Name == "X" ? 0 :
-				propertyShape.Name == "Y" ? 1 : -1;
+				propertyShape.Name == "X" ? 0 : propertyShape.Name == "Y" ? 1 : -1;
 			if (target < 0)
 			{
 				return false;

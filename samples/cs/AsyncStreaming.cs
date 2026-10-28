@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 #pragma warning disable CS1591, SA1600 // Documentation samples do not require API documentation.
+#pragma warning disable SA1601 // Documentation samples do not require partial element documentation.
 #pragma warning disable SA1402 // Related sample types are kept together.
 
 using System.IO;
