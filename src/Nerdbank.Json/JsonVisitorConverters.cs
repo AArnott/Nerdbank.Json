@@ -525,6 +525,7 @@ internal sealed class JsonConstructorParameter<TArgumentState, TParameter> : Jso
 }
 
 internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentState> : JsonConverter<TDeclaring>
+	where TArgumentState : IArgumentState
 {
 	private readonly JsonExtensionData<TDeclaring>? extensionData;
 	private readonly JsonProperty<TDeclaring>[] properties;
@@ -627,58 +628,65 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		context.DepthStep();
 
 		TArgumentState argumentState = this.argumentStateFactory();
-		HashSet<string> assignedParameters = new(StringComparer.Ordinal);
-		UnusedDataPacket.Map? extensionData = null;
-		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
-		reader.ReadStartObject();
-		if (!reader.TryReadEndObject())
+		try
 		{
-			while (true)
+			HashSet<string> assignedParameters = new(StringComparer.Ordinal);
+			UnusedDataPacket.Map? extensionData = null;
+			PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
+			reader.ReadStartObject();
+			if (!reader.TryReadEndObject())
 			{
-				string propertyName = reader.ReadRequiredString();
-				collisionDetection.MarkAsRead(propertyName);
-				reader.ReadNameSeparator();
-
-				if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
+				while (true)
 				{
-					if (!assignedParameters.Add(parameter.SerializedPropertyName))
+					string propertyName = reader.ReadRequiredString();
+					collisionDetection.MarkAsRead(propertyName);
+					reader.ReadNameSeparator();
+
+					if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
 					{
-						throw new JsonSerializationException($"The parameter '{parameter.ParameterName}' has already been assigned a value.")
+						if (!assignedParameters.Add(parameter.SerializedPropertyName))
 						{
-							Code = JsonSerializationException.ErrorCode.DoublePropertyAssignment,
-						};
+							throw new JsonSerializationException($"The parameter '{parameter.ParameterName}' has already been assigned a value.")
+							{
+								Code = JsonSerializationException.ErrorCode.DoublePropertyAssignment,
+							};
+						}
+
+						parameter.Read(ref reader, ref argumentState, context);
+					}
+					else if (this.extensionData?.CanRead is true)
+					{
+						(extensionData ??= new()).Add(propertyName, reader.ReadRawValue(context));
+					}
+					else
+					{
+						reader.Skip(context);
 					}
 
-					parameter.Read(ref reader, ref argumentState, context);
-				}
-				else if (this.extensionData?.CanRead is true)
-				{
-					(extensionData ??= new()).Add(propertyName, reader.ReadRawValue(context));
-				}
-				else
-				{
-					reader.Skip(context);
-				}
+					if (reader.TryReadEndObject())
+					{
+						break;
+					}
 
-				if (reader.TryReadEndObject())
-				{
-					break;
+					reader.ReadValueSeparator();
 				}
-
-				reader.ReadValueSeparator();
 			}
+
+			this.ThrowIfMissingRequiredParameters(assignedParameters, context);
+
+			TDeclaring result = this.constructor(ref argumentState);
+			if (this.extensionData is not null && extensionData is not null)
+			{
+				this.extensionData.Apply(ref result, extensionData);
+			}
+
+			(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+			return result;
 		}
-
-		this.ThrowIfMissingRequiredParameters(assignedParameters, context);
-
-		TDeclaring result = this.constructor(ref argumentState);
-		if (this.extensionData is not null && extensionData is not null)
+		finally
 		{
-			this.extensionData.Apply(ref result, extensionData);
+			argumentState.Return();
 		}
-
-		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
-		return result;
 	}
 
 	public override async ValueTask<TDeclaring?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
@@ -692,57 +700,64 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		context.DepthStep();
 
 		TArgumentState argumentState = this.argumentStateFactory();
-		HashSet<string> assignedParameters = new(StringComparer.Ordinal);
-		UnusedDataPacket.Map? extensionData = null;
-		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
-		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
-		if (!await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+		try
 		{
-			while (true)
+			HashSet<string> assignedParameters = new(StringComparer.Ordinal);
+			UnusedDataPacket.Map? extensionData = null;
+			PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
+			await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
+			if (!await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
 			{
-				string propertyName = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
-				collisionDetection.MarkAsRead(propertyName);
-
-				if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
+				while (true)
 				{
-					if (!assignedParameters.Add(parameter.SerializedPropertyName))
+					string propertyName = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
+					collisionDetection.MarkAsRead(propertyName);
+
+					if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
 					{
-						throw new JsonSerializationException($"The parameter '{parameter.ParameterName}' has already been assigned a value.")
+						if (!assignedParameters.Add(parameter.SerializedPropertyName))
 						{
-							Code = JsonSerializationException.ErrorCode.DoublePropertyAssignment,
-						};
+							throw new JsonSerializationException($"The parameter '{parameter.ParameterName}' has already been assigned a value.")
+							{
+								Code = JsonSerializationException.ErrorCode.DoublePropertyAssignment,
+							};
+						}
+
+						argumentState = await parameter.ReadIntoAsync(reader, argumentState, context).ConfigureAwait(false);
+					}
+					else if (this.extensionData?.CanRead is true)
+					{
+						(extensionData ??= new()).Add(propertyName, await reader.ReadRawValueAsync(context).ConfigureAwait(false));
+					}
+					else
+					{
+						await reader.SkipValueAsync(context).ConfigureAwait(false);
 					}
 
-					argumentState = await parameter.ReadIntoAsync(reader, argumentState, context).ConfigureAwait(false);
-				}
-				else if (this.extensionData?.CanRead is true)
-				{
-					(extensionData ??= new()).Add(propertyName, await reader.ReadRawValueAsync(context).ConfigureAwait(false));
-				}
-				else
-				{
-					await reader.SkipValueAsync(context).ConfigureAwait(false);
-				}
+					if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+					{
+						break;
+					}
 
-				if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
-				{
-					break;
+					await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
 				}
-
-				await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
 			}
+
+			this.ThrowIfMissingRequiredParameters(assignedParameters, context);
+
+			TDeclaring result = this.constructor(ref argumentState);
+			if (this.extensionData is not null && extensionData is not null)
+			{
+				this.extensionData.Apply(ref result, extensionData);
+			}
+
+			(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+			return result;
 		}
-
-		this.ThrowIfMissingRequiredParameters(assignedParameters, context);
-
-		TDeclaring result = this.constructor(ref argumentState);
-		if (this.extensionData is not null && extensionData is not null)
+		finally
 		{
-			this.extensionData.Apply(ref result, extensionData);
+			argumentState.Return();
 		}
-
-		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
-		return result;
 	}
 
 	private void ThrowIfMissingRequiredParameters(HashSet<string> assignedParameters, SerializationContext context)

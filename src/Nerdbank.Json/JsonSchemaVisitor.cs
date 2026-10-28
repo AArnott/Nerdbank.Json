@@ -160,14 +160,17 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 
 	public override object? VisitUnion<TUnion>(IUnionTypeShape<TUnion> unionShape, object? state = null)
 	{
+		DerivedTypeIdentifier[] aliases = UnionCaseAliases.Resolve(unionShape, this.owner.UnionTypeAliasProvider);
 		List<(object? Alias, JsonSchemaObject CaseSchema)> cases = [];
-		foreach (IUnionCaseShape unionCase in unionShape.UnionCases)
+		for (int i = 0; i < unionShape.UnionCases.Count; i++)
 		{
-			object alias = unionCase.IsTagSpecified ? unionCase.Tag : unionCase.Name;
-			cases.Add((alias, this.context.GetJsonSchema(unionCase.UnionCaseType, preserveReferences: false)));
+			IUnionCaseShape unionCase = unionShape.UnionCases[i];
+			DerivedTypeIdentifier identifier = aliases[i];
+			object alias = identifier.Type == DerivedTypeIdentifier.AliasType.Integer ? identifier.IntAlias : identifier.StringAlias;
+			cases.Add((alias, this.context.GetJsonSchema(unionCase.UnionCaseType, preserveReferences: unionShape.UnionKind == UnionTypeShapeKind.CSharpUnion)));
 		}
 
-		JsonSchemaObject? baseSchema = RuntimeUnionBuilder.IsConstructible(unionShape.BaseType as IObjectTypeShape)
+		JsonSchemaObject? baseSchema = unionShape.UnionKind != UnionTypeShapeKind.CSharpUnion && RuntimeUnionBuilder.IsConstructible(unionShape.BaseType as IObjectTypeShape)
 			? (JsonSchemaObject)unionShape.BaseType.Accept(this)!
 			: null;
 		return this.context.CreateUnionEnvelope(cases, baseSchema);

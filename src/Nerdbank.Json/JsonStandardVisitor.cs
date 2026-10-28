@@ -12,6 +12,8 @@ namespace Nerdbank.Json;
 
 internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationContext context, bool directShapeDispatch) : TypeShapeVisitor, ITypeShapeFunc
 {
+	private static readonly object CSharpUnionCaseSentinel = new();
+
 	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state)
 	{
 		// Work around https://github.com/dotnet/runtime/issues/134698 by keeping the NativeAOT dispatch direct.
@@ -197,8 +199,10 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 
 	public override object? VisitUnion<TUnion>(IUnionTypeShape<TUnion> unionShape, object? state = null)
 	{
+		DerivedTypeIdentifier[] aliases = UnionCaseAliases.Resolve(unionShape, owner.UnionTypeAliasProvider);
+		object? caseState = unionShape.UnionKind == UnionTypeShapeKind.CSharpUnion ? CSharpUnionCaseSentinel : null;
 		ITypeShape baseType = unionShape.BaseType;
-		JsonConverter<TUnion>? baseConverter = RuntimeUnionBuilder.IsConstructible(baseType as IObjectTypeShape)
+		JsonConverter<TUnion>? baseConverter = unionShape.UnionKind != UnionTypeShapeKind.CSharpUnion && RuntimeUnionBuilder.IsConstructible(baseType as IObjectTypeShape)
 			? (JsonConverter<TUnion>)baseType.Accept(this)!
 			: null;
 		Getter<TUnion, int> getUnionCaseIndex = unionShape.GetGetUnionCaseIndex();
@@ -209,16 +213,17 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		for (int i = 0; i < unionShape.UnionCases.Count; i++)
 		{
 			IUnionCaseShape unionCase = unionShape.UnionCases[i];
-			var caseConverter = (JsonConverter<TUnion>)unionCase.Accept(this)!;
-			if (unionCase.IsTagSpecified)
+			var caseConverter = (JsonConverter<TUnion>)unionCase.Accept(this, caseState)!;
+			DerivedTypeIdentifier alias = aliases[i];
+			if (alias.Type == DerivedTypeIdentifier.AliasType.Integer)
 			{
-				deserializersByIntAlias.Add(unionCase.Tag, caseConverter);
-				serializers[i] = JsonUnionCaseMetadata<TUnion>.Create(unionCase.Tag, caseConverter);
+				deserializersByIntAlias.Add(alias.IntAlias, caseConverter);
+				serializers[i] = JsonUnionCaseMetadata<TUnion>.Create(alias.IntAlias, caseConverter);
 			}
 			else
 			{
-				deserializersByStringAlias.Add(unionCase.Name, caseConverter);
-				serializers[i] = JsonUnionCaseMetadata<TUnion>.Create(unionCase.Name, caseConverter);
+				deserializersByStringAlias.Add(alias.StringAlias, caseConverter);
+				serializers[i] = JsonUnionCaseMetadata<TUnion>.Create(alias.StringAlias, caseConverter);
 			}
 		}
 
@@ -227,7 +232,10 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 
 	public override object? VisitUnionCase<TUnionCase, TUnion>(IUnionCaseShape<TUnionCase, TUnion> unionCaseShape, object? state = null)
 	{
-		JsonConverter<TUnionCase> caseConverter = owner.TryGetCustomConverter(unionCaseShape.UnionCaseType, out JsonConverter? custom) && custom is not null
+		// C# cases are ordinary payload shapes, including recursive unions; hierarchy cases are views of the union itself.
+		JsonConverter<TUnionCase> caseConverter = state == CSharpUnionCaseSentinel
+			? this.GetConverter(unionCaseShape.UnionCaseType, attributeProvider: null)
+			: owner.TryGetCustomConverter(unionCaseShape.UnionCaseType, out JsonConverter? custom) && custom is not null
 			? (JsonConverter<TUnionCase>)custom
 			: (JsonConverter<TUnionCase>)unionCaseShape.UnionCaseType.Accept(this)!;
 		return new JsonUnionCaseConverter<TUnionCase, TUnion>(caseConverter, unionCaseShape.Marshaler);

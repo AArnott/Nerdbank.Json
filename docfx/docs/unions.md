@@ -87,6 +87,58 @@ On deserialization, the object is rehydrated as that registered case, not as the
 Attribute-driven metadata is the default, but <xref:Nerdbank.Json.JsonSerializer.DerivedTypeUnions> can add, replace, extend, or disable unions per serializer.
 See [runtime union configuration](runtime-unions.md) for explicit shape mappings, JSON object envelopes, and experimental discriminator-free duck typing.
 
+## C# union types
+
+C# 15 introduces [union types](https://github.com/dotnet/csharplang/blob/main/proposals/csharp-15.0/unions.md), which hold one of a closed set of payload types without requiring a common base type.
+Nerdbank.Json supports these unions with <xref:PolyType.GenerateShapeAttribute>:
+
+[!code-csharp[](../../samples/cs/CSharpUnions.cs#CSharpUnion)]
+
+Serialize and deserialize a union like any other shaped type:
+
+[!code-csharp[](../../samples/cs/CSharpUnions.cs#CSharpUnionUsage)]
+
+By default, cases use their payload type names as identifiers, such as `Int32` and `String`.
+Renaming a payload type changes its default identifier.
+A null payload selects the first nullable case, so the example union's default value serializes as `["String",null]`.
+A default value that matches no case cannot be serialized.
+Recursive unions and hand-authored types implementing the C# union member pattern are also supported.
+C# unions have no base-type fallback.
+
+The default two-element array envelope and <xref:Nerdbank.Json.JsonSerializer.UseDiscriminatorObjects?displayProperty=nameWithType> both apply to C# unions.
+Payload converters, reference preservation, asynchronous serialization, and generated JSON schemas work with these unions as well.
+The `union` keyword examples require C# 15 and .NET 11, or union compiler polyfills when targeting earlier frameworks.
+
+### Custom C# union case identifiers
+
+Set <xref:Nerdbank.Json.JsonSerializer.UnionTypeAliasProvider?displayProperty=nameWithType> to assign stable string or integer identifiers.
+This does not change the union's payload types or their converters, and does not affect type hierarchies, F# unions, or runtime derived type mappings.
+
+Use <xref:Nerdbank.Json.UnionCaseMapping> for explicit per-union registrations:
+
+[!code-csharp[](../../samples/cs/CSharpUnions.cs#CSharpUnionAliases)]
+
+No type shape provider or inheritance relationship is needed for registration.
+Integer aliases can be used in place of strings.
+The same payload type may have different aliases in different unions.
+<xref:Nerdbank.Json.UnionCaseMappingCollection> implements <xref:Nerdbank.Json.IUnionTypeAliasProvider> and freezes each mapping when it is added.
+Further mutation throws <xref:System.InvalidOperationException>.
+Duplicate union registrations, payload types, and identifiers within a mapping are rejected.
+Registered payload types are checked against the union when its converter is constructed.
+
+Use <xref:Nerdbank.Json.DelegateUnionTypeAliasProvider> to consult an existing registry or resolve identifiers from the containing union and payload types:
+
+[!code-csharp[](../../samples/cs/CSharpUnions.cs#CSharpUnionAliasDelegate)]
+
+For access to the full shapes, implement <xref:Nerdbank.Json.IUnionTypeAliasProvider> directly.
+Providers must be thread-safe and return consistent results for as long as they are used.
+Aliases are resolved when constructing converters, not for every serialized value.
+Returning `null`, or leaving a case unregistered, retains the normal identifier for that case.
+
+Custom aliases apply to serialization, deserialization, and JSON schemas in both envelope formats.
+An overridden case accepts only its custom identifier, not its original identifier.
+Uninitialized identifiers and identifiers that collide with another case's custom or default identifier are rejected.
+
 ## Custom converters
 
 A custom converter applied directly to a union-typed member takes over that member's entire serialization shape, including any discriminator handling.
