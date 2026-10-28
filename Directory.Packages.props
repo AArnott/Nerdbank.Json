@@ -23,7 +23,7 @@
     <PackageVersion Include="PolyType" Version="$(PolyTypeVersion)" />
     <PackageVersion Include="PolyType.Roslyn" Version="$(PolyTypeUnstableVersion)" />
     <PackageVersion Include="System.IO.Pipelines" Version="10.0.14" />
-    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="9.0.21" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
   </ItemGroup>
   <ItemGroup Label="Library.Template">
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.12.0" />
