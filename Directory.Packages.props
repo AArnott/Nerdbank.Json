@@ -5,7 +5,9 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
     <MicrosoftTestingPlatformVersion>2.5.1</MicrosoftTestingPlatformVersion>
-    <PolyTypeVersion>1.4.1</PolyTypeVersion>
+    <PolyTypeVersion>2.0.0-rc.3</PolyTypeVersion>
+    <!-- Add the -unstable suffix here when PolyTypeVersion moves to a stable release. -->
+    <PolyTypeUnstableVersion>$(PolyTypeVersion)</PolyTypeUnstableVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Put repo-specific PackageVersion items in this group. -->
@@ -17,10 +19,11 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing" Version="1.1.4" />
     <PackageVersion Include="Microsoft.VisualStudio.Validation" Version="17.13.22" />
-    <PackageVersion Include="Nerdbank.MessagePack" Version="1.4.95" />
+    <PackageVersion Include="Nerdbank.MessagePack" Version="1.5.47-alpha" />
     <PackageVersion Include="PolyType" Version="$(PolyTypeVersion)" />
-    <PackageVersion Include="PolyType.Roslyn" Version="$(PolyTypeVersion)-unstable" />
+    <PackageVersion Include="PolyType.Roslyn" Version="$(PolyTypeUnstableVersion)" />
     <PackageVersion Include="System.IO.Pipelines" Version="10.0.14" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="9.0.21" />
   </ItemGroup>
   <ItemGroup Label="Library.Template">
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.12.0" />

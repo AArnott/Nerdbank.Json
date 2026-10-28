@@ -26,12 +26,29 @@ internal record JsonSerializerConfiguration
 	private MultiDimensionalArrayFormat multiDimensionalArrayFormat = MultiDimensionalArrayFormat.Nested;
 	private ReferencePreservationMode preserveReferences;
 	private DerivedTypeUnionCollection derivedTypeUnions = [];
+	private IUnionTypeAliasProvider? unionTypeAliasProvider;
 	private bool serializeEnumValuesByName;
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
 	private bool writeIndented;
 	private bool useDiscriminatorObjects;
 
 	internal ConverterCache ConverterCache => Volatile.Read(ref this.converterCache) ?? LazyInitializer.EnsureInitialized(ref this.converterCache, () => new(this))!;
+
+	/// <summary>Gets the optional provider of custom C# union case identifiers.</summary>
+	/// <remarks>
+	/// This applies only to C# unions, not F# unions, type hierarchies, or runtime derived type mappings.
+	/// Returning <see langword="null"/> for a case retains its normal identifier.
+	/// Providers must be thread-safe and return consistent results while in use.
+	/// </remarks>
+	internal IUnionTypeAliasProvider? UnionTypeAliasProvider
+	{
+		get => this.unionTypeAliasProvider;
+		init
+		{
+			this.unionTypeAliasProvider = value;
+			this.converterCache = null;
+		}
+	}
 
 	/// <summary>
 	/// Gets the format to use when serializing multi-dimensional arrays.

@@ -180,6 +180,13 @@ public partial record JsonSerializer
 		init => this.configuration = this.configuration with { DerivedTypeUnions = value };
 	}
 
+	/// <inheritdoc cref="JsonSerializerConfiguration.UnionTypeAliasProvider"/>
+	public IUnionTypeAliasProvider? UnionTypeAliasProvider
+	{
+		get => this.configuration.UnionTypeAliasProvider;
+		init => this.configuration = this.configuration with { UnionTypeAliasProvider = value };
+	}
+
 	/// <summary>Gets a value indicating whether unions use single-property object envelopes instead of two-element arrays.</summary>
 	/// <value>The default is <see langword="false"/>.</value>
 	/// <remarks>

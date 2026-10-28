@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net10.0</TargetFrameworks>
     <IsAotCompatible>true</IsAotCompatible>
     <Description>ASP.NET Core MVC input and output formatters backed by Nerdbank.Json, enabling AOT-safe, source-generated JSON in MVC and minimal-hosting Web APIs with an explicitly supplied ITypeShapeProvider.</Description>
     <PackageTags>json;aspnetcore;mvc;formatter;aot;trimming;polytype;nerdbank</PackageTags>

@@ -9,6 +9,17 @@ Consume Nerdbank.Json from its NuGet package.
 
 ## Usage
 
+### Supported frameworks
+
+The core library targets .NET 10, .NET Framework 4.7.2, and .NET Standard 2.0.
+Dedicated .NET 8 and .NET 9 targets are no longer provided; applications on those runtimes can use the .NET Standard APIs, but the generic APIs constrained to <xref:PolyType.IShapeable`1> and Native AOT support require .NET 10 or later.
+The ASP.NET Core MVC integration requires .NET 10 or later.
+
+Building this repository requires the .NET 11 SDK specified in `global.json`.
+C# union declarations require C# 15; the examples target .NET 11, while earlier targets need the union compiler types supplied as polyfills.
+
+### Generating type shapes
+
 Given a mutable type annotated with <xref:PolyType.GenerateShapeAttribute> like this:
 
 [!code-csharp[](../../samples/cs/GettingStarted.cs#SimpleObject)]
@@ -50,6 +61,7 @@ Examples include:
 * Mutable object graphs annotated with <xref:PolyType.GenerateShapeAttribute>
 * Mutable lists and supported-key dictionaries
 * Closed unions annotated with <xref:PolyType.DerivedTypeShapeAttribute>
+* C# unions, including recursive unions and types implementing the C# union member pattern
 
 By default, object property names serialize as camelCase. Dictionary keys remain unchanged unless <xref:Nerdbank.Json.JsonSerializer.DictionaryKeyNamingPolicy> is explicitly set.
 

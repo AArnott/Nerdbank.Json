@@ -223,6 +223,8 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 	}
 
+	public override bool PreferAsyncSerialization => true;
+
 	public override void Write(ref JsonWriter writer, in TUnion? value, SerializationContext context)
 	{
 		if (!typeof(TUnion).IsValueType && value is null)
@@ -271,6 +273,67 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		writer.WriteEndArray();
 	}
 
+	public override async ValueTask WriteAsync(JsonAsyncWriter writer, TUnion? value, SerializationContext context)
+	{
+		Requires.NotNull(writer);
+		if (!typeof(TUnion).IsValueType && value is null)
+		{
+			await writer.WriteNullAsync(context).ConfigureAwait(false);
+			return;
+		}
+
+		context.DepthStep();
+
+		JsonWriter syncWriter = writer.CreateWriter();
+		JsonConverter converter;
+		if (this.objectEnvelope is not null)
+		{
+			syncWriter.WriteStartObject();
+			if (value is not null && this.TryGetSerializer(value, out JsonUnionCaseMetadata<TUnion> unionCase))
+			{
+				syncWriter.WritePropertyName(unionCase.ObjectAlias);
+				converter = unionCase.Converter;
+			}
+			else
+			{
+				syncWriter.WritePropertyName(JsonUnionObjectEnvelope.BaseAlias);
+				converter = this.baseConverter ?? throw new NotSupportedException($"The base union type '{typeof(TUnion).FullName}' cannot be serialized directly.");
+			}
+		}
+		else
+		{
+			syncWriter.WriteStartArray();
+			if (value is not null && this.TryGetSerializer(value, out JsonUnionCaseMetadata<TUnion> unionCase))
+			{
+				unionCase.WriteAlias(ref syncWriter);
+				converter = unionCase.Converter;
+			}
+			else
+			{
+				syncWriter.WriteNull();
+				converter = this.baseConverter ?? throw new NotSupportedException($"No union case is registered for type '{value?.GetType().FullName}', and the base type '{typeof(TUnion).FullName}' cannot be serialized directly.");
+			}
+
+			syncWriter.WriteValueSeparator();
+		}
+
+		writer.ReturnWriter(ref syncWriter);
+		await converter.WriteObjectAsync(writer, value, context).ConfigureAwait(false);
+
+		syncWriter = writer.CreateWriter();
+		if (this.objectEnvelope is not null)
+		{
+			syncWriter.WriteEndObject();
+		}
+		else
+		{
+			syncWriter.WriteEndArray();
+		}
+
+		writer.ReturnWriter(ref syncWriter);
+		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
+	}
+
 	public override TUnion? Read(ref JsonReader reader, SerializationContext context)
 	{
 		if (!typeof(TUnion).IsValueType && reader.TryReadNull())
@@ -304,6 +367,51 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		reader.ReadValueSeparator();
 		var value = (TUnion?)converter.ReadObject(ref reader, context);
 		reader.ReadEndArray();
+		return value;
+	}
+
+	public override async ValueTask<TUnion?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		if (!typeof(TUnion).IsValueType && await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			return default;
+		}
+
+		context.DepthStep();
+
+		if (this.objectEnvelope is not null)
+		{
+			JsonConverter objectConverter = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context).ConfigureAwait(false);
+			TUnion? objectValue = (TUnion?)await objectConverter.ReadObjectAsync(reader, context).ConfigureAwait(false);
+			if (!await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+			{
+				throw new FormatException("A union discriminator object must contain exactly one property.");
+			}
+
+			return objectValue;
+		}
+
+		await reader.ReadStartArrayAsync(context).ConfigureAwait(false);
+		JsonConverter converter;
+		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			converter = this.baseConverter ?? throw new FormatException($"The JSON specified a base '{typeof(TUnion).FullName}' value, but the union has no constructible base type.");
+		}
+		else
+		{
+			converter = await reader.PeekNextByteAsync().ConfigureAwait(false) == '"'
+				? this.ResolveStringAlias(await reader.ReadStringValueAsync(context).ConfigureAwait(false))
+				: this.ResolveIntegerAlias(int.Parse(await reader.ReadNumberTokenAsync(context).ConfigureAwait(false), CultureInfo.InvariantCulture));
+		}
+
+		await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+		TUnion? value = (TUnion?)await converter.ReadObjectAsync(reader, context).ConfigureAwait(false);
+		if (!await reader.TryReadEndArrayAsync(context).ConfigureAwait(false))
+		{
+			throw new FormatException("A union array must contain exactly two elements.");
+		}
+
 		return value;
 	}
 
@@ -420,11 +528,19 @@ internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter
 		this.marshaler = marshaler;
 	}
 
+	public override bool PreferAsyncSerialization => true;
+
 	public override void Write(ref JsonWriter writer, in TUnion? value, SerializationContext context)
 		=> this.inner.Write(ref writer, this.marshaler.Unmarshal(value), context);
 
+	public override ValueTask WriteAsync(JsonAsyncWriter writer, TUnion? value, SerializationContext context)
+		=> writer.WriteValueAsync(this.inner, this.marshaler.Unmarshal(value), context);
+
 	public override TUnion? Read(ref JsonReader reader, SerializationContext context)
 		=> this.marshaler.Marshal(this.inner.Read(ref reader, context));
+
+	public override async ValueTask<TUnion?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+		=> this.marshaler.Marshal(await reader.ReadValueAsync(this.inner, context).ConfigureAwait(false));
 
 	internal override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 		=> this.inner.SkipToValue(ref reader, in segment, context);
@@ -525,6 +641,7 @@ internal sealed class JsonConstructorParameter<TArgumentState, TParameter> : Jso
 }
 
 internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentState> : JsonConverter<TDeclaring>
+	where TArgumentState : IArgumentState
 {
 	private readonly JsonExtensionData<TDeclaring>? extensionData;
 	private readonly JsonProperty<TDeclaring>[] properties;
@@ -627,58 +744,65 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		context.DepthStep();
 
 		TArgumentState argumentState = this.argumentStateFactory();
-		HashSet<string> assignedParameters = new(StringComparer.Ordinal);
-		UnusedDataPacket.Map? extensionData = null;
-		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
-		reader.ReadStartObject();
-		if (!reader.TryReadEndObject())
+		try
 		{
-			while (true)
+			HashSet<string> assignedParameters = new(StringComparer.Ordinal);
+			UnusedDataPacket.Map? extensionData = null;
+			PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
+			reader.ReadStartObject();
+			if (!reader.TryReadEndObject())
 			{
-				string propertyName = reader.ReadRequiredString();
-				collisionDetection.MarkAsRead(propertyName);
-				reader.ReadNameSeparator();
-
-				if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
+				while (true)
 				{
-					if (!assignedParameters.Add(parameter.SerializedPropertyName))
+					string propertyName = reader.ReadRequiredString();
+					collisionDetection.MarkAsRead(propertyName);
+					reader.ReadNameSeparator();
+
+					if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
 					{
-						throw new JsonSerializationException($"The parameter '{parameter.ParameterName}' has already been assigned a value.")
+						if (!assignedParameters.Add(parameter.SerializedPropertyName))
 						{
-							Code = JsonSerializationException.ErrorCode.DoublePropertyAssignment,
-						};
+							throw new JsonSerializationException($"The parameter '{parameter.ParameterName}' has already been assigned a value.")
+							{
+								Code = JsonSerializationException.ErrorCode.DoublePropertyAssignment,
+							};
+						}
+
+						parameter.Read(ref reader, ref argumentState, context);
+					}
+					else if (this.extensionData?.CanRead is true)
+					{
+						(extensionData ??= new()).Add(propertyName, reader.ReadRawValue(context));
+					}
+					else
+					{
+						reader.Skip(context);
 					}
 
-					parameter.Read(ref reader, ref argumentState, context);
-				}
-				else if (this.extensionData?.CanRead is true)
-				{
-					(extensionData ??= new()).Add(propertyName, reader.ReadRawValue(context));
-				}
-				else
-				{
-					reader.Skip(context);
-				}
+					if (reader.TryReadEndObject())
+					{
+						break;
+					}
 
-				if (reader.TryReadEndObject())
-				{
-					break;
+					reader.ReadValueSeparator();
 				}
-
-				reader.ReadValueSeparator();
 			}
+
+			this.ThrowIfMissingRequiredParameters(assignedParameters, context);
+
+			TDeclaring result = this.constructor(ref argumentState);
+			if (this.extensionData is not null && extensionData is not null)
+			{
+				this.extensionData.Apply(ref result, extensionData);
+			}
+
+			(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+			return result;
 		}
-
-		this.ThrowIfMissingRequiredParameters(assignedParameters, context);
-
-		TDeclaring result = this.constructor(ref argumentState);
-		if (this.extensionData is not null && extensionData is not null)
+		finally
 		{
-			this.extensionData.Apply(ref result, extensionData);
+			argumentState.Return();
 		}
-
-		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
-		return result;
 	}
 
 	public override async ValueTask<TDeclaring?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
@@ -692,57 +816,64 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		context.DepthStep();
 
 		TArgumentState argumentState = this.argumentStateFactory();
-		HashSet<string> assignedParameters = new(StringComparer.Ordinal);
-		UnusedDataPacket.Map? extensionData = null;
-		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
-		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
-		if (!await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+		try
 		{
-			while (true)
+			HashSet<string> assignedParameters = new(StringComparer.Ordinal);
+			UnusedDataPacket.Map? extensionData = null;
+			PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer);
+			await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
+			if (!await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
 			{
-				string propertyName = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
-				collisionDetection.MarkAsRead(propertyName);
-
-				if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
+				while (true)
 				{
-					if (!assignedParameters.Add(parameter.SerializedPropertyName))
+					string propertyName = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
+					collisionDetection.MarkAsRead(propertyName);
+
+					if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
 					{
-						throw new JsonSerializationException($"The parameter '{parameter.ParameterName}' has already been assigned a value.")
+						if (!assignedParameters.Add(parameter.SerializedPropertyName))
 						{
-							Code = JsonSerializationException.ErrorCode.DoublePropertyAssignment,
-						};
+							throw new JsonSerializationException($"The parameter '{parameter.ParameterName}' has already been assigned a value.")
+							{
+								Code = JsonSerializationException.ErrorCode.DoublePropertyAssignment,
+							};
+						}
+
+						argumentState = await parameter.ReadIntoAsync(reader, argumentState, context).ConfigureAwait(false);
+					}
+					else if (this.extensionData?.CanRead is true)
+					{
+						(extensionData ??= new()).Add(propertyName, await reader.ReadRawValueAsync(context).ConfigureAwait(false));
+					}
+					else
+					{
+						await reader.SkipValueAsync(context).ConfigureAwait(false);
 					}
 
-					argumentState = await parameter.ReadIntoAsync(reader, argumentState, context).ConfigureAwait(false);
-				}
-				else if (this.extensionData?.CanRead is true)
-				{
-					(extensionData ??= new()).Add(propertyName, await reader.ReadRawValueAsync(context).ConfigureAwait(false));
-				}
-				else
-				{
-					await reader.SkipValueAsync(context).ConfigureAwait(false);
-				}
+					if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+					{
+						break;
+					}
 
-				if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
-				{
-					break;
+					await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
 				}
-
-				await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
 			}
+
+			this.ThrowIfMissingRequiredParameters(assignedParameters, context);
+
+			TDeclaring result = this.constructor(ref argumentState);
+			if (this.extensionData is not null && extensionData is not null)
+			{
+				this.extensionData.Apply(ref result, extensionData);
+			}
+
+			(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+			return result;
 		}
-
-		this.ThrowIfMissingRequiredParameters(assignedParameters, context);
-
-		TDeclaring result = this.constructor(ref argumentState);
-		if (this.extensionData is not null && extensionData is not null)
+		finally
 		{
-			this.extensionData.Apply(ref result, extensionData);
+			argumentState.Return();
 		}
-
-		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
-		return result;
 	}
 
 	private void ThrowIfMissingRequiredParameters(HashSet<string> assignedParameters, SerializationContext context)

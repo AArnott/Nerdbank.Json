@@ -56,6 +56,9 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 	internal bool UseDiscriminatorObjects => this.configuration.UseDiscriminatorObjects;
 
+	/// <inheritdoc cref="JsonSerializerConfiguration.UnionTypeAliasProvider"/>
+	internal IUnionTypeAliasProvider? UnionTypeAliasProvider => this.configuration.UnionTypeAliasProvider;
+
 	private MultiProviderTypeCache CachedConverters => Volatile.Read(ref this.cachedConverters) ?? LazyInitializer.EnsureInitialized(ref this.cachedConverters, () => new()
 	{
 		DelayedValueFactory = new DelayedJsonConverterFactory(),

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net472;netstandard2.0</TargetFrameworks>
+    <TargetFrameworks>net10.0;net472;netstandard2.0</TargetFrameworks>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PolySharpIncludeRuntimeSupportedAttributes>true</PolySharpIncludeRuntimeSupportedAttributes>
     <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
@@ -34,7 +34,7 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Supply the analyzer's shape-model dependency without changing application framework asset selection. -->
-    <PackageDownload Include="PolyType.Roslyn" Version="[$(PolyTypeVersion)-unstable]" />
+    <PackageDownload Include="PolyType.Roslyn" Version="[$(PolyTypeUnstableVersion)]" />
   </ItemGroup>
   <ItemGroup>
     <AnalyzerProjectReference Include="..\Nerdbank.Json.Analyzers\Nerdbank.Json.Analyzers.csproj" />
@@ -51,14 +51,14 @@
   <Target Name="ConsumeAnalyzersDirectly" AfterTargets="ResolveProjectReferences">
     <ItemGroup>
       <Analyzer Include="%(AnalyzerAssembly.Identity)" />
-      <Analyzer Include="$(NuGetPackageRoot)\polytype.roslyn\$(PolyTypeVersion)-unstable\lib\netstandard2.0\PolyType.Roslyn.dll" />
+      <Analyzer Include="$(NuGetPackageRoot)\polytype.roslyn\$(PolyTypeUnstableVersion)\lib\netstandard2.0\PolyType.Roslyn.dll" />
     </ItemGroup>
   </Target>
 
   <Target Name="PackAnalyzers" DependsOnTargets="ResolveProjectReferences;DebugSymbolsProjectOutputGroup" Condition="'$(TargetFramework)'=='netstandard2.0'">
     <ItemGroup>
       <TfmSpecificPackageFile Include="%(AnalyzerAssembly.Identity)" PackagePath="analyzers\cs\" />
-      <TfmSpecificPackageFile Include="$(NuGetPackageRoot)\polytype.roslyn\$(PolyTypeVersion)-unstable\lib\netstandard2.0\PolyType.Roslyn.dll" PackagePath="analyzers\cs\" />
+      <TfmSpecificPackageFile Include="$(NuGetPackageRoot)\polytype.roslyn\$(PolyTypeUnstableVersion)\lib\netstandard2.0\PolyType.Roslyn.dll" PackagePath="analyzers\cs\" />
     </ItemGroup>
   </Target>
 </Project>
