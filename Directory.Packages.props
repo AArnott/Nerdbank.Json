@@ -4,7 +4,7 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
-    <MicrosoftTestingPlatformVersion>2.5.1</MicrosoftTestingPlatformVersion>
+    <MicrosoftTestingPlatformVersion>2.5.2</MicrosoftTestingPlatformVersion>
     <PolyTypeVersion>2.0.0-rc.3</PolyTypeVersion>
     <!-- Add the -unstable suffix here when PolyTypeVersion moves to a stable release. -->
     <PolyTypeUnstableVersion>$(PolyTypeVersion)</PolyTypeUnstableVersion>
@@ -34,7 +34,7 @@
     <PackageVersion Include="Microsoft.Testing.Extensions.TrxReport" Version="$(MicrosoftTestingPlatformVersion)" />
     <PackageVersion Include="System.Buffers" Version="4.6.1" />
     <PackageVersion Include="System.Memory" Version="4.6.3" />
-    <PackageVersion Include="TUnit.Engine" Version="1.76.28" />
+    <PackageVersion Include="TUnit.Engine" Version="1.78.0" />
     <PackageVersion Include="xunit.v3.assert" Version="4.0.2" />
     <PackageVersion Include="xunit.v3.assert.aot" Version="4.0.2" />
   </ItemGroup>
