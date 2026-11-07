@@ -174,9 +174,21 @@ public partial class CSharpUnionTests : TestBase
 	public void RecursiveObjectUnionSchema_InlinesMultipleRecursiveUnionCases()
 	{
 		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<MultipleRecursiveUnionCases>()!);
-		string schemaJson = schema.ToJsonString();
-		Assert.Contains("\"allOf\"", schemaJson, StringComparison.Ordinal);
-		Assert.DoesNotContain("\"$value\"", schemaJson, StringComparison.Ordinal);
+		JsonSchemaObject definitions = schema["$defs"]!.AsObject();
+		JsonSchemaObject objectDefinition = definitions["MultipleRecursiveUnionCases"]!.AsObject();
+		JsonSchemaObject firstUnionCase = definitions["NullableOfFirstRecursiveObjectUnion"]!["anyOf"]![0]!["oneOf"]![0]!.AsObject();
+		JsonSchemaObject secondUnionCase = definitions["NullableOfSecondRecursiveObjectUnion"]!["anyOf"]![0]!["oneOf"]![0]!.AsObject();
+		JsonSchemaObject nestedSecondUnionCase = firstUnionCase["properties"]!["secondUnion"]!["anyOf"]![0]!["anyOf"]![0]!["oneOf"]![0]!.AsObject();
+		Assert.Equal(false, objectDefinition["additionalProperties"]!.GetValue<bool>());
+		Assert.Null(objectDefinition["properties"]?["$type"]);
+		Assert.Equal("object", firstUnionCase["type"]!.GetValue<string>());
+		Assert.NotNull(firstUnionCase["properties"]?["$type"]);
+		Assert.Equal(false, firstUnionCase["additionalProperties"]!.GetValue<bool>());
+		Assert.Equal("object", secondUnionCase["type"]!.GetValue<string>());
+		Assert.NotNull(secondUnionCase["properties"]?["$type"]);
+		Assert.Equal(false, secondUnionCase["additionalProperties"]!.GetValue<bool>());
+		Assert.Equal("object", nestedSecondUnionCase["type"]!.GetValue<string>());
+		Assert.NotNull(nestedSecondUnionCase["properties"]?["$type"]);
 	}
 
 	[Test]

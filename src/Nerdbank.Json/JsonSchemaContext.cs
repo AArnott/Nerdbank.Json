@@ -23,6 +23,7 @@ namespace Nerdbank.Json;
 /// </summary>
 public sealed class JsonSchemaContext : ITypeShapeFunc
 {
+	private const string PendingInlineObjectCasePropertyName = "$nerdbankJsonPendingInlineObjectCase";
 	private readonly ConverterCache owner;
 	private readonly JsonSchemaVisitor visitor;
 	private readonly Dictionary<(Type Type, bool PreserveReferences), string> references = new();
@@ -31,6 +32,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	private readonly HashSet<string> usedNames = new(StringComparer.Ordinal);
 	private readonly HashSet<(Type Type, bool PreserveReferences)> recursionGuard = new();
 	private readonly HashSet<(Type Type, bool PreserveReferences)> inlineRootExpansionGuard = new();
+	private readonly List<(string Reference, string Alias)> pendingInlineObjectCases = [];
 
 	internal JsonSchemaContext(ConverterCache owner, JsonSchemaDialect dialect)
 	{
@@ -270,6 +272,12 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			document.SetMap(this.DefinitionsKeyword, sorted);
 		}
 
+		if (this.pendingInlineObjectCases.Count > 0)
+		{
+			this.ResolvePendingInlineObjectCases(document);
+			this.pendingInlineObjectCases.Clear();
+		}
+
 		return document;
 	}
 
@@ -329,21 +337,24 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			? new JsonSchemaObject().SetStrings("enum", [alias])
 			: new JsonSchemaObject().Set("const", alias);
 
+		if (supportsInlineObject
+			&& caseSchema["$ref"] is System.Text.Json.Nodes.JsonValue referenceValue
+			&& referenceValue.TryGetValue<string>(out string? reference)
+			&& this.definitionNames.Values.Any(name => reference == "#/" + this.DefinitionsKeyword + "/" + name))
+		{
+			int pendingIndex = this.pendingInlineObjectCases.Count;
+			this.pendingInlineObjectCases.Add((reference, alias));
+			JsonSchemaObject placeholder = new JsonSchemaObject().Set(PendingInlineObjectCasePropertyName, pendingIndex);
+			return placeholder;
+		}
+
 		JsonSchemaObject? caseProperties = caseSchema["properties"] as JsonSchemaObject;
 		bool hasObjectType = caseSchema["type"] is System.Text.Json.Nodes.JsonValue typeValue
 			&& typeValue.TryGetValue<string>(out string? schemaType)
 			&& schemaType == "object";
-		if (supportsInlineObject && caseSchema["$ref"] is not null)
-		{
-			JsonSchemaObject discriminatorSchema = new JsonSchemaObject()
-				.Set("type", "object")
-				.SetMap("properties", [new(JsonUnionObjectEnvelope.DiscriminatorPropertyName, discriminator)])
-				.SetStrings("required", [JsonUnionObjectEnvelope.DiscriminatorPropertyName]);
-			return new JsonSchemaObject().SetSchemas("allOf", [caseSchema.DeepClone().AsObject(), discriminatorSchema]);
-		}
-
 		bool canInlineObject = supportsInlineObject
 			&& hasObjectType
+			&& caseSchema["$ref"] is null
 			&& caseSchema["additionalProperties"] is not JsonSchemaObject
 			&& caseSchema["additionalProperties"]?.GetValue<bool>() != true
 			&& caseProperties?.ContainsKey(JsonUnionObjectEnvelope.DiscriminatorPropertyName) != true;
@@ -369,6 +380,84 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			])
 			.SetStrings("required", [JsonUnionObjectEnvelope.DiscriminatorPropertyName, JsonUnionObjectEnvelope.ValuePropertyName])
 			.Set("additionalProperties", false);
+	}
+
+	private void ResolvePendingInlineObjectCases(JsonSchemaNode schema)
+	{
+		if (schema is JsonSchemaObject schemaObject)
+		{
+			if (schemaObject[PendingInlineObjectCasePropertyName] is System.Text.Json.Nodes.JsonValue pendingIndexNode
+				&& pendingIndexNode.TryGetValue<long>(out long pendingIndexValue))
+			{
+				int pendingIndex = checked((int)pendingIndexValue);
+				(string reference, string alias) = this.pendingInlineObjectCases[pendingIndex];
+				string definitionName = this.definitionNames.Values.First(name => reference == "#/" + this.DefinitionsKeyword + "/" + name);
+				if (!this.definitions.TryGetValue(definitionName, out JsonSchemaObject? definition))
+				{
+					throw new InvalidOperationException($"The recursive JSON Schema definition '{definitionName}' was not generated.");
+				}
+
+				JsonSchemaObject caseSchema = (JsonSchemaObject)definition.DeepClone();
+				JsonSchemaObject? properties = caseSchema["properties"] as JsonSchemaObject;
+				bool canInlineObject = caseSchema["type"] is System.Text.Json.Nodes.JsonValue typeValue
+					&& typeValue.TryGetValue<string>(out string? schemaType)
+					&& schemaType == "object"
+					&& caseSchema["additionalProperties"] is not JsonSchemaObject
+					&& caseSchema["additionalProperties"]?.GetValue<bool>() != true
+					&& properties?.ContainsKey(JsonUnionObjectEnvelope.DiscriminatorPropertyName) != true;
+				if (canInlineObject)
+				{
+					properties ??= new JsonSchemaObject();
+					JsonSchemaObject discriminator = this.Dialect == JsonSchemaDialect.Draft4
+						? new JsonSchemaObject().SetStrings("enum", [alias])
+						: new JsonSchemaObject().Set("const", alias);
+					properties[JsonUnionObjectEnvelope.DiscriminatorPropertyName] = discriminator;
+					caseSchema["properties"] = properties;
+					List<string> required = caseSchema["required"] is JsonSchemaArray requiredArray
+						? requiredArray.Select(static item => item!.GetValue<string>()).ToList()
+						: [];
+					required.Add(JsonUnionObjectEnvelope.DiscriminatorPropertyName);
+					caseSchema.SetStrings("required", required);
+				}
+				else
+				{
+					JsonSchemaObject discriminator = this.Dialect == JsonSchemaDialect.Draft4
+						? new JsonSchemaObject().SetStrings("enum", [alias])
+						: new JsonSchemaObject().Set("const", alias);
+					caseSchema = new JsonSchemaObject()
+						.Set("type", "object")
+						.SetMap("properties", [
+							new(JsonUnionObjectEnvelope.DiscriminatorPropertyName, discriminator),
+							new(JsonUnionObjectEnvelope.ValuePropertyName, Reference(reference)),
+						])
+						.SetStrings("required", [JsonUnionObjectEnvelope.DiscriminatorPropertyName, JsonUnionObjectEnvelope.ValuePropertyName])
+						.Set("additionalProperties", false);
+				}
+
+				schemaObject.Clear();
+				schemaObject.Append(caseSchema);
+			}
+			else
+			{
+				foreach (KeyValuePair<string, JsonSchemaNode?> property in schemaObject.ToArray())
+				{
+					if (property.Value is not null)
+					{
+						this.ResolvePendingInlineObjectCases(property.Value);
+					}
+				}
+			}
+		}
+		else if (schema is JsonSchemaArray array)
+		{
+			foreach (JsonSchemaNode? item in array)
+			{
+				if (item is not null)
+				{
+					this.ResolvePendingInlineObjectCases(item);
+				}
+			}
+		}
 	}
 
 	private static JsonSchemaObject CreateUndocumented(JsonConverter converter) => JsonConverter<int>.CreateUndocumentedSchema(converter.GetType());
