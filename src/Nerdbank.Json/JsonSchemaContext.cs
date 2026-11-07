@@ -30,6 +30,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	private readonly Dictionary<(Type Type, bool PreserveReferences), string> definitionNames = new();
 	private readonly HashSet<string> usedNames = new(StringComparer.Ordinal);
 	private readonly HashSet<(Type Type, bool PreserveReferences)> recursionGuard = new();
+	private readonly HashSet<(Type Type, bool PreserveReferences)> inlineRootExpansionGuard = new();
 
 	internal JsonSchemaContext(ConverterCache owner, JsonSchemaDialect dialect)
 	{
@@ -99,6 +100,18 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 				return (JsonSchemaObject)definition.DeepClone();
 			}
 
+			if (inlineRoot && this.recursionGuard.Contains(key) && this.inlineRootExpansionGuard.Add(key))
+			{
+				try
+				{
+					return (JsonSchemaObject)typeShape.Accept(this.visitor)!;
+				}
+				finally
+				{
+					this.inlineRootExpansionGuard.Remove(key);
+				}
+			}
+
 			return Reference(existing);
 		}
 
@@ -107,6 +120,18 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		if (!this.recursionGuard.Add(key))
 		{
 			this.references[key] = refPath;
+			if (inlineRoot && this.inlineRootExpansionGuard.Add(key))
+			{
+				try
+				{
+					return (JsonSchemaObject)typeShape.Accept(this.visitor)!;
+				}
+				finally
+				{
+					this.inlineRootExpansionGuard.Remove(key);
+				}
+			}
+
 			return Reference(refPath);
 		}
 

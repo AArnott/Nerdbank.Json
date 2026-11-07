@@ -160,6 +160,17 @@ public partial class CSharpUnionTests : TestBase
 	}
 
 	[Test]
+	public void RecursiveObjectUnionRootSchema_InlinesUnionCase()
+	{
+		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<RecursiveUnionContainingObject>()!);
+		JsonSchemaObject nextCase = schema["$defs"]!["NullableOfRecursiveObjectUnion"]!["anyOf"]![0]!["oneOf"]![0]!.AsObject();
+		Assert.NotNull(nextCase["properties"]?["$type"]);
+		Assert.NotNull(nextCase["properties"]?["next"]);
+		Assert.Contains("$ref", nextCase["properties"]!["next"]!.ToJsonString(), StringComparison.Ordinal);
+		Assert.Null(nextCase["properties"]?["$value"]);
+	}
+
+	[Test]
 	public void ReferencePreservedRecursiveObjectUnion_KeepsSharedPayloadIdentity()
 	{
 		JsonSerializer unionFirst = this.Serializer with { PreserveReferences = ReferencePreservationMode.RejectCycles };
