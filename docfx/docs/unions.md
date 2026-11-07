@@ -98,17 +98,26 @@ Serialize and deserialize a union like any other shaped type:
 
 [!code-csharp[](../../samples/cs/CSharpUnions.cs#CSharpUnionUsage)]
 
-By default, cases use their payload type names as identifiers, such as `Int32` and `String`.
-Renaming a payload type changes its default identifier.
-A null payload selects the first nullable case, so the example union's default value serializes as `["String",null]`.
+Cases with an unambiguous native JSON representation omit type metadata.
+For example, the preceding `Result` union serializes `new Result(42)` as `42` and `new Result("hi")` as `"hi"`.
+Object-shaped cases, nested unions, and custom payload converters use a discriminator envelope.
+The default envelope is a two-element array, such as `["Dog",{"name":"Rover"}]`.
+
+A null payload selects the first nullable untagged case, so the example union's default value serializes as `null`.
 A default value that matches no case cannot be serialized.
 Recursive unions and hand-authored types implementing the C# union member pattern are also supported.
 C# unions have no base-type fallback.
 
-The default two-element array envelope and <xref:Nerdbank.Json.JsonSerializer.UseDiscriminatorObjects?displayProperty=nameWithType> both apply to C# unions.
+JSON cannot distinguish numeric CLR widths, signedness, or `float` from `double`.
+Likewise, more than one string-shaped or collection-shaped case is ambiguous.
+Such cases must have explicit identifiers; the serializer rejects an ambiguous union rather than guessing while deserializing.
+Only one untagged collection case is permitted.
+When an untagged array is present, tagged cases use object envelopes to avoid colliding with it; when an untagged dictionary/object is present, tagged cases use array envelopes.
+
+<xref:Nerdbank.Json.JsonSerializer.UseDiscriminatorObjects?displayProperty=nameWithType> selects the envelope shape when no untagged collection determines it.
 Payload converters, reference preservation, asynchronous serialization, and generated JSON schemas work with these unions as well.
 Asynchronous operations forward to the payload converters, including asynchronous-only converters and payloads containing <xref:System.Collections.Generic.IAsyncEnumerable`1>.
-Generated schemas allow null payloads for nullable cases in either envelope format.
+Generated schemas describe each untagged native case and each tagged envelope.
 The `union` keyword examples require C# 15 and .NET 11, or union compiler polyfills when targeting earlier frameworks.
 
 ### Custom C# union case identifiers
@@ -138,6 +147,7 @@ Aliases are resolved when constructing converters, not for every serialized valu
 Returning `null`, or leaving a case unregistered, retains the normal identifier for that case.
 
 Custom aliases apply to serialization, deserialization, and JSON schemas in both envelope formats.
+Assigning an alias explicitly opts that case into the tagged representation, even when its native token would otherwise be unambiguous.
 An overridden case accepts only its custom identifier, not its original identifier.
 Uninitialized identifiers and identifiers that collide with another case's custom or default identifier are rejected.
 

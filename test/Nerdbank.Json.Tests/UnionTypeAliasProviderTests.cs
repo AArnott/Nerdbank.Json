@@ -15,7 +15,7 @@ public class UnionTypeAliasProviderTests : TestBase
 		Assert.Equal(42, this.Roundtrip(new Scalar(42))!.Value);
 		Assert.Equal("""["number",42]""", this.LastSerializedJson);
 		Assert.Equal("hi", this.Roundtrip(new Scalar("hi"))!.Value);
-		Assert.Equal("""["String","hi"]""", this.LastSerializedJson);
+		Assert.Equal("\"hi\"", this.LastSerializedJson);
 		Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<Scalar>("""["Int32",42]"""));
 	}
 
@@ -43,14 +43,14 @@ public class UnionTypeAliasProviderTests : TestBase
 	[Test]
 	public void ConfigurationClone_RebuildsConverters()
 	{
-		Assert.Equal("""["Int32",42]""", this.Serializer.Serialize(new Scalar(42)));
+		Assert.Equal("42", this.Serializer.Serialize(new Scalar(42)));
 		JsonSerializer customized = this.Serializer with
 		{
 			UnionTypeAliasProvider = new DelegateUnionTypeAliasProvider((_, payload) => payload == typeof(int) ? new DerivedTypeIdentifier("number") : (DerivedTypeIdentifier?)null),
 		};
 		Assert.Equal("""["number",42]""", customized.Serialize(new Scalar(42)));
-		Assert.Equal("""["Int32",42]""", this.Serializer.Serialize(new Scalar(42)));
-		Assert.Equal("""["Int32",42]""", (customized with { UnionTypeAliasProvider = null }).Serialize(new Scalar(42)));
+		Assert.Equal("42", this.Serializer.Serialize(new Scalar(42)));
+		Assert.Equal("42", (customized with { UnionTypeAliasProvider = null }).Serialize(new Scalar(42)));
 	}
 
 	[Test]
@@ -139,6 +139,6 @@ public class UnionTypeAliasProviderTests : TestBase
 	{
 		this.Serializer = this.Serializer with { UnionTypeAliasProvider = new UnionCaseMappingCollection([new(typeof(CSharpUnionTests.Pet))]) };
 		Assert.Equal(42, this.Roundtrip(new Scalar(42))!.Value);
-		Assert.Equal("""["Int32",42]""", this.LastSerializedJson);
+		Assert.Equal("42", this.LastSerializedJson);
 	}
 }

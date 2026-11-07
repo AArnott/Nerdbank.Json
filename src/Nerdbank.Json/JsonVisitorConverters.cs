@@ -15,29 +15,37 @@ internal readonly struct JsonUnionCaseMetadata<TUnion>
 	private readonly int intAlias;
 	private readonly bool usesIntegerAlias;
 
-	private JsonUnionCaseMetadata(string alias, JsonConverter converter)
+	private JsonUnionCaseMetadata(string alias, JsonConverter converter, JsonCSharpUnionCaseRepresentation representation, bool isNullable)
 	{
 		this.stringAlias = alias;
 		this.intAlias = default;
 		this.usesIntegerAlias = false;
 		this.Converter = converter;
+		this.Representation = representation;
+		this.IsNullable = isNullable;
 	}
 
-	private JsonUnionCaseMetadata(int alias, JsonConverter converter)
+	private JsonUnionCaseMetadata(int alias, JsonConverter converter, JsonCSharpUnionCaseRepresentation representation, bool isNullable)
 	{
 		this.stringAlias = null;
 		this.intAlias = alias;
 		this.usesIntegerAlias = true;
 		this.Converter = converter;
+		this.Representation = representation;
+		this.IsNullable = isNullable;
 	}
 
 	internal JsonConverter Converter { get; }
 
+	internal JsonCSharpUnionCaseRepresentation Representation { get; }
+
+	internal bool IsNullable { get; }
+
 	internal string ObjectAlias => JsonUnionObjectEnvelope.GetAlias(this.usesIntegerAlias ? this.intAlias : null, this.stringAlias);
 
-	internal static JsonUnionCaseMetadata<TUnion> Create(string alias, JsonConverter converter) => new(alias, converter);
+	internal static JsonUnionCaseMetadata<TUnion> Create(string alias, JsonConverter converter, JsonCSharpUnionCaseRepresentation representation = JsonCSharpUnionCaseRepresentation.Tagged, bool isNullable = false) => new(alias, converter, representation, isNullable);
 
-	internal static JsonUnionCaseMetadata<TUnion> Create(int alias, JsonConverter converter) => new(alias, converter);
+	internal static JsonUnionCaseMetadata<TUnion> Create(int alias, JsonConverter converter, JsonCSharpUnionCaseRepresentation representation = JsonCSharpUnionCaseRepresentation.Tagged, bool isNullable = false) => new(alias, converter, representation, isNullable);
 
 	internal void WriteAlias(ref JsonWriter writer)
 	{
@@ -204,21 +212,50 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 	private readonly JsonUnionCaseMetadata<TUnion>[] serializers;
 	private readonly IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias;
 	private readonly IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias;
+	private readonly Dictionary<JsonCSharpUnionCaseRepresentation, JsonConverter>? nativeDeserializers;
+	private readonly JsonConverter? nullDeserializer;
+	private readonly bool isCSharpUnion;
 	private readonly JsonUnionObjectEnvelope? objectEnvelope;
 
-	internal JsonUnionConverter(JsonConverter<TUnion>? baseConverter, Getter<TUnion, int> getUnionCaseIndex, JsonUnionCaseMetadata<TUnion>[] serializers, IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias, IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias, bool useDiscriminatorObjects)
+	internal JsonUnionConverter(JsonConverter<TUnion>? baseConverter, Getter<TUnion, int> getUnionCaseIndex, JsonUnionCaseMetadata<TUnion>[] serializers, IReadOnlyDictionary<int, JsonConverter> deserializersByIntAlias, IReadOnlyDictionary<string, JsonConverter> deserializersByStringAlias, bool useDiscriminatorObjects, bool isCSharpUnion)
 	{
 		this.baseConverter = baseConverter;
 		this.getUnionCaseIndex = getUnionCaseIndex;
 		this.serializers = serializers;
 		this.deserializersByIntAlias = deserializersByIntAlias;
 		this.deserializersByStringAlias = deserializersByStringAlias;
-		if (useDiscriminatorObjects)
+		this.isCSharpUnion = isCSharpUnion;
+		bool useObjectEnvelope = useDiscriminatorObjects;
+		if (isCSharpUnion)
+		{
+			JsonCSharpUnionFormat format = new(serializers.Select(static entry => entry.Representation).ToArray(), useDiscriminatorObjects);
+			this.nativeDeserializers = new();
+			foreach (JsonUnionCaseMetadata<TUnion> entry in serializers)
+			{
+				if (entry.Representation == JsonCSharpUnionCaseRepresentation.Tagged)
+				{
+					continue;
+				}
+
+				this.nativeDeserializers.Add(entry.Representation, entry.Converter);
+				if (entry.IsNullable && this.nullDeserializer is null)
+				{
+					this.nullDeserializer = entry.Converter;
+				}
+			}
+
+			useObjectEnvelope = format.UseObjectEnvelope && serializers.Any(static entry => entry.Representation == JsonCSharpUnionCaseRepresentation.Tagged);
+		}
+
+		if (useObjectEnvelope)
 		{
 			this.objectEnvelope = new(baseConverter);
 			foreach (JsonUnionCaseMetadata<TUnion> entry in serializers)
 			{
-				this.objectEnvelope.Add(entry.ObjectAlias, entry.Converter);
+				if (!isCSharpUnion || entry.Representation == JsonCSharpUnionCaseRepresentation.Tagged)
+				{
+					this.objectEnvelope.Add(entry.ObjectAlias, entry.Converter);
+				}
 			}
 		}
 	}
@@ -234,6 +271,12 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 
 		context.DepthStep();
+
+		if (this.isCSharpUnion && value is not null && this.TryGetSerializer(value, out JsonUnionCaseMetadata<TUnion> nativeCase) && nativeCase.Representation != JsonCSharpUnionCaseRepresentation.Tagged)
+		{
+			nativeCase.Converter.WriteObject(ref writer, value, context);
+			return;
+		}
 
 		if (this.objectEnvelope is not null)
 		{
@@ -286,6 +329,13 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 
 		JsonWriter syncWriter = writer.CreateWriter();
 		JsonConverter converter;
+		if (this.isCSharpUnion && value is not null && this.TryGetSerializer(value, out JsonUnionCaseMetadata<TUnion> nativeCase) && nativeCase.Representation != JsonCSharpUnionCaseRepresentation.Tagged)
+		{
+			writer.ReturnWriter(ref syncWriter);
+			await nativeCase.Converter.WriteObjectAsync(writer, value, context).ConfigureAwait(false);
+			return;
+		}
+
 		if (this.objectEnvelope is not null)
 		{
 			syncWriter.WriteStartObject();
@@ -343,6 +393,11 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 
 		context.DepthStep();
 
+		if (this.isCSharpUnion && this.TryGetNativeDeserializer(reader.PeekValueToken(), out JsonConverter? nativeConverter))
+		{
+			return (TUnion?)nativeConverter.ReadObject(ref reader, context);
+		}
+
 		if (this.objectEnvelope is not null)
 		{
 			JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader);
@@ -379,6 +434,11 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		}
 
 		context.DepthStep();
+
+		if (this.isCSharpUnion && this.TryGetNativeDeserializer((char)await reader.PeekNextByteAsync().ConfigureAwait(false), out JsonConverter? nativeConverter))
+		{
+			return (TUnion?)await nativeConverter.ReadObjectAsync(reader, context).ConfigureAwait(false);
+		}
 
 		if (this.objectEnvelope is not null)
 		{
@@ -417,6 +477,12 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 
 	internal override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
+		if (this.isCSharpUnion && this.TryGetNativeDeserializer(reader.PeekValueToken(), out JsonConverter? nativeConverter))
+		{
+			context.DepthStep();
+			return nativeConverter.SkipToValue(ref reader, in segment, context);
+		}
+
 		if (this.objectEnvelope is not null)
 		{
 			JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader);
@@ -450,6 +516,12 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 
 	internal override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
+		if (this.isCSharpUnion && this.TryGetNativeDeserializer((char)await reader.PeekNextByteAsync().ConfigureAwait(false), out JsonConverter? nativeConverter))
+		{
+			context.DepthStep();
+			return await nativeConverter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
+		}
+
 		if (this.objectEnvelope is not null)
 		{
 			JsonConverter objectConverter = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context).ConfigureAwait(false);
@@ -481,6 +553,34 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		context.DepthStep();
 		int inner = await converter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
 		return inner < 0 ? -1 : inner + 1;
+	}
+
+	private bool TryGetNativeDeserializer(char token, out JsonConverter converter)
+	{
+		converter = null!;
+		if (token == 'n')
+		{
+			if (this.nullDeserializer is null)
+			{
+				return false;
+			}
+
+			converter = this.nullDeserializer;
+			return true;
+		}
+
+		JsonCSharpUnionCaseRepresentation representation = token switch
+		{
+			't' or 'f' => JsonCSharpUnionCaseRepresentation.Boolean,
+			'"' => JsonCSharpUnionCaseRepresentation.String,
+			'[' => JsonCSharpUnionCaseRepresentation.Array,
+			'{' => JsonCSharpUnionCaseRepresentation.Object,
+			'-' or (>= '0' and <= '9') => JsonCSharpUnionCaseRepresentation.Number,
+			_ => JsonCSharpUnionCaseRepresentation.Tagged,
+		};
+		return representation != JsonCSharpUnionCaseRepresentation.Tagged
+			&& this.nativeDeserializers is not null
+			&& this.nativeDeserializers.TryGetValue(representation, out converter!);
 	}
 
 	private bool TryGetSerializer(TUnion value, out JsonUnionCaseMetadata<TUnion> unionCase)
