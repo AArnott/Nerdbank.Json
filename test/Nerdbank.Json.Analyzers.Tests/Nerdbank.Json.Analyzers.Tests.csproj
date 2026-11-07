@@ -8,7 +8,7 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.CodeFix.Testing" />
         <PackageReference Include="PolyType" />
-        <PackageReference Include="PolyType.Roslyn" />
+        <PackageReference Include="PolyType.Roslyn" PrivateAssets="all" />
         <PackageReference Include="TUnit.Engine" />
         <PackageReference Include="xunit.v3.assert.aot" Condition="$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)','net9.0'))" />
         <PackageReference Include="xunit.v3.assert" Condition="!$([MSBuild]::IsTargetFrameworkCompatible('$(TargetFramework)','net9.0'))" />
