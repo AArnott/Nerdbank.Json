@@ -333,9 +333,17 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		bool hasObjectType = caseSchema["type"] is System.Text.Json.Nodes.JsonValue typeValue
 			&& typeValue.TryGetValue<string>(out string? schemaType)
 			&& schemaType == "object";
+		if (supportsInlineObject && caseSchema["$ref"] is not null)
+		{
+			JsonSchemaObject discriminatorSchema = new JsonSchemaObject()
+				.Set("type", "object")
+				.SetMap("properties", [new(JsonUnionObjectEnvelope.DiscriminatorPropertyName, discriminator)])
+				.SetStrings("required", [JsonUnionObjectEnvelope.DiscriminatorPropertyName]);
+			return new JsonSchemaObject().SetSchemas("allOf", [caseSchema.DeepClone().AsObject(), discriminatorSchema]);
+		}
+
 		bool canInlineObject = supportsInlineObject
 			&& hasObjectType
-			&& caseSchema["$ref"] is null
 			&& caseSchema["additionalProperties"] is not JsonSchemaObject
 			&& caseSchema["additionalProperties"]?.GetValue<bool>() != true
 			&& caseProperties?.ContainsKey(JsonUnionObjectEnvelope.DiscriminatorPropertyName) != true;

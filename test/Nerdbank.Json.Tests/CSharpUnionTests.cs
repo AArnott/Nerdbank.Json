@@ -171,6 +171,15 @@ public partial class CSharpUnionTests : TestBase
 	}
 
 	[Test]
+	public void RecursiveObjectUnionSchema_InlinesMultipleRecursiveUnionCases()
+	{
+		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<MultipleRecursiveUnionCases>()!);
+		string schemaJson = schema.ToJsonString();
+		Assert.Contains("\"allOf\"", schemaJson, StringComparison.Ordinal);
+		Assert.DoesNotContain("\"$value\"", schemaJson, StringComparison.Ordinal);
+	}
+
+	[Test]
 	public void ReferencePreservedRecursiveObjectUnion_KeepsSharedPayloadIdentity()
 	{
 		JsonSerializer unionFirst = this.Serializer with { PreserveReferences = ReferencePreservationMode.RejectCycles };
@@ -598,6 +607,12 @@ public partial class CSharpUnionTests : TestBase
 	public partial union RecursiveObjectUnion(RecursiveUnionContainingObject);
 
 	[GenerateShape]
+	public partial union FirstRecursiveObjectUnion(MultipleRecursiveUnionCases);
+
+	[GenerateShape]
+	public partial union SecondRecursiveObjectUnion(MultipleRecursiveUnionCases);
+
+	[GenerateShape]
 	public partial union UppercaseTypeUnion(UppercaseTypeProperty, int);
 
 #pragma warning restore SA1201
@@ -644,6 +659,14 @@ public partial class CSharpUnionTests : TestBase
 	public partial class RecursiveUnionContainingObject
 	{
 		public RecursiveObjectUnion? Next { get; set; }
+	}
+
+	[GenerateShape]
+	public partial class MultipleRecursiveUnionCases
+	{
+		public FirstRecursiveObjectUnion? FirstUnion { get; set; }
+
+		public SecondRecursiveObjectUnion? SecondUnion { get; set; }
 	}
 
 	[GenerateShape]
