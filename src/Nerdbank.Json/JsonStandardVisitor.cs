@@ -218,7 +218,9 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			var caseConverter = (JsonConverter<TUnion>)unionCase.Accept(this, caseState)!;
 			DerivedTypeIdentifier alias = aliases[i];
 			JsonCSharpUnionCaseRepresentation representation = isCSharpUnion
-				? JsonCSharpUnionRules.GetRepresentation(unionCase.UnionCaseType, aliasResolution.ExplicitlySpecified[i], owner)
+				? !typeof(TUnion).IsValueType && unionCase.IsNullable
+					? JsonCSharpUnionCaseRepresentation.Tagged
+					: JsonCSharpUnionRules.GetRepresentation(unionCase.UnionCaseType, aliasResolution.ExplicitlySpecified[i], owner)
 				: JsonCSharpUnionCaseRepresentation.Tagged;
 			if (alias.Type == DerivedTypeIdentifier.AliasType.Integer)
 			{

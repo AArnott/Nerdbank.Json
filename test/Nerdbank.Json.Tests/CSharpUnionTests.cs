@@ -87,6 +87,40 @@ public partial class CSharpUnionTests : TestBase
 	}
 
 	[Test]
+	public void NullablePayloadOfReferenceTypeUnion_IsTagged()
+	{
+		NullableTextClass value = new(null);
+		NullableTextClass result = this.Roundtrip(value)!;
+		Assert.NotNull(result);
+		Assert.Null(result.Value);
+		Assert.Equal("""["String",null]""", this.LastSerializedJson);
+	}
+
+	[Test]
+	public void MultipleNullableNativeCases_AllowNullInOnlyFirstSchemaCase()
+	{
+		Assert.Null(this.Roundtrip(default(MultipleNullableCases))!.Value);
+		Assert.Equal("null", this.LastSerializedJson);
+
+		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<MultipleNullableCases>()!);
+		JsonSchemaArray cases = schema["oneOf"]!.AsArray();
+		Assert.Single(cases, candidate => candidate!["type"] is JsonSchemaArray types && types.Any(node => node!.GetValue<string>() == "null"));
+	}
+
+	[Test]
+	public async Task ReferencePreservedCollectionCase_RoundTrips()
+	{
+		this.Serializer = this.Serializer with { PreserveReferences = ReferencePreservationMode.RejectCycles };
+		ArrayOrDog value = new([1, 2]);
+		Assert.Equal(value.Value, this.Roundtrip(value)!.Value);
+
+		using MemoryStream stream = new();
+		await this.Serializer.SerializeAsync(stream, value);
+		stream.Position = 0;
+		Assert.Equal(value.Value, (await this.Serializer.DeserializeAsync<ArrayOrDog>(stream))!.Value);
+	}
+
+	[Test]
 	public void CollectionCases_SelectEnvelopeThatAvoidsCollisions()
 	{
 		ArrayOrDog array = new([1, 2]);
@@ -360,6 +394,9 @@ public partial class CSharpUnionTests : TestBase
 	public partial union ByteBufferOrDog(byte[], Dog);
 
 	[GenerateShape]
+	public partial union MultipleNullableCases(string?, int[]?);
+
+	[GenerateShape]
 	public partial union Numbers(int, long);
 
 	[GenerateShape]
@@ -420,6 +457,14 @@ public partial class CSharpUnionTests : TestBase
 		public PetClass(Dog value) => this.Value = value;
 
 		public PetClass(Cat value) => this.Value = value;
+
+		public object? Value { get; }
+	}
+
+	[Union, GenerateShape]
+	public sealed partial class NullableTextClass
+	{
+		public NullableTextClass(string? value) => this.Value = value;
 
 		public object? Value { get; }
 	}

@@ -165,17 +165,28 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 		bool isCSharpUnion = unionShape.UnionKind == UnionTypeShapeKind.CSharpUnion;
 		List<(object? Alias, JsonSchemaObject CaseSchema)> cases = [];
 		List<(object Alias, JsonCSharpUnionCaseRepresentation Representation, JsonSchemaObject CaseSchema)> csharpCases = [];
+		bool nativeNullCaseAdded = false;
 		for (int i = 0; i < unionShape.UnionCases.Count; i++)
 		{
 			IUnionCaseShape unionCase = unionShape.UnionCases[i];
 			DerivedTypeIdentifier identifier = aliases[i];
 			object alias = identifier.Type == DerivedTypeIdentifier.AliasType.Integer ? identifier.IntAlias : identifier.StringAlias;
+			JsonCSharpUnionCaseRepresentation representation = isCSharpUnion
+				? !typeof(TUnion).IsValueType && unionCase.IsNullable
+					? JsonCSharpUnionCaseRepresentation.Tagged
+					: JsonCSharpUnionRules.GetRepresentation(unionCase.UnionCaseType, aliasResolution.ExplicitlySpecified[i], this.owner)
+				: JsonCSharpUnionCaseRepresentation.Tagged;
 			JsonSchemaObject caseSchema = this.context.GetJsonSchema(unionCase.UnionCaseType, preserveReferences: unionShape.UnionKind == UnionTypeShapeKind.CSharpUnion);
-			caseSchema = unionCase.IsNullable ? caseSchema.MakeNullable() : caseSchema;
+			if (unionCase.IsNullable && (!isCSharpUnion || representation == JsonCSharpUnionCaseRepresentation.Tagged || !nativeNullCaseAdded))
+			{
+				caseSchema = caseSchema.MakeNullable();
+			}
+
+			nativeNullCaseAdded |= representation != JsonCSharpUnionCaseRepresentation.Tagged && unionCase.IsNullable;
 			cases.Add((alias, caseSchema));
 			if (isCSharpUnion)
 			{
-				csharpCases.Add((alias, JsonCSharpUnionRules.GetRepresentation(unionCase.UnionCaseType, aliasResolution.ExplicitlySpecified[i], this.owner), caseSchema));
+				csharpCases.Add((alias, representation, caseSchema));
 			}
 		}
 

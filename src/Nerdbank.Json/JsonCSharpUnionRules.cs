@@ -57,7 +57,7 @@ internal static class JsonCSharpUnionRules
 {
 	internal static JsonCSharpUnionCaseRepresentation GetRepresentation(ITypeShape shape, bool hasExplicitIdentifier, ConverterCache owner)
 	{
-		if (hasExplicitIdentifier || (owner.TryGetCustomConverter(shape, out JsonConverter? customConverter) && customConverter is not null))
+		if (hasExplicitIdentifier || owner.ShouldPreserveReferences(shape.Type) || (owner.TryGetCustomConverter(shape, out JsonConverter? customConverter) && customConverter is not null))
 		{
 			return JsonCSharpUnionCaseRepresentation.Tagged;
 		}
