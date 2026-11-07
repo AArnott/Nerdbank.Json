@@ -358,11 +358,11 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			ITypeShape schemaShape = isSelfCase ? unionBaseShape : caseShape;
 			bool canInlineObject = (!isSelfCase || RuntimeUnionBuilder.IsConstructible(schemaShape as IObjectTypeShape))
 				&& this.owner.SupportsInlineUnionObject(schemaShape, ignoreDerivedTypeUnion: isSelfCase);
-			JsonSchemaObject caseSchema = canInlineObject
-				? isSelfCase
-					? (JsonSchemaObject)schemaShape.Accept(this.visitor)!
-					: this.GetJsonSchemaForInlineObjectCase(schemaShape)
-				: this.GetJsonSchema(schemaShape, preserveReferences: false);
+			JsonSchemaObject caseSchema = isSelfCase
+				? (JsonSchemaObject)schemaShape.Accept(this.visitor)!
+				: canInlineObject
+					? this.GetJsonSchemaForInlineObjectCase(schemaShape)
+					: this.GetJsonSchema(schemaShape, preserveReferences: false);
 			cases.Add((alias.Type == DerivedTypeIdentifier.AliasType.Integer ? (object)alias.IntAlias : alias.StringAlias, caseSchema, canInlineObject));
 		}
 

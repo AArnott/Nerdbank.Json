@@ -291,6 +291,19 @@ public partial class JsonRuntimeUnionTests : TestBase
 #pragma warning restore SA1201
 
 	[GenerateShape]
+	internal partial class SelfMappedBase
+	{
+		public string Name { get; set; } = string.Empty;
+
+		public UnusedDataPacket? Extra { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class SelfMappedOther : SelfMappedBase
+	{
+	}
+
+	[GenerateShape]
 	internal partial class ShapeContainer
 	{
 		public Shape2? Shape { get; set; }

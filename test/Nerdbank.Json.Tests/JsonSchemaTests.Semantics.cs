@@ -108,6 +108,14 @@ public partial class JsonSchemaTests
 		Assert.Contains("\"$value\"", schemaJson, StringComparison.Ordinal);
 		Assert.Contains("\"$type\":{\"const\":\"Cat\"}", schemaJson, StringComparison.Ordinal);
 		Assert.Contains("\"lives\"", schemaJson, StringComparison.Ordinal);
+		JsonSchemaNode identityForm = schema["anyOf"]![0]!["oneOf"]![1]!;
+		JsonSchemaNode unionSchema = identityForm["properties"]!["$value"]!;
+		JsonSchemaObject catCase = Assert.Single(
+			unionSchema["oneOf"]!.AsArray(),
+			candidate => candidate!["properties"]?["$type"]?["const"]?.GetValue<string>() == "Cat")!.AsObject();
+		Assert.NotNull(catCase["properties"]?["lives"]);
+		Assert.Null(catCase["properties"]?["$value"]);
+		Assert.Null(catCase["oneOf"]);
 		AssertReferencesResolve(schema, schema);
 	}
 

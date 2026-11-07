@@ -99,6 +99,33 @@ public partial class JsonRuntimeUnionTests
 	}
 
 	[Test]
+	public void ObjectEnvelope_RuntimeSelfMappingWithExtensionData_UsesBaseSchema()
+	{
+		JsonSerializer serializer = new()
+		{
+			DerivedTypeUnions =
+			[
+				new DerivedShapeMapping<SelfMappedBase>
+				{
+					{ "self", Shape<SelfMappedBase, SelfMappedBase>() },
+					{ "other", Shape<SelfMappedOther, SelfMappedOther>() },
+				},
+			],
+		};
+
+		SelfMappedBase value = new() { Name = "Ada" };
+		string json = serializer.Serialize(value, Shape<SelfMappedBase, SelfMappedBase>());
+		Assert.Equal("""{"$type":"self","$value":{"name":"Ada"}}""", json);
+
+		JsonSchemaObject schema = serializer.GetJsonSchema(Shape<SelfMappedBase, SelfMappedBase>());
+		JsonSchemaObject unionSchema = schema["anyOf"]?[0] as JsonSchemaObject ?? schema;
+		JsonSchemaObject selfCase = Assert.Single(unionSchema["oneOf"]!.AsArray(), candidate => candidate!["properties"]?["$type"]?["const"]?.GetValue<string>() == "self")!.AsObject();
+		Assert.Equal("object", selfCase["properties"]?["$value"]?["type"]?.GetValue<string>());
+		Assert.NotNull(selfCase["properties"]?["$value"]?["properties"]?["name"]);
+		Assert.Null(selfCase["properties"]?["$value"]?["oneOf"]);
+	}
+
+	[Test]
 	public void ObjectEnvelope_GeneratedIntegerTag_RoundTrips()
 	{
 		JsonSerializer serializer = new();

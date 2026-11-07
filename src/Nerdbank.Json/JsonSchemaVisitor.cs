@@ -177,11 +177,11 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 					: JsonCSharpUnionRules.GetRepresentation(unionCase.UnionCaseType, aliasResolution.ExplicitlySpecified[i], this.owner)
 				: JsonCSharpUnionCaseRepresentation.Tagged;
 			bool canInlineObject = !unionCase.IsNullable
-				&& !this.owner.ShouldPreserveReferences(unionCase.UnionCaseType.Type)
+				&& (!isCSharpUnion || !this.owner.ShouldPreserveReferences(unionCase.UnionCaseType.Type))
 				&& this.owner.SupportsInlineUnionObject(unionCase.UnionCaseType);
 			JsonSchemaObject caseSchema = canInlineObject
 				? this.context.GetJsonSchemaForInlineObjectCase(unionCase.UnionCaseType)
-				: this.context.GetJsonSchema(unionCase.UnionCaseType);
+				: this.context.GetJsonSchema(unionCase.UnionCaseType, preserveReferences: isCSharpUnion);
 			if (unionCase.IsNullable && (!isCSharpUnion || representation == JsonCSharpUnionCaseRepresentation.Tagged || !nativeNullCaseAdded))
 			{
 				caseSchema = caseSchema.MakeNullable();
