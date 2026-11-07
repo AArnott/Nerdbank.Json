@@ -299,6 +299,63 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			.Set("additionalProperties", false);
 	}
 
+	internal JsonSchemaObject CreateCSharpUnionRepresentation(IReadOnlyList<(object Alias, JsonCSharpUnionCaseRepresentation Representation, JsonSchemaObject CaseSchema)> cases)
+	{
+		JsonCSharpUnionFormat format = new(cases.Select(static c => c.Representation).ToArray(), this.owner.UseDiscriminatorObjects);
+		List<JsonSchemaObject> options = new(cases.Count);
+		HashSet<string> objectAliases = new(StringComparer.Ordinal);
+		foreach ((object alias, JsonCSharpUnionCaseRepresentation representation, JsonSchemaObject caseSchema) in cases)
+		{
+			if (representation != JsonCSharpUnionCaseRepresentation.Tagged)
+			{
+				options.Add(caseSchema);
+				continue;
+			}
+
+			if (format.UseObjectEnvelope)
+			{
+				string propertyName = JsonUnionObjectEnvelope.GetAlias(alias as int?, alias as string);
+				if (propertyName == JsonUnionObjectEnvelope.BaseAlias || !objectAliases.Add(propertyName))
+				{
+					throw new NotSupportedException($"The union discriminator '{propertyName}' is reserved or ambiguous in object format.");
+				}
+
+				options.Add(new JsonSchemaObject()
+					.Set("type", "object")
+					.SetMap("properties", [new(propertyName, caseSchema)])
+					.SetStrings("required", [propertyName])
+					.Set("additionalProperties", false));
+			}
+			else
+			{
+				JsonSchemaObject discriminator = new();
+				if (alias is int tag)
+				{
+					if (this.Dialect == JsonSchemaDialect.Draft4)
+					{
+						discriminator.SetIntegers("enum", [(long)tag]);
+					}
+					else
+					{
+						discriminator.Set("const", tag);
+					}
+				}
+				else if (this.Dialect == JsonSchemaDialect.Draft4)
+				{
+					discriminator.SetStrings("enum", [(string)alias]);
+				}
+				else
+				{
+					discriminator.Set("const", (string)alias);
+				}
+
+				options.Add(this.CreateTupleSchema([discriminator, caseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
+			}
+		}
+
+		return new JsonSchemaObject().SetSchemas("oneOf", options);
+	}
+
 	private static JsonSchemaObject CreateUndocumented(JsonConverter converter) => JsonConverter<int>.CreateUndocumentedSchema(converter.GetType());
 
 	private JsonSchemaObject BuildRuntimeUnionSchema<T>(ITypeShape<T> shape, DerivedTypeUnion entry)

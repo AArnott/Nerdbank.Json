@@ -21,7 +21,7 @@ public static class Examples
 	public static Result Roundtrip()
 	{
 		JsonSerializer serializer = new();
-		string json = serializer.Serialize(new Result(42)); // ["Int32",42]
+		string json = serializer.Serialize(new Result(42)); // 42
 		return serializer.Deserialize<Result>(json);
 	}
 	// </CSharpUnionUsage>
