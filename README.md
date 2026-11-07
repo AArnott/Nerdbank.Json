@@ -35,7 +35,7 @@ It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`,
 * Synchronous stream APIs and incremental asynchronous stream/pipe serialization with cancellation and backpressure.
 * Asynchronous sequence reading and writing through `DeserializeEnumerableAsync` and `SerializeEnumerableAsync`, with `SequenceOptions` selecting `JsonSequenceFormat.NDJson` or `JsonSequenceFormat.JsonArray`.
 * Targeted `DeserializePath` by JSON path or member-access options, and `DeserializePathEnumerableAsync` for arrays selected inside an envelope.
-* Shape-declared unions and runtime `DerivedTypeUnions` mappings, with array or single-property discriminator envelopes.
+* Shape-declared unions and runtime `DerivedTypeUnions` mappings, with array or `$type` metadata envelopes.
 * JSON Schema draft 4, draft 7, and draft 2020-12 export as `System.Text.Json.Nodes.JsonObject`, separate from the native JSON DOM.
 * Serialization callbacks, operation-scoped string interning, collection comparers, and configurable security limits.
 * Opt-in native JSON DOM, untyped object, `ExpandoObject`, and System.Text.Json DOM converters.

@@ -10,7 +10,7 @@ using System.Text;
 
 namespace Nerdbank.Json;
 
-internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferencePreservingConverter<T>
+internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferencePreservingConverter<T>, IJsonUnionObjectConverter
 {
 	private readonly Func<T> factory;
 	private readonly JsonExtensionData<T>? extensionData;
@@ -18,11 +18,13 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 	private readonly Utf8PropertyLookup<T>? utf8PropertiesByName;
 	private readonly Dictionary<string, JsonProperty<T>> propertiesByName;
 	private readonly StringComparer propertyNameComparer;
+	private readonly bool supportsInlineObject;
 
-	internal JsonObjectConverter(Func<T> factory, JsonProperty<T>[] properties, StringComparer propertyNameComparer, JsonExtensionData<T>? extensionData = null)
+	internal JsonObjectConverter(Func<T> factory, JsonProperty<T>[] properties, StringComparer propertyNameComparer, bool supportsInlineObject, JsonExtensionData<T>? extensionData = null)
 	{
 		this.factory = factory;
 		this.extensionData = extensionData;
+		this.supportsInlineObject = supportsInlineObject;
 		this.properties = properties;
 		this.propertyNameComparer = propertyNameComparer;
 		this.propertiesByName = new Dictionary<string, JsonProperty<T>>(properties.Length, propertyNameComparer);
@@ -40,6 +42,9 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	public override bool PreferAsyncSerialization => true;
 
+	bool IJsonUnionObjectConverter.SupportsInlineObject
+		=> this.supportsInlineObject;
+
 	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 	{
 		if (value is null)
@@ -48,27 +53,8 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 			return;
 		}
 
-		context.DepthStep();
-		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
-
 		writer.WriteStartObject();
-		bool first = true;
-		for (int i = 0; i < this.properties.Length; i++)
-		{
-			JsonProperty<T> property = this.properties[i];
-			if (!property.CanSerialize)
-			{
-				continue;
-			}
-
-			if (property.Write(ref writer, value, context, first))
-			{
-				first = false;
-			}
-		}
-
-		this.extensionData?.Write(ref writer, value, ref first);
-
+		this.WriteObjectProperties(ref writer, value, context, first: true);
 		writer.WriteEndObject();
 	}
 
@@ -81,30 +67,13 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 			return;
 		}
 
-		context.DepthStep();
-		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
-
 		JsonWriter syncWriter = writer.CreateWriter();
 		syncWriter.WriteStartObject();
 		writer.ReturnWriter(ref syncWriter);
 
-		bool first = true;
-		for (int i = 0; i < this.properties.Length; i++)
-		{
-			JsonProperty<T> property = this.properties[i];
-			if (!property.CanSerialize)
-			{
-				continue;
-			}
-
-			if (await property.WriteAsync(writer, value, context, first).ConfigureAwait(false))
-			{
-				first = false;
-			}
-		}
+		await this.WriteObjectPropertiesAsync(writer, value, context, first: true).ConfigureAwait(false);
 
 		syncWriter = writer.CreateWriter();
-		this.extensionData?.Write(ref syncWriter, value, ref first);
 		syncWriter.WriteEndObject();
 		writer.ReturnWriter(ref syncWriter);
 		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
@@ -122,61 +91,192 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		return result;
 	}
 
+	public override async ValueTask<T?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		if (!typeof(T).IsValueType && await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			return default;
+		}
+
+		T result = this.factory();
+		return await this.PopulateAsyncCore(reader, result, context).ConfigureAwait(false);
+	}
+
 	public T CreateReferenceInstance() => this.factory();
 
 	public void PopulateReference(ref JsonReader reader, ref T instance, SerializationContext context)
+		=> this.PopulateReference(ref reader, ref instance, context, skipDiscriminator: false, discriminatorConsumed: false);
+
+	public async ValueTask<T> PopulateReferenceAsync(JsonAsyncReader reader, T instance, SerializationContext context)
+		=> await this.PopulateAsyncCore(reader, instance, context).ConfigureAwait(false);
+
+	void IJsonUnionObjectConverter.WriteObjectProperties(ref JsonWriter writer, object value, SerializationContext context, bool first)
+		=> this.WriteObjectProperties(ref writer, (T)value, context, first);
+
+	ValueTask IJsonUnionObjectConverter.WriteObjectPropertiesAsync(JsonAsyncWriter writer, object value, SerializationContext context, bool first)
+		=> this.WriteObjectPropertiesAsync(writer, (T)value, context, first);
+
+	object? IJsonUnionObjectConverter.ReadObjectWithMetadata(ref JsonReader reader, SerializationContext context)
+	{
+		T instance = this.factory();
+		this.PopulateReference(ref reader, ref instance, context, skipDiscriminator: true);
+		return instance;
+	}
+
+	object? IJsonUnionObjectConverter.ReadObjectWithMetadataAfterDiscriminator(ref JsonReader reader, SerializationContext context)
+	{
+		T instance = this.factory();
+		this.PopulateReference(ref reader, ref instance, context, skipDiscriminator: true, discriminatorConsumed: true);
+		return instance;
+	}
+
+	async ValueTask<object?> IJsonUnionObjectConverter.ReadObjectWithMetadataAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		T instance = this.factory();
+		return await this.PopulateAsyncCore(reader, instance, context, skipDiscriminator: true).ConfigureAwait(false);
+	}
+
+	async ValueTask<object?> IJsonUnionObjectConverter.ReadObjectWithMetadataAfterDiscriminatorAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		T instance = this.factory();
+		return await this.PopulateAsyncCore(reader, instance, context, skipDiscriminator: true, discriminatorConsumed: true).ConfigureAwait(false);
+	}
+
+	ValueTask<int> IJsonUnionObjectConverter.TryNavigateAfterDiscriminatorAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> JsonAsyncTargetedNavigator.NavigateMemberAfterDiscriminatorAsync(reader, segment, options, context);
+
+	private void WriteObjectProperties(ref JsonWriter writer, T value, SerializationContext context, bool first)
+	{
+		context.DepthStep();
+		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
+
+		for (int i = 0; i < this.properties.Length; i++)
+		{
+			JsonProperty<T> property = this.properties[i];
+			if (!property.CanSerialize)
+			{
+				continue;
+			}
+
+			if (property.Write(ref writer, value, context, first))
+			{
+				first = false;
+			}
+		}
+
+		this.extensionData?.Write(ref writer, value, ref first);
+	}
+
+	private async ValueTask WriteObjectPropertiesAsync(JsonAsyncWriter writer, T value, SerializationContext context, bool first)
+	{
+		context.DepthStep();
+		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
+
+		for (int i = 0; i < this.properties.Length; i++)
+		{
+			JsonProperty<T> property = this.properties[i];
+			if (!property.CanSerialize)
+			{
+				continue;
+			}
+
+			if (await property.WriteAsync(writer, value, context, first).ConfigureAwait(false))
+			{
+				first = false;
+			}
+		}
+
+		JsonWriter syncWriter = writer.CreateWriter();
+		this.extensionData?.Write(ref syncWriter, value, ref first);
+		writer.ReturnWriter(ref syncWriter);
+	}
+
+	private void PopulateReference(ref JsonReader reader, ref T instance, SerializationContext context, bool skipDiscriminator, bool discriminatorConsumed = false)
 	{
 		context.DepthStep();
 
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
 		UnusedDataPacket.Map? unused = null;
-		reader.ReadStartObject();
+		bool foundDiscriminator = discriminatorConsumed;
+		if (!discriminatorConsumed)
+		{
+			reader.ReadStartObject();
+		}
+
 		if (reader.TryReadEndObject())
 		{
 			(instance as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 			return;
 		}
 
+		if (discriminatorConsumed)
+		{
+			reader.ReadValueSeparator();
+		}
+
 		while (true)
 		{
 			string? propertyName = null;
 			JsonProperty<T>? property = null;
+			bool isDiscriminator = false;
 			if (this.utf8PropertiesByName is not null && reader.TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> utf8PropertyName, out long start, out long length))
 			{
 				if (utf8PropertyName.IsEmpty)
 				{
 					property = this.FindSplitProperty(ref reader, start, length, out propertyName);
 				}
+				else if (skipDiscriminator && utf8PropertyName.SequenceEqual("\"$type\""u8))
+				{
+					isDiscriminator = true;
+				}
 				else if (!this.utf8PropertiesByName.TryGetValue(utf8PropertyName, out property))
 				{
 					propertyName = Encoding.UTF8.GetString(utf8PropertyName[1..^1]);
 				}
 
-				if (property is not null)
+				if (!isDiscriminator)
 				{
-					collisionDetection.MarkAsRead(property.Index, property.Name);
-				}
-				else
-				{
-					collisionDetection.MarkAsRead(propertyName!);
+					if (property is not null)
+					{
+						collisionDetection.MarkAsRead(property.Index, property.Name);
+					}
+					else
+					{
+						collisionDetection.MarkAsRead(propertyName!);
+					}
 				}
 			}
 			else
 			{
 				propertyName = reader.ReadRequiredString();
-				if (this.propertiesByName.TryGetValue(propertyName, out property))
+				isDiscriminator = skipDiscriminator && propertyName == JsonUnionObjectEnvelope.DiscriminatorPropertyName;
+				if (!isDiscriminator)
 				{
-					collisionDetection.MarkAsRead(property.Index, property.Name);
-				}
-				else
-				{
-					collisionDetection.MarkAsRead(propertyName);
+					if (this.propertiesByName.TryGetValue(propertyName, out property))
+					{
+						collisionDetection.MarkAsRead(property.Index, property.Name);
+					}
+					else
+					{
+						collisionDetection.MarkAsRead(propertyName);
+					}
 				}
 			}
 
 			reader.ReadNameSeparator();
 
-			if (property is not null && property.CanDeserialize)
+			if (isDiscriminator || (skipDiscriminator && propertyName == JsonUnionObjectEnvelope.DiscriminatorPropertyName))
+			{
+				if (foundDiscriminator)
+				{
+					throw new FormatException("A union discriminator object may contain only one '$type' property.");
+				}
+
+				foundDiscriminator = true;
+				_ = reader.ReadRequiredString();
+			}
+			else if (property is not null && property.CanDeserialize)
 			{
 				property.Read(ref reader, ref instance, context);
 			}
@@ -202,21 +302,6 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		(instance as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 	}
 
-	public override async ValueTask<T?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
-	{
-		Requires.NotNull(reader);
-		if (!typeof(T).IsValueType && await reader.TryReadNullAsync(context).ConfigureAwait(false))
-		{
-			return default;
-		}
-
-		T result = this.factory();
-		return await this.PopulateAsyncCore(reader, result, context).ConfigureAwait(false);
-	}
-
-	public async ValueTask<T> PopulateReferenceAsync(JsonAsyncReader reader, T instance, SerializationContext context)
-		=> await this.PopulateAsyncCore(reader, instance, context).ConfigureAwait(false);
-
 	private JsonProperty<T>? FindSplitProperty(ref JsonReader reader, long start, long length, out string? propertyName)
 	{
 		using JsonInput.Token token = reader.CopyToken(start, length, stackalloc byte[256]);
@@ -231,33 +316,54 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		return null;
 	}
 
-	private async ValueTask<T> PopulateAsyncCore(JsonAsyncReader reader, T result, SerializationContext context)
+	private async ValueTask<T> PopulateAsyncCore(JsonAsyncReader reader, T result, SerializationContext context, bool skipDiscriminator = false, bool discriminatorConsumed = false)
 	{
 		context.DepthStep();
 
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
 		UnusedDataPacket.Map? unused = null;
-		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
+		if (!discriminatorConsumed)
+		{
+			await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
+		}
+
 		if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
 		{
 			(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 			return result;
 		}
 
+		bool foundDiscriminator = discriminatorConsumed;
+		if (discriminatorConsumed)
+		{
+			await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+		}
+
 		while (true)
 		{
 			string propertyName = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
-			JsonProperty<T>? property = this.propertiesByName.TryGetValue(propertyName, out JsonProperty<T>? matched) ? matched : null;
-			if (property is not null)
+			bool isDiscriminator = skipDiscriminator && propertyName == JsonUnionObjectEnvelope.DiscriminatorPropertyName;
+			JsonProperty<T>? property = !isDiscriminator && this.propertiesByName.TryGetValue(propertyName, out JsonProperty<T>? matched) ? matched : null;
+			if (!isDiscriminator && property is not null)
 			{
 				collisionDetection.MarkAsRead(property.Index, property.Name);
 			}
-			else
+			else if (!isDiscriminator)
 			{
 				collisionDetection.MarkAsRead(propertyName);
 			}
 
-			if (property is not null && property.CanDeserialize)
+			if (isDiscriminator)
+			{
+				if (foundDiscriminator)
+				{
+					throw new FormatException("A union discriminator object may contain only one '$type' property.");
+				}
+
+				foundDiscriminator = true;
+				_ = await reader.ReadStringValueAsync(context).ConfigureAwait(false);
+			}
+			else if (property is not null && property.CanDeserialize)
 			{
 				result = await property.ReadValueIntoAsync(reader, result, context).ConfigureAwait(false);
 			}

@@ -16,7 +16,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 
 		Shape2 value = new Circle(2.5);
 		string json = serializer.Serialize(value, Shape<Shape2, Shape2>());
-		Assert.Equal("""["circle",{"radius":2.5}]""", json);
+		Assert.Equal("""{"$type":"circle","radius":2.5}""", json);
 
 		Shape2? result = serializer.Deserialize(json, Shape<Shape2, Shape2>());
 		Assert.Equal(value, result);
@@ -32,7 +32,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 
 		Shape2 value = new Square(4);
 		string json = serializer.Serialize(value, Shape<Shape2, Shape2>());
-		Assert.Equal("""[2,{"side":4}]""", json);
+		Assert.Equal("""{"$type":"2","side":4}""", json);
 		Assert.Equal(value, serializer.Deserialize(json, Shape<Shape2, Shape2>()));
 	}
 
@@ -46,7 +46,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 
 		Animal2 value = new Cat2("Milo", 9);
 		string json = serializer.Serialize(value, Shape<Animal2, Animal2>());
-		Assert.Equal("""["feline",{"lives":9,"name":"Milo"}]""", json);
+		Assert.Equal("""{"$type":"feline","lives":9,"name":"Milo"}""", json);
 		Assert.Equal(value, serializer.Deserialize(json, Shape<Animal2, Animal2>()));
 	}
 
@@ -61,11 +61,11 @@ public partial class JsonRuntimeUnionTests : TestBase
 		Animal2 cat = new Cat2("Milo", 9);
 		Animal2 dog = new Dog2("Rex", "Lab");
 
-		Assert.Equal("""["Cat2",{"lives":9,"name":"Milo"}]""", serializer.Serialize(cat, Shape<Animal2, Animal2>()));
-		Assert.Equal("""["dog",{"breed":"Lab","name":"Rex"}]""", serializer.Serialize(dog, Shape<Animal2, Animal2>()));
+		Assert.Equal("""{"$type":"Cat2","lives":9,"name":"Milo"}""", serializer.Serialize(cat, Shape<Animal2, Animal2>()));
+		Assert.Equal("""{"$type":"dog","breed":"Lab","name":"Rex"}""", serializer.Serialize(dog, Shape<Animal2, Animal2>()));
 
-		Assert.Equal(dog, serializer.Deserialize("""["dog",{"breed":"Lab","name":"Rex"}]""", Shape<Animal2, Animal2>()));
-		Assert.Equal(cat, serializer.Deserialize("""["Cat2",{"lives":9,"name":"Milo"}]""", Shape<Animal2, Animal2>()));
+		Assert.Equal(dog, serializer.Deserialize("""{"$type":"dog","breed":"Lab","name":"Rex"}""", Shape<Animal2, Animal2>()));
+		Assert.Equal(cat, serializer.Deserialize("""{"$type":"Cat2","lives":9,"name":"Milo"}""", Shape<Animal2, Animal2>()));
 	}
 
 	[Test]
@@ -88,7 +88,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 		JsonSerializer serializer = new();
 
 		Animal2 value = new Cat2("Milo", 9);
-		Assert.Equal("""["Cat2",{"lives":9,"name":"Milo"}]""", serializer.Serialize(value, Shape<Animal2, Animal2>()));
+		Assert.Equal("""{"$type":"Cat2","lives":9,"name":"Milo"}""", serializer.Serialize(value, Shape<Animal2, Animal2>()));
 	}
 
 	[Test]
@@ -99,7 +99,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 			DerivedTypeUnions = [new DerivedShapeMapping<Shape2> { { "circle", Shape<Circle, Circle>() } }],
 		};
 
-		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""["square",{"side":4}]""", Shape<Shape2, Shape2>()));
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"$type":"square","side":4}""", Shape<Shape2, Shape2>()));
 	}
 
 	[Test]
@@ -112,7 +112,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 
 		ShapeContainer value = new() { Shape = new Circle(1) };
 		string json = serializer.Serialize(value, Shape<ShapeContainer, ShapeContainer>());
-		Assert.Equal("""{"shape":["circle",{"radius":1}]}""", json);
+		Assert.Equal("""{"shape":{"$type":"circle","radius":1}}""", json);
 
 		ShapeContainer? result = serializer.Deserialize(json, Shape<ShapeContainer, ShapeContainer>());
 		Assert.Equal(new Circle(1), result?.Shape);
@@ -175,7 +175,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 
 		Wrapper value = new ShapeWrapper(new Circle(1));
 		string json = serializer.Serialize(value, Shape<Wrapper, Wrapper>());
-		Assert.Equal("""["shape",{"inner":["circle",{"radius":1}]}]""", json);
+		Assert.Equal("""{"$type":"shape","inner":{"$type":"circle","radius":1}}""", json);
 		Assert.Equal(value, serializer.Deserialize(json, Shape<Wrapper, Wrapper>()));
 	}
 
@@ -190,7 +190,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 
 		Shape2 value = new Circle(3);
 		string json = serializer.Serialize(value, Shape<Shape2, Shape2>());
-		Assert.Equal("""["circle",{"r":3}]""", json);
+		Assert.Equal("""{"$type":"circle","$value":{"r":3}}""", json);
 		Assert.Equal(value, serializer.Deserialize(json, Shape<Shape2, Shape2>()));
 	}
 
@@ -284,6 +284,24 @@ public partial class JsonRuntimeUnionTests : TestBase
 
 	[GenerateShape]
 	internal partial record Dog2(string Name, string Breed) : Animal2(Name);
+
+#pragma warning disable SA1201 // The union is grouped with its runtime-union test shapes.
+	[GenerateShape]
+	internal partial union AnimalPayloadOrNumber(Animal2, int);
+#pragma warning restore SA1201
+
+	[GenerateShape]
+	internal partial class SelfMappedBase
+	{
+		public string Name { get; set; } = string.Empty;
+
+		public UnusedDataPacket? Extra { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class SelfMappedOther : SelfMappedBase
+	{
+	}
 
 	[GenerateShape]
 	internal partial class ShapeContainer

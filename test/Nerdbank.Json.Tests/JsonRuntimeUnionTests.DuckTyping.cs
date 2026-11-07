@@ -34,13 +34,10 @@ public partial class JsonRuntimeUnionTests
 	}
 
 	[Test]
-	[Arguments(false)]
-	[Arguments(true)]
-	public async Task DuckTyping_RequiredPropertyDistinction_RoundTrips(bool discriminatorObjects)
+	public async Task DuckTyping_RequiredPropertyDistinction_RoundTrips()
 	{
 		JsonSerializer serializer = new()
 		{
-			UseDiscriminatorObjects = discriminatorObjects,
 			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<Animal, Animal>(), Shape<Dog, Dog>(), Shape<Cat, Cat>())],
 		};
 
@@ -223,7 +220,7 @@ public partial class JsonRuntimeUnionTests
 	[Test]
 	public void DuckTyping_SchemaUsesBareObjectCases()
 	{
-		JsonSerializer serializer = DuckSerializer() with { UseDiscriminatorObjects = true };
+		JsonSerializer serializer = DuckSerializer();
 		System.Text.Json.Nodes.JsonObject schema = serializer.GetJsonSchema(Shape<Shape2, Shape2>());
 		System.Text.Json.Nodes.JsonArray cases = schema["anyOf"]![0]!["oneOf"]!.AsArray();
 		Assert.Equal(2, cases.Count);

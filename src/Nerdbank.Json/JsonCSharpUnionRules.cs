@@ -21,15 +21,16 @@ internal enum JsonCSharpUnionCaseRepresentation
 
 internal sealed class JsonCSharpUnionFormat
 {
-	internal JsonCSharpUnionFormat(IReadOnlyList<JsonCSharpUnionCaseRepresentation> representations, bool useDiscriminatorObjects)
+	internal JsonCSharpUnionFormat(IReadOnlyList<JsonCSharpUnionCaseRepresentation> representations)
 	{
-		bool hasArray = false;
 		bool hasObject = false;
+		bool hasTagged = false;
 		HashSet<JsonCSharpUnionCaseRepresentation> nativeRepresentations = [];
 		foreach (JsonCSharpUnionCaseRepresentation representation in representations)
 		{
 			if (representation == JsonCSharpUnionCaseRepresentation.Tagged)
 			{
+				hasTagged = true;
 				continue;
 			}
 
@@ -38,19 +39,13 @@ internal sealed class JsonCSharpUnionFormat
 				throw new NotSupportedException($"C# union cases with the '{representation}' JSON representation require explicit case identifiers.");
 			}
 
-			hasArray |= representation == JsonCSharpUnionCaseRepresentation.Array;
 			hasObject |= representation == JsonCSharpUnionCaseRepresentation.Object;
 		}
 
-		if (hasArray && hasObject)
-		{
-			throw new NotSupportedException("A C# union cannot contain both untagged array and object collection cases. Assign an explicit case identifier to at least one case.");
-		}
-
-		this.UseObjectEnvelope = hasArray || (!hasObject && useDiscriminatorObjects);
+		this.TagObjectCases = hasObject && hasTagged;
 	}
 
-	internal bool UseObjectEnvelope { get; }
+	internal bool TagObjectCases { get; }
 }
 
 internal static class JsonCSharpUnionRules

@@ -30,6 +30,7 @@ internal record JsonSerializerConfiguration
 	private bool serializeEnumValuesByName;
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
 	private bool writeIndented;
+	private bool allowOutOfOrderMetadataProperties;
 	private bool useDiscriminatorObjects;
 
 	internal ConverterCache ConverterCache => Volatile.Read(ref this.converterCache) ?? LazyInitializer.EnsureInitialized(ref this.converterCache, () => new(this))!;
@@ -271,15 +272,21 @@ internal record JsonSerializerConfiguration
 		}
 	}
 
-	/// <summary>Gets a value indicating whether unions use single-property object envelopes instead of two-element arrays.</summary>
+	/// <summary>Gets a value indicating whether union metadata may appear after ordinary object properties.</summary>
+	internal bool AllowOutOfOrderMetadataProperties
+	{
+		get => this.allowOutOfOrderMetadataProperties;
+		init
+		{
+			this.allowOutOfOrderMetadataProperties = value;
+			this.converterCache = null;
+		}
+	}
+
 	internal bool UseDiscriminatorObjects
 	{
 		get => this.useDiscriminatorObjects;
-		init
-		{
-			this.useDiscriminatorObjects = value;
-			this.converterCache = null;
-		}
+		init => this.useDiscriminatorObjects = value;
 	}
 
 	/// <summary>

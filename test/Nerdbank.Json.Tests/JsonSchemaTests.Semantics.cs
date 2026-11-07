@@ -65,20 +65,17 @@ public partial class JsonSchemaTests
 	}
 
 	[Test]
-	[Arguments(false)]
-	[Arguments(true)]
-	public void RuntimeUnionSchema_TracksReplacementDisablingAndBaseFallback(bool useObjects)
+	public void RuntimeUnionSchema_TracksReplacementDisablingAndBaseFallback()
 	{
 		JsonSerializer serializer = new()
 		{
-			UseDiscriminatorObjects = useObjects,
 			DerivedTypeUnions = [new DerivedShapeMapping<Animal> { { "feline", Shape<Cat, Cat>() } }],
 		};
 		JsonSchemaObject schema = serializer.GetJsonSchema(Shape<Animal, Animal>());
 		string text = schema.ToJsonString();
 		Assert.Contains("feline", text, StringComparison.Ordinal);
 		Assert.DoesNotContain("\"const\":\"Cat\"", text, StringComparison.Ordinal);
-		Assert.Contains(useObjects ? "$base" : "\"type\":\"null\"", text, StringComparison.Ordinal);
+		Assert.Contains("$base", text, StringComparison.Ordinal);
 
 		JsonSerializer disabled = serializer with { DerivedTypeUnions = [DerivedTypeUnion.CreateDisabled(typeof(Animal))] };
 		JsonSchemaObject disabledSchema = disabled.GetJsonSchema(Shape<Animal, Animal>());
@@ -89,15 +86,12 @@ public partial class JsonSchemaTests
 	}
 
 	[Test]
-	[Arguments(false, false)]
-	[Arguments(false, true)]
-	[Arguments(true, false)]
-	[Arguments(true, true)]
-	public void ReferencePreservedUnion_PayloadHasOneIdentityEnvelope(bool useObjects, bool runtimeUnion)
+	[Arguments(false)]
+	[Arguments(true)]
+	public void ReferencePreservedUnion_PayloadHasOneIdentityEnvelope(bool runtimeUnion)
 	{
 		JsonSerializer serializer = new()
 		{
-			UseDiscriminatorObjects = useObjects,
 			PreserveReferences = ReferencePreservationMode.RejectCycles,
 			DerivedTypeUnions = runtimeUnion ? [new DerivedShapeMapping<Animal> { { "Cat", Shape<Cat, Cat>() } }] : [],
 		};
@@ -108,15 +102,20 @@ public partial class JsonSchemaTests
 		Assert.NotNull(result);
 		Assert.Same(result.First, result.Second);
 		Assert.Contains("\"$ref\":", json, StringComparison.Ordinal);
-
 		JsonSchemaObject schema = serializer.GetJsonSchema(Shape<Animal, Animal>());
-		JsonSchemaNode unionPayload = schema["anyOf"]![0]!["oneOf"]![1]!["properties"]!["$value"]!;
-		JsonSchemaNode casePayload = useObjects
-			? unionPayload["oneOf"]![0]!["properties"]!["Cat"]!
-			: unionPayload["oneOf"]![0]!["prefixItems"]![1]!;
-		Assert.Equal("object", casePayload["type"]!.GetValue<string>());
-		Assert.NotNull(casePayload["properties"]!["lives"]);
-		Assert.Null(casePayload["oneOf"]);
+		string schemaJson = schema.ToJsonString();
+		Assert.Contains("\"$id\"", schemaJson, StringComparison.Ordinal);
+		Assert.Contains("\"$value\"", schemaJson, StringComparison.Ordinal);
+		Assert.Contains("\"$type\":{\"const\":\"Cat\"}", schemaJson, StringComparison.Ordinal);
+		Assert.Contains("\"lives\"", schemaJson, StringComparison.Ordinal);
+		JsonSchemaNode identityForm = schema["anyOf"]![0]!["oneOf"]![1]!;
+		JsonSchemaNode unionSchema = identityForm["properties"]!["$value"]!;
+		JsonSchemaObject catCase = Assert.Single(
+			unionSchema["oneOf"]!.AsArray(),
+			candidate => candidate!["properties"]?["$type"]?["const"]?.GetValue<string>() == "Cat")!.AsObject();
+		Assert.NotNull(catCase["properties"]?["lives"]);
+		Assert.Null(catCase["properties"]?["$value"]);
+		Assert.Null(catCase["oneOf"]);
 		AssertReferencesResolve(schema, schema);
 	}
 

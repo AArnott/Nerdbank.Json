@@ -53,6 +53,37 @@ internal static class JsonAsyncTargetedNavigator
 			? NavigateIndexAsync(reader, segment.Index, context)
 			: NavigateMemberAsync(reader, segment, options, context);
 
+	internal static async ValueTask<int> NavigateMemberAfterDiscriminatorAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+	{
+		if (segment.IsIndex)
+		{
+			throw new NotSupportedException($"Cannot navigate to index {segment.Index} because the value is a plain JSON object.");
+		}
+
+		if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+		{
+			return -1;
+		}
+
+		await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+		while (true)
+		{
+			string name = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
+			if (options.NameComparer.Equals(name, segment.Name))
+			{
+				return 0;
+			}
+
+			await reader.SkipValueAsync(context).ConfigureAwait(false);
+			if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+			{
+				return -1;
+			}
+
+			await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+		}
+	}
+
 	private static async ValueTask<int> NavigateMemberAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
 		int token = await reader.PeekNextByteAsync().ConfigureAwait(false);

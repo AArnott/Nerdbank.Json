@@ -8,13 +8,12 @@
 #pragma warning disable SA1600 // Internal helper elements are intentionally undocumented in this file.
 #pragma warning disable SA1649 // File name intentionally differs from the first type in this multi-type helper file.
 
-using System.Globalization;
 using System.Reflection;
 using System.Text;
 
 namespace Nerdbank.Json;
 
-internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase>
+internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase>, IJsonUnionObjectConverter
 {
 	private readonly JsonConverter inner;
 
@@ -22,6 +21,30 @@ internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase
 	{
 		this.inner = converter is IJsonReferencePreservingWrapper wrapper ? wrapper.InnerConverter : converter;
 	}
+
+	bool IJsonUnionObjectConverter.SupportsInlineObject
+		=> this.inner is IJsonUnionObjectConverter { SupportsInlineObject: true };
+
+	void IJsonUnionObjectConverter.WriteObjectProperties(ref JsonWriter writer, object value, SerializationContext context, bool first)
+		=> this.GetObjectConverter().WriteObjectProperties(ref writer, value, context, first);
+
+	ValueTask IJsonUnionObjectConverter.WriteObjectPropertiesAsync(JsonAsyncWriter writer, object value, SerializationContext context, bool first)
+		=> this.GetObjectConverter().WriteObjectPropertiesAsync(writer, value, context, first);
+
+	object? IJsonUnionObjectConverter.ReadObjectWithMetadata(ref JsonReader reader, SerializationContext context)
+		=> this.GetObjectConverter().ReadObjectWithMetadata(ref reader, context);
+
+	object? IJsonUnionObjectConverter.ReadObjectWithMetadataAfterDiscriminator(ref JsonReader reader, SerializationContext context)
+		=> this.GetObjectConverter().ReadObjectWithMetadataAfterDiscriminator(ref reader, context);
+
+	ValueTask<object?> IJsonUnionObjectConverter.ReadObjectWithMetadataAsync(JsonAsyncReader reader, SerializationContext context)
+		=> this.GetObjectConverter().ReadObjectWithMetadataAsync(reader, context);
+
+	ValueTask<object?> IJsonUnionObjectConverter.ReadObjectWithMetadataAfterDiscriminatorAsync(JsonAsyncReader reader, SerializationContext context)
+		=> this.GetObjectConverter().ReadObjectWithMetadataAfterDiscriminatorAsync(reader, context);
+
+	ValueTask<int> IJsonUnionObjectConverter.TryNavigateAfterDiscriminatorAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> this.GetObjectConverter().TryNavigateAfterDiscriminatorAsync(reader, segment, options, context);
 
 	public override void Write(ref JsonWriter writer, in TBase? value, SerializationContext context)
 		=> this.inner.WriteObject(ref writer, value, context);
@@ -34,6 +57,11 @@ internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase
 
 	internal override ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 		=> this.inner.SkipToValueAsync(reader, segment, context);
+
+	private IJsonUnionObjectConverter GetObjectConverter()
+		=> this.inner is IJsonUnionObjectConverter { SupportsInlineObject: true } objectConverter
+			? objectConverter
+			: throw new InvalidOperationException("The union case converter does not support inline object metadata.");
 }
 
 internal readonly struct RuntimeUnionCaseEntry<TBase>
@@ -56,18 +84,6 @@ internal readonly struct RuntimeUnionCaseEntry<TBase>
 	internal JsonConverter<TBase> Converter { get; }
 
 	internal IReadOnlyCollection<string> RequiredPropertyNames { get; }
-
-	internal void WriteAlias(ref JsonWriter writer)
-	{
-		if (this.Tag is int tag)
-		{
-			writer.Write(tag);
-		}
-		else
-		{
-			writer.Write(this.Name);
-		}
-	}
 }
 
 internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
@@ -75,33 +91,22 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 	private readonly JsonConverter<TBase>? baseConverter;
 	private readonly RuntimeUnionCaseEntry<TBase>[] cases;
 	private readonly Dictionary<Type, int> byType;
-	private readonly Dictionary<int, int> byTag;
-	private readonly Dictionary<string, int> byName;
-	private readonly JsonUnionObjectEnvelope? objectEnvelope;
+	private readonly JsonUnionObjectEnvelope objectEnvelope;
 
-	internal JsonRuntimeUnionConverter(JsonConverter<TBase>? baseConverter, RuntimeUnionCaseEntry<TBase>[] cases, StringComparer nameComparer, bool useDiscriminatorObjects)
+	internal JsonRuntimeUnionConverter(JsonConverter<TBase>? baseConverter, RuntimeUnionCaseEntry<TBase>[] cases)
 	{
 		this.baseConverter = baseConverter;
 		this.cases = cases;
 		this.byType = new(cases.Length);
-		this.byTag = new(cases.Length);
-		this.byName = new(cases.Length, nameComparer);
-		this.objectEnvelope = useDiscriminatorObjects ? new(baseConverter) : null;
+		this.objectEnvelope = new(baseConverter);
 		for (int i = 0; i < cases.Length; i++)
 		{
-			this.objectEnvelope?.Add(JsonUnionObjectEnvelope.GetAlias(cases[i].Tag, cases[i].Name), cases[i].Converter);
+			this.objectEnvelope.Add(JsonUnionObjectEnvelope.GetAlias(cases[i].Tag, cases[i].Name), cases[i].Converter);
 			this.byType[cases[i].CaseType] = i;
-			if (cases[i].Tag is int tag)
-			{
-				this.byTag[tag] = i;
-			}
-			else if (cases[i].Name is string name)
-			{
-				this.byName[name] = i;
-			}
 		}
 	}
 
+#pragma warning disable NBJson031 // JsonUnionObjectEnvelope.Write emits one complete JSON object.
 	public override void Write(ref JsonWriter writer, in TBase? value, SerializationContext context)
 	{
 		if (!typeof(TBase).IsValueType && value is null)
@@ -112,42 +117,17 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 
 		context.DepthStep();
 
-		if (this.objectEnvelope is not null)
+		if (value is not null && this.byType.TryGetValue(value.GetType(), out int objectIndex))
 		{
-			writer.WriteStartObject();
-			if (value is not null && this.byType.TryGetValue(value.GetType(), out int objectIndex))
-			{
-				RuntimeUnionCaseEntry<TBase> entry = this.cases[objectIndex];
-				writer.WritePropertyName(JsonUnionObjectEnvelope.GetAlias(entry.Tag, entry.Name));
-				entry.Converter.Write(ref writer, value, context);
-			}
-			else
-			{
-				writer.WritePropertyName(JsonUnionObjectEnvelope.BaseAlias);
-				this.WriteBase(ref writer, value, context);
-			}
-
-			writer.WriteEndObject();
-			return;
-		}
-
-		writer.WriteStartArray();
-		if (value is not null && this.byType.TryGetValue(value.GetType(), out int index))
-		{
-			RuntimeUnionCaseEntry<TBase> entry = this.cases[index];
-			entry.WriteAlias(ref writer);
-			writer.WriteValueSeparator();
-			entry.Converter.Write(ref writer, value, context);
+			RuntimeUnionCaseEntry<TBase> entry = this.cases[objectIndex];
+			JsonUnionObjectEnvelope.Write(ref writer, JsonUnionObjectEnvelope.GetAlias(entry.Tag, entry.Name), entry.Converter, value, context);
 		}
 		else
 		{
-			writer.WriteNull();
-			writer.WriteValueSeparator();
-			this.WriteBase(ref writer, value, context);
+			JsonUnionObjectEnvelope.Write(ref writer, JsonUnionObjectEnvelope.BaseAlias, this.baseConverter ?? throw new NotSupportedException($"No union case is registered for type '{value?.GetType().FullName}', and the base type '{typeof(TBase).FullName}' cannot be serialized directly."), value, context);
 		}
-
-		writer.WriteEndArray();
 	}
+#pragma warning restore NBJson031
 
 	public override TBase? Read(ref JsonReader reader, SerializationContext context)
 	{
@@ -158,115 +138,52 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 
 		context.DepthStep();
 
-		if (this.objectEnvelope is not null)
-		{
-			JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader);
-			TBase? objectValue = (TBase?)objectConverter.ReadObject(ref reader, context);
-			JsonUnionObjectEnvelope.ReadEndObject(ref reader);
-			return objectValue;
-		}
-
-		reader.ReadStartArray();
-		JsonConverter<TBase>? converter;
-		if (reader.TryReadNull())
-		{
-			converter = this.baseConverter ?? throw new FormatException($"The JSON specified a base '{typeof(TBase).FullName}' value, but the configured union has no serializable base type.");
-		}
-		else if (reader.PeekValueToken() == '"')
-		{
-			string name = reader.ReadRequiredString();
-			converter = this.byName.TryGetValue(name, out int index) ? this.cases[index].Converter : throw new FormatException($"Unrecognized union discriminator '{name}'.");
-		}
-		else
-		{
-			int tag = int.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
-			converter = this.byTag.TryGetValue(tag, out int index) ? this.cases[index].Converter : throw new FormatException($"Unrecognized union discriminator '{tag}'.");
-		}
-
-		reader.ReadValueSeparator();
-		TBase? value = converter.Read(ref reader, context);
-		reader.ReadEndArray();
-		return value;
+		JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader, context.Cache.AllowOutOfOrderMetadataProperties, context, out bool discriminatorConsumed);
+		return (TBase?)(objectConverter is IJsonUnionObjectConverter { SupportsInlineObject: true } inlineConverter
+			? discriminatorConsumed
+				? inlineConverter.ReadObjectWithMetadataAfterDiscriminator(ref reader, context)
+				: inlineConverter.ReadObjectWithMetadata(ref reader, context)
+			: JsonUnionObjectEnvelope.ReadValue(ref reader, objectConverter, context));
 	}
 
 	internal override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
-		if (this.objectEnvelope is not null)
-		{
-			JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader);
-			context.DepthStep();
-			return objectConverter.SkipToValue(ref reader, in segment, context);
-		}
-
-		reader.ReadStartArray();
-		JsonConverter<TBase>? converter;
-		if (reader.TryReadNull())
-		{
-			converter = this.baseConverter;
-		}
-		else if (reader.PeekValueToken() == '"')
-		{
-			converter = this.byName.TryGetValue(reader.ReadRequiredString(), out int index) ? this.cases[index].Converter : null;
-		}
-		else
-		{
-			converter = this.byTag.TryGetValue(int.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture), out int index) ? this.cases[index].Converter : null;
-		}
-
-		if (converter is null)
-		{
-			return false;
-		}
-
-		reader.ReadValueSeparator();
 		context.DepthStep();
-		return converter.SkipToValue(ref reader, in segment, context);
+		JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader, context.Cache.AllowOutOfOrderMetadataProperties, context);
+		if (objectConverter is not IJsonUnionObjectConverter { SupportsInlineObject: true })
+		{
+			JsonUnionObjectEnvelope.ReadValueStart(ref reader, context);
+		}
+
+		return objectConverter.SkipToValue(ref reader, in segment, context);
 	}
 
 	internal override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
-		if (this.objectEnvelope is not null)
-		{
-			JsonConverter objectConverter = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context).ConfigureAwait(false);
-			context.DepthStep();
-			int objectInner = await objectConverter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
-			return objectInner < 0 ? -1 : objectInner + 1;
-		}
-
-		await reader.ReadStartArrayAsync(context).ConfigureAwait(false);
-		JsonConverter<TBase>? converter;
-		if (await reader.TryReadNullAsync(context).ConfigureAwait(false))
-		{
-			converter = this.baseConverter;
-		}
-		else if (await reader.PeekNextByteAsync().ConfigureAwait(false) == '"')
-		{
-			converter = this.byName.TryGetValue(await reader.ReadStringValueAsync(context).ConfigureAwait(false), out int index) ? this.cases[index].Converter : null;
-		}
-		else
-		{
-			converter = this.byTag.TryGetValue(int.Parse(await reader.ReadNumberTokenAsync(context).ConfigureAwait(false), CultureInfo.InvariantCulture), out int index) ? this.cases[index].Converter : null;
-		}
-
-		if (converter is null)
-		{
-			return -1;
-		}
-
-		await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
 		context.DepthStep();
-		int inner = await converter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
-		return inner < 0 ? -1 : inner + 1;
+		(JsonConverter objectConverter, bool discriminatorConsumed) = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context.Cache.AllowOutOfOrderMetadataProperties, context).ConfigureAwait(false);
+		if (discriminatorConsumed)
+		{
+			int inlineInner = objectConverter is IJsonUnionObjectConverter { SupportsInlineObject: true } inlineConverter
+				? await inlineConverter.TryNavigateAfterDiscriminatorAsync(reader, segment, options, context).ConfigureAwait(false)
+				: await ReadValueAndNavigateAfterDiscriminatorAsync(reader, objectConverter, segment, context).ConfigureAwait(false);
+			return inlineInner < 0 ? -1 : inlineInner + 1;
+		}
+
+		if (objectConverter is not IJsonUnionObjectConverter { SupportsInlineObject: true })
+		{
+			await JsonUnionObjectEnvelope.ReadValueStartAsync(reader, context).ConfigureAwait(false);
+		}
+
+		int objectInner = await objectConverter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
+		return objectInner < 0 ? -1 : objectInner + 1;
 	}
 
-	private void WriteBase(ref JsonWriter writer, TBase? value, SerializationContext context)
+	private static async ValueTask<int> ReadValueAndNavigateAfterDiscriminatorAsync(JsonAsyncReader reader, JsonConverter converter, JsonNavigationSegment segment, SerializationContext context)
 	{
-		if (this.baseConverter is null)
-		{
-			throw new NotSupportedException($"No union case is registered for type '{value?.GetType().FullName}', and the base type '{typeof(TBase).FullName}' cannot be serialized directly.");
-		}
-
-		this.baseConverter.Write(ref writer, value, context);
+		await JsonUnionObjectEnvelope.ReadValueStartAsync(reader, context, discriminatorConsumed: true).ConfigureAwait(false);
+		int inner = await converter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
+		return inner < 0 ? -1 : inner + 1;
 	}
 }
 
@@ -396,7 +313,7 @@ internal static class RuntimeUnionBuilder
 		StringComparer nameComparer = owner.PropertyNameComparer;
 		ITypeShape baseTypeShape = shape is IUnionTypeShape unionForBase ? unionForBase.BaseType : shape;
 		JsonConverter<TBase>? baseConverter = IsConstructible(baseTypeShape as IObjectTypeShape)
-			? (JsonConverter<TBase>)baseTypeShape.Accept(visitor)!
+			? (JsonConverter<TBase>)baseTypeShape.Accept(visitor, JsonStandardVisitor.RuntimeUnionBaseShape)!
 			: null;
 
 		if (entry.Disabled)
@@ -425,7 +342,7 @@ internal static class RuntimeUnionBuilder
 
 		return entry is DerivedTypeDuckTyping
 			? new JsonDuckTypingUnionConverter<TBase>([.. caseEntries], nameComparer, owner.AllowTrailingCommas, owner.ReadCommentHandling)
-			: new JsonRuntimeUnionConverter<TBase>(baseConverter, [.. caseEntries], nameComparer, owner.UseDiscriminatorObjects);
+			: new JsonRuntimeUnionConverter<TBase>(baseConverter, [.. caseEntries]);
 	}
 
 	internal static IEnumerable<KeyValuePair<DerivedTypeIdentifier, ITypeShape>> GetCases(DerivedTypeUnion entry)

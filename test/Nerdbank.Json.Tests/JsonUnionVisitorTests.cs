@@ -15,7 +15,7 @@ public partial class JsonObjectSerializerTests
 	{
 		Animal value = new("Milo");
 
-		this.AssertRoundtrip(value, """[null,{"name":"Milo"}]""");
+		this.AssertRoundtrip(value, """{"$type":"$base","name":"Milo"}""");
 	}
 
 	[Test]
@@ -23,7 +23,7 @@ public partial class JsonObjectSerializerTests
 	{
 		Animal value = new Cat("Milo", 9);
 
-		this.AssertRoundtrip(value, """["Cat",{"lives":9,"name":"Milo"}]""");
+		this.AssertRoundtrip(value, """{"$type":"Cat","lives":9,"name":"Milo"}""");
 	}
 
 	[Test]
@@ -31,14 +31,14 @@ public partial class JsonObjectSerializerTests
 	{
 		TaggedAnimal value = new TaggedCat("Otis", 7);
 
-		this.AssertRoundtrip(value, """[3,{"lives":7,"name":"Otis"}]""");
+		this.AssertRoundtrip(value, """{"$type":"3","lives":7,"name":"Otis"}""");
 	}
 
 	[Test]
 	public void SerializeDeserialize_ObjectGraph_WithUnionProperty()
 	{
 		UnionContainer value = new() { Pet = new Cat("Milo", 9) };
-		this.AssertRoundtrip(value, """{"pet":["Cat",{"lives":9,"name":"Milo"}]}""");
+		this.AssertRoundtrip(value, """{"pet":{"$type":"Cat","lives":9,"name":"Milo"}}""");
 	}
 
 	[Test]
@@ -63,7 +63,7 @@ public partial class JsonObjectSerializerTests
 			StartingContext = this.Serializer.StartingContext with { MaxDepth = 1 },
 		};
 
-		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<Animal>("""["Cat",{"lives":9,"name":"Milo"}]"""));
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<Animal>("""{"$type":"Cat","lives":9,"name":"Milo"}"""));
 		Assert.Contains("Exceeded maximum depth", exception.Message);
 	}
 
@@ -72,20 +72,19 @@ public partial class JsonObjectSerializerTests
 	{
 		IAnimal value = new CatWithParameterizedConstructor("Milo", 9);
 
-		this.AssertRoundtrip(value, PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<IAnimal>()!, """["CatWithParameterizedConstructor",{"name":"Milo","lives":9}]""");
+		this.AssertRoundtrip(value, PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<IAnimal>()!, """{"$type":"CatWithParameterizedConstructor","name":"Milo","lives":9}""");
 	}
 
 	[Test]
 	public void Deserialize_UnionInterfaceBaseValue_ThrowsJsonSerializationException()
 	{
-		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize("""[null,{"name":"Milo"}]""", PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<IAnimal>()!));
-		Assert.Contains("no constructible base type", exception.Message);
+		JsonSerializationException exception = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize("""{"$type":"$base","name":"Milo"}""", PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<IAnimal>()!));
+		Assert.Contains("Unrecognized union discriminator", exception.Message);
 	}
 
 	[Test, MatrixDataSource]
-	public async Task AsyncUnionRoundtrip(bool discriminatorObjects, bool derived)
+	public async Task AsyncUnionRoundtrip(bool derived)
 	{
-		this.Serializer = this.Serializer with { UseDiscriminatorObjects = discriminatorObjects };
 		Animal value = derived ? new Cat("Milo", 9) : new Animal("Milo");
 		using MemoryStream stream = new();
 		await this.Serializer.SerializeAsync(stream, value);

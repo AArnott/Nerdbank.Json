@@ -3,7 +3,6 @@
 
 #pragma warning disable SA1600 // Elements should be documented
 
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Reflection;
 using PolyType.Utilities;
@@ -12,6 +11,8 @@ namespace Nerdbank.Json;
 
 internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationContext context, bool directShapeDispatch) : TypeShapeVisitor, ITypeShapeFunc
 {
+	/// <summary>Marker used when constructing a runtime union's plain base-object converter.</summary>
+	internal static readonly object RuntimeUnionBaseShape = new();
 	private static readonly object CSharpUnionCaseSentinel = new();
 
 	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state)
@@ -87,6 +88,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 
 	public override object? VisitObject<T>(IObjectTypeShape<T> objectShape, object? state = null)
 	{
+		bool ignoreDerivedTypeUnion = ReferenceEquals(state, RuntimeUnionBaseShape);
 		List<JsonProperty<T>> properties = [];
 		JsonExtensionData<T>? extensionData = null;
 		Dictionary<string, string> serializedPropertyNamesByClrName = new(StringComparer.OrdinalIgnoreCase);
@@ -117,7 +119,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		JsonProperty<T>[] jsonProperties = [.. properties];
 		if (objectShape.Constructor is not null && objectShape.Constructor.Parameters.Count > 0)
 		{
-			if (objectShape.Constructor.Accept(this, new JsonConstructorVisitorState<T>(jsonProperties, serializedPropertyNamesByClrName, extensionData)) is JsonConverter<T> constructorConverter)
+			if (objectShape.Constructor.Accept(this, new JsonConstructorVisitorState<T>(jsonProperties, serializedPropertyNamesByClrName, extensionData, ignoreDerivedTypeUnion)) is JsonConverter<T> constructorConverter)
 			{
 				return constructorConverter;
 			}
@@ -129,7 +131,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			throw new NotSupportedException($"Type '{typeof(T).FullName}' does not define a default constructor for property-based deserialization.");
 		}
 
-		return new JsonObjectConverter<T>(factory, jsonProperties, owner.PropertyNameComparer, extensionData);
+		return new JsonObjectConverter<T>(factory, jsonProperties, owner.PropertyNameComparer, owner.SupportsInlineUnionObject(objectShape, ignoreDerivedTypeUnion), extensionData);
 	}
 
 	public override object? VisitConstructor<TDeclaringType, TArgumentState>(IConstructorShape<TDeclaringType, TArgumentState> constructorShape, object? state = null)
@@ -152,7 +154,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			}
 		}
 
-		return new JsonObjectWithConstructorConverter<TDeclaringType, TArgumentState>(visitorState.Properties, constructorShape.GetArgumentStateConstructor(), constructorShape.GetParameterizedConstructor(), [.. parameters], parametersByName, owner.PropertyNameComparer, visitorState.ExtensionData);
+		return new JsonObjectWithConstructorConverter<TDeclaringType, TArgumentState>(visitorState.Properties, constructorShape.GetArgumentStateConstructor(), constructorShape.GetParameterizedConstructor(), [.. parameters], parametersByName, owner.PropertyNameComparer, owner.SupportsInlineUnionObject(constructorShape.DeclaringType, visitorState.IgnoreDerivedTypeUnion), visitorState.ExtensionData);
 	}
 
 	public override object? VisitParameter<TArgumentState, TParameterType>(IParameterShape<TArgumentState, TParameterType> parameterShape, object? state = null)
@@ -208,8 +210,6 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			? (JsonConverter<TUnion>)baseType.Accept(this)!
 			: null;
 		Getter<TUnion, int> getUnionCaseIndex = unionShape.GetGetUnionCaseIndex();
-		Dictionary<int, JsonConverter> deserializersByIntAlias = new(unionShape.UnionCases.Count);
-		Dictionary<string, JsonConverter> deserializersByStringAlias = new(unionShape.UnionCases.Count, StringComparer.Ordinal);
 		var serializers = new JsonUnionCaseMetadata<TUnion>[unionShape.UnionCases.Count];
 
 		for (int i = 0; i < unionShape.UnionCases.Count; i++)
@@ -224,17 +224,15 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 				: JsonCSharpUnionCaseRepresentation.Tagged;
 			if (alias.Type == DerivedTypeIdentifier.AliasType.Integer)
 			{
-				deserializersByIntAlias.Add(alias.IntAlias, caseConverter);
 				serializers[i] = JsonUnionCaseMetadata<TUnion>.Create(alias.IntAlias, caseConverter, representation, unionCase.IsNullable);
 			}
 			else
 			{
-				deserializersByStringAlias.Add(alias.StringAlias, caseConverter);
 				serializers[i] = JsonUnionCaseMetadata<TUnion>.Create(alias.StringAlias, caseConverter, representation, unionCase.IsNullable);
 			}
 		}
 
-		return new JsonUnionConverter<TUnion>(baseConverter, getUnionCaseIndex, serializers, new ReadOnlyDictionary<int, JsonConverter>(deserializersByIntAlias), new ReadOnlyDictionary<string, JsonConverter>(deserializersByStringAlias), owner.UseDiscriminatorObjects, isCSharpUnion);
+		return new JsonUnionConverter<TUnion>(baseConverter, getUnionCaseIndex, serializers, isCSharpUnion);
 	}
 
 	public override object? VisitUnionCase<TUnionCase, TUnion>(IUnionCaseShape<TUnionCase, TUnion> unionCaseShape, object? state = null)
@@ -245,7 +243,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			: owner.TryGetCustomConverter(unionCaseShape.UnionCaseType, out JsonConverter? custom) && custom is not null
 				? (JsonConverter<TUnionCase>)custom
 				: (JsonConverter<TUnionCase>)unionCaseShape.UnionCaseType.Accept(this)!;
-		return new JsonUnionCaseConverter<TUnionCase, TUnion>(caseConverter, unionCaseShape.Marshaler);
+		return new JsonUnionCaseConverter<TUnionCase, TUnion>(caseConverter, unionCaseShape.Marshaler, unionCaseShape.IsNullable);
 	}
 
 	public override object? VisitFunction<TFunction, TArgumentState, TResult>(IFunctionTypeShape<TFunction, TArgumentState, TResult> functionShape, object? state = null)

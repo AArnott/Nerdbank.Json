@@ -23,6 +23,7 @@ namespace Nerdbank.Json;
 /// </summary>
 public sealed class JsonSchemaContext : ITypeShapeFunc
 {
+	private const string PendingInlineObjectCasePropertyName = "$nerdbankJsonPendingInlineObjectCase";
 	private readonly ConverterCache owner;
 	private readonly JsonSchemaVisitor visitor;
 	private readonly Dictionary<(Type Type, bool PreserveReferences), string> references = new();
@@ -30,6 +31,8 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	private readonly Dictionary<(Type Type, bool PreserveReferences), string> definitionNames = new();
 	private readonly HashSet<string> usedNames = new(StringComparer.Ordinal);
 	private readonly HashSet<(Type Type, bool PreserveReferences)> recursionGuard = new();
+	private readonly HashSet<(Type Type, bool PreserveReferences)> inlineRootExpansionGuard = new();
+	private readonly List<(string Reference, string Alias)> pendingInlineObjectCases = [];
 
 	internal JsonSchemaContext(ConverterCache owner, JsonSchemaDialect dialect)
 	{
@@ -81,6 +84,12 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 	/// <param name="preserveReferences">Whether the current value includes a reference envelope.</param>
 	/// <returns>The schema fragment.</returns>
 	internal JsonSchemaObject GetJsonSchema(ITypeShape typeShape, bool preserveReferences)
+		=> this.GetJsonSchema(typeShape, preserveReferences, inlineRoot: false);
+
+	internal JsonSchemaObject GetJsonSchemaForInlineObjectCase(ITypeShape typeShape)
+		=> this.GetJsonSchema(typeShape, preserveReferences: false, inlineRoot: true);
+
+	private JsonSchemaObject GetJsonSchema(ITypeShape typeShape, bool preserveReferences, bool inlineRoot)
 	{
 		Requires.NotNull(typeShape);
 		Type type = typeShape.Type;
@@ -88,6 +97,23 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 
 		if (this.references.TryGetValue(key, out string? existing))
 		{
+			if (inlineRoot && this.definitions.TryGetValue(this.GetDefinitionName(key), out JsonSchemaObject? definition))
+			{
+				return (JsonSchemaObject)definition.DeepClone();
+			}
+
+			if (inlineRoot && this.recursionGuard.Contains(key) && this.inlineRootExpansionGuard.Add(key))
+			{
+				try
+				{
+					return (JsonSchemaObject)typeShape.Accept(this.visitor)!;
+				}
+				finally
+				{
+					this.inlineRootExpansionGuard.Remove(key);
+				}
+			}
+
 			return Reference(existing);
 		}
 
@@ -96,10 +122,22 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		if (!this.recursionGuard.Add(key))
 		{
 			this.references[key] = refPath;
+			if (inlineRoot && this.inlineRootExpansionGuard.Add(key))
+			{
+				try
+				{
+					return (JsonSchemaObject)typeShape.Accept(this.visitor)!;
+				}
+				finally
+				{
+					this.inlineRootExpansionGuard.Remove(key);
+				}
+			}
+
 			return Reference(refPath);
 		}
 
-		JsonSchemaObject schema = (JsonSchemaObject)typeShape.Invoke(this)!;
+		JsonSchemaObject schema = (JsonSchemaObject)(inlineRoot ? typeShape.Accept(this.visitor)! : typeShape.Invoke(this)!);
 		if (key.PreserveReferences)
 		{
 			schema = this.ApplyReferencePreservation(type, schema);
@@ -110,7 +148,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		if (this.references.ContainsKey(key))
 		{
 			this.definitions[defName] = schema;
-			return Reference(refPath);
+			return inlineRoot ? schema : Reference(refPath);
 		}
 
 		return schema;
@@ -234,126 +272,192 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			document.SetMap(this.DefinitionsKeyword, sorted);
 		}
 
+		if (this.pendingInlineObjectCases.Count > 0)
+		{
+			this.ResolvePendingInlineObjectCases(document);
+			this.pendingInlineObjectCases.Clear();
+		}
+
 		return document;
 	}
 
-	internal JsonSchemaObject CreateUnionEnvelope(IReadOnlyList<(object? Alias, JsonSchemaObject CaseSchema)> cases, JsonSchemaObject? baseSchema)
+	internal JsonSchemaObject CreateUnionEnvelope(IReadOnlyList<(object? Alias, JsonSchemaObject CaseSchema, bool CanInlineObject)> cases, JsonSchemaObject? baseSchema, bool baseCanInlineObject)
 	{
 		List<JsonSchemaObject> options = new(cases.Count + (baseSchema is null ? 0 : 1));
 		HashSet<string> objectAliases = new(StringComparer.Ordinal);
-		foreach ((object? alias, JsonSchemaObject caseSchema) in cases)
+		foreach ((object? alias, JsonSchemaObject caseSchema, bool canInlineObject) in cases)
 		{
-			if (this.owner.UseDiscriminatorObjects)
+			string propertyName = JsonUnionObjectEnvelope.GetAlias(alias as int?, alias as string);
+			if (propertyName == JsonUnionObjectEnvelope.BaseAlias || !objectAliases.Add(propertyName))
 			{
-				string propertyName = JsonUnionObjectEnvelope.GetAlias(alias as int?, alias as string);
-				if (propertyName == JsonUnionObjectEnvelope.BaseAlias || !objectAliases.Add(propertyName))
-				{
-					throw new NotSupportedException($"The union discriminator '{propertyName}' is reserved or ambiguous in object format.");
-				}
-
-				options.Add(CreateObjectCase(propertyName, caseSchema));
-				continue;
+				throw new NotSupportedException($"The union discriminator '{propertyName}' is reserved or ambiguous in object format.");
 			}
 
-			JsonSchemaObject discriminator = new();
-			if (alias is int tag)
-			{
-				if (this.Dialect == JsonSchemaDialect.Draft4)
-				{
-					discriminator.SetIntegers("enum", [(long)tag]);
-				}
-				else
-				{
-					discriminator.Set("const", tag);
-				}
-			}
-			else
-			{
-				string name = (string)alias!;
-				if (this.Dialect == JsonSchemaDialect.Draft4)
-				{
-					discriminator.SetStrings("enum", [name]);
-				}
-				else
-				{
-					discriminator.Set("const", name);
-				}
-			}
-
-			options.Add(this.CreateTupleSchema([discriminator, caseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
+			options.Add(this.CreateObjectCase(propertyName, caseSchema, canInlineObject));
 		}
 
 		if (baseSchema is not null)
 		{
-			options.Add(this.owner.UseDiscriminatorObjects
-				? CreateObjectCase(JsonUnionObjectEnvelope.BaseAlias, baseSchema)
-				: this.CreateTupleSchema([new JsonSchemaObject().Set("type", "null"), baseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
+			options.Add(this.CreateObjectCase(JsonUnionObjectEnvelope.BaseAlias, baseSchema, baseCanInlineObject));
 		}
 
 		return new JsonSchemaObject().SetSchemas("oneOf", options);
-
-		static JsonSchemaObject CreateObjectCase(string alias, JsonSchemaObject schema) => new JsonSchemaObject()
-			.Set("type", "object")
-			.SetMap("properties", [new(alias, schema)])
-			.SetStrings("required", [alias])
-			.Set("additionalProperties", false);
 	}
 
-	internal JsonSchemaObject CreateCSharpUnionRepresentation(IReadOnlyList<(object Alias, JsonCSharpUnionCaseRepresentation Representation, JsonSchemaObject CaseSchema)> cases)
+	internal JsonSchemaObject CreateCSharpUnionRepresentation(IReadOnlyList<(object Alias, JsonCSharpUnionCaseRepresentation Representation, JsonSchemaObject CaseSchema, bool CanInlineObject)> cases)
 	{
-		JsonCSharpUnionFormat format = new(cases.Select(static c => c.Representation).ToArray(), this.owner.UseDiscriminatorObjects);
+		JsonCSharpUnionFormat format = new(cases.Select(static c => c.Representation).ToArray());
 		List<JsonSchemaObject> options = new(cases.Count);
 		HashSet<string> objectAliases = new(StringComparer.Ordinal);
-		foreach ((object alias, JsonCSharpUnionCaseRepresentation representation, JsonSchemaObject caseSchema) in cases)
+		foreach ((object alias, JsonCSharpUnionCaseRepresentation representation, JsonSchemaObject caseSchema, bool canInlineObject) in cases)
 		{
-			if (representation != JsonCSharpUnionCaseRepresentation.Tagged)
+			bool tagged = representation == JsonCSharpUnionCaseRepresentation.Tagged ||
+				(format.TagObjectCases && representation == JsonCSharpUnionCaseRepresentation.Object);
+			if (!tagged)
 			{
 				options.Add(caseSchema);
 				continue;
 			}
 
-			if (format.UseObjectEnvelope)
+			string propertyName = JsonUnionObjectEnvelope.GetAlias(alias as int?, alias as string);
+			if (propertyName == JsonUnionObjectEnvelope.BaseAlias || !objectAliases.Add(propertyName))
 			{
-				string propertyName = JsonUnionObjectEnvelope.GetAlias(alias as int?, alias as string);
-				if (propertyName == JsonUnionObjectEnvelope.BaseAlias || !objectAliases.Add(propertyName))
-				{
-					throw new NotSupportedException($"The union discriminator '{propertyName}' is reserved or ambiguous in object format.");
-				}
-
-				options.Add(new JsonSchemaObject()
-					.Set("type", "object")
-					.SetMap("properties", [new(propertyName, caseSchema)])
-					.SetStrings("required", [propertyName])
-					.Set("additionalProperties", false));
+				throw new NotSupportedException($"The union discriminator '{propertyName}' is reserved or ambiguous in object format.");
 			}
-			else
-			{
-				JsonSchemaObject discriminator = new();
-				if (alias is int tag)
-				{
-					if (this.Dialect == JsonSchemaDialect.Draft4)
-					{
-						discriminator.SetIntegers("enum", [(long)tag]);
-					}
-					else
-					{
-						discriminator.Set("const", tag);
-					}
-				}
-				else if (this.Dialect == JsonSchemaDialect.Draft4)
-				{
-					discriminator.SetStrings("enum", [(string)alias]);
-				}
-				else
-				{
-					discriminator.Set("const", (string)alias);
-				}
 
-				options.Add(this.CreateTupleSchema([discriminator, caseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
-			}
+			options.Add(this.CreateObjectCase(propertyName, caseSchema, canInlineObject));
 		}
 
 		return new JsonSchemaObject().SetSchemas("oneOf", options);
+	}
+
+	private JsonSchemaObject CreateObjectCase(string alias, JsonSchemaObject caseSchema, bool supportsInlineObject)
+	{
+		JsonSchemaObject discriminator = this.Dialect == JsonSchemaDialect.Draft4
+			? new JsonSchemaObject().SetStrings("enum", [alias])
+			: new JsonSchemaObject().Set("const", alias);
+
+		if (supportsInlineObject
+			&& caseSchema["$ref"] is System.Text.Json.Nodes.JsonValue referenceValue
+			&& referenceValue.TryGetValue<string>(out string? reference)
+			&& this.definitionNames.Values.Any(name => reference == "#/" + this.DefinitionsKeyword + "/" + name))
+		{
+			int pendingIndex = this.pendingInlineObjectCases.Count;
+			this.pendingInlineObjectCases.Add((reference, alias));
+			JsonSchemaObject placeholder = new JsonSchemaObject().Set(PendingInlineObjectCasePropertyName, pendingIndex);
+			return placeholder;
+		}
+
+		JsonSchemaObject? caseProperties = caseSchema["properties"] as JsonSchemaObject;
+		bool hasObjectType = caseSchema["type"] is System.Text.Json.Nodes.JsonValue typeValue
+			&& typeValue.TryGetValue<string>(out string? schemaType)
+			&& schemaType == "object";
+		bool canInlineObject = supportsInlineObject
+			&& hasObjectType
+			&& caseSchema["$ref"] is null
+			&& caseSchema["additionalProperties"] is not JsonSchemaObject
+			&& caseSchema["additionalProperties"]?.GetValue<bool>() != true
+			&& caseProperties?.ContainsKey(JsonUnionObjectEnvelope.DiscriminatorPropertyName) != true;
+		if (canInlineObject)
+		{
+			JsonSchemaObject result = (JsonSchemaObject)caseSchema.DeepClone();
+			JsonSchemaObject properties = result["properties"] as JsonSchemaObject ?? new();
+			properties[JsonUnionObjectEnvelope.DiscriminatorPropertyName] = discriminator;
+			result["properties"] = properties;
+			List<string> required = result["required"] is JsonSchemaArray requiredArray
+				? requiredArray.Select(static item => item!.GetValue<string>()).ToList()
+				: [];
+			required.Add(JsonUnionObjectEnvelope.DiscriminatorPropertyName);
+			result.SetStrings("required", required);
+			return result;
+		}
+
+		return new JsonSchemaObject()
+			.Set("type", "object")
+			.SetMap("properties", [
+				new(JsonUnionObjectEnvelope.DiscriminatorPropertyName, discriminator),
+				new(JsonUnionObjectEnvelope.ValuePropertyName, caseSchema.DeepClone().AsObject()),
+			])
+			.SetStrings("required", [JsonUnionObjectEnvelope.DiscriminatorPropertyName, JsonUnionObjectEnvelope.ValuePropertyName])
+			.Set("additionalProperties", false);
+	}
+
+	private void ResolvePendingInlineObjectCases(JsonSchemaNode schema)
+	{
+		if (schema is JsonSchemaObject schemaObject)
+		{
+			if (schemaObject[PendingInlineObjectCasePropertyName] is System.Text.Json.Nodes.JsonValue pendingIndexNode
+				&& pendingIndexNode.TryGetValue<long>(out long pendingIndexValue))
+			{
+				int pendingIndex = checked((int)pendingIndexValue);
+				(string reference, string alias) = this.pendingInlineObjectCases[pendingIndex];
+				string definitionName = this.definitionNames.Values.First(name => reference == "#/" + this.DefinitionsKeyword + "/" + name);
+				if (!this.definitions.TryGetValue(definitionName, out JsonSchemaObject? definition))
+				{
+					throw new InvalidOperationException($"The recursive JSON Schema definition '{definitionName}' was not generated.");
+				}
+
+				JsonSchemaObject caseSchema = (JsonSchemaObject)definition.DeepClone();
+				JsonSchemaObject? properties = caseSchema["properties"] as JsonSchemaObject;
+				bool canInlineObject = caseSchema["type"] is System.Text.Json.Nodes.JsonValue typeValue
+					&& typeValue.TryGetValue<string>(out string? schemaType)
+					&& schemaType == "object"
+					&& caseSchema["additionalProperties"] is not JsonSchemaObject
+					&& caseSchema["additionalProperties"]?.GetValue<bool>() != true
+					&& properties?.ContainsKey(JsonUnionObjectEnvelope.DiscriminatorPropertyName) != true;
+				if (canInlineObject)
+				{
+					properties ??= new JsonSchemaObject();
+					JsonSchemaObject discriminator = this.Dialect == JsonSchemaDialect.Draft4
+						? new JsonSchemaObject().SetStrings("enum", [alias])
+						: new JsonSchemaObject().Set("const", alias);
+					properties[JsonUnionObjectEnvelope.DiscriminatorPropertyName] = discriminator;
+					caseSchema["properties"] = properties;
+					List<string> required = caseSchema["required"] is JsonSchemaArray requiredArray
+						? requiredArray.Select(static item => item!.GetValue<string>()).ToList()
+						: [];
+					required.Add(JsonUnionObjectEnvelope.DiscriminatorPropertyName);
+					caseSchema.SetStrings("required", required);
+				}
+				else
+				{
+					JsonSchemaObject discriminator = this.Dialect == JsonSchemaDialect.Draft4
+						? new JsonSchemaObject().SetStrings("enum", [alias])
+						: new JsonSchemaObject().Set("const", alias);
+					caseSchema = new JsonSchemaObject()
+						.Set("type", "object")
+						.SetMap("properties", [
+							new(JsonUnionObjectEnvelope.DiscriminatorPropertyName, discriminator),
+							new(JsonUnionObjectEnvelope.ValuePropertyName, Reference(reference)),
+						])
+						.SetStrings("required", [JsonUnionObjectEnvelope.DiscriminatorPropertyName, JsonUnionObjectEnvelope.ValuePropertyName])
+						.Set("additionalProperties", false);
+				}
+
+				schemaObject.Clear();
+				schemaObject.Append(caseSchema);
+			}
+			else
+			{
+				foreach (KeyValuePair<string, JsonSchemaNode?> property in schemaObject.ToArray())
+				{
+					if (property.Value is not null)
+					{
+						this.ResolvePendingInlineObjectCases(property.Value);
+					}
+				}
+			}
+		}
+		else if (schema is JsonSchemaArray array)
+		{
+			foreach (JsonSchemaNode? item in array)
+			{
+				if (item is not null)
+				{
+					this.ResolvePendingInlineObjectCases(item);
+				}
+			}
+		}
 	}
 
 	private static JsonSchemaObject CreateUndocumented(JsonConverter converter) => JsonConverter<int>.CreateUndocumentedSchema(converter.GetType());
@@ -366,15 +470,22 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			return (JsonSchemaObject)baseShape.Accept(this.visitor)!;
 		}
 
-		List<(object? Alias, JsonSchemaObject CaseSchema)> cases = [];
+		ITypeShape unionBaseShape = shape is IUnionTypeShape unionShape ? unionShape.BaseType : shape;
+		List<(object? Alias, JsonSchemaObject CaseSchema, bool CanInlineObject)> cases = [];
 		foreach (KeyValuePair<DerivedTypeIdentifier, ITypeShape> pair in RuntimeUnionBuilder.GetCases(entry))
 		{
 			DerivedTypeIdentifier alias = pair.Key;
 			ITypeShape caseShape = pair.Value;
-			JsonSchemaObject caseSchema = caseShape.Type == typeof(T)
-				? (JsonSchemaObject)(shape is IUnionTypeShape union ? union.BaseType : shape).Accept(this.visitor)!
-				: this.GetJsonSchema(caseShape, preserveReferences: false);
-			cases.Add((alias.Type == DerivedTypeIdentifier.AliasType.Integer ? (object)alias.IntAlias : alias.StringAlias, caseSchema));
+			bool isSelfCase = caseShape.Type == typeof(T);
+			ITypeShape schemaShape = isSelfCase ? unionBaseShape : caseShape;
+			bool canInlineObject = (!isSelfCase || RuntimeUnionBuilder.IsConstructible(schemaShape as IObjectTypeShape))
+				&& this.owner.SupportsInlineUnionObject(schemaShape, ignoreDerivedTypeUnion: isSelfCase);
+			JsonSchemaObject caseSchema = isSelfCase
+				? (JsonSchemaObject)schemaShape.Accept(this.visitor)!
+				: canInlineObject
+					? this.GetJsonSchemaForInlineObjectCase(schemaShape)
+					: this.GetJsonSchema(schemaShape, preserveReferences: false);
+			cases.Add((alias.Type == DerivedTypeIdentifier.AliasType.Integer ? (object)alias.IntAlias : alias.StringAlias, caseSchema, canInlineObject));
 		}
 
 		if (entry is DerivedTypeDuckTyping)
@@ -386,7 +497,8 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		JsonSchemaObject? baseSchema = RuntimeUnionBuilder.IsConstructible(baseShapeForFallback as IObjectTypeShape)
 			? (JsonSchemaObject)baseShapeForFallback.Accept(this.visitor)!
 			: null;
-		return this.CreateUnionEnvelope(cases, baseSchema);
+		bool baseCanInlineObject = this.owner.SupportsInlineUnionObject(baseShapeForFallback, ignoreDerivedTypeUnion: true);
+		return this.CreateUnionEnvelope(cases, baseSchema, baseCanInlineObject);
 	}
 
 	private JsonSchemaObject ApplyReferencePreservation(Type type, JsonSchemaObject schema)
