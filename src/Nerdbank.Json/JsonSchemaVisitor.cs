@@ -163,8 +163,8 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 		UnionCaseAliasesResolution aliasResolution = UnionCaseAliases.ResolveDetailed(unionShape, this.owner.UnionTypeAliasProvider);
 		DerivedTypeIdentifier[] aliases = aliasResolution.Aliases;
 		bool isCSharpUnion = unionShape.UnionKind == UnionTypeShapeKind.CSharpUnion;
-		List<(object? Alias, JsonSchemaObject CaseSchema)> cases = [];
-		List<(object Alias, JsonCSharpUnionCaseRepresentation Representation, JsonSchemaObject CaseSchema)> csharpCases = [];
+		List<(object? Alias, JsonSchemaObject CaseSchema, bool CanInlineObject)> cases = [];
+		List<(object Alias, JsonCSharpUnionCaseRepresentation Representation, JsonSchemaObject CaseSchema, bool CanInlineObject)> csharpCases = [];
 		bool nativeNullCaseAdded = false;
 		for (int i = 0; i < unionShape.UnionCases.Count; i++)
 		{
@@ -176,17 +176,20 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 					? JsonCSharpUnionCaseRepresentation.Tagged
 					: JsonCSharpUnionRules.GetRepresentation(unionCase.UnionCaseType, aliasResolution.ExplicitlySpecified[i], this.owner)
 				: JsonCSharpUnionCaseRepresentation.Tagged;
-			JsonSchemaObject caseSchema = this.context.GetJsonSchema(unionCase.UnionCaseType, preserveReferences: unionShape.UnionKind == UnionTypeShapeKind.CSharpUnion);
+			bool canInlineObject = !unionCase.IsNullable && this.owner.SupportsInlineUnionObject(unionCase.UnionCaseType);
+			JsonSchemaObject caseSchema = canInlineObject
+				? this.context.GetJsonSchemaForInlineObjectCase(unionCase.UnionCaseType)
+				: this.context.GetJsonSchema(unionCase.UnionCaseType, preserveReferences: unionShape.UnionKind != UnionTypeShapeKind.CSharpUnion);
 			if (unionCase.IsNullable && (!isCSharpUnion || representation == JsonCSharpUnionCaseRepresentation.Tagged || !nativeNullCaseAdded))
 			{
 				caseSchema = caseSchema.MakeNullable();
 			}
 
 			nativeNullCaseAdded |= representation != JsonCSharpUnionCaseRepresentation.Tagged && unionCase.IsNullable;
-			cases.Add((alias, caseSchema));
+			cases.Add((alias, caseSchema, canInlineObject));
 			if (isCSharpUnion)
 			{
-				csharpCases.Add((alias, representation, caseSchema));
+				csharpCases.Add((alias, representation, caseSchema, canInlineObject));
 			}
 		}
 
@@ -198,7 +201,9 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 		JsonSchemaObject? baseSchema = unionShape.UnionKind != UnionTypeShapeKind.CSharpUnion && RuntimeUnionBuilder.IsConstructible(unionShape.BaseType as IObjectTypeShape)
 			? (JsonSchemaObject)unionShape.BaseType.Accept(this)!
 			: null;
-		return this.context.CreateUnionEnvelope(cases, baseSchema);
+		bool baseCanInlineObject = unionShape.UnionKind != UnionTypeShapeKind.CSharpUnion
+			&& this.owner.SupportsInlineUnionObject(unionShape.BaseType);
+		return this.context.CreateUnionEnvelope(cases, baseSchema, baseCanInlineObject);
 	}
 
 	public override object? VisitFunction<TFunction, TArgumentState, TResult>(IFunctionTypeShape<TFunction, TArgumentState, TResult> functionShape, object? state = null)

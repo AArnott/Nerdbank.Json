@@ -201,6 +201,21 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
+	/// Gets or initializes a value indicating whether the legacy discriminator-object setting is enabled.
+	/// </summary>
+	/// <value>The value assigned to this property; it no longer affects the JSON representation.</value>
+	/// <remarks>
+	/// Union discriminators now always use metadata objects with a <c>$type</c> property. Remove uses of this property;
+	/// setting it has no effect.
+	/// </remarks>
+	[Obsolete("Union discriminators now use $type metadata objects by default; this property no longer affects serialization.")]
+	public bool UseDiscriminatorObjects
+	{
+		get => this.configuration.UseDiscriminatorObjects;
+		init => this.configuration = this.configuration with { UseDiscriminatorObjects = value };
+	}
+
+	/// <summary>
 	/// Gets the converter cache derived from this serializer's immutable configuration.
 	/// </summary>
 	internal ConverterCache ConverterCache => this.configuration.ConverterCache;

@@ -417,6 +417,44 @@ public partial class JsonAsyncSequenceTests : TestBase
 	}
 
 	[Test]
+	public async Task PathExpression_ThroughUnion_YieldsBeforeUnionObjectCompletes()
+	{
+		Pipe pipe = new();
+		await WriteAsync(pipe.Writer, """{"pet":{"$type":"Cat","toys":["ball"]""");
+		IAsyncEnumerator<string?> enumerator = this.Serializer.DeserializePathEnumerableAsync<UnionEnvelope, string>(
+			pipe.Reader,
+			Shape<UnionEnvelope, UnionEnvelope>(),
+			new(e => e.Pet.Toys)).GetAsyncEnumerator();
+		bool writerCompleted = false;
+		try
+		{
+			Task<bool> firstElement = enumerator.MoveNextAsync().AsTask();
+			if (await Task.WhenAny(firstElement, Task.Delay(TimeSpan.FromSeconds(5))) != firstElement)
+			{
+				await pipe.Writer.CompleteAsync();
+				writerCompleted = true;
+			}
+
+			Assert.True(await firstElement);
+			Assert.Equal("ball", enumerator.Current);
+			await WriteAsync(pipe.Writer, "}}");
+			await pipe.Writer.CompleteAsync();
+			writerCompleted = true;
+			Assert.False(await enumerator.MoveNextAsync());
+		}
+		finally
+		{
+			if (!writerCompleted)
+			{
+				await pipe.Writer.CompleteAsync();
+			}
+
+			await enumerator.DisposeAsync();
+			await pipe.Reader.CompleteAsync();
+		}
+	}
+
+	[Test]
 	[Arguments(false)]
 	[Arguments(true)]
 	public async Task PathExpression_ThroughUnion_UsesCustomCaseNavigationHooks(bool runtimeMapping)

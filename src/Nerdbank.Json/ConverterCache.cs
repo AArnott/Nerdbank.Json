@@ -145,6 +145,28 @@ internal sealed class ConverterCache : ITypeShapeFunc
 		return this.configuration.PropertyNamingPolicy.ConvertName(name);
 	}
 
+	internal bool SupportsInlineUnionObject(ITypeShape shape)
+	{
+		if (this.TryGetCustomConverter(shape, out _)
+			|| BuiltInJsonConverters.IsSupported(shape.Type)
+			|| shape.Kind != TypeShapeKind.Object
+			|| shape is not IObjectTypeShape objectShape)
+		{
+			return false;
+		}
+
+		foreach (IPropertyShape property in objectShape.Properties)
+		{
+			if (property.PropertyType.Type == typeof(UnusedDataPacket)
+				|| this.GetSerializedPropertyName(property.Name, property.AttributeProvider) == JsonUnionObjectEnvelope.DiscriminatorPropertyName)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	internal string GetSerializedDictionaryKey(string key)
 		=> this.configuration.DictionaryKeyNamingPolicy?.ConvertName(key) ?? key;
 

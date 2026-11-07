@@ -71,6 +71,7 @@ Discriminator values are strings; integer discriminator `7` becomes `"$type":"7"
 The reserved discriminator value `$base` identifies a base-contract fallback.
 Object-shaped case properties are written alongside `$type`; non-object and custom-converter payloads use a `$value` property.
 By default, `$type` must be the first object property, as in System.Text.Json. Set <xref:Nerdbank.Json.JsonSerializer.AllowOutOfOrderMetadataProperties> to allow it to appear later.
+Keeping `$type` first lets asynchronous deserialization and targeted navigation process the payload incrementally; allowing it out of order may require buffering the complete union object. The legacy `UseDiscriminatorObjects` property is obsolete and no longer affects the wire format.
 Aliases that collide after conversion to strings, or use `$base`, are rejected.
 JSON Schema generation and expression-based targeted navigation use this representation.
 Reference preservation still uses the idiomatic `$id`, `$ref`, and `$value` JSON metadata objects.

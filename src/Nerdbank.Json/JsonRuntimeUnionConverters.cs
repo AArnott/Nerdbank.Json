@@ -40,6 +40,12 @@ internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase
 	ValueTask<object?> IJsonUnionObjectConverter.ReadObjectWithMetadataAsync(JsonAsyncReader reader, SerializationContext context)
 		=> this.GetObjectConverter().ReadObjectWithMetadataAsync(reader, context);
 
+	ValueTask<object?> IJsonUnionObjectConverter.ReadObjectWithMetadataAfterDiscriminatorAsync(JsonAsyncReader reader, SerializationContext context)
+		=> this.GetObjectConverter().ReadObjectWithMetadataAfterDiscriminatorAsync(reader, context);
+
+	ValueTask<int> IJsonUnionObjectConverter.TryNavigateAfterDiscriminatorAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+		=> this.GetObjectConverter().TryNavigateAfterDiscriminatorAsync(reader, segment, options, context);
+
 	public override void Write(ref JsonWriter writer, in TBase? value, SerializationContext context)
 		=> this.inner.WriteObject(ref writer, value, context);
 
@@ -155,7 +161,15 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 	internal override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
 		context.DepthStep();
-		JsonConverter objectConverter = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context.Cache.AllowOutOfOrderMetadataProperties, context).ConfigureAwait(false);
+		(JsonConverter objectConverter, bool discriminatorConsumed) = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context.Cache.AllowOutOfOrderMetadataProperties, context).ConfigureAwait(false);
+		if (discriminatorConsumed)
+		{
+			int inlineInner = objectConverter is IJsonUnionObjectConverter { SupportsInlineObject: true } inlineConverter
+				? await inlineConverter.TryNavigateAfterDiscriminatorAsync(reader, segment, options, context).ConfigureAwait(false)
+				: await ReadValueAndNavigateAfterDiscriminatorAsync(reader, objectConverter, segment, context).ConfigureAwait(false);
+			return inlineInner < 0 ? -1 : inlineInner + 1;
+		}
+
 		if (objectConverter is not IJsonUnionObjectConverter { SupportsInlineObject: true })
 		{
 			await JsonUnionObjectEnvelope.ReadValueStartAsync(reader, context).ConfigureAwait(false);
@@ -163,6 +177,13 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 
 		int objectInner = await objectConverter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
 		return objectInner < 0 ? -1 : objectInner + 1;
+	}
+
+	private static async ValueTask<int> ReadValueAndNavigateAfterDiscriminatorAsync(JsonAsyncReader reader, JsonConverter converter, JsonNavigationSegment segment, SerializationContext context)
+	{
+		await JsonUnionObjectEnvelope.ReadValueStartAsync(reader, context, discriminatorConsumed: true).ConfigureAwait(false);
+		int inner = await converter.SkipToValueAsync(reader, segment, context).ConfigureAwait(false);
+		return inner < 0 ? -1 : inner + 1;
 	}
 }
 

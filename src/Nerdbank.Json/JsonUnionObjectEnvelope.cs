@@ -21,6 +21,10 @@ internal interface IJsonUnionObjectConverter
 	object? ReadObjectWithMetadataAfterDiscriminator(ref JsonReader reader, SerializationContext context);
 
 	ValueTask<object?> ReadObjectWithMetadataAsync(JsonAsyncReader reader, SerializationContext context);
+
+	ValueTask<object?> ReadObjectWithMetadataAfterDiscriminatorAsync(JsonAsyncReader reader, SerializationContext context);
+
+	ValueTask<int> TryNavigateAfterDiscriminatorAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context);
 }
 
 /// <summary>
@@ -179,14 +183,23 @@ internal sealed class JsonUnionObjectEnvelope
 		}
 	}
 
-	internal static async ValueTask<object?> ReadValueAsync(JsonAsyncReader reader, JsonConverter converter, SerializationContext context)
+	internal static async ValueTask<object?> ReadValueAsync(JsonAsyncReader reader, JsonConverter converter, SerializationContext context, bool discriminatorConsumed = false)
 	{
-		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
-		bool foundType = false;
+		if (!discriminatorConsumed)
+		{
+			await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
+		}
+
+		bool foundType = discriminatorConsumed;
 		bool foundValue = false;
 		object? result = null;
 		if (!await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
 		{
+			if (discriminatorConsumed)
+			{
+				await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+			}
+
 			while (true)
 			{
 				string propertyName = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
@@ -232,12 +245,22 @@ internal sealed class JsonUnionObjectEnvelope
 		return result;
 	}
 
-	internal static async ValueTask ReadValueStartAsync(JsonAsyncReader reader, SerializationContext context)
+	internal static async ValueTask ReadValueStartAsync(JsonAsyncReader reader, SerializationContext context, bool discriminatorConsumed = false)
 	{
-		await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
+		if (!discriminatorConsumed)
+		{
+			await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
+		}
+
 		if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
 		{
 			throw new FormatException("A union discriminator object is missing the '$value' property.");
+		}
+
+		bool foundType = discriminatorConsumed;
+		if (discriminatorConsumed)
+		{
+			await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
 		}
 
 		while (true)
@@ -250,6 +273,12 @@ internal sealed class JsonUnionObjectEnvelope
 
 			if (propertyName == DiscriminatorPropertyName)
 			{
+				if (foundType)
+				{
+					throw new FormatException("A union discriminator object may contain only one '$type' property.");
+				}
+
+				foundType = true;
 				_ = await reader.ReadStringValueAsync(context).ConfigureAwait(false);
 			}
 			else
@@ -302,14 +331,32 @@ internal sealed class JsonUnionObjectEnvelope
 		return this.ReadDiscriminator(ref reader, allowOutOfOrderMetadataProperties, context);
 	}
 
-	internal async ValueTask<JsonConverter> ReadDiscriminatorAsync(JsonAsyncReader reader, bool allowOutOfOrderMetadataProperties, SerializationContext context)
+	internal async ValueTask<(JsonConverter Converter, bool DiscriminatorConsumed)> ReadDiscriminatorAsync(JsonAsyncReader reader, bool allowOutOfOrderMetadataProperties, SerializationContext context)
 	{
+		if (!allowOutOfOrderMetadataProperties)
+		{
+			await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
+			if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
+			{
+				throw new FormatException("The union discriminator object is missing the '$type' property.");
+			}
+
+			string propertyName = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
+			if (propertyName != DiscriminatorPropertyName)
+			{
+				throw new FormatException("The '$type' metadata property must appear first.");
+			}
+
+			string alias = await reader.ReadStringValueAsync(context).ConfigureAwait(false);
+			return (this.Resolve(alias), true);
+		}
+
 		await reader.BufferNextValueAsync(context).ConfigureAwait(false);
 		JsonReader buffered = reader.CreateBufferedReader();
 		JsonReader peek = buffered.CreatePeekReader();
 		try
 		{
-			return this.ReadDiscriminatorCore(ref peek, allowOutOfOrderMetadataProperties, context);
+			return (this.ReadDiscriminatorCore(ref peek, allowOutOfOrderMetadataProperties, context), false);
 		}
 		finally
 		{

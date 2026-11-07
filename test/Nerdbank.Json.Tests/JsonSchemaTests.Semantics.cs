@@ -108,7 +108,7 @@ public partial class JsonSchemaTests
 		JsonSchemaNode casePayload = unionPayload["oneOf"]![0]!;
 		Assert.Equal("object", casePayload["type"]!.GetValue<string>());
 		Assert.True(casePayload["properties"]?["$type"] is not null);
-		Assert.NotNull(casePayload["properties"]!["lives"]);
+		Assert.True(casePayload["properties"]?["lives"] is not null, schema.ToJsonString());
 		Assert.Null(casePayload["oneOf"]);
 		AssertReferencesResolve(schema, schema);
 	}

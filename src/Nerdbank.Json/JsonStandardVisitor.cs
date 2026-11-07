@@ -128,7 +128,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			throw new NotSupportedException($"Type '{typeof(T).FullName}' does not define a default constructor for property-based deserialization.");
 		}
 
-		return new JsonObjectConverter<T>(factory, jsonProperties, owner.PropertyNameComparer, extensionData);
+		return new JsonObjectConverter<T>(factory, jsonProperties, owner.PropertyNameComparer, owner.SupportsInlineUnionObject(objectShape), extensionData);
 	}
 
 	public override object? VisitConstructor<TDeclaringType, TArgumentState>(IConstructorShape<TDeclaringType, TArgumentState> constructorShape, object? state = null)
@@ -151,7 +151,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			}
 		}
 
-		return new JsonObjectWithConstructorConverter<TDeclaringType, TArgumentState>(visitorState.Properties, constructorShape.GetArgumentStateConstructor(), constructorShape.GetParameterizedConstructor(), [.. parameters], parametersByName, owner.PropertyNameComparer, visitorState.ExtensionData);
+		return new JsonObjectWithConstructorConverter<TDeclaringType, TArgumentState>(visitorState.Properties, constructorShape.GetArgumentStateConstructor(), constructorShape.GetParameterizedConstructor(), [.. parameters], parametersByName, owner.PropertyNameComparer, owner.SupportsInlineUnionObject(constructorShape.DeclaringType), visitorState.ExtensionData);
 	}
 
 	public override object? VisitParameter<TArgumentState, TParameterType>(IParameterShape<TArgumentState, TParameterType> parameterShape, object? state = null)
@@ -240,7 +240,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			: owner.TryGetCustomConverter(unionCaseShape.UnionCaseType, out JsonConverter? custom) && custom is not null
 				? (JsonConverter<TUnionCase>)custom
 				: (JsonConverter<TUnionCase>)unionCaseShape.UnionCaseType.Accept(this)!;
-		return new JsonUnionCaseConverter<TUnionCase, TUnion>(caseConverter, unionCaseShape.Marshaler);
+		return new JsonUnionCaseConverter<TUnionCase, TUnion>(caseConverter, unionCaseShape.Marshaler, unionCaseShape.IsNullable);
 	}
 
 	public override object? VisitFunction<TFunction, TArgumentState, TResult>(IFunctionTypeShape<TFunction, TArgumentState, TResult> functionShape, object? state = null)

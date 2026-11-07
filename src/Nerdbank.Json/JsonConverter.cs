@@ -350,12 +350,42 @@ internal sealed class DelayedJsonConverterFactory : IDelayedValueFactory
 	public DelayedValue Create<T>(ITypeShape<T> typeShape)
 		=> new DelayedValue<JsonConverter>(self => new DelayedJsonConverter<T>(self));
 
-	private sealed class DelayedJsonConverter<T>(DelayedValue<JsonConverter> self) : JsonConverter<T>
+	private sealed class DelayedJsonConverter<T>(DelayedValue<JsonConverter> self) : JsonConverter<T>, IJsonUnionObjectConverter
 	{
+		bool IJsonUnionObjectConverter.SupportsInlineObject
+			=> this.InnerUnionObjectConverter?.SupportsInlineObject == true;
+
+		private IJsonUnionObjectConverter? InnerUnionObjectConverter
+			=> (self.Result is IJsonReferencePreservingWrapper wrapper ? wrapper.InnerConverter : self.Result) as IJsonUnionObjectConverter;
+
 		public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 			=> ((JsonConverter<T>)self.Result).Write(ref writer, value, context);
 
 		public override T? Read(ref JsonReader reader, SerializationContext context)
 			=> ((JsonConverter<T>)self.Result).Read(ref reader, context);
+
+		void IJsonUnionObjectConverter.WriteObjectProperties(ref JsonWriter writer, object value, SerializationContext context, bool first)
+			=> this.GetInnerUnionObjectConverter().WriteObjectProperties(ref writer, value, context, first);
+
+		ValueTask IJsonUnionObjectConverter.WriteObjectPropertiesAsync(JsonAsyncWriter writer, object value, SerializationContext context, bool first)
+			=> this.GetInnerUnionObjectConverter().WriteObjectPropertiesAsync(writer, value, context, first);
+
+		object? IJsonUnionObjectConverter.ReadObjectWithMetadata(ref JsonReader reader, SerializationContext context)
+			=> this.GetInnerUnionObjectConverter().ReadObjectWithMetadata(ref reader, context);
+
+		object? IJsonUnionObjectConverter.ReadObjectWithMetadataAfterDiscriminator(ref JsonReader reader, SerializationContext context)
+			=> this.GetInnerUnionObjectConverter().ReadObjectWithMetadataAfterDiscriminator(ref reader, context);
+
+		ValueTask<object?> IJsonUnionObjectConverter.ReadObjectWithMetadataAsync(JsonAsyncReader reader, SerializationContext context)
+			=> this.GetInnerUnionObjectConverter().ReadObjectWithMetadataAsync(reader, context);
+
+		ValueTask<object?> IJsonUnionObjectConverter.ReadObjectWithMetadataAfterDiscriminatorAsync(JsonAsyncReader reader, SerializationContext context)
+			=> this.GetInnerUnionObjectConverter().ReadObjectWithMetadataAfterDiscriminatorAsync(reader, context);
+
+		ValueTask<int> IJsonUnionObjectConverter.TryNavigateAfterDiscriminatorAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
+			=> this.GetInnerUnionObjectConverter().TryNavigateAfterDiscriminatorAsync(reader, segment, options, context);
+
+		private IJsonUnionObjectConverter GetInnerUnionObjectConverter()
+			=> this.InnerUnionObjectConverter ?? throw new InvalidOperationException("The delayed converter does not support inline union object metadata.");
 	}
 }
