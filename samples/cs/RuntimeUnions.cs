@@ -24,7 +24,7 @@ JsonSerializer serializer = new()
 
 Drawing value = new Circle(2.5);
 
-// Serializes using the default two-element envelope: ["circle",{"radius":2.5}].
+// Serializes using the default discriminator object: {"$type":"circle","radius":2.5}.
 string json = serializer.Serialize<Drawing>(value);
 Drawing roundTripped = serializer.Deserialize<Drawing>(json)!;
 // </RuntimeUnions>

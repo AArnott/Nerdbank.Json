@@ -18,14 +18,15 @@ public partial class JsonSchemaTests
 	}
 
 	[Test]
-	public void Draft4_UsesEnumDiscriminatorsAndTupleItems()
+	public void Draft4_UsesEnumDiscriminatorsInObjects()
 	{
 		string schema = this.Serializer.GetJsonSchema(Shape<Animal, Animal>(), new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft4 }).ToJsonString();
 
 		Assert.Contains("\"enum\":[\"Cat\"]", schema, StringComparison.Ordinal);
-		Assert.Contains("\"items\":[", schema, StringComparison.Ordinal);
+		Assert.Contains("\"$type\"", schema, StringComparison.Ordinal);
 		Assert.DoesNotContain("\"const\":", schema, StringComparison.Ordinal);
 		Assert.DoesNotContain("\"prefixItems\":", schema, StringComparison.Ordinal);
+		Assert.DoesNotContain("\"items\":[", schema, StringComparison.Ordinal);
 	}
 
 	[Test]
@@ -38,8 +39,8 @@ public partial class JsonSchemaTests
 
 		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>(), new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft4 }).ToJsonString();
 
-		Assert.Contains("\"enum\":[7]", schema, StringComparison.Ordinal);
-		Assert.Contains("\"items\":[", schema, StringComparison.Ordinal);
+		Assert.Contains("\"enum\":[\"7\"]", schema, StringComparison.Ordinal);
+		Assert.Contains("\"$type\"", schema, StringComparison.Ordinal);
 	}
 
 	[Test]
@@ -55,12 +56,13 @@ public partial class JsonSchemaTests
 	}
 
 	[Test]
-	public void Draft7_UsesConstDiscriminatorsAndTupleItems()
+	public void Draft7_UsesConstDiscriminatorsInObjects()
 	{
 		string schema = this.Serializer.GetJsonSchema(Shape<Animal, Animal>(), new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 }).ToJsonString();
 
-		Assert.Contains("\"items\":[{\"const\":\"Cat\"},", schema, StringComparison.Ordinal);
-		Assert.Contains("\"minItems\":2,\"maxItems\":2", schema, StringComparison.Ordinal);
+		Assert.Contains("\"const\":\"Cat\"", schema, StringComparison.Ordinal);
+		Assert.Contains("\"$type\"", schema, StringComparison.Ordinal);
+		Assert.DoesNotContain("\"items\":[", schema, StringComparison.Ordinal);
 		Assert.DoesNotContain("\"enum\":", schema, StringComparison.Ordinal);
 		Assert.DoesNotContain("\"prefixItems\":", schema, StringComparison.Ordinal);
 	}
@@ -75,7 +77,8 @@ public partial class JsonSchemaTests
 
 		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>(), new JsonSchemaOptions { Dialect = JsonSchemaDialect.Draft7 }).ToJsonString();
 
-		Assert.Contains("\"items\":[{\"const\":7},", schema, StringComparison.Ordinal);
+		Assert.Contains("\"const\":\"7\"", schema, StringComparison.Ordinal);
+		Assert.Contains("\"$type\"", schema, StringComparison.Ordinal);
 		Assert.DoesNotContain("\"enum\":", schema, StringComparison.Ordinal);
 		Assert.DoesNotContain("\"prefixItems\":", schema, StringComparison.Ordinal);
 	}

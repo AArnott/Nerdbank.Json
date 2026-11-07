@@ -38,7 +38,7 @@ Expression overloads can traverse *through* intermediate values whose JSON repre
 plain object or array, because the parser records the converter for each segment's container and the
 navigator asks that converter how to descend. This works out of the box for:
 
-* **Generated unions** and **runtime-configured unions**, whose `[discriminator, payload]` envelope
+* **Generated unions** and **runtime-configured unions**, whose `$type` metadata object
   is unwrapped so navigation continues into the selected case's payload (base members declared on the
   union's base type are addressable this way).
 * **Duck-typing unions**, whose payload is already a plain object.

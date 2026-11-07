@@ -206,23 +206,19 @@ internal static class ManyModels
 			DerivedTypeUnions = [new DerivedShapeMapping<Payload> { { "text", ShapeOf<TextPayload>() }, { "number", ShapeOf<NumberPayload>() } }],
 		};
 
-		foreach (bool useObjects in new[] { false, true })
+		Payload value = new TextPayload("hello");
+		string json = serializer.Serialize<Payload>(value);
+		Payload roundTripped = serializer.Deserialize<Payload>(json)!;
+
+		if (roundTripped is not TextPayload { Text: "hello" })
 		{
-			serializer = serializer with { UseDiscriminatorObjects = useObjects };
-			Payload value = new TextPayload("hello");
-			string json = serializer.Serialize<Payload>(value);
-			Payload roundTripped = serializer.Deserialize<Payload>(json)!;
+			throw new InvalidOperationException("Runtime union configuration did not round-trip.");
+		}
 
-			if (roundTripped is not TextPayload { Text: "hello" })
-			{
-				throw new InvalidOperationException("Runtime union configuration did not round-trip.");
-			}
-
-			string schema = serializer.GetJsonSchema<Payload>().ToJsonString();
-			if (!schema.Contains(useObjects ? "\"required\":[\"text\"]" : "\"prefixItems\""))
-			{
-				throw new InvalidOperationException("Runtime union schema did not match the discriminator envelope.");
-			}
+		string schema = serializer.GetJsonSchema<Payload>().ToJsonString();
+		if (!schema.Contains("\"$type\"") || !schema.Contains("\"text\""))
+		{
+			throw new InvalidOperationException("Runtime union schema did not describe the discriminator object.");
 		}
 	}
 

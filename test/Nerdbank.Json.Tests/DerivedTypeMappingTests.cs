@@ -50,7 +50,7 @@ public partial class DerivedTypeMappingTests
 		Assert.Throws<ArgumentException>(() => mapping.Add(3, typeof(string)));
 		Assert.Throws<ArgumentException>(() => mapping["duplicate"] = typeof(Derived));
 		JsonSerializer serializer = new() { DerivedTypeUnions = [mapping] };
-		Assert.Equal(new Derived("hello"), serializer.Deserialize("""[1,{"name":"hello"}]""", Witness.GeneratedTypeShapeProvider.GetTypeShapeOrThrow<Base>()));
+		Assert.Equal(new Derived("hello"), serializer.Deserialize("""{"$type":"1","name":"hello"}""", Witness.GeneratedTypeShapeProvider.GetTypeShapeOrThrow<Base>()));
 		Assert.Throws<InvalidOperationException>(() => mapping[1] = typeof(Other));
 	}
 

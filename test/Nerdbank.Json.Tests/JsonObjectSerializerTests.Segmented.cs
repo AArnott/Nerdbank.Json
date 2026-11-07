@@ -45,7 +45,7 @@ public partial class JsonObjectSerializerTests
 	public void SegmentedConstructorUnionAndUnknownRetention_AllBoundaries()
 	{
 		byte[] constructor = """{"name":"é\uD83D\uDE00","age":37}"""u8.ToArray();
-		byte[] union = """["Cat",{"lives":9,"name":"é\uD83D\uDE00"}]"""u8.ToArray();
+		byte[] union = """{"$type":"Cat","lives":9,"name":"é\uD83D\uDE00"}"""u8.ToArray();
 		const string Retained = """{"name":"é\uD83D\uDE00","future":{"n":1.2300e+02,"s":"\u0061"}}""";
 		byte[] retained = Encoding.UTF8.GetBytes(Retained);
 		foreach (ReadOnlySequence<byte> sequence in EverySplit(constructor))

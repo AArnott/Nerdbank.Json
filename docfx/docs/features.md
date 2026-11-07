@@ -78,7 +78,7 @@ Current behavior:
 * <xref:Nerdbank.Json.JsonSerializer.PreserveReferences> can preserve repeated references and optionally allow cycles through mutable objects and collections.
 * `JsonSerializer.AllowTrailingCommas` can accept trailing commas while reading arrays and objects.
 * `JsonSerializer.ReadCommentHandling` can skip `//` and `/* */` comments while deserializing.
-* Closed unions declared with `DerivedTypeShapeAttribute` serialize as two-element arrays containing a discriminator and payload.
+* Closed unions declared with `DerivedTypeShapeAttribute` serialize tagged cases as `$type` metadata objects.
 * C# unions support unrelated payload types, nullable cases, recursion, and stable custom identifiers through <xref:Nerdbank.Json.JsonSerializer.UnionTypeAliasProvider>.
 * <xref:Nerdbank.Json.JsonSerializer.DerivedTypeUnions> can add, replace, extend, or disable unions at runtime using explicitly supplied type shapes, and can opt into an experimental discriminator-free duck-typing strategy.
 * `JsonSerializer.GetJsonSchema` exports a `System.Text.Json.Nodes.JsonObject` for draft 4, draft 7, or draft 2020-12, describing the effective representation of a type.

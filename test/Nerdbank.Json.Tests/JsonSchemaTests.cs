@@ -104,7 +104,8 @@ public partial class JsonSchemaTests : TestBase
 		string schema = this.Serializer.GetJsonSchema(Shape<Animal, Animal>()).ToJsonString();
 		Assert.Contains("\"oneOf\":", schema, StringComparison.Ordinal);
 		Assert.Contains("\"const\":\"Cat\"", schema, StringComparison.Ordinal);
-		Assert.Contains("\"prefixItems\":", schema, StringComparison.Ordinal);
+		Assert.Contains("\"$type\"", schema, StringComparison.Ordinal);
+		Assert.DoesNotContain("\"prefixItems\":", schema, StringComparison.Ordinal);
 	}
 
 	[Test]
@@ -116,7 +117,7 @@ public partial class JsonSchemaTests : TestBase
 		};
 
 		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>()).ToJsonString();
-		Assert.Contains("\"const\":7", schema, StringComparison.Ordinal);
+		Assert.Contains("\"const\":\"7\"", schema, StringComparison.Ordinal);
 	}
 
 	[Test]

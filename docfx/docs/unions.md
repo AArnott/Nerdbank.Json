@@ -36,9 +36,9 @@ Now the farm serializes like this:
 ```json
 {
   "animals": [
-    ["Cow", { "name": "Bessie", "weight": 1400 }],
-    ["Horse", { "name": "Lightning", "speed": 45 }],
-    ["Dog", { "name": "Rover", "color": "Brown" }]
+    { "$type": "Cow", "name": "Bessie", "weight": 1400 },
+    { "$type": "Horse", "name": "Lightning", "speed": 45 },
+    { "$type": "Dog", "name": "Rover", "color": "Brown" }
   ]
 }
 ```
@@ -48,12 +48,13 @@ Deserializing this will recreate each object with its original derived type and 
 ## Unions
 
 A type that stands in for itself and a closed set of derived types is called a union.
-Nerdbank.Json serializes unions as 2-element arrays where the first element is the discriminator and the second element is the object payload:
+Nerdbank.Json serializes tagged union cases as JSON objects with a `$type` discriminator:
 
 ```json
-["TypeName", { "property": "value" }]
+{"$type":"TypeName","property":"value"}
 ```
 
+For object-shaped payloads, case properties appear alongside `$type`. Scalar and custom-converter payloads use a `$value` property.
 This wrapper is only used when the declared type is the union type.
 If a property is declared as `Horse`, then a `Horse` value is serialized directly without the union wrapper.
 
@@ -101,7 +102,7 @@ Serialize and deserialize a union like any other shaped type:
 Cases with an unambiguous native JSON representation omit type metadata.
 For example, the preceding `Result` union serializes `new Result(42)` as `42` and `new Result("hi")` as `"hi"`.
 Object-shaped cases, nested unions, and custom payload converters use a discriminator envelope.
-The default envelope is a two-element array, such as `["Dog",{"name":"Rover"}]`.
+Tagged cases use `$type` objects, such as `{"$type":"Dog","name":"Rover"}`.
 
 A null payload selects the first nullable untagged case, so the example union's default value serializes as `null`.
 A default value that matches no case cannot be serialized.
@@ -111,10 +112,10 @@ C# unions have no base-type fallback.
 JSON cannot distinguish numeric CLR widths, signedness, or `float` from `double`.
 Likewise, more than one string-shaped or collection-shaped case is ambiguous.
 Such cases must have explicit identifiers; the serializer rejects an ambiguous union rather than guessing while deserializing.
-Only one untagged collection case is permitted.
-When an untagged array is present, tagged cases use object envelopes to avoid colliding with it; when an untagged dictionary/object is present, tagged cases use array envelopes.
-
-<xref:Nerdbank.Json.JsonSerializer.UseDiscriminatorObjects?displayProperty=nameWithType> selects the envelope shape when no untagged collection determines it.
+Only one untagged array case and one untagged dictionary/object case are permitted.
+Tagged cases always use `$type` objects. If an untagged dictionary/object case would collide with those envelopes, it is also tagged.
+For stable protocols, assign explicit aliases rather than relying on inferred case names.
+Metadata must be first by default, or <xref:Nerdbank.Json.JsonSerializer.AllowOutOfOrderMetadataProperties> may be enabled to accept it later.
 Payload converters, reference preservation, asynchronous serialization, and generated JSON schemas work with these unions as well.
 Asynchronous operations forward to the payload converters, including asynchronous-only converters and payloads containing <xref:System.Collections.Generic.IAsyncEnumerable`1>.
 Generated schemas describe each untagged native case and each tagged envelope.
@@ -146,7 +147,7 @@ Providers must be thread-safe and return consistent results for as long as they 
 Aliases are resolved when constructing converters, not for every serialized value.
 Returning `null`, or leaving a case unregistered, retains the normal identifier for that case.
 
-Custom aliases apply to serialization, deserialization, and JSON schemas in both envelope formats.
+Custom aliases apply to serialization, deserialization, and JSON schemas.
 Assigning an alias explicitly opts that case into the tagged representation, even when its native token would otherwise be unambiguous.
 An overridden case accepts only its custom identifier, not its original identifier.
 Uninitialized identifiers and identifiers that collide with another case's custom or default identifier are rejected.

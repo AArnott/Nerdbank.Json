@@ -9,7 +9,7 @@ using PolyType.Abstractions;
 
 public partial class JsonTargetedDeserializationTests : TestBase
 {
-	private const string Document = """{"inner":{"label":"hi","count":3},"numbers":[10,20,30],"map":{"a":1,"b":2},"name":"root","pet":["Cat",{"lives":9,"name":"Milo"}]}""";
+	private const string Document = """{"inner":{"label":"hi","count":3},"numbers":[10,20,30],"map":{"a":1,"b":2},"name":"root","pet":{"$type":"Cat","lives":9,"name":"Milo"}}""";
 
 	[Test]
 	public void Options_AllInputForms()
@@ -225,45 +225,36 @@ public partial class JsonTargetedDeserializationTests : TestBase
 	}
 
 	[Test]
-	[Arguments(false)]
-	[Arguments(true)]
-	public void Expression_ThroughGeneratedUnion(bool useObjects)
+	public void Expression_ThroughGeneratedUnion()
 	{
-		JsonSerializer serializer = this.Serializer with { UseDiscriminatorObjects = useObjects };
-		string json = useObjects ? """{"pet":{"Cat":{"lives":9,"name":"Milo"}}}""" : Document;
-		string? name = serializer.DeserializePath<Root, string>(json, Shape<Root, Root>(), new(x => x.Pet.Name));
+		string? name = this.Serializer.DeserializePath<Root, string>(Document, Shape<Root, Root>(), new(x => x.Pet.Name));
 		Assert.Equal("Milo", name);
 	}
 
 	[Test]
 	public void Expression_ThroughGeneratedUnion_MissingMember_ReturnsDefault()
 	{
-		string json = """{"inner":{"label":"hi","count":3},"numbers":[],"map":{},"name":"root","pet":["Cat",{"lives":9}]}""";
+		string json = """{"inner":{"label":"hi","count":3},"numbers":[],"map":{},"name":"root","pet":{"$type":"Cat","lives":9}}""";
 		string? name = this.Serializer.DeserializePath<Root, string>(json, Shape<Root, Root>(), new(x => x.Pet.Name) { DefaultForUndiscoverablePath = true });
 		Assert.Null(name);
 	}
 
 	[Test]
-	public void PreParsed_ThroughUnion_ThrowsClearError()
+	public void PreParsed_ThroughUnion_NavigatesTaggedObject()
 	{
-		JsonSerializationException error = Assert.Throws<JsonSerializationException>(
-			() => this.Serializer.DeserializePath(Document, JsonPath.Root.Member("pet").Member("name"), Shape<string, Witness>()));
-		NotSupportedException ex = Assert.IsType<NotSupportedException>(error.InnerException);
-		Assert.Contains("expression-based", ex.Message, StringComparison.Ordinal);
+		string? name = this.Serializer.DeserializePath(Document, JsonPath.Root.Member("pet").Member("name"), Shape<string, Witness>());
+		Assert.Equal("Milo", name);
 	}
 
 	[Test]
-	[Arguments(false)]
-	[Arguments(true)]
-	public void Expression_ThroughRuntimeUnion(bool useObjects)
+	public void Expression_ThroughRuntimeUnion()
 	{
 		JsonSerializer serializer = new()
 		{
-			UseDiscriminatorObjects = useObjects,
 			DerivedTypeUnions = [new DerivedShapeMapping<Shape2> { { "circle", Shape<Circle2, Circle2>() }, { "square", Shape<Square2, Square2>() } }],
 		};
 
-		string json = useObjects ? """{"shape":{"circle":{"kind":"c","radius":2.5}}}""" : """{"shape":["circle",{"kind":"c","radius":2.5}]}""";
+		string json = """{"shape":{"$type":"circle","kind":"c","radius":2.5}}""";
 		string? kind = serializer.DeserializePath<RuntimeHolder, string>(json, Shape<RuntimeHolder, RuntimeHolder>(), new(h => h.Shape.Kind));
 		Assert.Equal("c", kind);
 	}

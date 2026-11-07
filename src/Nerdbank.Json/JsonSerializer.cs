@@ -187,17 +187,17 @@ public partial record JsonSerializer
 		init => this.configuration = this.configuration with { UnionTypeAliasProvider = value };
 	}
 
-	/// <summary>Gets a value indicating whether unions use single-property object envelopes instead of two-element arrays.</summary>
+	/// <summary>
+	/// Gets a value indicating whether union discriminator metadata may appear after ordinary object properties.
+	/// </summary>
 	/// <value>The default is <see langword="false"/>.</value>
 	/// <remarks>
-	/// Integer aliases become invariant-culture property names. The reserved <c>$base</c> property identifies a base-contract fallback.
-	/// Aliases that collide as property names or use <c>$base</c> are rejected in object mode.
-	/// Reference preservation continues to use <c>$id</c>, <c>$ref</c>, and <c>$value</c>.
+	/// By default, <c>$type</c> must appear first in the object, matching System.Text.Json's metadata ordering rule.
 	/// </remarks>
-	public bool UseDiscriminatorObjects
+	public bool AllowOutOfOrderMetadataProperties
 	{
-		get => this.configuration.UseDiscriminatorObjects;
-		init => this.configuration = this.configuration with { UseDiscriminatorObjects = value };
+		get => this.configuration.AllowOutOfOrderMetadataProperties;
+		init => this.configuration = this.configuration with { AllowOutOfOrderMetadataProperties = value };
 	}
 
 	/// <summary>

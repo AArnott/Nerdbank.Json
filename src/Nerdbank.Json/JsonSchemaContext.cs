@@ -243,117 +243,84 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		HashSet<string> objectAliases = new(StringComparer.Ordinal);
 		foreach ((object? alias, JsonSchemaObject caseSchema) in cases)
 		{
-			if (this.owner.UseDiscriminatorObjects)
+			string propertyName = JsonUnionObjectEnvelope.GetAlias(alias as int?, alias as string);
+			if (propertyName == JsonUnionObjectEnvelope.BaseAlias || !objectAliases.Add(propertyName))
 			{
-				string propertyName = JsonUnionObjectEnvelope.GetAlias(alias as int?, alias as string);
-				if (propertyName == JsonUnionObjectEnvelope.BaseAlias || !objectAliases.Add(propertyName))
-				{
-					throw new NotSupportedException($"The union discriminator '{propertyName}' is reserved or ambiguous in object format.");
-				}
-
-				options.Add(CreateObjectCase(propertyName, caseSchema));
-				continue;
+				throw new NotSupportedException($"The union discriminator '{propertyName}' is reserved or ambiguous in object format.");
 			}
 
-			JsonSchemaObject discriminator = new();
-			if (alias is int tag)
-			{
-				if (this.Dialect == JsonSchemaDialect.Draft4)
-				{
-					discriminator.SetIntegers("enum", [(long)tag]);
-				}
-				else
-				{
-					discriminator.Set("const", tag);
-				}
-			}
-			else
-			{
-				string name = (string)alias!;
-				if (this.Dialect == JsonSchemaDialect.Draft4)
-				{
-					discriminator.SetStrings("enum", [name]);
-				}
-				else
-				{
-					discriminator.Set("const", name);
-				}
-			}
-
-			options.Add(this.CreateTupleSchema([discriminator, caseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
+			options.Add(this.CreateObjectCase(propertyName, caseSchema));
 		}
 
 		if (baseSchema is not null)
 		{
-			options.Add(this.owner.UseDiscriminatorObjects
-				? CreateObjectCase(JsonUnionObjectEnvelope.BaseAlias, baseSchema)
-				: this.CreateTupleSchema([new JsonSchemaObject().Set("type", "null"), baseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
+			options.Add(this.CreateObjectCase(JsonUnionObjectEnvelope.BaseAlias, baseSchema));
 		}
 
 		return new JsonSchemaObject().SetSchemas("oneOf", options);
-
-		static JsonSchemaObject CreateObjectCase(string alias, JsonSchemaObject schema) => new JsonSchemaObject()
-			.Set("type", "object")
-			.SetMap("properties", [new(alias, schema)])
-			.SetStrings("required", [alias])
-			.Set("additionalProperties", false);
 	}
 
 	internal JsonSchemaObject CreateCSharpUnionRepresentation(IReadOnlyList<(object Alias, JsonCSharpUnionCaseRepresentation Representation, JsonSchemaObject CaseSchema)> cases)
 	{
-		JsonCSharpUnionFormat format = new(cases.Select(static c => c.Representation).ToArray(), this.owner.UseDiscriminatorObjects);
+		JsonCSharpUnionFormat format = new(cases.Select(static c => c.Representation).ToArray());
 		List<JsonSchemaObject> options = new(cases.Count);
 		HashSet<string> objectAliases = new(StringComparer.Ordinal);
 		foreach ((object alias, JsonCSharpUnionCaseRepresentation representation, JsonSchemaObject caseSchema) in cases)
 		{
-			if (representation != JsonCSharpUnionCaseRepresentation.Tagged)
+			bool tagged = representation == JsonCSharpUnionCaseRepresentation.Tagged ||
+				(format.TagObjectCases && representation == JsonCSharpUnionCaseRepresentation.Object);
+			if (!tagged)
 			{
 				options.Add(caseSchema);
 				continue;
 			}
 
-			if (format.UseObjectEnvelope)
+			string propertyName = JsonUnionObjectEnvelope.GetAlias(alias as int?, alias as string);
+			if (propertyName == JsonUnionObjectEnvelope.BaseAlias || !objectAliases.Add(propertyName))
 			{
-				string propertyName = JsonUnionObjectEnvelope.GetAlias(alias as int?, alias as string);
-				if (propertyName == JsonUnionObjectEnvelope.BaseAlias || !objectAliases.Add(propertyName))
-				{
-					throw new NotSupportedException($"The union discriminator '{propertyName}' is reserved or ambiguous in object format.");
-				}
-
-				options.Add(new JsonSchemaObject()
-					.Set("type", "object")
-					.SetMap("properties", [new(propertyName, caseSchema)])
-					.SetStrings("required", [propertyName])
-					.Set("additionalProperties", false));
+				throw new NotSupportedException($"The union discriminator '{propertyName}' is reserved or ambiguous in object format.");
 			}
-			else
-			{
-				JsonSchemaObject discriminator = new();
-				if (alias is int tag)
-				{
-					if (this.Dialect == JsonSchemaDialect.Draft4)
-					{
-						discriminator.SetIntegers("enum", [(long)tag]);
-					}
-					else
-					{
-						discriminator.Set("const", tag);
-					}
-				}
-				else if (this.Dialect == JsonSchemaDialect.Draft4)
-				{
-					discriminator.SetStrings("enum", [(string)alias]);
-				}
-				else
-				{
-					discriminator.Set("const", (string)alias);
-				}
 
-				options.Add(this.CreateTupleSchema([discriminator, caseSchema]).Set("minItems", 2L).Set("maxItems", 2L));
-			}
+			options.Add(this.CreateObjectCase(propertyName, caseSchema));
 		}
 
 		return new JsonSchemaObject().SetSchemas("oneOf", options);
+	}
+
+	private JsonSchemaObject CreateObjectCase(string alias, JsonSchemaObject caseSchema)
+	{
+		JsonSchemaObject discriminator = this.Dialect == JsonSchemaDialect.Draft4
+			? new JsonSchemaObject().SetStrings("enum", [alias])
+			: new JsonSchemaObject().Set("const", alias);
+
+		JsonSchemaObject? caseProperties = caseSchema["properties"] as JsonSchemaObject;
+		bool canInlineObject = caseSchema["type"]?.GetValue<string>() == "object"
+			&& caseSchema["$ref"] is null
+			&& caseSchema["additionalProperties"] is not JsonSchemaObject
+			&& caseSchema["additionalProperties"]?.GetValue<bool>() != true
+			&& caseProperties?.ContainsKey(JsonUnionObjectEnvelope.DiscriminatorPropertyName) != true;
+		if (canInlineObject)
+		{
+			JsonSchemaObject result = (JsonSchemaObject)caseSchema.DeepClone();
+			JsonSchemaObject properties = result["properties"] as JsonSchemaObject ?? new();
+			properties[JsonUnionObjectEnvelope.DiscriminatorPropertyName] = discriminator;
+			result["properties"] = properties;
+			List<string> required = result["required"] is JsonSchemaArray requiredArray
+				? requiredArray.Select(static item => item!.GetValue<string>()).ToList()
+				: [];
+			required.Add(JsonUnionObjectEnvelope.DiscriminatorPropertyName);
+			result.SetStrings("required", required);
+			return result;
+		}
+
+		return new JsonSchemaObject()
+			.Set("type", "object")
+			.SetMap("properties", [
+				new(JsonUnionObjectEnvelope.DiscriminatorPropertyName, discriminator),
+				new(JsonUnionObjectEnvelope.ValuePropertyName, caseSchema.DeepClone().AsObject()),
+			])
+			.SetStrings("required", [JsonUnionObjectEnvelope.DiscriminatorPropertyName, JsonUnionObjectEnvelope.ValuePropertyName])
+			.Set("additionalProperties", false);
 	}
 
 	private static JsonSchemaObject CreateUndocumented(JsonConverter converter) => JsonConverter<int>.CreateUndocumentedSchema(converter.GetType());

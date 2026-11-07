@@ -34,21 +34,21 @@ public partial class CSharpUnionTests : TestBase
 		Assert.Equal("null", this.LastSerializedJson);
 		PetClass result = this.Roundtrip(new PetClass(new Dog("Rover", 10)))!;
 		Assert.Equal(new Dog("Rover", 10), result.Value);
-		Assert.Equal("""["Dog",{"name":"Rover","barkVolume":10}]""", this.LastSerializedJson);
+		Assert.Equal("""{"$type":"Dog","name":"Rover","barkVolume":10}""", this.LastSerializedJson);
 	}
 
 	[Test]
 	public void ObjectPayload()
 	{
 		Assert.Equal(new Dog("Rover", 10), this.Roundtrip(new Pet(new Dog("Rover", 10)))!.Value);
-		Assert.Equal("""["Dog",{"name":"Rover","barkVolume":10}]""", this.LastSerializedJson);
+		Assert.Equal("""{"$type":"Dog","name":"Rover","barkVolume":10}""", this.LastSerializedJson);
 	}
 
 	[Test]
 	public void RecursiveUnion()
 	{
 		Nested result = this.Roundtrip(new Nested(new Nested(new Nested(true))))!;
-		Assert.Equal("""["Nested",["Nested",true]]""", this.LastSerializedJson);
+		Assert.Equal("""{"$type":"Nested","$value":{"$type":"Nested","$value":true}}""", this.LastSerializedJson);
 		Assert.Equal(true, Assert.IsType<Nested>(Assert.IsType<Nested>(result.Value).Value).Value);
 	}
 
@@ -68,11 +68,21 @@ public partial class CSharpUnionTests : TestBase
 	}
 
 	[Test]
-	public void DiscriminatorObjects()
+	public void NativeScalarCasesRemainUntagged()
 	{
-		this.Serializer = this.Serializer with { UseDiscriminatorObjects = true };
 		Assert.Equal(42, this.Roundtrip(new Scalar(42))!.Value);
 		Assert.Equal("42", this.LastSerializedJson);
+	}
+
+	[Test]
+	public void DiscriminatorObjects_TaggedScalar_UsesValueProperty()
+	{
+		this.Serializer = this.Serializer with
+		{
+			UnionTypeAliasProvider = new UnionCaseMappingCollection([new(typeof(Scalar)) { { "text", typeof(string) } }]),
+		};
+		Assert.Equal("hi", this.Roundtrip(new Scalar("hi"))!.Value);
+		Assert.Equal("""{"$type":"text","$value":"hi"}""", this.LastSerializedJson);
 	}
 
 	[Test]
@@ -83,7 +93,7 @@ public partial class CSharpUnionTests : TestBase
 			UnionTypeAliasProvider = new UnionCaseMappingCollection([new(typeof(Scalar)) { { "text", typeof(string) } }]),
 		};
 		Assert.Null(this.Roundtrip(default(Scalar))!.Value);
-		Assert.Equal("""["text",null]""", this.LastSerializedJson);
+		Assert.Equal("""{"$type":"text","$value":null}""", this.LastSerializedJson);
 	}
 
 	[Test]
@@ -93,7 +103,14 @@ public partial class CSharpUnionTests : TestBase
 		NullableTextClass result = this.Roundtrip(value)!;
 		Assert.NotNull(result);
 		Assert.Null(result.Value);
-		Assert.Equal("""["String",null]""", this.LastSerializedJson);
+		Assert.Equal("""{"$type":"String","$value":null}""", this.LastSerializedJson);
+	}
+
+	[Test]
+	public void InlineObjectUnionEnvelope_RejectsDuplicateDiscriminator()
+	{
+		string json = """{"$type":"Dog","name":"Rover","barkVolume":10,"$type":"Cat"}""";
+		Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<PetClass>(json));
 	}
 
 	[Test]
@@ -128,20 +145,30 @@ public partial class CSharpUnionTests : TestBase
 		Assert.Equal(array.Value, this.Serializer.Deserialize<ArrayOrDog>("""[1,2]""").Value);
 
 		ArrayOrDog dog = new(new Dog("Rover", 10));
-		Assert.Equal("""{"Dog":{"name":"Rover","barkVolume":10}}""", this.Serializer.Serialize(dog));
-		Assert.Equal(dog.Value, this.Serializer.Deserialize<ArrayOrDog>("""{"Dog":{"name":"Rover","barkVolume":10}}""").Value);
+		Assert.Equal("""{"$type":"Dog","name":"Rover","barkVolume":10}""", this.Serializer.Serialize(dog));
+		Assert.Equal(dog.Value, this.Serializer.Deserialize<ArrayOrDog>("""{"$type":"Dog","name":"Rover","barkVolume":10}""").Value);
 
 		DictionaryOrDog dictionary = new(new Dictionary<string, int> { ["one"] = 1 });
-		Assert.Equal("""{"one":1}""", this.Serializer.Serialize(dictionary));
-		Assert.Equal(dictionary.Value, this.Serializer.Deserialize<DictionaryOrDog>("""{"one":1}""").Value);
+		Assert.Equal("""{"$type":"Dictionary_String_Int32","$value":{"one":1}}""", this.Serializer.Serialize(dictionary));
+		Assert.Equal(dictionary.Value, this.Serializer.Deserialize<DictionaryOrDog>("""{"$type":"Dictionary_String_Int32","$value":{"one":1}}""").Value);
 
 		DictionaryOrDog taggedDog = new(new Dog("Rover", 10));
-		Assert.Equal("""["Dog",{"name":"Rover","barkVolume":10}]""", this.Serializer.Serialize(taggedDog));
-		Assert.Equal(taggedDog.Value, this.Serializer.Deserialize<DictionaryOrDog>("""["Dog",{"name":"Rover","barkVolume":10}]""").Value);
+		Assert.Equal("""{"$type":"Dog","name":"Rover","barkVolume":10}""", this.Serializer.Serialize(taggedDog));
+		Assert.Equal(taggedDog.Value, this.Serializer.Deserialize<DictionaryOrDog>("""{"$type":"Dog","name":"Rover","barkVolume":10}""").Value);
 
 		ByteBufferOrDog bytes = new(new byte[] { 1, 2 });
 		Assert.Equal("\"AQI=\"", this.Serializer.Serialize(bytes));
 		Assert.Equal(bytes.Value, this.Serializer.Deserialize<ByteBufferOrDog>("\"AQI=\"").Value);
+	}
+
+	[Test]
+	public void DictionaryUnionSchema_UsesPayloadEnvelope()
+	{
+		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<DictionaryOrDog>()!);
+		string json = schema.ToJsonString();
+
+		Assert.Contains("\"$value\":", json, StringComparison.Ordinal);
+		Assert.Contains("\"additionalProperties\":{\"type\":\"integer\"", json, StringComparison.Ordinal);
 	}
 
 	[Test]
@@ -150,12 +177,20 @@ public partial class CSharpUnionTests : TestBase
 		Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize(new Numbers(1)));
 		Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize(new TextCases("text")));
 		Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize(new Collections(new int[] { 1 })));
+
+		this.Serializer = this.Serializer with
+		{
+			UnionTypeAliasProvider = new UnionCaseMappingCollection([new(typeof(TextOrDateTime)) { { "date-time", typeof(DateTime) } }]),
+		};
+		TextOrDateTime value = new(new DateTime(2026, 6, 26, 12, 30, 45, DateTimeKind.Utc));
+		string json = """{"$type":"date-time","$value":"2026-06-26T12:30:45.0000000Z"}""";
+		Assert.Equal(json, this.Serializer.Serialize(value));
+		Assert.Equal(value.Value, this.Serializer.Deserialize<TextOrDateTime>(json).Value);
 	}
 
-	[Test, MatrixDataSource]
-	public async Task AsyncRoundtrip(bool discriminatorObjects)
+	[Test]
+	public async Task AsyncRoundtrip()
 	{
-		this.Serializer = this.Serializer with { UseDiscriminatorObjects = discriminatorObjects };
 		using MemoryStream stream = new();
 		Nested value = new(new Nested(true));
 		await this.Serializer.SerializeAsync(stream, value);
@@ -164,14 +199,13 @@ public partial class CSharpUnionTests : TestBase
 		Assert.Equal(true, Assert.IsType<Nested>(result.Value).Value);
 	}
 
-	[Test, MatrixDataSource]
-	public async Task AsyncEnumerablePayload(bool discriminatorObjects)
+	[Test]
+	public async Task AsyncEnumerablePayload()
 	{
-		this.Serializer = this.Serializer with { UseDiscriminatorObjects = discriminatorObjects };
 		using MemoryStream stream = new();
 		await this.Serializer.SerializeAsync(stream, new StreamingUnion(new StreamingPayload { Values = ValuesAsync() }));
 		Assert.Equal(
-			discriminatorObjects ? """{"StreamingPayload":{"values":[1,2]}}""" : """["StreamingPayload",{"values":[1,2]}]""",
+			"""{"$type":"StreamingPayload","values":[1,2]}""",
 			Encoding.UTF8.GetString(stream.ToArray()));
 
 		static async IAsyncEnumerable<int> ValuesAsync()
@@ -183,20 +217,17 @@ public partial class CSharpUnionTests : TestBase
 	}
 
 	[Test, MatrixDataSource]
-	public async Task AsyncOnlyPayloadConverter(bool discriminatorObjects, bool integerAlias)
+	public async Task AsyncOnlyPayloadConverter(bool integerAlias)
 	{
 		this.Serializer = this.Serializer with
 		{
-			UseDiscriminatorObjects = discriminatorObjects,
 			Converters = [new AsyncOnlyIntConverter()],
 			UnionTypeAliasProvider = integerAlias ? new UnionCaseMappingCollection([new(typeof(Scalar)) { { 7, typeof(int) } }]) : null,
 		};
 		using MemoryStream stream = new();
 		await this.Serializer.SerializeAsync(stream, new ScalarHolder { Value = new Scalar(42) });
 		string alias = integerAlias ? "7" : "Int32";
-		string expected = discriminatorObjects
-			? "{\"value\":{\"" + alias + "\":42}}"
-			: """{"value":[""" + (integerAlias ? alias : "\"" + alias + "\"") + ",42]}";
+		string expected = "{\"value\":{\"$type\":\"" + alias + "\",\"$value\":42}}";
 		Assert.Equal(expected, Encoding.UTF8.GetString(stream.ToArray()));
 		stream.Position = 0;
 		ScalarHolder result = (await this.Serializer.DeserializeAsync<ScalarHolder>(stream))!;
@@ -204,20 +235,18 @@ public partial class CSharpUnionTests : TestBase
 	}
 
 	[Test]
-	[Arguments("""{"Int32":42,"String":"extra"}""")]
+	[Arguments("""{"$type":"Int32","$value":42,"$type":"String"}""")]
 	[Arguments("""["Int32",42,43]""")]
 	[Arguments("""["Unknown",42]""")]
 	public async Task AsyncRead_InvalidEnvelope_Throws(string json)
 	{
-		this.Serializer = this.Serializer with { UseDiscriminatorObjects = json[0] == '{' };
 		using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
 		await Assert.ThrowsAsync<JsonSerializationException>(() => this.Serializer.DeserializeAsync<Scalar>(stream).AsTask());
 	}
 
-	[Test, MatrixDataSource]
-	public async Task AsyncNulls(bool discriminatorObjects)
+	[Test]
+	public async Task AsyncNulls()
 	{
-		this.Serializer = this.Serializer with { UseDiscriminatorObjects = discriminatorObjects };
 		using MemoryStream payloadStream = new();
 		await this.Serializer.SerializeAsync(payloadStream, default(Scalar));
 		Assert.Equal("null", Encoding.UTF8.GetString(payloadStream.ToArray()));
@@ -231,12 +260,11 @@ public partial class CSharpUnionTests : TestBase
 		Assert.Null(await this.Serializer.DeserializeAsync<PetClass>(unionStream));
 	}
 
-	[Test, MatrixDataSource]
-	public async Task AsyncReferences(bool discriminatorObjects)
+	[Test]
+	public async Task AsyncReferences()
 	{
 		this.Serializer = this.Serializer with
 		{
-			UseDiscriminatorObjects = discriminatorObjects,
 			PreserveReferences = ReferencePreservationMode.RejectCycles,
 		};
 		Dog dog = new("Rover", 10);
@@ -282,10 +310,9 @@ public partial class CSharpUnionTests : TestBase
 		Assert.DoesNotContain("\"const\":null", schema);
 	}
 
-	[Test, MatrixDataSource]
-	public void Schema_NullPayload(bool discriminatorObjects)
+	[Test]
+	public void Schema_NullPayload()
 	{
-		this.Serializer = this.Serializer with { UseDiscriminatorObjects = discriminatorObjects };
 		Assert.Null(this.Roundtrip(default(Scalar))!.Value);
 		Assert.Equal("null", this.LastSerializedJson);
 		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<Scalar>()!);
@@ -307,10 +334,10 @@ public partial class CSharpUnionTests : TestBase
 	{
 		Assert.Equal(42, CSharpUnions.Examples.Roundtrip().Value);
 		JsonSerializer mapped = CSharpUnions.Examples.CreateSerializer();
-		Assert.Equal("""["number",42]""", mapped.Serialize(new CSharpUnions.Result(42)));
-		Assert.Equal("hi", mapped.Deserialize<CSharpUnions.Result>("""["text","hi"]""").Value);
+		Assert.Equal("""{"$type":"number","$value":42}""", mapped.Serialize(new CSharpUnions.Result(42)));
+		Assert.Equal("hi", mapped.Deserialize<CSharpUnions.Result>("""{"$type":"text","$value":"hi"}""").Value);
 		JsonSerializer delegated = CSharpUnions.Examples.CreateSerializerWithDelegate();
-		Assert.Equal("""[1,42]""", delegated.Serialize(new CSharpUnions.Result(42)));
+		Assert.Equal("""{"$type":"1","$value":42}""", delegated.Serialize(new CSharpUnions.Result(42)));
 	}
 
 	[Test]
@@ -321,12 +348,11 @@ public partial class CSharpUnionTests : TestBase
 	}
 
 	[Test, MatrixDataSource]
-	public async Task RecursiveUnion_DepthLimit(bool asynchronous, bool discriminatorObjects, bool exceedsLimit)
+	public async Task RecursiveUnion_DepthLimit(bool asynchronous, bool exceedsLimit)
 	{
 		const int MaxDepth = 4;
 		this.Serializer = this.Serializer with
 		{
-			UseDiscriminatorObjects = discriminatorObjects,
 			StartingContext = this.Serializer.StartingContext with { MaxDepth = MaxDepth },
 		};
 		int depth = MaxDepth + (exceedsLimit ? 1 : 0);
@@ -335,7 +361,7 @@ public partial class CSharpUnionTests : TestBase
 		for (int i = 1; i < depth; i++)
 		{
 			value = new(value);
-			json = discriminatorObjects ? """{"Nested":""" + json + "}" : """["Nested",""" + json + "]";
+			json = """{"$type":"Nested","$value":""" + json + "}";
 		}
 
 		if (exceedsLimit)
@@ -401,6 +427,9 @@ public partial class CSharpUnionTests : TestBase
 
 	[GenerateShape]
 	public partial union TextCases(string, char);
+
+	[GenerateShape]
+	public partial union TextOrDateTime(string, DateTime);
 
 	[GenerateShape]
 	public partial union Collections(int[], List<int>);

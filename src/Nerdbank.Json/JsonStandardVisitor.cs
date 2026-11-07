@@ -3,7 +3,6 @@
 
 #pragma warning disable SA1600 // Elements should be documented
 
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Reflection;
 using PolyType.Utilities;
@@ -208,8 +207,6 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			? (JsonConverter<TUnion>)baseType.Accept(this)!
 			: null;
 		Getter<TUnion, int> getUnionCaseIndex = unionShape.GetGetUnionCaseIndex();
-		Dictionary<int, JsonConverter> deserializersByIntAlias = new(unionShape.UnionCases.Count);
-		Dictionary<string, JsonConverter> deserializersByStringAlias = new(unionShape.UnionCases.Count, StringComparer.Ordinal);
 		var serializers = new JsonUnionCaseMetadata<TUnion>[unionShape.UnionCases.Count];
 
 		for (int i = 0; i < unionShape.UnionCases.Count; i++)
@@ -224,17 +221,15 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 				: JsonCSharpUnionCaseRepresentation.Tagged;
 			if (alias.Type == DerivedTypeIdentifier.AliasType.Integer)
 			{
-				deserializersByIntAlias.Add(alias.IntAlias, caseConverter);
 				serializers[i] = JsonUnionCaseMetadata<TUnion>.Create(alias.IntAlias, caseConverter, representation, unionCase.IsNullable);
 			}
 			else
 			{
-				deserializersByStringAlias.Add(alias.StringAlias, caseConverter);
 				serializers[i] = JsonUnionCaseMetadata<TUnion>.Create(alias.StringAlias, caseConverter, representation, unionCase.IsNullable);
 			}
 		}
 
-		return new JsonUnionConverter<TUnion>(baseConverter, getUnionCaseIndex, serializers, new ReadOnlyDictionary<int, JsonConverter>(deserializersByIntAlias), new ReadOnlyDictionary<string, JsonConverter>(deserializersByStringAlias), owner.UseDiscriminatorObjects, isCSharpUnion);
+		return new JsonUnionConverter<TUnion>(baseConverter, getUnionCaseIndex, serializers, isCSharpUnion);
 	}
 
 	public override object? VisitUnionCase<TUnionCase, TUnion>(IUnionCaseShape<TUnionCase, TUnion> unionCaseShape, object? state = null)

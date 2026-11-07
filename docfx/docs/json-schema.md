@@ -33,9 +33,9 @@ Draft 4 and Draft 7 use an array-valued `items` keyword for tuples and `addition
   reports `additionalProperties: true`.
 * **Arrays** — `type: array` with `items`; rectangular multidimensional arrays nest `items` per rank by default, or use a dimensions/data tuple when <xref:Nerdbank.Json.JsonSerializer.MultiDimensionalArrayFormat> is <xref:Nerdbank.Json.MultiDimensionalArrayFormat.Flat>.
 * **Dictionaries** — `type: object` with `additionalProperties` describing the value type.
-* **Unions** — generated and runtime envelope unions produce a `oneOf` of two-element `[discriminator, payload]`
-  tuples (using `const` in Draft 7 and Draft 2020-12 and single-value `enum` in Draft 4).
-  With <xref:Nerdbank.Json.JsonSerializer.UseDiscriminatorObjects>, branches describe single-property discriminator objects instead.
+* **Unions** — generated and runtime envelope unions produce a `oneOf` of `$type` metadata objects.
+  Object-case properties appear alongside the discriminator; scalar and custom-converter payloads use `$value`.
+  Discriminator values use `const` in Draft 7 and Draft 2020-12 and single-value `enum` in Draft 4.
   Runtime mappings replace or disable generated cases in the schema just as they do during serialization;
   duck-typing unions produce a `oneOf` of the bare case objects.
 * **Reference preservation** — when enabled, a reference-typed schema becomes a `oneOf` of the `{"$ref": N}` and

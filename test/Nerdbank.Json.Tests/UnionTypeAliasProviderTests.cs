@@ -13,20 +13,17 @@ public class UnionTypeAliasProviderTests : TestBase
 		UnionCaseMapping mapping = new(typeof(Scalar)) { { "number", typeof(int) } };
 		this.Serializer = this.Serializer with { UnionTypeAliasProvider = new UnionCaseMappingCollection([mapping]) };
 		Assert.Equal(42, this.Roundtrip(new Scalar(42))!.Value);
-		Assert.Equal("""["number",42]""", this.LastSerializedJson);
+		Assert.Equal("""{"$type":"number","$value":42}""", this.LastSerializedJson);
 		Assert.Equal("hi", this.Roundtrip(new Scalar("hi"))!.Value);
 		Assert.Equal("\"hi\"", this.LastSerializedJson);
-		Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<Scalar>("""["Int32",42]"""));
+		Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<Scalar>("""{"$type":"Int32","$value":42}"""));
 	}
 
 	[Test]
-	[Arguments(false)]
-	[Arguments(true)]
-	public void Delegate_IntegerAlias(bool objects)
+	public void Delegate_IntegerAlias()
 	{
 		this.Serializer = this.Serializer with
 		{
-			UseDiscriminatorObjects = objects,
 			UnionTypeAliasProvider = new DelegateUnionTypeAliasProvider((union, payload) =>
 			{
 				Assert.Equal(typeof(Scalar), union);
@@ -34,9 +31,9 @@ public class UnionTypeAliasProviderTests : TestBase
 			}),
 		};
 		Assert.Equal(42, this.Roundtrip(new Scalar(42))!.Value);
-		Assert.Equal(objects ? """{"7":42}""" : """[7,42]""", this.LastSerializedJson);
+		Assert.Equal("""{"$type":"7","$value":42}""", this.LastSerializedJson);
 		string schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<Scalar>()!).ToJsonString();
-		Assert.Contains(objects ? "\"7\"" : "\"const\":7", schema);
+		Assert.Contains("\"7\"", schema);
 		Assert.DoesNotContain("\"Int32\"", schema);
 	}
 
@@ -48,7 +45,7 @@ public class UnionTypeAliasProviderTests : TestBase
 		{
 			UnionTypeAliasProvider = new DelegateUnionTypeAliasProvider((_, payload) => payload == typeof(int) ? new DerivedTypeIdentifier("number") : (DerivedTypeIdentifier?)null),
 		};
-		Assert.Equal("""["number",42]""", customized.Serialize(new Scalar(42)));
+		Assert.Equal("""{"$type":"number","$value":42}""", customized.Serialize(new Scalar(42)));
 		Assert.Equal("42", this.Serializer.Serialize(new Scalar(42)));
 		Assert.Equal("42", (customized with { UnionTypeAliasProvider = null }).Serialize(new Scalar(42)));
 	}
@@ -69,7 +66,7 @@ public class UnionTypeAliasProviderTests : TestBase
 		int initialCalls = calls;
 		Assert.Equal(2, initialCalls);
 		this.Serializer.Serialize(new Scalar("hi"));
-		this.Serializer.Deserialize<Scalar>("""["Int32",42]""");
+		this.Serializer.Deserialize<Scalar>("42");
 		Assert.Equal(initialCalls, calls);
 	}
 
@@ -81,7 +78,7 @@ public class UnionTypeAliasProviderTests : TestBase
 			UnionTypeAliasProvider = new DelegateUnionTypeAliasProvider((_, _) => throw new InvalidOperationException("Not a C# union.")),
 		};
 		JsonObjectSerializerTests.Animal animal = new JsonObjectSerializerTests.Cat("Milo", 9);
-		Assert.Equal("""["Cat",{"lives":9,"name":"Milo"}]""", this.Serializer.Serialize(animal));
+		Assert.Equal("""{"$type":"Cat","lives":9,"name":"Milo"}""", this.Serializer.Serialize(animal));
 		Assert.Contains("\"const\":\"Cat\"", this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<JsonObjectSerializerTests.Animal>()!).ToJsonString());
 	}
 

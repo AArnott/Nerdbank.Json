@@ -1,6 +1,6 @@
 # Runtime union configuration
 
-Polymorphic types (unions) are normally described by shape-generated metadata and serialized using a two-element `[discriminator, payload]` envelope.
+Polymorphic types (unions) are normally described by shape-generated metadata and serialized using a `$type` metadata object.
 <xref:Nerdbank.Json.JsonSerializer.DerivedTypeUnions> lets a caller override that behavior per serializer using an immutable <xref:Nerdbank.Json.DerivedTypeUnionCollection>.
 
 Because every case is supplied as an explicit `ITypeShape<TCase>`, the feature
@@ -15,12 +15,12 @@ Mappings can add a union to a base type without generated union metadata or repl
 To extend a generated union, include its existing cases alongside the additional cases in the mapping.
 Use <xref:Nerdbank.Json.DerivedTypeUnion.CreateDisabled(System.Type)> to ignore a generated union and serialize only its base contract.
 
-Cases may be identified by an integer tag or a string name, matching the default representation.
+Cases may be identified by an integer tag or a string name. Both are represented as strings in the `$type` property.
 
 [!code-csharp[](../../samples/cs/RuntimeUnions.cs#RuntimeUnions)]
 
-The default two-element representation and behavior are preserved: without any configuration, unions
-serialize exactly as before, and a runtime-configured union that mirrors the generated cases produces
+Object-shaped case properties are written alongside `$type`. Scalar and custom-converter payloads use `$value`.
+The base-contract fallback uses `"$type":"$base"`. A runtime-configured union that mirrors generated cases produces
 the same JSON.
 
 ## Cache identity
@@ -55,7 +55,7 @@ Duck typing has important constraints:
   Naming-policy or case-folding collisions can therefore make otherwise distinct cases ambiguous when reading input.
 * Custom case converters are honored, but their bare JSON objects must retain the required serialized property names described by their shapes.
   Duck typing does not infer a new selection contract from converter output or a JSON Schema.
-  JSON Schema describes the bare case objects with `oneOf`, regardless of `UseDiscriminatorObjects`.
+  JSON Schema describes the bare case objects with `oneOf`.
 * The buffered re-scan honors the serializer's `AllowTrailingCommas` and `ReadCommentHandling`
   settings, so comments and trailing commas inside a duck-typed object are handled exactly as they
   are for the outer document.
@@ -66,10 +66,11 @@ The `DuckTyping` experimental diagnostic remains in effect.
 
 ## Discriminator objects
 
-Set <xref:Nerdbank.Json.JsonSerializer.UseDiscriminatorObjects> to write and read single-property envelopes such as `{"circle":{"radius":2.5}}` instead of `["circle",{"radius":2.5}]`.
-The two-element envelope remains the default.
-Integer discriminators use invariant-culture property text: discriminator `7` becomes property `"7"`.
-The reserved property `$base` identifies a base-contract fallback.
-Aliases that collide after conversion to property names, or use `$base`, are rejected.
-JSON Schema generation and expression-based targeted navigation honor this setting.
+Tagged unions always use STJ-style discriminator objects such as `{"$type":"circle","radius":2.5}`.
+Discriminator values are strings; integer discriminator `7` becomes `"$type":"7"`.
+The reserved discriminator value `$base` identifies a base-contract fallback.
+Object-shaped case properties are written alongside `$type`; non-object and custom-converter payloads use a `$value` property.
+By default, `$type` must be the first object property, as in System.Text.Json. Set <xref:Nerdbank.Json.JsonSerializer.AllowOutOfOrderMetadataProperties> to allow it to appear later.
+Aliases that collide after conversion to strings, or use `$base`, are rejected.
+JSON Schema generation and expression-based targeted navigation use this representation.
 Reference preservation still uses the idiomatic `$id`, `$ref`, and `$value` JSON metadata objects.

@@ -408,29 +408,21 @@ public partial class JsonAsyncSequenceTests : TestBase
 	}
 
 	[Test]
-	[Arguments(false)]
-	[Arguments(true)]
-	public async Task PathExpression_ThroughUnion(bool useObjects)
+	public async Task PathExpression_ThroughUnion()
 	{
-		this.Serializer = this.Serializer with { UseDiscriminatorObjects = useObjects };
-		byte[] utf8 = Encoding.UTF8.GetBytes(useObjects
-			? """{"pet":{"Cat":{"toys":["ball","mouse"],"lives":9}}}"""
-			: """{"pet":["Cat",{"toys":["ball","mouse"],"lives":9}]}""");
+		byte[] utf8 = Encoding.UTF8.GetBytes("""{"pet":{"$type":"Cat","toys":["ball","mouse"],"lives":9}}""");
 		using ChunkedStream stream = new(utf8, 3);
 		List<string> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync<UnionEnvelope, string>(stream, Shape<UnionEnvelope, UnionEnvelope>(), new(e => e.Pet.Toys)));
 		Assert.Equal(["ball", "mouse"], result);
 	}
 
 	[Test]
-	[Arguments(false, false)]
-	[Arguments(false, true)]
-	[Arguments(true, false)]
-	[Arguments(true, true)]
-	public async Task PathExpression_ThroughUnion_UsesCustomCaseNavigationHooks(bool useObjects, bool runtimeMapping)
+	[Arguments(false)]
+	[Arguments(true)]
+	public async Task PathExpression_ThroughUnion_UsesCustomCaseNavigationHooks(bool runtimeMapping)
 	{
 		JsonSerializer serializer = this.Serializer with
 		{
-			UseDiscriminatorObjects = useObjects,
 			Converters = [new CatToysConverter()],
 		};
 		if (runtimeMapping)
@@ -438,10 +430,8 @@ public partial class JsonAsyncSequenceTests : TestBase
 			serializer = serializer with { DerivedTypeUnions = [new DerivedShapeMapping<Animal> { { "Cat", Shape<Cat, Cat>() } }] };
 		}
 
-		string json = useObjects
-			? """{"pet":{"Cat":{"wire":["ball","mouse"]}},"tail":true}"""
-			: """{"pet":["Cat",{"wire":["ball","mouse"]}],"tail":true}""";
-		string expectedUnion = useObjects ? """{"Cat":{"wire":["ball","mouse"]}}""" : """["Cat",{"wire":["ball","mouse"]}]""";
+		string json = """{"pet":{"$type":"Cat","$value":{"wire":["ball","mouse"]}},"tail":true}""";
+		string expectedUnion = """{"$type":"Cat","$value":{"wire":["ball","mouse"]}}""";
 		Animal pet = new Cat(["ball", "mouse"], 9);
 		Assert.Equal(expectedUnion, serializer.Serialize(pet, Shape<Animal, Animal>()));
 		Cat roundtrip = Assert.IsType<Cat>(serializer.Deserialize(expectedUnion, Shape<Animal, Animal>()));
@@ -462,14 +452,12 @@ public partial class JsonAsyncSequenceTests : TestBase
 	}
 
 	[Test]
-	public async Task PathPreParsed_ThroughUnion_WireThrows()
+	public async Task PathPreParsed_ThroughUnion_NavigatesTaggedObject()
 	{
-		// A pre-parsed (wire) path cannot traverse a union envelope; it needs converter metadata.
-		byte[] utf8 = Encoding.UTF8.GetBytes("""{"pet":["Cat",{"toys":[1]}]}""");
+		byte[] utf8 = Encoding.UTF8.GetBytes("""{"pet":{"$type":"Cat","toys":[1]}}""");
 		using ChunkedStream stream = new(utf8, 4);
-		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(async () =>
-			await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("pet").Member("toys"), Shape<int, Witness>())));
-		Assert.IsType<NotSupportedException>(exception.InnerException);
+		List<int> result = await CollectAsync(this.Serializer.DeserializePathEnumerableAsync(stream, JsonPath.Root.Member("pet").Member("toys"), Shape<int, Witness>()));
+		Assert.Equal([1], result);
 	}
 
 	[Test]
