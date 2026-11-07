@@ -40,6 +40,9 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	public override bool PreferAsyncSerialization => true;
 
+	bool IJsonUnionObjectConverter.SupportsInlineObject
+		=> !this.propertiesByName.ContainsKey(JsonUnionObjectEnvelope.DiscriminatorPropertyName) && this.extensionData is null;
+
 	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 	{
 		if (value is null)
@@ -53,11 +56,61 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		writer.WriteEndObject();
 	}
 
+	public override async ValueTask WriteAsync(JsonAsyncWriter writer, T? value, SerializationContext context)
+	{
+		Requires.NotNull(writer);
+		if (value is null)
+		{
+			await writer.WriteNullAsync(context).ConfigureAwait(false);
+			return;
+		}
+
+		JsonWriter syncWriter = writer.CreateWriter();
+		syncWriter.WriteStartObject();
+		writer.ReturnWriter(ref syncWriter);
+
+		await this.WriteObjectPropertiesAsync(writer, value, context, first: true).ConfigureAwait(false);
+
+		syncWriter = writer.CreateWriter();
+		syncWriter.WriteEndObject();
+		writer.ReturnWriter(ref syncWriter);
+		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
+	}
+
+	public override T? Read(ref JsonReader reader, SerializationContext context)
+	{
+		if (!typeof(T).IsValueType && reader.TryReadNull())
+		{
+			return default;
+		}
+
+		T result = this.factory();
+		this.PopulateReference(ref reader, ref result, context);
+		return result;
+	}
+
+	public override async ValueTask<T?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+	{
+		Requires.NotNull(reader);
+		if (!typeof(T).IsValueType && await reader.TryReadNullAsync(context).ConfigureAwait(false))
+		{
+			return default;
+		}
+
+		T result = this.factory();
+		return await this.PopulateAsyncCore(reader, result, context).ConfigureAwait(false);
+	}
+
+	public T CreateReferenceInstance() => this.factory();
+
+	public void PopulateReference(ref JsonReader reader, ref T instance, SerializationContext context)
+		=> this.PopulateReference(ref reader, ref instance, context, skipDiscriminator: false, discriminatorConsumed: false);
+
+	public async ValueTask<T> PopulateReferenceAsync(JsonAsyncReader reader, T instance, SerializationContext context)
+		=> await this.PopulateAsyncCore(reader, instance, context).ConfigureAwait(false);
+
 	void IJsonUnionObjectConverter.WriteObjectProperties(ref JsonWriter writer, object value, SerializationContext context, bool first)
 		=> this.WriteObjectProperties(ref writer, (T)value, context, first);
-
-	bool IJsonUnionObjectConverter.SupportsInlineObject
-		=> !this.propertiesByName.ContainsKey(JsonUnionObjectEnvelope.DiscriminatorPropertyName) && this.extensionData is null;
 
 	ValueTask IJsonUnionObjectConverter.WriteObjectPropertiesAsync(JsonAsyncWriter writer, object value, SerializationContext context, bool first)
 		=> this.WriteObjectPropertiesAsync(writer, (T)value, context, first);
@@ -80,27 +133,6 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 	{
 		T instance = this.factory();
 		return await this.PopulateAsyncCore(reader, instance, context, skipDiscriminator: true).ConfigureAwait(false);
-	}
-
-	public override async ValueTask WriteAsync(JsonAsyncWriter writer, T? value, SerializationContext context)
-	{
-		Requires.NotNull(writer);
-		if (value is null)
-		{
-			await writer.WriteNullAsync(context).ConfigureAwait(false);
-			return;
-		}
-
-		JsonWriter syncWriter = writer.CreateWriter();
-		syncWriter.WriteStartObject();
-		writer.ReturnWriter(ref syncWriter);
-
-		await this.WriteObjectPropertiesAsync(writer, value, context, first: true).ConfigureAwait(false);
-
-		syncWriter = writer.CreateWriter();
-		syncWriter.WriteEndObject();
-		writer.ReturnWriter(ref syncWriter);
-		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
 	}
 
 	private void WriteObjectProperties(ref JsonWriter writer, T value, SerializationContext context, bool first)
@@ -148,23 +180,6 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		this.extensionData?.Write(ref syncWriter, value, ref first);
 		writer.ReturnWriter(ref syncWriter);
 	}
-
-	public override T? Read(ref JsonReader reader, SerializationContext context)
-	{
-		if (!typeof(T).IsValueType && reader.TryReadNull())
-		{
-			return default;
-		}
-
-		T result = this.factory();
-		this.PopulateReference(ref reader, ref result, context);
-		return result;
-	}
-
-	public T CreateReferenceInstance() => this.factory();
-
-	public void PopulateReference(ref JsonReader reader, ref T instance, SerializationContext context)
-		=> this.PopulateReference(ref reader, ref instance, context, skipDiscriminator: false, discriminatorConsumed: false);
 
 	private void PopulateReference(ref JsonReader reader, ref T instance, SerializationContext context, bool skipDiscriminator, bool discriminatorConsumed = false)
 	{
@@ -275,21 +290,6 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		this.extensionData?.Apply(ref instance, unused);
 		(instance as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 	}
-
-	public override async ValueTask<T?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
-	{
-		Requires.NotNull(reader);
-		if (!typeof(T).IsValueType && await reader.TryReadNullAsync(context).ConfigureAwait(false))
-		{
-			return default;
-		}
-
-		T result = this.factory();
-		return await this.PopulateAsyncCore(reader, result, context).ConfigureAwait(false);
-	}
-
-	public async ValueTask<T> PopulateReferenceAsync(JsonAsyncReader reader, T instance, SerializationContext context)
-		=> await this.PopulateAsyncCore(reader, instance, context).ConfigureAwait(false);
 
 	private JsonProperty<T>? FindSplitProperty(ref JsonReader reader, long start, long length, out string? propertyName)
 	{

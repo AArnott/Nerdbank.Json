@@ -493,6 +493,8 @@ internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter
 		this.marshaler = marshaler;
 	}
 
+	public override bool PreferAsyncSerialization => true;
+
 	bool IJsonUnionObjectConverter.SupportsInlineObject
 		=> this.inner is IJsonUnionObjectConverter { SupportsInlineObject: true };
 
@@ -510,8 +512,6 @@ internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter
 
 	async ValueTask<object?> IJsonUnionObjectConverter.ReadObjectWithMetadataAsync(JsonAsyncReader reader, SerializationContext context)
 		=> this.marshaler.Marshal((TUnionCase?)await this.GetObjectConverter().ReadObjectWithMetadataAsync(reader, context).ConfigureAwait(false));
-
-	public override bool PreferAsyncSerialization => true;
 
 	public override void Write(ref JsonWriter writer, in TUnion? value, SerializationContext context)
 		=> this.inner.Write(ref writer, this.marshaler.Unmarshal(value), context);
@@ -652,6 +652,9 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 	public override bool PreferAsyncSerialization => true;
 
+	bool IJsonUnionObjectConverter.SupportsInlineObject
+		=> this.extensionData is null && this.properties.All(static property => property.Name != JsonUnionObjectEnvelope.DiscriminatorPropertyName);
+
 	public override void Write(ref JsonWriter writer, in TDeclaring? value, SerializationContext context)
 	{
 		if (value is null)
@@ -664,9 +667,6 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		this.WriteObjectProperties(ref writer, value, context, first: true);
 		writer.WriteEndObject();
 	}
-
-	bool IJsonUnionObjectConverter.SupportsInlineObject
-		=> this.extensionData is null && this.properties.All(static property => property.Name != JsonUnionObjectEnvelope.DiscriminatorPropertyName);
 
 	void IJsonUnionObjectConverter.WriteObjectProperties(ref JsonWriter writer, object value, SerializationContext context, bool first)
 		=> this.WriteObjectProperties(ref writer, (TDeclaring)value, context, first);
@@ -703,6 +703,12 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		writer.ReturnWriter(ref syncWriter);
 		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
 	}
+
+	public override TDeclaring? Read(ref JsonReader reader, SerializationContext context)
+		=> this.ReadObject(ref reader, context, skipDiscriminator: false);
+
+	public override async ValueTask<TDeclaring?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+		=> await this.ReadObjectAsync(reader, context, skipDiscriminator: false).ConfigureAwait(false);
 
 	private void WriteObjectProperties(ref JsonWriter writer, TDeclaring value, SerializationContext context, bool first)
 	{
@@ -749,9 +755,6 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		this.extensionData?.Write(ref syncWriter, value, ref first);
 		writer.ReturnWriter(ref syncWriter);
 	}
-
-	public override TDeclaring? Read(ref JsonReader reader, SerializationContext context)
-		=> this.ReadObject(ref reader, context, skipDiscriminator: false);
 
 	private TDeclaring? ReadObject(ref JsonReader reader, SerializationContext context, bool skipDiscriminator, bool discriminatorConsumed = false)
 	{
@@ -848,9 +851,6 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 			argumentState.Return();
 		}
 	}
-
-	public override async ValueTask<TDeclaring?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
-		=> await this.ReadObjectAsync(reader, context, skipDiscriminator: false).ConfigureAwait(false);
 
 	private async ValueTask<TDeclaring?> ReadObjectAsync(JsonAsyncReader reader, SerializationContext context, bool skipDiscriminator)
 	{

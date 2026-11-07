@@ -90,57 +90,6 @@ internal sealed class JsonUnionObjectEnvelope
 		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
 	}
 
-	internal void Add(string alias, JsonConverter converter)
-	{
-		if (alias == BaseAlias || this.converters.ContainsKey(alias))
-		{
-			throw new NotSupportedException($"The union discriminator '{alias}' is reserved or ambiguous in object format.");
-		}
-
-		this.converters.Add(alias, converter);
-		this.utf8Converters.Add((Encoding.UTF8.GetBytes(alias), converter));
-	}
-
-	internal JsonConverter ReadDiscriminator(ref JsonReader reader, bool allowOutOfOrderMetadataProperties, SerializationContext context)
-	{
-		JsonReader peek = reader.CreatePeekReader();
-		return this.ReadDiscriminatorCore(ref peek, allowOutOfOrderMetadataProperties, context);
-	}
-
-	internal JsonConverter ReadDiscriminator(ref JsonReader reader, bool allowOutOfOrderMetadataProperties, SerializationContext context, out bool discriminatorConsumed)
-	{
-		discriminatorConsumed = false;
-		if (!allowOutOfOrderMetadataProperties)
-		{
-			JsonReader original = reader;
-			JsonConverter converter = this.ReadFirstPropertyDiscriminator(ref reader);
-			if (converter is IJsonUnionObjectConverter { SupportsInlineObject: true })
-			{
-				discriminatorConsumed = true;
-				return converter;
-			}
-
-			reader = original;
-		}
-
-		return this.ReadDiscriminator(ref reader, allowOutOfOrderMetadataProperties, context);
-	}
-
-	internal async ValueTask<JsonConverter> ReadDiscriminatorAsync(JsonAsyncReader reader, bool allowOutOfOrderMetadataProperties, SerializationContext context)
-	{
-		await reader.BufferNextValueAsync(context).ConfigureAwait(false);
-		JsonReader buffered = reader.CreateBufferedReader();
-		JsonReader peek = buffered.CreatePeekReader();
-		try
-		{
-			return this.ReadDiscriminatorCore(ref peek, allowOutOfOrderMetadataProperties, context);
-		}
-		finally
-		{
-			reader.ReturnReader(ref buffered);
-		}
-	}
-
 	internal static object? ReadValue(ref JsonReader reader, JsonConverter converter, SerializationContext context)
 	{
 		reader.ReadStartObject();
@@ -314,6 +263,57 @@ internal sealed class JsonUnionObjectEnvelope
 			}
 
 			await reader.ReadValueSeparatorAsync(context).ConfigureAwait(false);
+		}
+	}
+
+	internal void Add(string alias, JsonConverter converter)
+	{
+		if (alias == BaseAlias || this.converters.ContainsKey(alias))
+		{
+			throw new NotSupportedException($"The union discriminator '{alias}' is reserved or ambiguous in object format.");
+		}
+
+		this.converters.Add(alias, converter);
+		this.utf8Converters.Add((Encoding.UTF8.GetBytes(alias), converter));
+	}
+
+	internal JsonConverter ReadDiscriminator(ref JsonReader reader, bool allowOutOfOrderMetadataProperties, SerializationContext context)
+	{
+		JsonReader peek = reader.CreatePeekReader();
+		return this.ReadDiscriminatorCore(ref peek, allowOutOfOrderMetadataProperties, context);
+	}
+
+	internal JsonConverter ReadDiscriminator(ref JsonReader reader, bool allowOutOfOrderMetadataProperties, SerializationContext context, out bool discriminatorConsumed)
+	{
+		discriminatorConsumed = false;
+		if (!allowOutOfOrderMetadataProperties)
+		{
+			JsonReader original = reader;
+			JsonConverter converter = this.ReadFirstPropertyDiscriminator(ref reader);
+			if (converter is IJsonUnionObjectConverter { SupportsInlineObject: true })
+			{
+				discriminatorConsumed = true;
+				return converter;
+			}
+
+			reader = original;
+		}
+
+		return this.ReadDiscriminator(ref reader, allowOutOfOrderMetadataProperties, context);
+	}
+
+	internal async ValueTask<JsonConverter> ReadDiscriminatorAsync(JsonAsyncReader reader, bool allowOutOfOrderMetadataProperties, SerializationContext context)
+	{
+		await reader.BufferNextValueAsync(context).ConfigureAwait(false);
+		JsonReader buffered = reader.CreateBufferedReader();
+		JsonReader peek = buffered.CreatePeekReader();
+		try
+		{
+			return this.ReadDiscriminatorCore(ref peek, allowOutOfOrderMetadataProperties, context);
+		}
+		finally
+		{
+			reader.ReturnReader(ref buffered);
 		}
 	}
 
