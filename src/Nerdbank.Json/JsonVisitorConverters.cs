@@ -566,16 +566,25 @@ internal sealed class JsonConstructorVisitorState<TDeclaring>
 {
 	private readonly Dictionary<string, string> serializedPropertyNamesByClrName;
 
-	internal JsonConstructorVisitorState(JsonProperty<TDeclaring>[] properties, Dictionary<string, string> serializedPropertyNamesByClrName, JsonExtensionData<TDeclaring>? extensionData = null)
+	/// <summary>Initializes a new instance of the <see cref="JsonConstructorVisitorState{TDeclaring}"/> class.</summary>
+	/// <param name="properties">The serialized properties.</param>
+	/// <param name="serializedPropertyNamesByClrName">Maps CLR property names to serialized names.</param>
+	/// <param name="extensionData">The extension-data property, if any.</param>
+	/// <param name="ignoreDerivedTypeUnion">Whether the converter represents a runtime union's plain base object.</param>
+	internal JsonConstructorVisitorState(JsonProperty<TDeclaring>[] properties, Dictionary<string, string> serializedPropertyNamesByClrName, JsonExtensionData<TDeclaring>? extensionData = null, bool ignoreDerivedTypeUnion = false)
 	{
 		this.Properties = properties;
 		this.serializedPropertyNamesByClrName = serializedPropertyNamesByClrName;
 		this.ExtensionData = extensionData;
+		this.IgnoreDerivedTypeUnion = ignoreDerivedTypeUnion;
 	}
 
 	internal JsonProperty<TDeclaring>[] Properties { get; }
 
 	internal JsonExtensionData<TDeclaring>? ExtensionData { get; }
+
+	/// <summary>Gets a value indicating whether this converter represents a runtime union's plain base object.</summary>
+	internal bool IgnoreDerivedTypeUnion { get; }
 
 	internal bool TryGetSerializedPropertyName(string clrName, out string serializedPropertyName)
 		=> this.serializedPropertyNamesByClrName.TryGetValue(clrName, out serializedPropertyName!);

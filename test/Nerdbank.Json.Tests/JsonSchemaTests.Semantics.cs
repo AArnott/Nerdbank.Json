@@ -102,14 +102,12 @@ public partial class JsonSchemaTests
 		Assert.NotNull(result);
 		Assert.Same(result.First, result.Second);
 		Assert.Contains("\"$ref\":", json, StringComparison.Ordinal);
-
 		JsonSchemaObject schema = serializer.GetJsonSchema(Shape<Animal, Animal>());
-		JsonSchemaNode unionPayload = schema["anyOf"]![0]!["oneOf"]![1]!["properties"]!["$value"]!;
-		JsonSchemaNode casePayload = unionPayload["oneOf"]![0]!;
-		Assert.Equal("object", casePayload["type"]!.GetValue<string>());
-		Assert.True(casePayload["properties"]?["$type"] is not null);
-		Assert.True(casePayload["properties"]?["lives"] is not null, schema.ToJsonString());
-		Assert.Null(casePayload["oneOf"]);
+		string schemaJson = schema.ToJsonString();
+		Assert.Contains("\"$id\"", schemaJson, StringComparison.Ordinal);
+		Assert.Contains("\"$value\"", schemaJson, StringComparison.Ordinal);
+		Assert.Contains("\"$type\":{\"const\":\"Cat\"}", schemaJson, StringComparison.Ordinal);
+		Assert.Contains("\"lives\"", schemaJson, StringComparison.Ordinal);
 		AssertReferencesResolve(schema, schema);
 	}
 

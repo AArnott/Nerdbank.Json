@@ -313,7 +313,7 @@ internal static class RuntimeUnionBuilder
 		StringComparer nameComparer = owner.PropertyNameComparer;
 		ITypeShape baseTypeShape = shape is IUnionTypeShape unionForBase ? unionForBase.BaseType : shape;
 		JsonConverter<TBase>? baseConverter = IsConstructible(baseTypeShape as IObjectTypeShape)
-			? (JsonConverter<TBase>)baseTypeShape.Accept(visitor)!
+			? (JsonConverter<TBase>)baseTypeShape.Accept(visitor, JsonStandardVisitor.RuntimeUnionBaseShape)!
 			: null;
 
 		if (entry.Disabled)

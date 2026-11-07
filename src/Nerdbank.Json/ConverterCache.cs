@@ -145,9 +145,14 @@ internal sealed class ConverterCache : ITypeShapeFunc
 		return this.configuration.PropertyNamingPolicy.ConvertName(name);
 	}
 
-	internal bool SupportsInlineUnionObject(ITypeShape shape)
+	/// <summary>Determines whether an object converter can provide its properties inline in a union envelope.</summary>
+	/// <param name="shape">The shape of the object type.</param>
+	/// <param name="ignoreDerivedTypeUnion">Whether to evaluate the base object converter even when the type has a configured union.</param>
+	/// <returns><see langword="true"/> if inline object serialization is supported; otherwise, <see langword="false"/>.</returns>
+	internal bool SupportsInlineUnionObject(ITypeShape shape, bool ignoreDerivedTypeUnion = false)
 	{
 		if (this.TryGetCustomConverter(shape, out _)
+			|| (!ignoreDerivedTypeUnion && this.DerivedTypeUnions.TryGetDerivedTypeUnion(shape.Type, out DerivedTypeUnion? union) && union is { Disabled: false })
 			|| BuiltInJsonConverters.IsSupported(shape.Type)
 			|| shape.Kind != TypeShapeKind.Object
 			|| shape is not IObjectTypeShape objectShape)

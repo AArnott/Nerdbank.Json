@@ -64,6 +64,41 @@ public partial class JsonRuntimeUnionTests
 	}
 
 	[Test]
+	public void ObjectEnvelope_RuntimeSelfMapping_AndNestedUnionSchema()
+	{
+		JsonSerializer serializer = new()
+		{
+			DerivedTypeUnions =
+			[
+				new DerivedShapeMapping<Animal2>
+				{
+					{ "animal", Shape<Animal2, Animal2>() },
+					{ "cat", Shape<Cat2, Cat2>() },
+				},
+			],
+		};
+
+		Animal2 plain = new("Ada");
+		Assert.Equal("""{"$type":"animal","name":"Ada"}""", serializer.Serialize(plain, Shape<Animal2, Animal2>()));
+
+		JsonSchemaObject runtimeSchema = serializer.GetJsonSchema(Shape<Animal2, Animal2>());
+		JsonSchemaObject runtimeDefinition = runtimeSchema["$defs"]?["Animal2"]?.AsObject() ?? runtimeSchema["anyOf"]![0]!.AsObject();
+		JsonSchemaObject selfCase = Assert.Single(runtimeDefinition["oneOf"]!.AsArray(), candidate => candidate!["properties"]?["$type"]?["const"]?.GetValue<string>() == "animal")!.AsObject();
+		Assert.NotNull(selfCase["properties"]?["name"]);
+		Assert.Null(selfCase["properties"]?["$value"]);
+
+		AnimalPayloadOrNumber outer = new(plain);
+		PolyType.ITypeShape<AnimalPayloadOrNumber> outerShape = PolyType.SourceGenerator.TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<AnimalPayloadOrNumber>()!;
+		string json = serializer.Serialize(outer, outerShape);
+		Assert.Equal("""{"$type":"Animal2","$value":{"$type":"animal","name":"Ada"}}""", json);
+		JsonSchemaObject outerSchema = serializer.GetJsonSchema(outerShape);
+		string outerSchemaJson = outerSchema.ToJsonString();
+		Assert.Contains("\"const\":\"Animal2\"", outerSchemaJson, StringComparison.Ordinal);
+		Assert.Contains("\"const\":\"animal\"", outerSchemaJson, StringComparison.Ordinal);
+		Assert.Contains("\"$value\"", outerSchemaJson, StringComparison.Ordinal);
+	}
+
+	[Test]
 	public void ObjectEnvelope_GeneratedIntegerTag_RoundTrips()
 	{
 		JsonSerializer serializer = new();

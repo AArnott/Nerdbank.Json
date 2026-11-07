@@ -94,6 +94,11 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 
 		if (this.references.TryGetValue(key, out string? existing))
 		{
+			if (inlineRoot && this.definitions.TryGetValue(this.GetDefinitionName(key), out JsonSchemaObject? definition))
+			{
+				return (JsonSchemaObject)definition.DeepClone();
+			}
+
 			return Reference(existing);
 		}
 
@@ -343,17 +348,21 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			return (JsonSchemaObject)baseShape.Accept(this.visitor)!;
 		}
 
+		ITypeShape unionBaseShape = shape is IUnionTypeShape unionShape ? unionShape.BaseType : shape;
 		List<(object? Alias, JsonSchemaObject CaseSchema, bool CanInlineObject)> cases = [];
 		foreach (KeyValuePair<DerivedTypeIdentifier, ITypeShape> pair in RuntimeUnionBuilder.GetCases(entry))
 		{
 			DerivedTypeIdentifier alias = pair.Key;
 			ITypeShape caseShape = pair.Value;
-			bool canInlineObject = caseShape.Type != typeof(T) && this.owner.SupportsInlineUnionObject(caseShape);
-			JsonSchemaObject caseSchema = caseShape.Type == typeof(T)
-				? (JsonSchemaObject)(shape is IUnionTypeShape union ? union.BaseType : shape).Accept(this.visitor)!
-				: canInlineObject
-					? this.GetJsonSchemaForInlineObjectCase(caseShape)
-					: this.GetJsonSchema(caseShape, preserveReferences: false);
+			bool isSelfCase = caseShape.Type == typeof(T);
+			ITypeShape schemaShape = isSelfCase ? unionBaseShape : caseShape;
+			bool canInlineObject = (!isSelfCase || RuntimeUnionBuilder.IsConstructible(schemaShape as IObjectTypeShape))
+				&& this.owner.SupportsInlineUnionObject(schemaShape, ignoreDerivedTypeUnion: isSelfCase);
+			JsonSchemaObject caseSchema = canInlineObject
+				? isSelfCase
+					? (JsonSchemaObject)schemaShape.Accept(this.visitor)!
+					: this.GetJsonSchemaForInlineObjectCase(schemaShape)
+				: this.GetJsonSchema(schemaShape, preserveReferences: false);
 			cases.Add((alias.Type == DerivedTypeIdentifier.AliasType.Integer ? (object)alias.IntAlias : alias.StringAlias, caseSchema, canInlineObject));
 		}
 
@@ -366,7 +375,7 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		JsonSchemaObject? baseSchema = RuntimeUnionBuilder.IsConstructible(baseShapeForFallback as IObjectTypeShape)
 			? (JsonSchemaObject)baseShapeForFallback.Accept(this.visitor)!
 			: null;
-		bool baseCanInlineObject = this.owner.SupportsInlineUnionObject(baseShapeForFallback);
+		bool baseCanInlineObject = this.owner.SupportsInlineUnionObject(baseShapeForFallback, ignoreDerivedTypeUnion: true);
 		return this.CreateUnionEnvelope(cases, baseSchema, baseCanInlineObject);
 	}
 

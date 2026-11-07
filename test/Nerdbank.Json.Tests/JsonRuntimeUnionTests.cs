@@ -285,6 +285,11 @@ public partial class JsonRuntimeUnionTests : TestBase
 	[GenerateShape]
 	internal partial record Dog2(string Name, string Breed) : Animal2(Name);
 
+#pragma warning disable SA1201 // The union is grouped with its runtime-union test shapes.
+	[GenerateShape]
+	internal partial union AnimalPayloadOrNumber(Animal2, int);
+#pragma warning restore SA1201
+
 	[GenerateShape]
 	internal partial class ShapeContainer
 	{

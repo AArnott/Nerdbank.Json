@@ -356,7 +356,7 @@ internal sealed class DelayedJsonConverterFactory : IDelayedValueFactory
 			=> this.InnerUnionObjectConverter?.SupportsInlineObject == true;
 
 		private IJsonUnionObjectConverter? InnerUnionObjectConverter
-			=> (self.Result is IJsonReferencePreservingWrapper wrapper ? wrapper.InnerConverter : self.Result) as IJsonUnionObjectConverter;
+			=> self.Result as IJsonUnionObjectConverter;
 
 		public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 			=> ((JsonConverter<T>)self.Result).Write(ref writer, value, context);

@@ -160,6 +160,37 @@ public partial class CSharpUnionTests : TestBase
 	}
 
 	[Test]
+	public void ReferencePreservedRecursiveObjectUnion_KeepsSharedPayloadIdentity()
+	{
+		JsonSerializer unionFirst = this.Serializer with { PreserveReferences = ReferencePreservationMode.RejectCycles };
+		JsonSerializer objectFirst = this.Serializer with { PreserveReferences = ReferencePreservationMode.RejectCycles };
+		RecursiveUnionContainingObject shared = new();
+		RecursiveObjectUnionHolder value = new()
+		{
+			First = new(shared),
+			Second = new(shared),
+		};
+
+		string unionFirstJson = unionFirst.Serialize(value);
+		_ = objectFirst.Serialize(new RecursiveUnionContainingObject());
+		string objectFirstJson = objectFirst.Serialize(value);
+		Assert.Equal(unionFirstJson, objectFirstJson);
+
+		RecursiveObjectUnionHolder result = unionFirst.Deserialize<RecursiveObjectUnionHolder>(unionFirstJson)!;
+		Assert.Same(result.First.Value, result.Second.Value);
+	}
+
+	[Test]
+	public void RecursivePayloadUnionSchema_InlinesPreviouslyDefinedCase()
+	{
+		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<RecursivePayloadUnionHolder>()!);
+		JsonSchemaObject unionCase = schema["properties"]!["union"]!["oneOf"]![0]!.AsObject();
+		Assert.Contains("$type", unionCase["required"]!.AsArray().Select(static item => item!.GetValue<string>()));
+		Assert.NotNull(unionCase["properties"]?["name"]);
+		Assert.NotNull(unionCase["properties"]?["next"]);
+	}
+
+	[Test]
 	public void MultipleNullableNativeCases_AllowNullInOnlyFirstSchemaCase()
 	{
 		Assert.Null(this.Roundtrip(default(MultipleNullableCases))!.Value);
@@ -181,6 +212,19 @@ public partial class CSharpUnionTests : TestBase
 		await this.Serializer.SerializeAsync(stream, value);
 		stream.Position = 0;
 		Assert.Equal(value.Value, (await this.Serializer.DeserializeAsync<ArrayOrDog>(stream))!.Value);
+
+		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<ArrayOrDog>()!);
+		Assert.Contains("\"$id\":", schema.ToJsonString(), StringComparison.Ordinal);
+		Assert.Contains("\"$value\":", schema.ToJsonString(), StringComparison.Ordinal);
+	}
+
+	[Test]
+	public void ReferencePreservedObjectCase_UsesIdentityEnvelopeSchema()
+	{
+		this.Serializer = this.Serializer with { PreserveReferences = ReferencePreservationMode.RejectCycles };
+		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<Pet>()!);
+		Assert.Contains("\"$id\":", schema.ToJsonString(), StringComparison.Ordinal);
+		Assert.Contains("\"$value\":", schema.ToJsonString(), StringComparison.Ordinal);
 	}
 
 	[Test]
@@ -597,6 +641,22 @@ public partial class CSharpUnionTests : TestBase
 		public string Name { get; set; } = string.Empty;
 
 		public RecursivePayload? Next { get; set; }
+	}
+
+	[GenerateShape]
+	public partial class RecursivePayloadUnionHolder
+	{
+		public RecursivePayload? Payload { get; set; }
+
+		public RecursivePayloadUnion Union { get; set; }
+	}
+
+	[GenerateShape]
+	public partial class RecursiveObjectUnionHolder
+	{
+		public RecursiveObjectUnion First { get; set; }
+
+		public RecursiveObjectUnion Second { get; set; }
 	}
 
 	[GenerateShape]
