@@ -193,6 +193,8 @@ public partial record JsonSerializer
 	/// <value>The default is <see langword="false"/>.</value>
 	/// <remarks>
 	/// By default, <c>$type</c> must appear first in the object, matching System.Text.Json's metadata ordering rule.
+	/// Allowing it to appear later requires scanning ahead while preserving the payload for subsequent deserialization.
+	/// Deeply nested unions can therefore require quadratic work.
 	/// </remarks>
 	public bool AllowOutOfOrderMetadataProperties
 	{
