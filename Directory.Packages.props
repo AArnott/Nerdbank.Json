@@ -13,7 +13,7 @@
     <!-- Put repo-specific PackageVersion items in this group. -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
-    <PackageVersion Include="FSharp.Core" Version="10.1.403" />
+    <PackageVersion Include="FSharp.Core" Version="10.1.404" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
@@ -22,8 +22,8 @@
     <PackageVersion Include="Nerdbank.MessagePack" Version="1.5.47-alpha" />
     <PackageVersion Include="PolyType" Version="$(PolyTypeVersion)" />
     <PackageVersion Include="PolyType.Roslyn" Version="$(PolyTypeUnstableVersion)" />
-    <PackageVersion Include="System.IO.Pipelines" Version="10.0.14" />
-    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
+    <PackageVersion Include="System.IO.Pipelines" Version="10.0.15" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.15" />
   </ItemGroup>
   <ItemGroup Label="Library.Template">
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.12.0" />
