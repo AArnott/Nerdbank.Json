@@ -4,7 +4,7 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
-    <MicrosoftTestingPlatformVersion>2.5.2</MicrosoftTestingPlatformVersion>
+    <MicrosoftTestingPlatformVersion>2.5.3</MicrosoftTestingPlatformVersion>
     <PolyTypeVersion>2.0.0-rc.4</PolyTypeVersion>
     <!-- Add the -unstable suffix here when PolyTypeVersion moves to a stable release. -->
     <PolyTypeUnstableVersion>$(PolyTypeVersion)</PolyTypeUnstableVersion>
