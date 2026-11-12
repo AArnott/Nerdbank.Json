@@ -148,7 +148,7 @@ See [Asynchronous streaming](async-streaming.md).
 * <xref:Nerdbank.Json.JsonSerializer.DeserializeArrayAsync*> streams a top-level JSON array as an asynchronous sequence.
 * <xref:Nerdbank.Json.JsonSerializer.DeserializeEnumerableAsync*> streams values using <xref:Nerdbank.Json.JsonSerializer.SequenceOptions>, with <xref:Nerdbank.Json.JsonSequenceFormat.NDJson> or <xref:Nerdbank.Json.JsonSequenceFormat.JsonArray> framing.
 * <xref:Nerdbank.Json.JsonSerializer.DeserializePathEnumerableAsync*> streams an array selected inside an envelope by JSON path or typed <xref:Nerdbank.Json.JsonSerializer.StreamingEnumerationOptions`2>.
-* <xref:Nerdbank.Json.JsonSerializer.SerializeArrayAsync*> and <xref:Nerdbank.Json.JsonSerializer.SerializeEnumerableAsync*> write asynchronous sequences with backpressure.
+* <xref:Nerdbank.Json.JsonSerializer.SerializeEnumerableAsync*> writes asynchronous sequences with backpressure, using NDJSON or a top-level JSON array.
 * <xref:Nerdbank.Json.JsonSerializer.DeserializePath*> reads only a selected value, skipping unrelated JSON.
 * Custom converters support logical properties and indices through `SkipToPropertyValue`, `SkipToIndexValue`, and their asynchronous counterparts.
 

@@ -499,11 +499,11 @@ public partial class JsonAsyncSequenceTests : TestBase
 	}
 
 	[Test]
-	public async Task SerializeArray_RoundTrips_OverPipe()
+	public async Task SerializeEnumerable_JsonArray_RoundTrips_OverPipe()
 	{
 		Pipe pipe = new();
 		JsonSerializer serializer = new() { StartingContext = new SerializationContext { UnflushedBytesThreshold = 64 } };
-		await serializer.SerializeArrayAsync(pipe.Writer, Source(200), Shape<int, Witness>());
+		await serializer.SerializeEnumerableAsync(pipe.Writer, Source(200), Shape<int, Witness>(), new() { Format = JsonSequenceFormat.JsonArray });
 		await pipe.Writer.CompleteAsync();
 		List<int> result = await CollectAsync(serializer.DeserializeArrayAsync(pipe.Reader, Shape<int, Witness>()));
 		Assert.Equal(200, result.Count);
