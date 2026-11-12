@@ -220,8 +220,7 @@ public partial record JsonSerializer
 		{
 			AsyncBufferPlan plan = await this.TryBufferWithinMaxAsyncBufferAsync(reader, context, requireFullyConsumed).ConfigureAwait(false);
 			if (plan.Synchronous is { } buffered
-				&& this.PreserveReferences != ReferencePreservationMode.AllowCycles
-				&& JsonValueConverter.Instance.SupportsSynchronousRead)
+				&& this.PreserveReferences != ReferencePreservationMode.AllowCycles)
 			{
 				bool readFailed = true;
 				try

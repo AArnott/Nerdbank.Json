@@ -162,8 +162,7 @@ public partial record JsonSerializer
 			JsonConverter converter = this.ConverterCache.GetOrAddConverter(shape);
 			AsyncBufferPlan plan = await this.TryBufferWithinMaxAsyncBufferAsync(reader, context, requireFullyConsumed).ConfigureAwait(false);
 			if (plan.Synchronous is { } buffered
-				&& this.PreserveReferences != ReferencePreservationMode.AllowCycles
-				&& this.ShouldReadBuffered(converter))
+				&& this.PreserveReferences != ReferencePreservationMode.AllowCycles)
 			{
 				bool readFailed = true;
 				try

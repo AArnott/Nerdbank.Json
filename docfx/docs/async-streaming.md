@@ -26,10 +26,12 @@ unfinished value is not scanned twice. Json does not block waiting to fill the c
 caller-owned pipe can still return its first value, and an object that has not yet reached its closing
 brace can still be processed as bytes arrive. Stream overloads reject trailing data, so they wait for
 the stream instead of canceling an in-flight read. Trailing comments stay part of that payload.
-A converter that cannot read a fully buffered value overrides <xref:Nerdbank.Json.JsonConverter.ComputeSupportsSynchronousRead>
-so the incremental reader is selected before constructors, setters, callbacks, or `Read` run. Nested values
-from that converter use `ReadAsync` as well, even when <xref:Nerdbank.Json.JsonConverter.PreferAsyncSerialization>
-is left at its default. An exception from that user code is propagated and the graph is not read again.
+Every converter implements synchronous `Read` and `Write`. The default `ReadAsync` buffers the next value and
+calls `Read`; the default `WriteAsync` calls `Write` and then flushes. A value that is already complete within
+<xref:Nerdbank.Json.JsonSerializer.MaxAsyncBuffer> is deserialized with `Read`, including when
+<xref:Nerdbank.Json.JsonConverter.PreferAsyncSerialization> is `true`. Override the asynchronous methods and set
+that property to stream a large value. While an ancestor is already reading asynchronously, the property selects
+`ReadAsync` for a nested value; otherwise the nested value is buffered and read synchronously.
 
 Reading uses an incremental UTF-8 scanner that frames one JSON value at a time. Because it is a
 resumable, byte-level state machine, JSON tokens may be split at **any** buffer boundary — inside a
@@ -106,9 +108,10 @@ Strict HTTP request-body validation is unchanged: additional values, trailing ga
 
 ## Writing a streaming custom converter
 
-Custom converters that may handle very large values can override
+Synchronous `Read` and `Write` are required. Custom converters that may handle very large values can also override
 <xref:Nerdbank.Json.JsonConverter`1.WriteAsync*> and <xref:Nerdbank.Json.JsonConverter`1.ReadAsync*>
-and set <xref:Nerdbank.Json.JsonConverter.PreferAsyncSerialization> to `true`. Use
+and set <xref:Nerdbank.Json.JsonConverter.PreferAsyncSerialization> to `true`. The default asynchronous methods buffer
+one value and forward to the synchronous methods, matching Nerdbank.MessagePack. Use
 <xref:Nerdbank.Json.JsonAsyncWriter> and <xref:Nerdbank.Json.JsonAsyncReader> to create short-lived
 synchronous readers/writers for fragments; a synchronous reader or writer obtained from those types
 must be returned before the next asynchronous operation, and must never be held across an `await`.

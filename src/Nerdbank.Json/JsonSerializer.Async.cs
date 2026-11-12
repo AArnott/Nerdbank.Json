@@ -317,8 +317,7 @@ public partial record JsonSerializer
 			JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
 			AsyncBufferPlan plan = await this.TryBufferWithinMaxAsyncBufferAsync(reader, context, requireFullyConsumed).ConfigureAwait(false);
 			if (plan.Synchronous is { } buffered
-				&& this.PreserveReferences != ReferencePreservationMode.AllowCycles
-				&& this.ShouldReadBuffered(converter))
+				&& this.PreserveReferences != ReferencePreservationMode.AllowCycles)
 			{
 				bool readFailed = true;
 				try
@@ -566,29 +565,6 @@ public partial record JsonSerializer
 			scanned = offset;
 			return false;
 		}
-	}
-
-	/// <summary>
-	/// Gets a value indicating whether a fully buffered value can be read without executing user code twice.
-	/// </summary>
-	/// <param name="converter">The root converter for the value.</param>
-	/// <returns><see langword="true"/> when every converter that may run supports a synchronous read.</returns>
-	private bool ShouldReadBuffered(JsonConverter converter)
-	{
-		if (!converter.SupportsSynchronousRead)
-		{
-			return false;
-		}
-
-		foreach (JsonConverter registered in this.Converters)
-		{
-			if (!registered.SupportsSynchronousRead)
-			{
-				return false;
-			}
-		}
-
-		return true;
 	}
 
 	/// <summary>

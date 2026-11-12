@@ -146,19 +146,6 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 	ValueTask<int> IJsonUnionObjectConverter.TryNavigateAfterDiscriminatorAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 		=> JsonAsyncTargetedNavigator.NavigateMemberAfterDiscriminatorAsync(reader, segment, options, context);
 
-	protected override bool ComputeSupportsSynchronousRead()
-	{
-		foreach (JsonProperty<T> property in this.properties)
-		{
-			if (!property.SupportsSynchronousRead)
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
 	private void WriteObjectProperties(ref JsonWriter writer, T value, SerializationContext context, bool first)
 	{
 		IJsonSerializationCallbacks? callbacks = value as IJsonSerializationCallbacks;
@@ -473,8 +460,6 @@ internal abstract class JsonProperty<TDeclaring>
 
 	internal abstract bool CanDeserialize { get; }
 
-	internal abstract bool SupportsSynchronousRead { get; }
-
 	internal abstract bool Write(ref JsonWriter writer, TDeclaring container, in SerializationContext context, bool first);
 
 	internal abstract ValueTask<bool> WriteAsync(JsonAsyncWriter writer, TDeclaring container, SerializationContext context, bool first);
@@ -507,8 +492,6 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		this.isNonNullableReferenceType = isNonNullableReferenceType;
 		this.defaultValue = defaultValue;
 	}
-
-	internal override bool SupportsSynchronousRead => this.converter.SupportsSynchronousRead;
 
 	internal override bool CanSerialize => this.getter is not null;
 

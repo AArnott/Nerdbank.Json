@@ -202,9 +202,6 @@ internal sealed class JsonFlattenedArrayConverter<TArray, TElement>(JsonConverte
 		return CreateArray(dimensions, elements, expected);
 	}
 
-	/// <inheritdoc/>
-	protected override bool ComputeSupportsSynchronousRead() => elementConverter.SupportsSynchronousRead;
-
 	/// <summary>
 	/// Reads a non-negative, 32-bit JSON integer dimension length.
 	/// </summary>

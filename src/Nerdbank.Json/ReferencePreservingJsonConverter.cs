@@ -99,6 +99,4 @@ internal sealed class ReferencePreservingJsonConverter<T>(JsonConverter<T> inner
 
 	/// <inheritdoc/>
 	internal override JsonConverter UnwrapReferencePreservation() => inner;
-
-	protected override bool ComputeSupportsSynchronousRead() => inner.SupportsSynchronousRead;
 }

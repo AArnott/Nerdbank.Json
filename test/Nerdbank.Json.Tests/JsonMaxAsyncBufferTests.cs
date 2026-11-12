@@ -260,7 +260,7 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	{
 		byte[] utf8 = """{"text":"hello"}"""u8.ToArray();
 		CancelRacePipeReader reader = new(utf8);
-		JsonSerializer serializer = new() { Converters = [new SyncUnsupportedTrackedConverter()] };
+		JsonSerializer serializer = new() { Converters = [new ParsingTrackedConverter()] };
 		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
 
 		TrackedValue? value = await serializer.DeserializeAsync(reader, Shape<TrackedValue>(), timeout.Token);
@@ -270,7 +270,7 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	}
 
 	[Test]
-	public async Task ReadAsyncThrowsBeforeRead_ReleasesOutstandingBuffer()
+	public async Task ConverterThrowsBeforeRead_ReleasesOutstandingBuffer()
 	{
 		byte[] utf8 = """{"text":"hello"}"""u8.ToArray();
 		TrailingValueRacePipeReader reader = new(utf8);
@@ -291,7 +291,7 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	{
 		byte[] utf8 = """{"text":"one"}{"text":"two"}"""u8.ToArray();
 		TrailingValueRacePipeReader reader = new(utf8);
-		JsonSerializer serializer = new() { Converters = [new SyncUnsupportedTrackedConverter()] };
+		JsonSerializer serializer = new() { Converters = [new ParsingTrackedConverter()] };
 		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
 
 		TrackedValue? first = await serializer.DeserializeAsync(reader, Shape<TrackedValue>(), timeout.Token);
@@ -302,17 +302,17 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	}
 
 	[Test]
-	public async Task NestedAsyncOnly_WithoutPreferAsync_UsesReadAsync()
+	public async Task NestedConverter_WithoutPreferAsync_UsesSynchronousRead()
 	{
-		SyncUnsupportedIntConverter converter = new();
+		CountingIntConverter converter = new();
 		JsonSerializer serializer = new() { Converters = [converter] };
 		byte[] utf8 = """{"value":4}"""u8.ToArray();
 
 		NestedValueHolder? value = await serializer.DeserializeAsync(PipeReader.Create(new ReadOnlySequence<byte>(utf8)), Shape<NestedValueHolder>());
 
 		Assert.Equal(4, value!.Value);
-		Assert.Equal(0, converter.SynchronousReads);
-		Assert.Equal(1, converter.AsynchronousReads);
+		Assert.Equal(1, converter.SynchronousReads);
+		Assert.Equal(0, converter.AsynchronousReads);
 	}
 
 	[Test]
@@ -469,8 +469,6 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 			this.AsynchronousReads++;
 			return int.Parse(await reader.ReadNumberTokenAsync(context), System.Globalization.CultureInfo.InvariantCulture);
 		}
-
-		protected override bool ComputeSupportsSynchronousRead() => false;
 	}
 
 	private sealed class ThrowingTrackedConverter : JsonConverter<TrackedValue>
@@ -482,31 +480,32 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 			=> throw new NotSupportedException();
 	}
 
-	private sealed class SyncUnsupportedTrackedConverter : JsonConverter<TrackedValue>
+	private sealed class ParsingTrackedConverter : JsonConverter<TrackedValue>
 	{
 		public override void Write(ref JsonWriter writer, in TrackedValue? value, SerializationContext context)
 			=> writer.Write(value!.Text);
 
 		public override TrackedValue? Read(ref JsonReader reader, SerializationContext context)
-			=> throw new NotSupportedException();
+		{
+			reader.ReadStartObject();
+			Assert.Equal("text", reader.ReadRequiredString());
+			reader.ReadNameSeparator();
+			string text = reader.ReadRequiredString();
+			Assert.True(reader.TryReadEndObject());
+			return new TrackedValue(text);
+		}
 
 		public override async ValueTask<TrackedValue?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
 		{
 			await reader.BufferNextValueAsync(context);
 			JsonReader sync = reader.CreateBufferedReader();
-			sync.ReadStartObject();
-			Assert.Equal("text", sync.ReadRequiredString());
-			sync.ReadNameSeparator();
-			string text = sync.ReadRequiredString();
-			Assert.True(sync.TryReadEndObject());
+			TrackedValue? value = this.Read(ref sync, context);
 			reader.ReturnReader(ref sync);
-			return new TrackedValue(text);
+			return value;
 		}
-
-		protected override bool ComputeSupportsSynchronousRead() => false;
 	}
 
-	private sealed class SyncUnsupportedIntConverter : JsonConverter<int>
+	private sealed class CountingIntConverter : JsonConverter<int>
 	{
 		internal int SynchronousReads { get; private set; }
 
@@ -515,7 +514,7 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 		public override int Read(ref JsonReader reader, SerializationContext context)
 		{
 			this.SynchronousReads++;
-			throw new NotSupportedException();
+			return int.Parse(reader.ReadNumberToken(), System.Globalization.CultureInfo.InvariantCulture);
 		}
 
 		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => writer.Write(value);
@@ -525,8 +524,6 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 			this.AsynchronousReads++;
 			return int.Parse(await reader.ReadNumberTokenAsync(context), System.Globalization.CultureInfo.InvariantCulture);
 		}
-
-		protected override bool ComputeSupportsSynchronousRead() => false;
 	}
 
 	private sealed class ThrowBeforeReadConverter : JsonConverter<TrackedValue>
@@ -539,8 +536,6 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 
 		public override ValueTask<TrackedValue?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
 			=> throw new NotSupportedException("before read");
-
-		protected override bool ComputeSupportsSynchronousRead() => false;
 	}
 
 	/// <summary>
@@ -653,7 +648,7 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	/// <summary>
 	/// Serves one byte, then a canceled in-flight read that already holds every byte.
 	/// The following read is the one-shot cancellation and contains only the bytes that have not been consumed.
-	/// A later read blocks once every buffered byte has been examined.
+	/// A later read blocks once every buffered byte has been consumed.
 	/// </summary>
 	private sealed class TrailingValueRacePipeReader : PipeReader
 	{
@@ -715,8 +710,8 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 				return new ValueTask<ReadResult>(this.secondRead.Task);
 			}
 
-			long examinedIndex = this.buffer.Slice(0, this.examined).Length;
-			if (this.reads > 3 && examinedIndex >= this.buffer.Length)
+			long consumedIndex = this.buffer.Slice(0, this.consumed).Length;
+			if (this.reads > 3 && consumedIndex >= this.buffer.Length)
 			{
 				return new ValueTask<ReadResult>(WaitAsync(cancellationToken));
 			}

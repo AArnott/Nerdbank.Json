@@ -58,8 +58,6 @@ internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase
 	internal override ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 		=> this.inner.SkipToValueAsync(reader, segment, context);
 
-	protected override bool ComputeSupportsSynchronousRead() => this.inner.SupportsSynchronousRead;
-
 	private IJsonUnionObjectConverter GetObjectConverter()
 		=> this.inner is IJsonUnionObjectConverter { SupportsInlineObject: true } objectConverter
 			? objectConverter
@@ -181,24 +179,6 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		return objectInner < 0 ? -1 : objectInner + 1;
 	}
 
-	protected override bool ComputeSupportsSynchronousRead()
-	{
-		if (this.baseConverter is { SupportsSynchronousRead: false })
-		{
-			return false;
-		}
-
-		foreach (RuntimeUnionCaseEntry<TBase> entry in this.cases)
-		{
-			if (!entry.Converter.SupportsSynchronousRead)
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
 	private static async ValueTask<int> ReadValueAndNavigateAfterDiscriminatorAsync(JsonAsyncReader reader, JsonConverter converter, JsonNavigationSegment segment, SerializationContext context)
 	{
 		await JsonUnionObjectEnvelope.ReadValueStartAsync(reader, context, discriminatorConsumed: true).ConfigureAwait(false);
@@ -282,19 +262,6 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 
 		JsonReader inner = new(rawUtf8, this.allowTrailingCommas, this.commentHandling);
 		return this.cases[match].Converter.Read(ref inner, context);
-	}
-
-	protected override bool ComputeSupportsSynchronousRead()
-	{
-		foreach (RuntimeUnionCaseEntry<TBase> entry in this.cases)
-		{
-			if (!entry.Converter.SupportsSynchronousRead)
-			{
-				return false;
-			}
-		}
-
-		return true;
 	}
 
 	private static bool AllPresent(IReadOnlyCollection<string> required, HashSet<string> present)

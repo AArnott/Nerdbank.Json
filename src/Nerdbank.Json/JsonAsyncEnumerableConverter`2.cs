@@ -67,9 +67,6 @@ internal sealed class JsonAsyncEnumerableConverter<TEnumerable, TElement>(JsonCo
 		return await reader.TryReadNullAsync(context).ConfigureAwait(false) ? default : throw CreateReadNotSupportedException();
 	}
 
-	/// <inheritdoc/>
-	protected override bool ComputeSupportsSynchronousRead() => false;
-
 	/// <summary>
 	/// Creates an error describing the unsupported read contract.
 	/// </summary>

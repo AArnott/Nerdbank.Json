@@ -389,11 +389,11 @@ public partial class CSharpUnionTests : TestBase
 	}
 
 	[Test, MatrixDataSource]
-	public async Task AsyncOnlyPayloadConverter(bool integerAlias)
+	public async Task CustomIntConverter_RoundtripsUnionPayload(bool integerAlias)
 	{
 		this.Serializer = this.Serializer with
 		{
-			Converters = [new AsyncOnlyIntConverter()],
+			Converters = [new CustomIntConverter()],
 			UnionTypeAliasProvider = integerAlias ? new UnionCaseMappingCollection([new(typeof(Scalar)) { { 7, typeof(int) } }]) : null,
 		};
 		using MemoryStream stream = new();
@@ -758,13 +758,14 @@ public partial class CSharpUnionTests : TestBase
 	[GenerateShapeFor<HashSet<Nested>>]
 	public partial class SetWitness;
 
-	private sealed class AsyncOnlyIntConverter : JsonConverter<int>
+	private sealed class CustomIntConverter : JsonConverter<int>
 	{
 		public override bool PreferAsyncSerialization => true;
 
-		public override int Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();
+		public override int Read(ref JsonReader reader, SerializationContext context)
+			=> int.Parse(reader.ReadNumberToken(), System.Globalization.CultureInfo.InvariantCulture);
 
-		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => throw new NotSupportedException();
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => writer.Write(value);
 
 		public override async ValueTask<int> ReadAsync(JsonAsyncReader reader, SerializationContext context)
 			=> int.Parse(await reader.ReadNumberTokenAsync(context), System.Globalization.CultureInfo.InvariantCulture);
@@ -776,8 +777,6 @@ public partial class CSharpUnionTests : TestBase
 			writer.ReturnWriter(ref syncWriter);
 			return writer.FlushIfAppropriateAsync(context);
 		}
-
-		protected override bool ComputeSupportsSynchronousRead() => false;
 	}
 
 	private sealed class CustomPayloadConverter : JsonConverter<CustomPayload>

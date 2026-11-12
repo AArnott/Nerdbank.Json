@@ -108,9 +108,6 @@ internal sealed class JsonMultidimensionalArrayConverter<TArray, TElement> : Jso
 		return (TArray)(object)array;
 	}
 
-	/// <inheritdoc/>
-	protected override bool ComputeSupportsSynchronousRead() => this.elementConverter.SupportsSynchronousRead;
-
 	private static string DescribeDimensions(int[] dimensions) => string.Join("x", dimensions);
 
 #if NET

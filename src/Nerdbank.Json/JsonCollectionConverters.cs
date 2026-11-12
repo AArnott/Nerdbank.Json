@@ -90,8 +90,6 @@ internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonCon
 		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
 	}
 
-	protected override bool ComputeSupportsSynchronousRead() => this.elementConverter.SupportsSynchronousRead;
-
 	private protected async ValueTask ReadArrayElementsAsync(JsonAsyncReader reader, SerializationContext context, Action<TElement> add)
 	{
 		await reader.ReadStartArrayAsync(context).ConfigureAwait(false);
@@ -339,8 +337,6 @@ internal abstract class JsonDictionaryConverter<TDictionary, TKey, TValue> : Jso
 		writer.ReturnWriter(ref syncWriter);
 		await writer.FlushIfAppropriateAsync(context).ConfigureAwait(false);
 	}
-
-	protected override bool ComputeSupportsSynchronousRead() => this.valueConverter.SupportsSynchronousRead;
 
 	private protected async ValueTask ReadObjectEntriesAsync(JsonAsyncReader reader, SerializationContext context, Action<string, TValue> add)
 	{
@@ -649,8 +645,6 @@ internal sealed class JsonListConverter<TCollection, TElement>(JsonConverter<TEl
 
 		return (TCollection)collection;
 	}
-
-	protected override bool ComputeSupportsSynchronousRead() => elementConverter.SupportsSynchronousRead;
 }
 
 internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValue>(ConverterCache owner, JsonConverter<TValue> valueConverter, Func<TDictionary> createDictionary) : JsonConverter<TDictionary>
@@ -791,6 +785,4 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 
 		return (TDictionary)dictionary;
 	}
-
-	protected override bool ComputeSupportsSynchronousRead() => valueConverter.SupportsSynchronousRead;
 }
