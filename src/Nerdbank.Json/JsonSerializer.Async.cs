@@ -877,7 +877,11 @@ public partial record JsonSerializer
 			if (this.drainCanceledFollowUp && !this.drainedCancellation && result.IsCanceled)
 			{
 				this.drainedCancellation = true;
-				cancellationToken.ThrowIfCancellationRequested();
+				if (cancellationToken.IsCancellationRequested)
+				{
+					this.ReleaseOutstanding(result.Buffer);
+					cancellationToken.ThrowIfCancellationRequested();
+				}
 
 				// The canceled read can be the one that delivered the rest of the value. Keep those bytes.
 				result = new ReadResult(result.Buffer, isCanceled: false, result.IsCompleted);

@@ -243,6 +243,24 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	}
 
 	[Test]
+	public async Task CallerCancel_OnSpeculativeFollowUp_ReleasesThePipe()
+	{
+		byte[] utf8 = """{"text":"hello"}"""u8.ToArray();
+		using CancellationTokenSource caller = new();
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+		using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(caller.Token, timeout.Token);
+		CompletingCancelPipeReader reader = new(utf8, caller);
+		JsonSerializer serializer = new() { MaxAsyncBuffer = 8 };
+
+		await Assert.ThrowsAsync<OperationCanceledException>(
+			() => serializer.DeserializeAsync(reader, Shape<TrackedValue>(), linked.Token).AsTask());
+
+		ReadResult remaining = await reader.ReadAsync(timeout.Token);
+		Assert.True(remaining.Buffer.Length > 0);
+		reader.AdvanceTo(remaining.Buffer.Start, remaining.Buffer.End);
+	}
+
+	[Test]
 	public async Task CanceledIncrementalRead_ReleasesThePipe()
 	{
 		byte[] utf8 = """{"text":"hello"}"""u8.ToArray();
@@ -812,15 +830,19 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	private sealed class CompletingCancelPipeReader : PipeReader
 	{
 		private readonly ReadOnlySequence<byte> buffer;
+		private readonly CancellationTokenSource? cancelOnSpeculativeFollowUp;
 		private SequencePosition consumed;
+		private SequencePosition examined;
 		private int reads;
 		private bool expectAdvance;
 		private TaskCompletionSource<ReadResult>? pending;
 
-		internal CompletingCancelPipeReader(byte[] payload)
+		internal CompletingCancelPipeReader(byte[] payload, CancellationTokenSource? cancelOnSpeculativeFollowUp = null)
 		{
 			this.buffer = new ReadOnlySequence<byte>(payload);
+			this.cancelOnSpeculativeFollowUp = cancelOnSpeculativeFollowUp;
 			this.consumed = this.buffer.Start;
+			this.examined = this.buffer.Start;
 		}
 
 		public override void AdvanceTo(SequencePosition consumed) => this.AdvanceTo(consumed, consumed);
@@ -829,12 +851,19 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 		{
 			long consumedIndex = this.buffer.Slice(0, consumed).Length;
 			long examinedIndex = this.buffer.Slice(0, examined).Length;
+			long previousExamined = this.buffer.Slice(0, this.examined).Length;
+			if (examinedIndex < previousExamined)
+			{
+				throw new InvalidOperationException("The examined position cannot be earlier than the previously examined position.");
+			}
+
 			if (consumedIndex > examinedIndex)
 			{
 				throw new InvalidOperationException("The consumed position cannot be later than the examined position.");
 			}
 
 			this.consumed = consumed;
+			this.examined = examined;
 			this.expectAdvance = false;
 		}
 
@@ -870,10 +899,17 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 
 			if (this.reads == 4)
 			{
+				this.cancelOnSpeculativeFollowUp?.Cancel();
 				return new ValueTask<ReadResult>(this.Slice(this.buffer.Length, isCanceled: true));
 			}
 
-			return new ValueTask<ReadResult>(WaitAsync(cancellationToken));
+			long examinedIndex = this.buffer.Slice(0, this.examined).Length;
+			if (examinedIndex >= this.buffer.Length)
+			{
+				return new ValueTask<ReadResult>(WaitAsync(cancellationToken));
+			}
+
+			return new ValueTask<ReadResult>(this.Slice(this.buffer.Length, isCanceled: false));
 
 			static async Task<ReadResult> WaitAsync(CancellationToken cancellationToken)
 			{
