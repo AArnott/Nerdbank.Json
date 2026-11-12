@@ -287,6 +287,23 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	}
 
 	[Test]
+	public async Task ObjectSyncReadFailure_RacedBuffer_RemainsReadable()
+	{
+		byte[] utf8 = """{"text":"hello"}"""u8.ToArray();
+		TrailingValueRacePipeReader reader = new(utf8);
+		JsonSerializer failing = new() { Converters = [new ThrowBeforeReadConverter()] };
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(
+			() => failing.DeserializeObjectAsync(reader, Shape<TrackedValue>(), timeout.Token).AsTask());
+
+		Assert.IsType<NotSupportedException>(exception.InnerException);
+
+		object? value = await new JsonSerializer().DeserializeObjectAsync(reader, Shape<TrackedValue>(), timeout.Token);
+		Assert.Equal("hello", Assert.IsType<TrackedValue>(value).Text);
+	}
+
+	[Test]
 	public async Task SpeculativeCancel_TrailingBufferedValue_StaysReadable()
 	{
 		byte[] utf8 = """{"text":"one"}{"text":"two"}"""u8.ToArray();
@@ -648,7 +665,7 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	/// <summary>
 	/// Serves one byte, then a canceled in-flight read that already holds every byte.
 	/// The following read is the one-shot cancellation and contains only the bytes that have not been consumed.
-	/// A later read blocks once every buffered byte has been consumed.
+	/// A later read blocks once every buffered byte has been examined.
 	/// </summary>
 	private sealed class TrailingValueRacePipeReader : PipeReader
 	{
@@ -710,8 +727,8 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 				return new ValueTask<ReadResult>(this.secondRead.Task);
 			}
 
-			long consumedIndex = this.buffer.Slice(0, this.consumed).Length;
-			if (this.reads > 3 && consumedIndex >= this.buffer.Length)
+			long examinedIndex = this.buffer.Slice(0, this.examined).Length;
+			if (this.reads > 3 && examinedIndex >= this.buffer.Length)
 			{
 				return new ValueTask<ReadResult>(WaitAsync(cancellationToken));
 			}

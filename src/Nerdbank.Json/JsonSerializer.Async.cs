@@ -270,6 +270,21 @@ public partial record JsonSerializer
 		}
 	}
 
+	private static SequencePosition PositionAt(ReadOnlySequence<byte> buffer, long offset)
+	{
+		if (offset <= 0)
+		{
+			return buffer.Start;
+		}
+
+		if (offset >= buffer.Length)
+		{
+			return buffer.End;
+		}
+
+		return buffer.GetPosition(offset);
+	}
+
 	private static async ValueTask CompleteStreamSerializationAsync(PipeWriter writer, ValueTask operation, CancellationToken cancellationToken)
 	{
 		try
@@ -320,9 +335,10 @@ public partial record JsonSerializer
 				&& this.PreserveReferences != ReferencePreservationMode.AllowCycles)
 			{
 				bool readFailed = true;
+				long unconsumedExamined = 0;
 				try
 				{
-					T? bufferedResult = this.ReadBuffered(reader, buffered.Buffer, shape, context, requireFullyConsumed, plan.ExaminedFloor);
+					T? bufferedResult = this.ReadBuffered(reader, buffered.Buffer, shape, context, requireFullyConsumed, plan.ExaminedFloor, out unconsumedExamined);
 					readFailed = false;
 					return bufferedResult;
 				}
@@ -330,7 +346,7 @@ public partial record JsonSerializer
 				{
 					if (plan.DrainSpeculativeCancellation)
 					{
-						await this.ReleaseSpeculativeCancellationAsync(reader, context, readFailed).ConfigureAwait(false);
+						await this.ReleaseSpeculativeCancellationAsync(reader, context, readFailed ? unconsumedExamined : 0).ConfigureAwait(false);
 					}
 				}
 			}
@@ -588,7 +604,7 @@ public partial record JsonSerializer
 
 		if (plan.DrainSpeculativeCancellation)
 		{
-			await this.ReleaseSpeculativeCancellationAsync(reader, context, preserveExamined: false).ConfigureAwait(false);
+			await this.ReleaseSpeculativeCancellationAsync(reader, context, examinedOffset: 0).ConfigureAwait(false);
 		}
 
 		return reader;
@@ -599,11 +615,12 @@ public partial record JsonSerializer
 	/// </summary>
 	/// <param name="reader">The pipe whose next read may be canceled.</param>
 	/// <param name="context">The active serialization context.</param>
-	/// <param name="preserveExamined">
-	/// <see langword="true"/> when the buffered read failed before consuming the prefix, so examined must not move backward.
+	/// <param name="examinedOffset">
+	/// The number of bytes at the start of the follow-up that were already examined. Bytes beyond this offset stay
+	/// unexamined so a later read can observe them without waiting for more input.
 	/// </param>
 	/// <returns>A task that completes when that read has been released.</returns>
-	private async ValueTask ReleaseSpeculativeCancellationAsync(PipeReader reader, SerializationContext context, bool preserveExamined)
+	private async ValueTask ReleaseSpeculativeCancellationAsync(PipeReader reader, SerializationContext context, long examinedOffset)
 	{
 		ValueTask<ReadResult> pending = reader.ReadAsync(context.CancellationToken);
 		if (!pending.IsCompleted)
@@ -613,13 +630,13 @@ public partial record JsonSerializer
 
 		ReadResult followUp = await pending.ConfigureAwait(false);
 		context.CancellationToken.ThrowIfCancellationRequested();
-		SequencePosition examined = preserveExamined ? followUp.Buffer.End : followUp.Buffer.Start;
-		reader.AdvanceTo(followUp.Buffer.Start, examined);
+		reader.AdvanceTo(followUp.Buffer.Start, PositionAt(followUp.Buffer, examinedOffset));
 	}
 
-	private T? ReadBuffered<T>(PipeReader reader, ReadOnlySequence<byte> utf8Json, ITypeShape<T> shape, SerializationContext context, bool requireFullyConsumed, long examinedFloor)
+	private T? ReadBuffered<T>(PipeReader reader, ReadOnlySequence<byte> utf8Json, ITypeShape<T> shape, SerializationContext context, bool requireFullyConsumed, long examinedFloor, out long unconsumedExamined)
 	{
 		SequencePosition consumed = utf8Json.Start;
+		unconsumedExamined = 0;
 		try
 		{
 			JsonReader jsonReader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
@@ -635,13 +652,14 @@ public partial record JsonSerializer
 		}
 		finally
 		{
-			this.AdvanceBufferedRead(reader, utf8Json, consumed, examinedFloor);
+			unconsumedExamined = this.AdvanceBufferedRead(reader, utf8Json, consumed, examinedFloor);
 		}
 	}
 
-	private object? ReadBufferedObject(PipeReader reader, ReadOnlySequence<byte> utf8Json, ITypeShape shape, SerializationContext context, bool requireFullyConsumed, long examinedFloor)
+	private object? ReadBufferedObject(PipeReader reader, ReadOnlySequence<byte> utf8Json, ITypeShape shape, SerializationContext context, bool requireFullyConsumed, long examinedFloor, out long unconsumedExamined)
 	{
 		SequencePosition consumed = utf8Json.Start;
+		unconsumedExamined = 0;
 		try
 		{
 			JsonReader jsonReader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
@@ -657,13 +675,14 @@ public partial record JsonSerializer
 		}
 		finally
 		{
-			this.AdvanceBufferedRead(reader, utf8Json, consumed, examinedFloor);
+			unconsumedExamined = this.AdvanceBufferedRead(reader, utf8Json, consumed, examinedFloor);
 		}
 	}
 
-	private JsonValue? ReadBufferedJsonValue(PipeReader reader, ReadOnlySequence<byte> utf8Json, SerializationContext context, bool requireFullyConsumed, long examinedFloor)
+	private JsonValue? ReadBufferedJsonValue(PipeReader reader, ReadOnlySequence<byte> utf8Json, SerializationContext context, bool requireFullyConsumed, long examinedFloor, out long unconsumedExamined)
 	{
 		SequencePosition consumed = utf8Json.Start;
+		unconsumedExamined = 0;
 		try
 		{
 			JsonReader jsonReader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
@@ -679,20 +698,23 @@ public partial record JsonSerializer
 		}
 		finally
 		{
-			this.AdvanceBufferedRead(reader, utf8Json, consumed, examinedFloor);
+			unconsumedExamined = this.AdvanceBufferedRead(reader, utf8Json, consumed, examinedFloor);
 		}
 	}
 
-	private void AdvanceBufferedRead(PipeReader reader, ReadOnlySequence<byte> utf8Json, SequencePosition consumed, long examinedFloor)
+	private long AdvanceBufferedRead(PipeReader reader, ReadOnlySequence<byte> utf8Json, SequencePosition consumed, long examinedFloor)
 	{
 		SequencePosition examined = consumed;
 		long consumedLength = utf8Json.Slice(0, consumed).Length;
+		long unconsumedExamined = 0;
 		if (consumedLength < examinedFloor && examinedFloor <= utf8Json.Length)
 		{
 			examined = utf8Json.GetPosition(examinedFloor);
+			unconsumedExamined = examinedFloor - consumedLength;
 		}
 
 		reader.AdvanceTo(consumed, examined);
+		return unconsumedExamined;
 	}
 
 	private readonly struct AsyncBufferPlan
@@ -804,7 +826,7 @@ public partial record JsonSerializer
 			if (this.pending is { } buffered)
 			{
 				this.pending = null;
-				SequencePosition examined = PositionAt(buffered.Buffer, this.examinedLength);
+				SequencePosition examined = JsonSerializer.PositionAt(buffered.Buffer, this.examinedLength);
 				this.inner.AdvanceTo(buffered.Buffer.Start, examined);
 				this.consumedLength = 0;
 			}
@@ -830,22 +852,7 @@ public partial record JsonSerializer
 
 			// The follow-up starts at the consumed cursor. Examining only the prefix the parser already
 			// saw leaves a later value in this buffer readable by the caller.
-			this.inner.AdvanceTo(followUp.Buffer.Start, PositionAt(followUp.Buffer, alreadyExamined));
-		}
-
-		private static SequencePosition PositionAt(ReadOnlySequence<byte> buffer, long offset)
-		{
-			if (offset <= 0)
-			{
-				return buffer.Start;
-			}
-
-			if (offset >= buffer.Length)
-			{
-				return buffer.End;
-			}
-
-			return buffer.GetPosition(offset);
+			this.inner.AdvanceTo(followUp.Buffer.Start, JsonSerializer.PositionAt(followUp.Buffer, alreadyExamined));
 		}
 
 		private void Remember(ReadOnlySequence<byte> buffer, long origin, SequencePosition consumed, SequencePosition examined)

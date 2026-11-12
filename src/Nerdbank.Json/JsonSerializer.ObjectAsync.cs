@@ -165,9 +165,10 @@ public partial record JsonSerializer
 				&& this.PreserveReferences != ReferencePreservationMode.AllowCycles)
 			{
 				bool readFailed = true;
+				long unconsumedExamined = 0;
 				try
 				{
-					object? bufferedResult = this.ReadBufferedObject(reader, buffered.Buffer, shape, context, requireFullyConsumed, plan.ExaminedFloor);
+					object? bufferedResult = this.ReadBufferedObject(reader, buffered.Buffer, shape, context, requireFullyConsumed, plan.ExaminedFloor, out unconsumedExamined);
 					readFailed = false;
 					return bufferedResult;
 				}
@@ -175,7 +176,7 @@ public partial record JsonSerializer
 				{
 					if (plan.DrainSpeculativeCancellation)
 					{
-						await this.ReleaseSpeculativeCancellationAsync(reader, context, readFailed).ConfigureAwait(false);
+						await this.ReleaseSpeculativeCancellationAsync(reader, context, readFailed ? unconsumedExamined : 0).ConfigureAwait(false);
 					}
 				}
 			}
