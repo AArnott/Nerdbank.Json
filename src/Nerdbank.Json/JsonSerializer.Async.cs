@@ -315,7 +315,7 @@ public partial record JsonSerializer
 		try
 		{
 			AsyncBufferPlan plan = await this.TryBufferWithinMaxAsyncBufferAsync(reader, context, requireFullyConsumed).ConfigureAwait(false);
-			if (plan.Synchronous is { } buffered)
+			if (plan.Synchronous is { } buffered && this.PreserveReferences != ReferencePreservationMode.AllowCycles)
 			{
 				try
 				{
@@ -323,8 +323,21 @@ public partial record JsonSerializer
 				}
 				catch (NotSupportedException)
 				{
-					// A converter supports only the incremental reader. The buffered read was released at its start.
+					// A converter supports only the incremental reader. Drop any partial reference or interning state
+					// before that reader runs, so the retry is not rejected as a duplicate reference.
+					context = context.Start(this, this.ConverterCache, context.CancellationToken);
 				}
+				finally
+				{
+					if (plan.DrainSpeculativeCancellation)
+					{
+						await this.ReleaseSpeculativeCancellationAsync(reader, context).ConfigureAwait(false);
+					}
+				}
+			}
+			else
+			{
+				await this.ReleaseUnusedBufferedReadAsync(reader, plan, context).ConfigureAwait(false);
 			}
 
 			using JsonAsyncReader asyncReader = new(plan.Reader ?? reader, this.AllowTrailingCommas, this.ReadCommentHandling)
@@ -372,6 +385,10 @@ public partial record JsonSerializer
 			JsonStructureScanner scanner = default;
 			scanner.Reset(preserveBomState: true);
 			long scanned = 0;
+
+			// Framing counts JSON containers, including reference envelopes that do not consume converter graph depth.
+			// Leave MaxDepth enforcement to deserialization.
+			SerializationContext framing = context with { MaxDepth = int.MaxValue };
 			while (true)
 			{
 				if (readResult.IsCanceled)
@@ -380,7 +397,7 @@ public partial record JsonSerializer
 					throw new OperationCanceledException(context.CancellationToken);
 				}
 
-				if (readResult.IsCompleted || (!requireFullyConsumed && ScanAdditional(readResult.Buffer, ref scanner, ref scanned, context)))
+				if (IsSynchronousCandidate(readResult))
 				{
 					outstanding = false;
 					return new AsyncBufferPlan(readResult);
@@ -402,14 +419,23 @@ public partial record JsonSerializer
 				if (!pending.IsCompleted)
 				{
 					// Waiting here would stall a caller that writes the rest of the value only after parsing starts.
-					// CancelPendingRead on a stream reader can also mark the following read canceled, so clear that
-					// one-shot result before continuing. A pipe reports the canceled read itself and keeps the prefix.
+					// CancelPendingRead on a stream reader can also mark the following read canceled.
 					reader.CancelPendingRead();
 					readResult = await pending.ConfigureAwait(false);
 					outstanding = true;
 					context.CancellationToken.ThrowIfCancellationRequested();
 					if (!readResult.IsCanceled)
 					{
+						if (IsSynchronousCandidate(readResult))
+						{
+							// The in-flight read won and already holds a usable value. Return it before another read,
+							// and let the caller drain the one-shot cancellation without waiting for more bytes.
+							outstanding = false;
+							return new AsyncBufferPlan(readResult, drainSpeculativeCancellation: true);
+						}
+
+						// The value is still incomplete. Drain the one-shot cancellation, then keep the bytes
+						// that are already buffered. This matches the previous stream-reader recovery path.
 						reader.AdvanceTo(readResult.Buffer.Start, readResult.Buffer.End);
 						outstanding = false;
 						ReadResult followUp = await reader.ReadAsync(context.CancellationToken).ConfigureAwait(false);
@@ -429,7 +455,7 @@ public partial record JsonSerializer
 						continue;
 					}
 
-					if (readResult.IsCompleted || (!requireFullyConsumed && ScanAdditional(readResult.Buffer, ref scanner, ref scanned, context)))
+					if (IsSynchronousCandidate(readResult))
 					{
 						outstanding = false;
 						return new AsyncBufferPlan(readResult);
@@ -454,6 +480,21 @@ public partial record JsonSerializer
 					outstanding = false;
 					return default;
 				}
+			}
+
+			bool IsSynchronousCandidate(ReadResult result)
+			{
+				if (result.IsCompleted)
+				{
+					return true;
+				}
+
+				if (requireFullyConsumed)
+				{
+					return false;
+				}
+
+				return ScanAdditional(result.Buffer, ref scanner, ref scanned, framing) && scanned <= this.MaxAsyncBuffer;
 			}
 		}
 		finally
@@ -496,6 +537,45 @@ public partial record JsonSerializer
 			buffer.CopyTo(copy);
 			return copy;
 		}
+	}
+
+	/// <summary>
+	/// Releases a buffered read that will not be consumed synchronously, including a one-shot cancellation from <see cref="PipeReader.CancelPendingRead"/>.
+	/// </summary>
+	/// <param name="reader">The pipe that owns the buffered read.</param>
+	/// <param name="plan">The buffering plan.</param>
+	/// <param name="context">The active serialization context.</param>
+	/// <returns>A task that completes when the unused read has been released.</returns>
+	private async ValueTask ReleaseUnusedBufferedReadAsync(PipeReader reader, AsyncBufferPlan plan, SerializationContext context)
+	{
+		if (plan.Synchronous is { } buffered)
+		{
+			reader.AdvanceTo(buffered.Buffer.Start);
+		}
+
+		if (plan.DrainSpeculativeCancellation)
+		{
+			await this.ReleaseSpeculativeCancellationAsync(reader, context).ConfigureAwait(false);
+		}
+	}
+
+	/// <summary>
+	/// Observes the read that follows a speculative <see cref="PipeReader.CancelPendingRead"/> without consuming its bytes.
+	/// </summary>
+	/// <param name="reader">The pipe whose next read may be canceled.</param>
+	/// <param name="context">The active serialization context.</param>
+	/// <returns>A task that completes when that read has been released.</returns>
+	private async ValueTask ReleaseSpeculativeCancellationAsync(PipeReader reader, SerializationContext context)
+	{
+		ValueTask<ReadResult> pending = reader.ReadAsync(context.CancellationToken);
+		if (!pending.IsCompleted)
+		{
+			reader.CancelPendingRead();
+		}
+
+		ReadResult followUp = await pending.ConfigureAwait(false);
+		context.CancellationToken.ThrowIfCancellationRequested();
+		reader.AdvanceTo(followUp.Buffer.Start);
 	}
 
 	private T? ReadBuffered<T>(PipeReader reader, ReadOnlySequence<byte> utf8Json, ITypeShape<T> shape, SerializationContext context, bool requireFullyConsumed)
@@ -566,13 +646,19 @@ public partial record JsonSerializer
 
 	private readonly struct AsyncBufferPlan
 	{
-		internal AsyncBufferPlan(ReadResult synchronous) => this.Synchronous = synchronous;
+		internal AsyncBufferPlan(ReadResult synchronous, bool drainSpeculativeCancellation = false)
+		{
+			this.Synchronous = synchronous;
+			this.DrainSpeculativeCancellation = drainSpeculativeCancellation;
+		}
 
 		internal AsyncBufferPlan(PipeReader reader) => this.Reader = reader;
 
 		internal ReadResult? Synchronous { get; }
 
 		internal PipeReader? Reader { get; }
+
+		internal bool DrainSpeculativeCancellation { get; }
 	}
 
 	/// <summary>

@@ -219,7 +219,7 @@ public partial record JsonSerializer
 		try
 		{
 			AsyncBufferPlan plan = await this.TryBufferWithinMaxAsyncBufferAsync(reader, context, requireFullyConsumed).ConfigureAwait(false);
-			if (plan.Synchronous is { } buffered)
+			if (plan.Synchronous is { } buffered && this.PreserveReferences != ReferencePreservationMode.AllowCycles)
 			{
 				try
 				{
@@ -227,8 +227,21 @@ public partial record JsonSerializer
 				}
 				catch (NotSupportedException)
 				{
-					// A converter supports only the incremental reader. The buffered read was released at its start.
+					// A converter supports only the incremental reader. Drop any partial reference or interning state
+					// before that reader runs, so the retry is not rejected as a duplicate reference.
+					context = context.Start(this, this.ConverterCache, context.CancellationToken);
 				}
+				finally
+				{
+					if (plan.DrainSpeculativeCancellation)
+					{
+						await this.ReleaseSpeculativeCancellationAsync(reader, context).ConfigureAwait(false);
+					}
+				}
+			}
+			else
+			{
+				await this.ReleaseUnusedBufferedReadAsync(reader, plan, context).ConfigureAwait(false);
 			}
 
 			using JsonAsyncReader asyncReader = new(plan.Reader ?? reader, this.AllowTrailingCommas, this.ReadCommentHandling)

@@ -94,6 +94,84 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	}
 
 	[Test]
+	public async Task OpenPipe_CompleteValueBeyondCap_UsesIncrementalReader()
+	{
+		byte[] utf8 = """{"text":"hello"}"""u8.ToArray();
+		CountingConverter converter = new();
+		JsonSerializer serializer = new()
+		{
+			MaxAsyncBuffer = 1,
+			Converters = [converter],
+		};
+		Pipe pipe = new();
+		await pipe.Writer.WriteAsync(utf8);
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+
+		TrackedValue? value = await serializer.DeserializeAsync(pipe.Reader, Shape<TrackedValue>(), timeout.Token);
+
+		Assert.Equal("hello", value!.Text);
+		Assert.Equal(1, converter.AsyncReads);
+		await pipe.Writer.CompleteAsync();
+		await pipe.Reader.CompleteAsync();
+	}
+
+	[Test]
+	public async Task SpeculativeCancel_CompletedValue_DoesNotWaitForMoreData()
+	{
+		byte[] utf8 = """{"text":"hello"}"""u8.ToArray();
+		CancelRacePipeReader reader = new(utf8);
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+
+		TrackedValue? value = await new JsonSerializer().DeserializeAsync(reader, Shape<TrackedValue>(), timeout.Token);
+
+		Assert.Equal("hello", value!.Text);
+		Assert.Equal(3, reader.Reads);
+	}
+
+	[Test]
+	public async Task OpenPipe_ReferenceEnvelope_UsesConverterDepth()
+	{
+		JsonSerializer serializer = new()
+		{
+			PreserveReferences = ReferencePreservationMode.AllowCycles,
+			StartingContext = new SerializationContext { MaxDepth = 1 },
+		};
+		string json = serializer.Serialize(new NamedValue { Name = "a" }, Shape<NamedValue>());
+		Pipe pipe = new();
+		await pipe.Writer.WriteAsync(Encoding.UTF8.GetBytes(json));
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+
+		NamedValue? value = await serializer.DeserializeAsync(pipe.Reader, Shape<NamedValue>(), timeout.Token);
+
+		Assert.Equal("a", value!.Name);
+		await pipe.Writer.CompleteAsync();
+		await pipe.Reader.CompleteAsync();
+	}
+
+	[Test]
+	public async Task AllowCycles_AsyncOnlyChild_IsNotRejectedAsDuplicateReference()
+	{
+		AsyncOnlyIntConverter converter = new();
+		JsonSerializer serializer = new()
+		{
+			PreserveReferences = ReferencePreservationMode.AllowCycles,
+			Converters = [converter],
+		};
+		byte[] utf8 = """{"$id":1,"$value":{"child":4}}"""u8.ToArray();
+		Pipe pipe = new();
+		await pipe.Writer.WriteAsync(utf8);
+		await pipe.Writer.CompleteAsync();
+
+		Parent? value = await serializer.DeserializeAsync(pipe.Reader, Shape<Parent>());
+		object? untyped = await serializer.DeserializeObjectAsync(PipeReader.Create(new ReadOnlySequence<byte>(utf8)), Shape<Parent>());
+
+		Assert.Equal(4, value!.Child);
+		Assert.Equal(4, Assert.IsType<Parent>(untyped).Child);
+		Assert.Equal(0, converter.SynchronousReads);
+		Assert.Equal(2, converter.AsynchronousReads);
+	}
+
+	[Test]
 	public async Task IncompletePipe_ReturnsFirstValueWithoutFillingTheCap()
 	{
 		Pipe pipe = new();
@@ -114,6 +192,18 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 
 	[GenerateShape]
 	internal partial record TrackedValue(string Text);
+
+	[GenerateShape]
+	internal partial class NamedValue
+	{
+		public string? Name { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial class Parent
+	{
+		public int Child { get; set; }
+	}
 
 	private sealed class CountingConverter : JsonConverter<TrackedValue>
 	{
@@ -188,6 +278,92 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 			ReadOnlySequence<byte> chunk = this.buffer.Slice(this.consumed, chunkEnd);
 			this.expectAdvance = true;
 			return new ValueTask<ReadResult>(new ReadResult(chunk, isCanceled: false, endIndex == this.buffer.Length));
+		}
+
+		public override bool TryRead(out ReadResult result) => throw new NotSupportedException();
+	}
+
+	private sealed class AsyncOnlyIntConverter : JsonConverter<int>
+	{
+		public override bool PreferAsyncSerialization => true;
+
+		internal int SynchronousReads { get; private set; }
+
+		internal int AsynchronousReads { get; private set; }
+
+		public override int Read(ref JsonReader reader, SerializationContext context)
+		{
+			this.SynchronousReads++;
+			throw new NotSupportedException();
+		}
+
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => writer.Write(value);
+
+		public override async ValueTask<int> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+		{
+			this.AsynchronousReads++;
+			return int.Parse(await reader.ReadNumberTokenAsync(context), System.Globalization.CultureInfo.InvariantCulture);
+		}
+	}
+
+	/// <summary>
+	/// Completes an in-flight read with a full value when that read is canceled, then reports the next read as canceled.
+	/// A further read waits until the caller's cancellation token fires.
+	/// </summary>
+	private sealed class CancelRacePipeReader : PipeReader
+	{
+		private readonly byte[] payload;
+		private int reads;
+		private bool expectAdvance;
+		private TaskCompletionSource<ReadResult>? secondRead;
+
+		internal CancelRacePipeReader(byte[] payload) => this.payload = payload;
+
+		internal int Reads => this.reads;
+
+		public override void AdvanceTo(SequencePosition consumed) => this.AdvanceTo(consumed, consumed);
+
+		public override void AdvanceTo(SequencePosition consumed, SequencePosition examined) => this.expectAdvance = false;
+
+		public override void CancelPendingRead()
+			=> this.secondRead?.TrySetResult(new ReadResult(new ReadOnlySequence<byte>(this.payload), isCanceled: false, isCompleted: false));
+
+		public override void Complete(Exception? exception = null)
+		{
+		}
+
+		public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
+		{
+			if (this.expectAdvance)
+			{
+				throw new InvalidOperationException("AdvanceTo was not called.");
+			}
+
+			this.reads++;
+			this.expectAdvance = true;
+			if (this.reads == 1)
+			{
+				return new ValueTask<ReadResult>(new ReadResult(new ReadOnlySequence<byte>(this.payload, 0, 1), isCanceled: false, isCompleted: false));
+			}
+
+			if (this.reads == 2)
+			{
+				this.secondRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+				return new ValueTask<ReadResult>(this.secondRead.Task);
+			}
+
+			if (this.reads == 3)
+			{
+				return new ValueTask<ReadResult>(new ReadResult(new ReadOnlySequence<byte>(this.payload), isCanceled: true, isCompleted: false));
+			}
+
+			return new ValueTask<ReadResult>(WaitAsync(cancellationToken));
+
+			static async Task<ReadResult> WaitAsync(CancellationToken cancellationToken)
+			{
+				await Task.Delay(Timeout.Infinite, cancellationToken);
+				return new ReadResult(ReadOnlySequence<byte>.Empty, isCanceled: true, isCompleted: false);
+			}
 		}
 
 		public override bool TryRead(out ReadResult result) => throw new NotSupportedException();

@@ -49,6 +49,26 @@ public partial class JsonSerializationCallbackTests : TestBase
 	}
 
 	[Test]
+	public void MutableStruct_CallbackMutations_AreCopiedBack()
+	{
+		PreparedStruct value = this.Serializer.Deserialize<PreparedStruct>("""{"value":3}""");
+
+		Assert.Equal(3, value.Value);
+		Assert.Equal(10, value.Seed);
+	}
+
+	[Test]
+	public async Task MutableStruct_CallbackMutations_AreCopiedBack_Async()
+	{
+		JsonSerializer serializer = this.Serializer with { MaxAsyncBuffer = 0 };
+		PipeReader reader = PipeReader.Create(new ReadOnlySequence<byte>("""{"value":3}"""u8.ToArray()));
+		PreparedStruct value = await serializer.DeserializeAsync<PreparedStruct>(reader);
+
+		Assert.Equal(3, value.Value);
+		Assert.Equal(10, value.Seed);
+	}
+
+	[Test]
 	public void OnAfterSerialize_DoesNotChangeWrittenJson()
 	{
 		OrderedCallbackObject value = new() { Name = "Ada" };
@@ -174,6 +194,26 @@ public partial class JsonSerializationCallbackTests : TestBase
 		JsonSerializationException actual = Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize(value));
 
 		Assert.Same(expected, actual.InnerException);
+	}
+
+	[GenerateShape]
+	internal partial struct PreparedStruct : IJsonSerializationCallbacks
+	{
+		public int Value { get; set; }
+
+		internal int Seed { get; private set; }
+
+		public void OnBeforeSerialize()
+		{
+		}
+
+		public void OnAfterSerialize()
+		{
+		}
+
+		public void OnBeforeDeserialize() => this.Seed = 7;
+
+		public void OnAfterDeserialize() => this.Seed += this.Value;
 	}
 
 	[GenerateShape]
