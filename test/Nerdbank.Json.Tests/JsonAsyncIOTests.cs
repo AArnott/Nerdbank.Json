@@ -645,9 +645,9 @@ public partial class JsonAsyncIOTests : TestBase
 
 		public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 
-		public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+		public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
 		{
-			if (this.position >= data.Length || buffer.Length == 0)
+			if (this.position >= data.Length || count == 0)
 			{
 				return 0;
 			}
@@ -661,7 +661,7 @@ public partial class JsonAsyncIOTests : TestBase
 				return 0;
 			}
 
-			buffer.Span[0] = data[this.position++];
+			buffer[offset] = data[this.position++];
 			return 1;
 		}
 
