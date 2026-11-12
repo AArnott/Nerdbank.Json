@@ -4,6 +4,8 @@ do-not-warn-for-redirect-to = [
     "https://dev.azure.com/*",
     "https://app.codecov.io/*",
 ]
+# DocFX xref links and alert syntax are not Markdown links mlc can resolve.
+ignore-path = ["docfx"]
 ignore-links = [
     "https://www.npmjs.com/package/*",
     "https://get.dot.net/",
