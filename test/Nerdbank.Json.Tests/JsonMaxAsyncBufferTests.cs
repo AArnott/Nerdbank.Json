@@ -270,6 +270,38 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	}
 
 	[Test]
+	public async Task ReadAsyncThrowsBeforeRead_ReleasesOutstandingBuffer()
+	{
+		byte[] utf8 = """{"text":"hello"}"""u8.ToArray();
+		TrailingValueRacePipeReader reader = new(utf8);
+		JsonSerializer failing = new() { Converters = [new ThrowBeforeReadConverter()] };
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(
+			() => failing.DeserializeAsync(reader, Shape<TrackedValue>(), timeout.Token).AsTask());
+
+		Assert.IsType<NotSupportedException>(exception.InnerException);
+
+		TrackedValue? value = await new JsonSerializer().DeserializeAsync(reader, Shape<TrackedValue>(), timeout.Token);
+		Assert.Equal("hello", value!.Text);
+	}
+
+	[Test]
+	public async Task SpeculativeCancel_TrailingBufferedValue_StaysReadable()
+	{
+		byte[] utf8 = """{"text":"one"}{"text":"two"}"""u8.ToArray();
+		TrailingValueRacePipeReader reader = new(utf8);
+		JsonSerializer serializer = new() { Converters = [new SyncUnsupportedTrackedConverter()] };
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+
+		TrackedValue? first = await serializer.DeserializeAsync(reader, Shape<TrackedValue>(), timeout.Token);
+		TrackedValue? second = await serializer.DeserializeAsync(reader, Shape<TrackedValue>(), timeout.Token);
+
+		Assert.Equal("one", first!.Text);
+		Assert.Equal("two", second!.Text);
+	}
+
+	[Test]
 	public async Task NestedAsyncOnly_WithoutPreferAsync_UsesReadAsync()
 	{
 		SyncUnsupportedIntConverter converter = new();
@@ -497,6 +529,20 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 		protected override bool ComputeSupportsSynchronousRead() => false;
 	}
 
+	private sealed class ThrowBeforeReadConverter : JsonConverter<TrackedValue>
+	{
+		public override void Write(ref JsonWriter writer, in TrackedValue? value, SerializationContext context)
+			=> writer.Write(value!.Text);
+
+		public override TrackedValue? Read(ref JsonReader reader, SerializationContext context)
+			=> throw new NotSupportedException();
+
+		public override ValueTask<TrackedValue?> ReadAsync(JsonAsyncReader reader, SerializationContext context)
+			=> throw new NotSupportedException("before read");
+
+		protected override bool ComputeSupportsSynchronousRead() => false;
+	}
+
 	/// <summary>
 	/// Completes an in-flight read with a full value when that read is canceled, then reports the next read as canceled.
 	/// A further read waits until the caller's cancellation token fires.
@@ -602,5 +648,99 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 		}
 
 		public override bool TryRead(out ReadResult result) => throw new NotSupportedException();
+	}
+
+	/// <summary>
+	/// Serves one byte, then a canceled in-flight read that already holds every byte.
+	/// The following read is the one-shot cancellation and contains only the bytes that have not been consumed.
+	/// A later read blocks once every buffered byte has been examined.
+	/// </summary>
+	private sealed class TrailingValueRacePipeReader : PipeReader
+	{
+		private readonly ReadOnlySequence<byte> buffer;
+		private SequencePosition consumed;
+		private SequencePosition examined;
+		private int reads;
+		private bool expectAdvance;
+		private TaskCompletionSource<ReadResult>? secondRead;
+
+		internal TrailingValueRacePipeReader(byte[] payload)
+		{
+			this.buffer = new ReadOnlySequence<byte>(payload);
+			this.consumed = this.buffer.Start;
+			this.examined = this.buffer.Start;
+		}
+
+		public override void AdvanceTo(SequencePosition consumed) => this.AdvanceTo(consumed, consumed);
+
+		public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
+		{
+			long consumedIndex = this.buffer.Slice(0, consumed).Length;
+			long examinedIndex = this.buffer.Slice(0, examined).Length;
+			long previousExamined = this.buffer.Slice(0, this.examined).Length;
+			if (examinedIndex < previousExamined)
+			{
+				throw new InvalidOperationException("The examined position cannot be earlier than the previously examined position.");
+			}
+
+			if (consumedIndex > examinedIndex)
+			{
+				throw new InvalidOperationException("The consumed position cannot be later than the examined position.");
+			}
+
+			this.consumed = consumed;
+			this.examined = examined;
+			this.expectAdvance = false;
+		}
+
+		public override void CancelPendingRead()
+			=> this.secondRead?.TrySetResult(this.CreateResult(isCanceled: false));
+
+		public override void Complete(Exception? exception = null)
+		{
+		}
+
+		public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
+		{
+			if (this.expectAdvance)
+			{
+				throw new InvalidOperationException("AdvanceTo was not called.");
+			}
+
+			this.reads++;
+			if (this.reads == 2)
+			{
+				this.secondRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+				this.expectAdvance = true;
+				return new ValueTask<ReadResult>(this.secondRead.Task);
+			}
+
+			long examinedIndex = this.buffer.Slice(0, this.examined).Length;
+			if (this.reads > 3 && examinedIndex >= this.buffer.Length)
+			{
+				return new ValueTask<ReadResult>(WaitAsync(cancellationToken));
+			}
+
+			return new ValueTask<ReadResult>(this.CreateResult(isCanceled: this.reads == 3));
+
+			static async Task<ReadResult> WaitAsync(CancellationToken cancellationToken)
+			{
+				await Task.Delay(Timeout.Infinite, cancellationToken);
+				return new ReadResult(ReadOnlySequence<byte>.Empty, isCanceled: true, isCompleted: false);
+			}
+		}
+
+		public override bool TryRead(out ReadResult result) => throw new NotSupportedException();
+
+		private ReadResult CreateResult(bool isCanceled)
+		{
+			this.secondRead = null;
+			this.expectAdvance = true;
+			long endIndex = this.reads == 1
+				? Math.Min(this.buffer.Slice(0, this.consumed).Length + 1, this.buffer.Length)
+				: this.buffer.Length;
+			ReadOnlySequence<byte> slice = this.buffer.Slice(this.consumed, this.buffer.GetPosition(endIndex));
+			return new ReadResult(slice, isCanceled, isCompleted: false);
+		}
 	}
 }

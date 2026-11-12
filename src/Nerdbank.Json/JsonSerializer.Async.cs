@@ -743,7 +743,11 @@ public partial record JsonSerializer
 		private readonly long examinedFloor;
 		private readonly bool drainCanceledFollowUp;
 		private ReadOnlySequence<byte> pendingBuffer;
+		private ReadOnlySequence<byte> activeBuffer;
 		private ReadResult? pending;
+		private long activeOrigin;
+		private long consumedLength;
+		private long examinedLength;
 		private bool servingPending;
 		private bool drainedCancellation;
 		private bool innerOutstanding;
@@ -755,6 +759,7 @@ public partial record JsonSerializer
 			this.pendingBuffer = pending.Buffer;
 			this.inner = inner;
 			this.examinedFloor = examinedFloor;
+			this.examinedLength = examinedFloor;
 			this.drainCanceledFollowUp = drainCanceledFollowUp;
 		}
 
@@ -765,7 +770,9 @@ public partial record JsonSerializer
 			if (this.servingPending)
 			{
 				this.servingPending = false;
-				this.inner.AdvanceTo(consumed, this.ClampExamined(this.pendingBuffer, examined));
+				examined = this.ClampExamined(this.pendingBuffer, examined);
+				this.Remember(this.pendingBuffer, this.activeOrigin, consumed, examined);
+				this.inner.AdvanceTo(consumed, examined);
 				return;
 			}
 
@@ -775,6 +782,7 @@ public partial record JsonSerializer
 			}
 
 			this.innerOutstanding = false;
+			this.Remember(this.activeBuffer, this.activeOrigin, consumed, examined);
 			this.inner.AdvanceTo(consumed, examined);
 		}
 
@@ -794,6 +802,8 @@ public partial record JsonSerializer
 			{
 				this.pending = null;
 				this.servingPending = true;
+				this.activeBuffer = buffered.Buffer;
+				this.activeOrigin = 0;
 				return new ValueTask<ReadResult>(buffered);
 			}
 
@@ -804,6 +814,16 @@ public partial record JsonSerializer
 
 		internal async ValueTask DrainSpeculativeCancellationAsync()
 		{
+			// A converter can fail before it reads. Release that outstanding buffer before any other read,
+			// so the failure is not replaced by "a read is already in progress".
+			if (this.pending is { } buffered)
+			{
+				this.pending = null;
+				SequencePosition examined = PositionAt(buffered.Buffer, this.examinedLength);
+				this.inner.AdvanceTo(buffered.Buffer.Start, examined);
+				this.consumedLength = 0;
+			}
+
 			if (!this.drainCanceledFollowUp || this.drainedCancellation || this.servingPending || this.innerOutstanding)
 			{
 				return;
@@ -817,7 +837,36 @@ public partial record JsonSerializer
 			}
 
 			ReadResult followUp = await pendingRead.ConfigureAwait(false);
-			this.inner.AdvanceTo(followUp.Buffer.Start, followUp.Buffer.End);
+			long alreadyExamined = this.examinedLength - this.consumedLength;
+			if (alreadyExamined < 0)
+			{
+				alreadyExamined = 0;
+			}
+
+			// The follow-up starts at the consumed cursor. Examining only the prefix the parser already
+			// saw leaves a later value in this buffer readable by the caller.
+			this.inner.AdvanceTo(followUp.Buffer.Start, PositionAt(followUp.Buffer, alreadyExamined));
+		}
+
+		private static SequencePosition PositionAt(ReadOnlySequence<byte> buffer, long offset)
+		{
+			if (offset <= 0)
+			{
+				return buffer.Start;
+			}
+
+			if (offset >= buffer.Length)
+			{
+				return buffer.End;
+			}
+
+			return buffer.GetPosition(offset);
+		}
+
+		private void Remember(ReadOnlySequence<byte> buffer, long origin, SequencePosition consumed, SequencePosition examined)
+		{
+			this.consumedLength = origin + buffer.Slice(0, consumed).Length;
+			this.examinedLength = origin + buffer.Slice(0, examined).Length;
 		}
 
 		private SequencePosition ClampExamined(ReadOnlySequence<byte> buffer, SequencePosition examined)
@@ -847,6 +896,9 @@ public partial record JsonSerializer
 				result = await this.inner.ReadAsync(cancellationToken).ConfigureAwait(false);
 				this.innerOutstanding = true;
 			}
+
+			this.activeBuffer = result.Buffer;
+			this.activeOrigin = this.consumedLength;
 
 			if (result.IsCanceled)
 			{
