@@ -202,6 +202,14 @@ public partial class JsonAsyncObjectStreamingTests : TestBase
 		{
 		}
 
+		public void OnAfterSerialize()
+		{
+		}
+
+		public void OnBeforeDeserialize()
+		{
+		}
+
 		public void OnAfterDeserialize() => this.callbackObserved = true;
 	}
 

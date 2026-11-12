@@ -31,7 +31,6 @@ internal record JsonSerializerConfiguration
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
 	private bool writeIndented;
 	private bool allowOutOfOrderMetadataProperties;
-	private bool useDiscriminatorObjects;
 
 	internal ConverterCache ConverterCache => Volatile.Read(ref this.converterCache) ?? LazyInitializer.EnsureInitialized(ref this.converterCache, () => new(this))!;
 
@@ -281,12 +280,6 @@ internal record JsonSerializerConfiguration
 			this.allowOutOfOrderMetadataProperties = value;
 			this.converterCache = null;
 		}
-	}
-
-	internal bool UseDiscriminatorObjects
-	{
-		get => this.useDiscriminatorObjects;
-		init => this.useDiscriminatorObjects = value;
 	}
 
 	/// <summary>

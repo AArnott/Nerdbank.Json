@@ -148,8 +148,9 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	private void WriteObjectProperties(ref JsonWriter writer, T value, SerializationContext context, bool first)
 	{
+		IJsonSerializationCallbacks? callbacks = value as IJsonSerializationCallbacks;
+		callbacks?.OnBeforeSerialize();
 		context.DepthStep();
-		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
 
 		for (int i = 0; i < this.properties.Length; i++)
 		{
@@ -166,12 +167,14 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		}
 
 		this.extensionData?.Write(ref writer, value, ref first);
+		callbacks?.OnAfterSerialize();
 	}
 
 	private async ValueTask WriteObjectPropertiesAsync(JsonAsyncWriter writer, T value, SerializationContext context, bool first)
 	{
+		IJsonSerializationCallbacks? callbacks = value as IJsonSerializationCallbacks;
+		callbacks?.OnBeforeSerialize();
 		context.DepthStep();
-		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
 
 		for (int i = 0; i < this.properties.Length; i++)
 		{
@@ -190,11 +193,14 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		JsonWriter syncWriter = writer.CreateWriter();
 		this.extensionData?.Write(ref syncWriter, value, ref first);
 		writer.ReturnWriter(ref syncWriter);
+		callbacks?.OnAfterSerialize();
 	}
 
 	private void PopulateReference(ref JsonReader reader, ref T instance, SerializationContext context, bool skipDiscriminator, bool discriminatorConsumed = false)
 	{
 		context.DepthStep();
+		IJsonSerializationCallbacks? callbacks = instance as IJsonSerializationCallbacks;
+		callbacks?.OnBeforeDeserialize();
 
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
 		UnusedDataPacket.Map? unused = null;
@@ -319,6 +325,8 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 	private async ValueTask<T> PopulateAsyncCore(JsonAsyncReader reader, T result, SerializationContext context, bool skipDiscriminator = false, bool discriminatorConsumed = false)
 	{
 		context.DepthStep();
+		IJsonSerializationCallbacks? callbacks = result as IJsonSerializationCallbacks;
+		callbacks?.OnBeforeDeserialize();
 
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
 		UnusedDataPacket.Map? unused = null;

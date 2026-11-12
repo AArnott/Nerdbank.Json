@@ -48,6 +48,9 @@ reference ids.
 
 ## Callbacks
 
+<xref:Nerdbank.Json.IJsonSerializationCallbacks.OnBeforeDeserialize> runs once per mutable object,
+after the instance exists and before its members are populated.
 <xref:Nerdbank.Json.IJsonSerializationCallbacks.OnAfterDeserialize> runs once per object,
-after its members are populated. In a cycle, an inner object's callback therefore runs while
+after its members are populated. In a cycle, an inner object's after-deserialize callback therefore runs while
 an outer object is still being populated, because the inner object completes first.
+Constructor-bound objects do not receive <xref:Nerdbank.Json.IJsonSerializationCallbacks.OnBeforeDeserialize>.

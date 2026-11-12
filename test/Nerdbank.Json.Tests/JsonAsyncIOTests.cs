@@ -441,10 +441,18 @@ public partial class JsonAsyncIOTests : TestBase
 		Pipe pipe = new();
 		await serializer.SerializeAsync(pipe.Writer, value, Shape<Tracked, Tracked>());
 		await pipe.Writer.CompleteAsync();
-		Tracked? result = await serializer.DeserializeAsync(pipe.Reader, Shape<Tracked, Tracked>());
+		Tracked? buffered = await serializer.DeserializeAsync(pipe.Reader, Shape<Tracked, Tracked>());
 
-		Assert.Equal("hello", result!.Text);
+		Assert.Equal("hello", buffered!.Text);
 		Assert.True(converter.WriteAsyncCalls > 0);
+		Assert.Equal(0, converter.ReadAsyncCalls);
+
+		Pipe incremental = new();
+		JsonSerializer streaming = serializer with { MaxAsyncBuffer = 0 };
+		await incremental.Writer.WriteAsync("\"hello\""u8.ToArray());
+		await incremental.Writer.CompleteAsync();
+		Tracked? streamed = await streaming.DeserializeAsync(incremental.Reader, Shape<Tracked, Tracked>());
+		Assert.Equal("hello", streamed!.Text);
 		Assert.True(converter.ReadAsyncCalls > 0);
 	}
 

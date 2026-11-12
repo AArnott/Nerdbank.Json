@@ -16,11 +16,21 @@ applies cooperative backpressure, and supports cancellation.
 
 ## How it works
 
+<xref:Nerdbank.Json.JsonSerializer.MaxAsyncBuffer> is the maximum number of bytes read ahead before
+deserialization chooses a reader. The default is 1MB, the same starting point Nerdbank.MessagePack uses,
+and `0` forces the incremental reader. When the pipe completes, or when a complete JSON value is already
+buffered within the cap, the synchronous reader deserializes it. When the buffered prefix reaches the cap
+before the value is complete, the incremental reader takes over and the cap is not raised again for that
+operation. Json does not block waiting to fill the cap when more bytes are not already available: a
+caller-owned pipe can still return its first value, and an object that has not yet reached its closing
+brace can still be processed as bytes arrive.
+
 Reading uses an incremental UTF-8 scanner that frames one JSON value at a time. Because it is a
 resumable, byte-level state machine, JSON tokens may be split at **any** buffer boundary — inside a
 multi-byte UTF-8 sequence, an escaped string, a `\uXXXX` escape, a number or exponent, a literal, a
 comment, or between delimiters — and are reassembled correctly. Only enough bytes to decode the value
-currently being read are held in memory.
+currently being read are held in memory, and that value may itself be larger than
+<xref:Nerdbank.Json.JsonSerializer.MaxAsyncBuffer> once incremental deserialization has started.
 
 Writing periodically flushes to the pipe once the buffered bytes exceed
 <xref:Nerdbank.Json.SerializationContext.UnflushedBytesThreshold> (64&nbsp;KB by default), so a large
@@ -32,7 +42,7 @@ Built-in collection, dictionary, and object converters override the asynchronous
 that arrays, maps, and objects stream member-by-member with bounded memory. A top-level array of large
 elements is read one element at a time; a large object is read one property at a time — including
 objects that are constructed from constructor parameters — so processing begins before the closing
-brace arrives. Only an individual value that a custom converter reads with the default buffering hook,
+brace arrives when that value was not already complete within <xref:Nerdbank.Json.JsonSerializer.MaxAsyncBuffer>. Only an individual value that a custom converter reads with the default buffering hook,
 a raw retained unknown-member value, or a single constructor argument is materialized at a time — never the
 enclosing document.
 

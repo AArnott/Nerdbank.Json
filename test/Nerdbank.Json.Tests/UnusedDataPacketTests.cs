@@ -230,6 +230,14 @@ public partial class UnusedDataPacketTests : TestBase
 		{
 		}
 
+		public void OnAfterSerialize()
+		{
+		}
+
+		public void OnBeforeDeserialize()
+		{
+		}
+
 		public void OnAfterDeserialize() => this.AfterDeserializeSawPacket = this.Packet is not null;
 	}
 

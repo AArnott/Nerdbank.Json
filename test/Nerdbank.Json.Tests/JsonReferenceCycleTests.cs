@@ -148,10 +148,12 @@ public partial class JsonReferenceCycleTests : TestBase
 
 		string json = this.allowCycles.Serialize(node, Shape<CallbackNode, CallbackNode>());
 		Assert.Equal(1, node.BeforeCount);
+		Assert.Equal(1, node.AfterSerializeCount);
 
 		CallbackNode? result = this.allowCycles.Deserialize(json, Shape<CallbackNode, CallbackNode>());
 		Assert.NotNull(result);
 		Assert.Same(result, result.Next);
+		Assert.Equal(1, result.BeforeDeserializeCount);
 		Assert.Equal(1, result.AfterCount);
 	}
 
@@ -288,9 +290,17 @@ public partial class JsonReferenceCycleTests : TestBase
 
 		internal int BeforeCount { get; private set; }
 
+		internal int AfterSerializeCount { get; private set; }
+
+		internal int BeforeDeserializeCount { get; private set; }
+
 		internal int AfterCount { get; private set; }
 
 		public void OnBeforeSerialize() => this.BeforeCount++;
+
+		public void OnAfterSerialize() => this.AfterSerializeCount++;
+
+		public void OnBeforeDeserialize() => this.BeforeDeserializeCount++;
 
 		public void OnAfterDeserialize() => this.AfterCount++;
 	}

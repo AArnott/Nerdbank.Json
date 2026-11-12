@@ -77,7 +77,6 @@ With the default setting, the first property selects the union case without scan
 Allowing `$type` out of order requires searching ahead for the discriminator while skipping payloads that must later be deserialized.
 Deeply nested unions can therefore cause quadratic work, and asynchronous deserialization and targeted navigation may need to buffer the complete union object.
 
-The legacy `UseDiscriminatorObjects` property is obsolete and no longer affects the wire format.
 Aliases that collide after conversion to strings, or use `$base`, are rejected.
 JSON Schema generation and expression-based targeted navigation use this representation.
 Reference preservation still uses the idiomatic `$id`, `$ref`, and `$value` JSON metadata objects.

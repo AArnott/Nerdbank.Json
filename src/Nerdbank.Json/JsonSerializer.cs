@@ -39,11 +39,45 @@ public partial record JsonSerializer
 #endif
 
 	private JsonSerializerConfiguration configuration = JsonSerializerConfiguration.Default;
+	private int maxAsyncBuffer = 1 * 1024 * 1024;
 
 	/// <summary>
 	/// Gets the starting context to begin serializations and deserializations with.
 	/// </summary>
 	public SerializationContext StartingContext { get; init; } = new();
+
+	/// <summary>
+	/// Gets the maximum length of JSON to buffer before beginning deserialization.
+	/// </summary>
+	/// <value>
+	/// May be set to any non-negative integer.
+	/// The default value is 1MB and is subject to change.
+	/// </value>
+	/// <remarks>
+	/// <para>
+	/// Larger values are more likely to lead to async buffering followed by synchronous deserialization, which is significantly faster than <em>async</em> deserialization.
+	/// Smaller values are useful for limiting memory usage since deserialization can happen while pulling in more JSON bytes, allowing release of the buffers containing earlier bytes to make room for subsequent ones.
+	/// </para>
+	/// <para>
+	/// This value has no impact once deserialization has begun.
+	/// The JSON structure to be deserialized and converters used during deserialization may result in buffering any amount of JSON beyond this value.
+	/// </para>
+	/// <para>
+	/// Unlike a format whose reader can wait until a fixed number of bytes arrive, a caller-owned JSON pipe may already contain one complete value
+	/// or may depend on incremental parsing before the next bytes are written. Json therefore does not block to fill this cap when more bytes are not
+	/// already available. A completed payload, or a complete value already buffered within the cap, is deserialized synchronously. An incomplete prefix
+	/// uses the incremental reader when it reaches the cap or when the next read would wait. Set the value to <c>0</c> to always use that incremental reader.
+	/// </para>
+	/// </remarks>
+	public int MaxAsyncBuffer
+	{
+		get => this.maxAsyncBuffer;
+		init
+		{
+			Requires.Range(value >= 0, nameof(value));
+			this.maxAsyncBuffer = value;
+		}
+	}
 
 	/// <inheritdoc cref="JsonSerializerConfiguration.MultiDimensionalArrayFormat"/>
 	public MultiDimensionalArrayFormat MultiDimensionalArrayFormat
@@ -200,21 +234,6 @@ public partial record JsonSerializer
 	{
 		get => this.configuration.AllowOutOfOrderMetadataProperties;
 		init => this.configuration = this.configuration with { AllowOutOfOrderMetadataProperties = value };
-	}
-
-	/// <summary>
-	/// Gets or initializes a value indicating whether the legacy discriminator-object setting is enabled.
-	/// </summary>
-	/// <value>The value assigned to this property; it no longer affects the JSON representation.</value>
-	/// <remarks>
-	/// Union discriminators now always use metadata objects with a <c>$type</c> property. Remove uses of this property;
-	/// setting it has no effect.
-	/// </remarks>
-	[Obsolete("Union discriminators now use $type metadata objects by default; this property no longer affects serialization.")]
-	public bool UseDiscriminatorObjects
-	{
-		get => this.configuration.UseDiscriminatorObjects;
-		init => this.configuration = this.configuration with { UseDiscriminatorObjects = value };
 	}
 
 	/// <summary>

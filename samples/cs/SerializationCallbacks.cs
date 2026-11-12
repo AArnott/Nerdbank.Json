@@ -13,6 +13,13 @@ public partial class Order : IJsonSerializationCallbacks
 
 	public void OnBeforeSerialize() => this.Validate();
 
+	public void OnAfterSerialize()
+	{
+		// The JSON has already been written. This is a hook for post-write bookkeeping.
+	}
+
+	public void OnBeforeDeserialize() => this.Total = 0;
+
 	public void OnAfterDeserialize()
 	{
 		this.Total = this.Subtotal + this.Tax;

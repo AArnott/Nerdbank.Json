@@ -159,7 +159,20 @@ public partial record JsonSerializer
 	{
 		try
 		{
-			using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+			AsyncBufferPlan plan = await this.TryBufferWithinMaxAsyncBufferAsync(reader, context, requireFullyConsumed).ConfigureAwait(false);
+			if (plan.Synchronous is { } buffered)
+			{
+				try
+				{
+					return this.ReadBufferedObject(reader, buffered.Buffer, shape, context, requireFullyConsumed);
+				}
+				catch (NotSupportedException)
+				{
+					// A converter supports only the incremental reader. The buffered read was released at its start.
+				}
+			}
+
+			using JsonAsyncReader asyncReader = new(plan.Reader ?? reader, this.AllowTrailingCommas, this.ReadCommentHandling)
 			{
 				CancellationToken = context.CancellationToken,
 			};

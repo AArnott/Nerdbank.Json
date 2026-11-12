@@ -314,7 +314,20 @@ public partial record JsonSerializer
 		SerializationContext context = startingContext.Start(this, this.ConverterCache, cancellationToken) with { TypeShapeProvider = shape.Provider };
 		try
 		{
-			using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+			AsyncBufferPlan plan = await this.TryBufferWithinMaxAsyncBufferAsync(reader, context, requireFullyConsumed).ConfigureAwait(false);
+			if (plan.Synchronous is { } buffered)
+			{
+				try
+				{
+					return this.ReadBuffered(reader, buffered.Buffer, shape, context, requireFullyConsumed);
+				}
+				catch (NotSupportedException)
+				{
+					// A converter supports only the incremental reader. The buffered read was released at its start.
+				}
+			}
+
+			using JsonAsyncReader asyncReader = new(plan.Reader ?? reader, this.AllowTrailingCommas, this.ReadCommentHandling)
 			{
 				CancellationToken = context.CancellationToken,
 			};
@@ -330,6 +343,349 @@ public partial record JsonSerializer
 		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{
 			throw new JsonSerializationException("An error occurred during deserialization.", ex);
+		}
+	}
+
+	/// <summary>
+	/// Buffers a complete JSON value for synchronous deserialization when one is already available within <see cref="MaxAsyncBuffer"/>.
+	/// </summary>
+	/// <param name="reader">The pipe to read.</param>
+	/// <param name="context">The active serialization context.</param>
+	/// <param name="requireFullyConsumed">
+	/// <see langword="true"/> when the caller will reject trailing data, so a complete value is not enough until the reader is exhausted.
+	/// </param>
+	/// <returns>
+	/// A plan whose <see cref="AsyncBufferPlan.Synchronous"/> read is outstanding when the caller should deserialize synchronously.
+	/// <see cref="AsyncBufferPlan.Reader"/> is set when incremental deserialization must observe a prefix that is still buffered in <paramref name="reader"/>.
+	/// </returns>
+	private async ValueTask<AsyncBufferPlan> TryBufferWithinMaxAsyncBufferAsync(PipeReader reader, SerializationContext context, bool requireFullyConsumed)
+	{
+		if (this.MaxAsyncBuffer <= 0)
+		{
+			return default;
+		}
+
+		ReadResult readResult = await reader.ReadAsync(context.CancellationToken).ConfigureAwait(false);
+		bool outstanding = true;
+		try
+		{
+			JsonStructureScanner scanner = default;
+			scanner.Reset(preserveBomState: true);
+			long scanned = 0;
+			while (true)
+			{
+				if (readResult.IsCanceled)
+				{
+					context.CancellationToken.ThrowIfCancellationRequested();
+					throw new OperationCanceledException(context.CancellationToken);
+				}
+
+				if (readResult.IsCompleted || (!requireFullyConsumed && ScanAdditional(readResult.Buffer, ref scanner, ref scanned, context)))
+				{
+					outstanding = false;
+					return new AsyncBufferPlan(readResult);
+				}
+
+				if (readResult.Buffer.Length >= this.MaxAsyncBuffer)
+				{
+					// This read is still outstanding, so releasing it at the start leaves the buffered prefix visible.
+					reader.AdvanceTo(readResult.Buffer.Start);
+					outstanding = false;
+					return default;
+				}
+
+				long bufferedLength = readResult.Buffer.Length;
+				reader.AdvanceTo(readResult.Buffer.Start, readResult.Buffer.End);
+				outstanding = false;
+
+				ValueTask<ReadResult> pending = reader.ReadAsync(context.CancellationToken);
+				if (!pending.IsCompleted)
+				{
+					// Waiting here would stall a caller that writes the rest of the value only after parsing starts.
+					// CancelPendingRead on a stream reader can also mark the following read canceled, so clear that
+					// one-shot result before continuing. A pipe reports the canceled read itself and keeps the prefix.
+					reader.CancelPendingRead();
+					readResult = await pending.ConfigureAwait(false);
+					outstanding = true;
+					context.CancellationToken.ThrowIfCancellationRequested();
+					if (!readResult.IsCanceled)
+					{
+						reader.AdvanceTo(readResult.Buffer.Start, readResult.Buffer.End);
+						outstanding = false;
+						ReadResult followUp = await reader.ReadAsync(context.CancellationToken).ConfigureAwait(false);
+						outstanding = true;
+						if (followUp.IsCanceled)
+						{
+							reader.AdvanceTo(followUp.Buffer.Start, followUp.Buffer.End);
+							outstanding = false;
+							readResult = await reader.ReadAsync(context.CancellationToken).ConfigureAwait(false);
+							outstanding = true;
+						}
+						else
+						{
+							readResult = followUp;
+						}
+
+						continue;
+					}
+
+					if (readResult.IsCompleted || (!requireFullyConsumed && ScanAdditional(readResult.Buffer, ref scanner, ref scanned, context)))
+					{
+						outstanding = false;
+						return new AsyncBufferPlan(readResult);
+					}
+
+					if (readResult.Buffer.Length == 0)
+					{
+						return default;
+					}
+
+					byte[] prefix = Copy(readResult.Buffer);
+					reader.AdvanceTo(readResult.Buffer.Start, readResult.Buffer.End);
+					outstanding = false;
+					return new AsyncBufferPlan(new ReplayPipeReader(prefix, reader));
+				}
+
+				readResult = await pending.ConfigureAwait(false);
+				outstanding = true;
+				if (!readResult.IsCompleted && !readResult.IsCanceled && readResult.Buffer.Length <= bufferedLength)
+				{
+					reader.AdvanceTo(readResult.Buffer.Start);
+					outstanding = false;
+					return default;
+				}
+			}
+		}
+		finally
+		{
+			if (outstanding)
+			{
+				reader.AdvanceTo(readResult.Buffer.Start);
+			}
+		}
+
+		static bool ScanAdditional(ReadOnlySequence<byte> buffer, ref JsonStructureScanner scanner, ref long scanned, SerializationContext context)
+		{
+			if (scanned > buffer.Length)
+			{
+				scanner = default;
+				scanner.Reset(preserveBomState: true);
+				scanned = 0;
+			}
+
+			ReadOnlySequence<byte> tail = buffer.Slice(scanned);
+			long offset = scanned;
+			foreach (ReadOnlyMemory<byte> segment in tail)
+			{
+				if (scanner.Scan(segment.Span, out int consumed, context))
+				{
+					scanned = offset + consumed;
+					return true;
+				}
+
+				offset += segment.Length;
+			}
+
+			scanned = buffer.Length;
+			return false;
+		}
+
+		static byte[] Copy(ReadOnlySequence<byte> buffer)
+		{
+			byte[] copy = new byte[checked((int)buffer.Length)];
+			buffer.CopyTo(copy);
+			return copy;
+		}
+	}
+
+	private T? ReadBuffered<T>(PipeReader reader, ReadOnlySequence<byte> utf8Json, ITypeShape<T> shape, SerializationContext context, bool requireFullyConsumed)
+	{
+		SequencePosition consumed = utf8Json.Start;
+		try
+		{
+			JsonReader jsonReader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
+			T? result = this.ConverterCache.GetOrAddConverter(shape).Read(ref jsonReader, context);
+			consumed = jsonReader.Position;
+			if (requireFullyConsumed)
+			{
+				jsonReader.EnsureFullyConsumed();
+				consumed = jsonReader.Position;
+			}
+
+			return result;
+		}
+		finally
+		{
+			reader.AdvanceTo(consumed);
+		}
+	}
+
+	private object? ReadBufferedObject(PipeReader reader, ReadOnlySequence<byte> utf8Json, ITypeShape shape, SerializationContext context, bool requireFullyConsumed)
+	{
+		SequencePosition consumed = utf8Json.Start;
+		try
+		{
+			JsonReader jsonReader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
+			object? result = this.ConverterCache.GetOrAddConverter(shape).ReadObject(ref jsonReader, context);
+			consumed = jsonReader.Position;
+			if (requireFullyConsumed)
+			{
+				jsonReader.EnsureFullyConsumed();
+				consumed = jsonReader.Position;
+			}
+
+			return result;
+		}
+		finally
+		{
+			reader.AdvanceTo(consumed);
+		}
+	}
+
+	private JsonValue? ReadBufferedJsonValue(PipeReader reader, ReadOnlySequence<byte> utf8Json, SerializationContext context, bool requireFullyConsumed)
+	{
+		SequencePosition consumed = utf8Json.Start;
+		try
+		{
+			JsonReader jsonReader = new(utf8Json, this.AllowTrailingCommas, this.ReadCommentHandling);
+			JsonValue? result = JsonValueConverter.Instance.Read(ref jsonReader, context);
+			consumed = jsonReader.Position;
+			if (requireFullyConsumed)
+			{
+				jsonReader.EnsureFullyConsumed();
+				consumed = jsonReader.Position;
+			}
+
+			return result;
+		}
+		finally
+		{
+			reader.AdvanceTo(consumed);
+		}
+	}
+
+	private readonly struct AsyncBufferPlan
+	{
+		internal AsyncBufferPlan(ReadResult synchronous) => this.Synchronous = synchronous;
+
+		internal AsyncBufferPlan(PipeReader reader) => this.Reader = reader;
+
+		internal ReadResult? Synchronous { get; }
+
+		internal PipeReader? Reader { get; }
+	}
+
+	/// <summary>
+	/// Replays bytes already consumed from an inner reader, then continues with that reader.
+	/// </summary>
+	/// <remarks>
+	/// A pipe does not make examined bytes readable again after <see cref="PipeReader.CancelPendingRead"/>.
+	/// This reader keeps that prefix available to <see cref="JsonAsyncReader"/> and forwards later reads.
+	/// </remarks>
+	private sealed class ReplayPipeReader : PipeReader
+	{
+		private readonly byte[] prefix;
+		private readonly PipeReader inner;
+		private int prefixConsumed;
+		private bool pullInner;
+		private bool prefixOutstanding;
+		private bool innerOutstanding;
+		private bool skippedPrefix;
+
+		internal ReplayPipeReader(byte[] prefix, PipeReader inner)
+		{
+			this.prefix = prefix;
+			this.inner = inner;
+		}
+
+		public override void AdvanceTo(SequencePosition consumed) => this.AdvanceTo(consumed, consumed);
+
+		public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
+		{
+			if (this.prefixOutstanding)
+			{
+				this.prefixOutstanding = false;
+				this.prefixConsumed = this.AbsolutePrefixIndex(consumed);
+				this.pullInner = this.AbsolutePrefixIndex(examined) >= this.prefix.Length;
+				return;
+			}
+
+			if (!this.innerOutstanding)
+			{
+				throw new InvalidOperationException("AdvanceTo was called before ReadAsync.");
+			}
+
+			this.innerOutstanding = false;
+			this.pullInner = true;
+			this.inner.AdvanceTo(consumed, examined);
+		}
+
+		public override void CancelPendingRead() => this.inner.CancelPendingRead();
+
+		public override void Complete(Exception? exception = null) => this.inner.Complete(exception);
+
+		public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
+		{
+			if (this.prefixOutstanding || this.innerOutstanding)
+			{
+				throw new InvalidOperationException("AdvanceTo was not called.");
+			}
+
+			cancellationToken.ThrowIfCancellationRequested();
+			if (!this.pullInner && this.prefixConsumed < this.prefix.Length)
+			{
+				return new ValueTask<ReadResult>(this.ReadPrefix());
+			}
+
+			return this.ReadInnerAsync(cancellationToken);
+		}
+
+		public override bool TryRead(out ReadResult result) => throw new NotSupportedException();
+
+		private async ValueTask<ReadResult> ReadInnerAsync(CancellationToken cancellationToken)
+		{
+			ReadResult innerResult = await this.inner.ReadAsync(cancellationToken).ConfigureAwait(false);
+			this.innerOutstanding = true;
+			if (this.skippedPrefix)
+			{
+				return innerResult;
+			}
+
+			this.skippedPrefix = true;
+			long skip = Math.Min(this.prefixConsumed, innerResult.Buffer.Length);
+			return new ReadResult(innerResult.Buffer.Slice(skip), innerResult.IsCanceled, innerResult.IsCompleted);
+		}
+
+		private ReadResult ReadPrefix()
+		{
+			Segment segment = new(this.prefix.AsMemory(this.prefixConsumed), 0)
+			{
+				PrefixBase = this.prefixConsumed,
+			};
+			this.prefixOutstanding = true;
+			ReadOnlySequence<byte> sequence = new(segment, 0, segment, segment.Memory.Length);
+			return new ReadResult(sequence, isCanceled: false, isCompleted: false);
+		}
+
+		private int AbsolutePrefixIndex(SequencePosition position)
+		{
+			if (position.GetObject() is not Segment segment)
+			{
+				return 0;
+			}
+
+			return segment.PrefixBase + position.GetInteger();
+		}
+
+		private sealed class Segment : ReadOnlySequenceSegment<byte>
+		{
+			internal Segment(ReadOnlyMemory<byte> memory, long runningIndex)
+			{
+				this.Memory = memory;
+				this.RunningIndex = runningIndex;
+			}
+
+			internal int PrefixBase { get; init; }
 		}
 	}
 }
