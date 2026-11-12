@@ -334,7 +334,7 @@ try {
         throw "This handoff requires exact SDK $($globalJson.sdk.version); selected $($report.Host.SDK). No SDK will be installed."
     }
     foreach ($runtime in @('Microsoft.NETCore.App', 'Microsoft.AspNetCore.App')) {
-        foreach ($major in @(8, 9, 10)) {
+        foreach ($major in @(10, 11)) {
             if ($runtimes.Text -notmatch "(?m)^$([regex]::Escape($runtime)) $major\.0\.\d+ ") {
                 throw "Missing $runtime $major.0 runtime for managed test/sample TFMs."
             }
@@ -391,7 +391,7 @@ try {
     if ($build.Succeeded) {
         $managedOK = $true
         foreach ($project in @('Nerdbank.Json.Tests', 'Nerdbank.Json.AspNetCoreMvcFormatter.Tests', 'Nerdbank.Json.Analyzers.Tests')) {
-            $frameworks = if ($project -eq 'Nerdbank.Json.Analyzers.Tests') { @('net8.0') } else { @('net8.0', 'net9.0', 'net10.0') }
+            $frameworks = if ($project -eq 'Nerdbank.Json.Analyzers.Tests') { @('net10.0') } else { @('net10.0', 'net11.0') }
             if ($IsWindows -and $project -eq 'Nerdbank.Json.Tests') { $frameworks += 'net472' }
             foreach ($framework in $frameworks) {
                 $ok = Invoke-ManagedTestRun $project $framework
@@ -459,7 +459,7 @@ try {
     }
 
     if ($RunBenchmarks -and $build.Succeeded) {
-        $benchmarkDll = Join-Path $repo (Join-Path 'bin' (Join-Path 'Benchmarks' (Join-Path 'Release' (Join-Path 'net9.0' 'Benchmarks.dll'))))
+        $benchmarkDll = Join-Path $repo (Join-Path 'bin' (Join-Path 'Benchmarks' (Join-Path 'Release' (Join-Path 'net10.0' 'Benchmarks.dll'))))
         $benchmarkArtifacts = Join-Path $ArtifactDirectory 'benchmarks-timing'
         $benchmarkArgs = @($benchmarkDll, '--job', 'Medium', '--filter') + $BenchmarkFilter + @('--artifacts', $benchmarkArtifacts, '--exporters', 'json')
         $timing = Invoke-Recorded 'benchmarks-timing' $dotnetExecutable $benchmarkArgs

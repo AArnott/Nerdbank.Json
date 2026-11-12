@@ -7,7 +7,7 @@ Nerdbank.Json is a UTF-8 JSON serializer being built in the same general shape a
 
 The implementation includes low-level UTF-8 readers and writers, built-in converters for common .NET types, and PolyType-backed serialization for mutable and constructor-bound object graphs.
 It supports incremental asynchronous streaming, reference preservation, unions, targeted deserialization, and JSON Schema generation.
-It is allocation-conscious in the hot path and multi-targets `net8.0`, `net9.0`, `net472`, and `netstandard2.0`.
+It is allocation-conscious in the hot path and multi-targets `net10.0`, `net472`, and `netstandard2.0`.
 
 ## Features
 
@@ -56,7 +56,7 @@ The current built-in serializer supports:
 * `byte[]`, `Memory<byte>`, `ReadOnlyMemory<byte>`
 * `RawJson` for exact UTF-8 token retention
 * `System.Drawing.Color`, `System.Drawing.Point`
-* On .NET 8 and later: `Half`, `Int128`, `UInt128`, `DateOnly`, `TimeOnly`, `Rune`
+* On .NET 10 and later: `Half`, `Int128`, `UInt128`, `DateOnly`, `TimeOnly`, `Rune`
 
 ## Example
 

@@ -32,7 +32,7 @@ function Invoke-Recorded {
         'dotnet-runtimes' {
             $text = (@('Microsoft.NETCore.App', 'Microsoft.AspNetCore.App') | ForEach-Object {
                 $runtime = $_
-                8, 9, 10 | ForEach-Object { "$runtime $_.0.1 [mock]" }
+                10, 11 | ForEach-Object { "$runtime $_.0.1 [mock]" }
             }) -join "`n"
         }
         'dotnet-selected-sdk' { $text = $globalJson.sdk.version }
@@ -199,9 +199,9 @@ try {
             & $caseScript -ArtifactDirectory ".\$case" -TestFilter $filter
             $managedReport = Get-Content -LiteralPath (Join-Path $psDirectory "$case\validation.json") -Raw | ConvertFrom-Json
             $expected = @(
-                'Nerdbank.Json.Tests|net8.0', 'Nerdbank.Json.Tests|net9.0', 'Nerdbank.Json.Tests|net10.0',
-                'Nerdbank.Json.AspNetCoreMvcFormatter.Tests|net8.0', 'Nerdbank.Json.AspNetCoreMvcFormatter.Tests|net9.0',
-                'Nerdbank.Json.AspNetCoreMvcFormatter.Tests|net10.0', 'Nerdbank.Json.Analyzers.Tests|net8.0'
+                'Nerdbank.Json.Tests|net10.0', 'Nerdbank.Json.Tests|net11.0',
+                'Nerdbank.Json.AspNetCoreMvcFormatter.Tests|net10.0', 'Nerdbank.Json.AspNetCoreMvcFormatter.Tests|net11.0',
+                'Nerdbank.Json.Analyzers.Tests|net10.0'
             )
             if ($windows) { $expected += 'Nerdbank.Json.Tests|net472' }
             $managedSteps = @($managedReport.Steps | Where-Object Name -like 'managed-*')
@@ -245,7 +245,7 @@ try {
             }
         }
     }
-    Write-Host 'Platform script checks passed: paths, evidence preservation, compiler guards/forwarding, all seven managed targets plus Windows net472, direct MTP arguments, and report/exit failures.'
+    Write-Host 'Platform script checks passed: paths, evidence preservation, compiler guards/forwarding, all five managed targets plus Windows net472, direct MTP arguments, and report/exit failures.'
 } finally {
     Set-Location $savedLocation
     [Environment]::CurrentDirectory = $savedProcessDirectory
@@ -274,7 +274,7 @@ if ($ManagedSmoke) {
     $sdk = Invoke-Recorded 'smoke-sdk' $dotnetExecutable @('--version')
     $requiredSdk = (Get-Content -LiteralPath (Join-Path $repo 'global.json') -Raw | ConvertFrom-Json).sdk.version
     if (!$sdk.Succeeded -or $sdk.Text.Trim() -ne $requiredSdk) { throw "Smoke requires SDK $requiredSdk." }
-    $succeeded = Invoke-ManagedTestRun 'Nerdbank.Json.Tests' 'net8.0'
+    $succeeded = Invoke-ManagedTestRun 'Nerdbank.Json.Tests' 'net10.0'
     @{
         Succeeded = $succeeded; SDK = $sdk.Text.Trim(); Repository = $repo; ArtifactDirectory = $ArtifactDirectory
         Steps = $steps; TestReports = $testReports; Errors = $report.Errors
