@@ -334,7 +334,7 @@ try {
         throw "This handoff requires exact SDK $($globalJson.sdk.version); selected $($report.Host.SDK). No SDK will be installed."
     }
     foreach ($runtime in @('Microsoft.NETCore.App', 'Microsoft.AspNetCore.App')) {
-        foreach ($major in @(8, 9, 10)) {
+        foreach ($major in @(10, 11)) {
             if ($runtimes.Text -notmatch "(?m)^$([regex]::Escape($runtime)) $major\.0\.\d+ ") {
                 throw "Missing $runtime $major.0 runtime for managed test/sample TFMs."
             }

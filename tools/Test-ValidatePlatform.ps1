@@ -32,7 +32,7 @@ function Invoke-Recorded {
         'dotnet-runtimes' {
             $text = (@('Microsoft.NETCore.App', 'Microsoft.AspNetCore.App') | ForEach-Object {
                 $runtime = $_
-                8, 9, 10 | ForEach-Object { "$runtime $_.0.1 [mock]" }
+                10, 11 | ForEach-Object { "$runtime $_.0.1 [mock]" }
             }) -join "`n"
         }
         'dotnet-selected-sdk' { $text = $globalJson.sdk.version }
