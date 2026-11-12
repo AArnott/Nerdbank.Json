@@ -24,7 +24,8 @@ before the value is complete, the incremental reader takes over and the cap is n
 operation. The framing scan stops at the cap plus one byte, so an open pipe that already holds a large
 unfinished value is not scanned twice. Json does not block waiting to fill the cap when more bytes are not already available: a
 caller-owned pipe can still return its first value, and an object that has not yet reached its closing
-brace can still be processed as bytes arrive.
+brace can still be processed as bytes arrive. Stream overloads reject trailing data, so they wait for
+the stream instead of canceling an in-flight read. Trailing comments stay part of that payload.
 A converter that cannot read a fully buffered value overrides <xref:Nerdbank.Json.JsonConverter.ComputeSupportsSynchronousRead>
 so the incremental reader is selected before constructors, setters, callbacks, or `Read` run. Nested values
 from that converter use `ReadAsync` as well, even when <xref:Nerdbank.Json.JsonConverter.PreferAsyncSerialization>

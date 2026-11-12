@@ -423,6 +423,15 @@ public partial record JsonSerializer
 				outstanding = false;
 
 				ValueTask<ReadResult> pending = reader.ReadAsync(context.CancellationToken);
+				if (!pending.IsCompleted && requireFullyConsumed)
+				{
+					// A stream overload must observe the whole payload, including trailing comments.
+					// Canceling this read reports failure even though the stream still has those bytes.
+					readResult = await pending.ConfigureAwait(false);
+					outstanding = true;
+					continue;
+				}
+
 				if (!pending.IsCompleted)
 				{
 					// Waiting here would stall a caller that writes the rest of the value only after parsing starts.
