@@ -17,9 +17,9 @@ Check `command -v pwsh`, `command -v dotnet`, and `command -v git` in the macOS/
 PowerShell 7.2 or newer is required; if absent, follow the [PowerShell installation instructions](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) for the host rather than attempting to execute `.ps1` files in bash.
 Run all subsequent commands in `pwsh` from the repository root.
 
-The handoff requires the exact SDK pinned in `global.json` (currently **10.0.402**), even though the repository permits patch roll-forward.
-It also needs **Microsoft.NETCore.App and Microsoft.AspNetCore.App runtimes 8.0, 9.0, and 10.0** for the managed test and sample frameworks.
-An installed .NET 10 SDK or runtime alone does not supply the .NET 8/9 runtimes.
+The handoff requires the exact SDK pinned in `global.json` (currently **11.0.100**), even though the repository permits patch roll-forward.
+It also needs **Microsoft.NETCore.App and Microsoft.AspNetCore.App runtimes 10.0 and 11.0** for the managed test and sample frameworks.
+The .NET 11 SDK supplies the 11.0 runtime. The 10.0 runtime is still required to execute `net10.0` tests; package restore supplies the .NET 10 targeting pack used to compile those projects.
 The script runs `.github/Prime-ForCopilot.ps1` once before its first dotnet command and records `dotnet --info`, `--list-sdks`, `--list-runtimes`, and the selected SDK.
 It stops with explicit failure evidence for missing prerequisites; it does not install them or alter global SDK configuration.
 
@@ -35,7 +35,7 @@ For a missing PowerShell executable, install it through the host's approved mech
 The validation script attempts `--no-restore` first and only restores/retries after a recognized missing-assets/package error.
 It does not automatically restore unrelated tools.
 
-After the Release build, managed tests run directly from the repository's RID-neutral `bin/<project>/Release/<framework>/` outputs: the recorded dotnet host launches each .NET 8/9/10 test DLL, and Windows launches the core net472 test executable directly.
+After the Release build, managed tests run directly from the repository's RID-neutral `bin/<project>/Release/<framework>/` outputs: the recorded dotnet host launches each .NET 10/11 test DLL, and Windows launches the core net472 test executable directly.
 Each matrix entry selects its own framework-specific binary; no framework or runner fallback is applied.
 MTP tree filters, TRX reporting, and diagnostics are passed directly to those runners, not forwarded through `dotnet test`, avoiding the pinned SDK's report-argument forwarding failure.
 Results and diagnostic directories are absolute because relative MTP result paths resolve against the test application's base directory, not the PowerShell working directory.
@@ -107,7 +107,7 @@ Only after all competing measurements stop, request serial BenchmarkDotNet **Med
 ```
 
 The default benchmark filters are those same two groups; provide an explicit array for other workloads.
-Timing uses the Release net9.0 benchmark executable, outside a debugger, with BenchmarkDotNet's normal out-of-process toolchain.
+Timing uses the Release net10.0 benchmark executable, outside a debugger, with BenchmarkDotNet's normal out-of-process toolchain.
 BenchmarkDotNet may restore its generated benchmark project as part of that toolchain.
 The current benchmark classes use one runtime/toolchain and one Medium job, yielding one build partition; the script never launches concurrent benchmark commands.
 Keep the full reports, not just console means; compare only like-for-like OS, RID, SDK/runtime, filters, job, and workload, noting shared-machine load and thermal conditions.
@@ -145,11 +145,11 @@ No upload is performed by the script.
 ## Lightweight script checks
 
 Run `./tools/Test-ValidatePlatform.ps1` to parse the script and exercise artifact location/provider safety, existing-evidence preservation, compiler defaults/guards, and publish/restore/retry/discovery property forwarding with mocked external commands.
-The checks also exercise all seven core/MVC/analyzer .NET matrix entries plus Windows net472, exact direct-runner arguments, absolute report directories, managed skip classification, missing/zero-execution/failed/incomplete reports, and nonzero runner exits.
+The checks also exercise all five core/MVC/analyzer .NET matrix entries plus Windows net472, exact direct-runner arguments, absolute report directories, managed skip classification, missing/zero-execution/failed/incomplete reports, and nonzero runner exits.
 These checks use a temporary isolated fixture, intentionally make PowerShell and process working directories differ, and do not run dotnet, native compilers, builds, tests, or benchmarks.
 They do not replace real platform validation.
 
-For a real minimal managed smoke after building the core Release net8.0 target, run `./tools/Test-ValidatePlatform.ps1 -ManagedSmoke`.
+For a real minimal managed smoke after building the core Release net10.0 target, run `./tools/Test-ValidatePlatform.ps1 -ManagedSmoke`.
 This additionally primes the environment before dotnet, checks the pinned SDK, and uses the validation script's actual runner/report functions to execute `JsonReaderTests` and require its TRX.
 It retains command logs, diagnostics, TRX counters, and `smoke.json` in a new GUID-named `obj/platform-managed-smoke-*` directory; optionally select a new path with `-SmokeArtifactDirectory`.
 Existing smoke artifact directories are rejected, and a runner/report failure remains a failure rather than falling back to console parsing.

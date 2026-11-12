@@ -391,7 +391,7 @@ try {
     if ($build.Succeeded) {
         $managedOK = $true
         foreach ($project in @('Nerdbank.Json.Tests', 'Nerdbank.Json.AspNetCoreMvcFormatter.Tests', 'Nerdbank.Json.Analyzers.Tests')) {
-            $frameworks = if ($project -eq 'Nerdbank.Json.Analyzers.Tests') { @('net8.0') } else { @('net8.0', 'net9.0', 'net10.0') }
+            $frameworks = if ($project -eq 'Nerdbank.Json.Analyzers.Tests') { @('net10.0') } else { @('net10.0', 'net11.0') }
             if ($IsWindows -and $project -eq 'Nerdbank.Json.Tests') { $frameworks += 'net472' }
             foreach ($framework in $frameworks) {
                 $ok = Invoke-ManagedTestRun $project $framework
@@ -459,7 +459,7 @@ try {
     }
 
     if ($RunBenchmarks -and $build.Succeeded) {
-        $benchmarkDll = Join-Path $repo (Join-Path 'bin' (Join-Path 'Benchmarks' (Join-Path 'Release' (Join-Path 'net9.0' 'Benchmarks.dll'))))
+        $benchmarkDll = Join-Path $repo (Join-Path 'bin' (Join-Path 'Benchmarks' (Join-Path 'Release' (Join-Path 'net10.0' 'Benchmarks.dll'))))
         $benchmarkArtifacts = Join-Path $ArtifactDirectory 'benchmarks-timing'
         $benchmarkArgs = @($benchmarkDll, '--job', 'Medium', '--filter') + $BenchmarkFilter + @('--artifacts', $benchmarkArtifacts, '--exporters', 'json')
         $timing = Invoke-Recorded 'benchmarks-timing' $dotnetExecutable $benchmarkArgs
