@@ -465,16 +465,10 @@ public partial record JsonSerializer
 
 					if (!readResult.IsCanceled)
 					{
-						// The value is still incomplete. Observe the one-shot cancellation, which is already
-						// completed, and hand those bytes to the incremental reader. Do not wait for another read:
-						// a producer may be waiting for a converter or callback before it writes the rest.
-						long racedLength = readResult.Buffer.Length;
-						reader.AdvanceTo(readResult.Buffer.Start, readResult.Buffer.End);
+						// The raced buffer may hold a complete value larger than the cap, plus a later value.
+						// Release the read at the prefix already examined so those later bytes stay readable.
+						reader.AdvanceTo(readResult.Buffer.Start, PositionAt(readResult.Buffer, examinedFloor));
 						outstanding = false;
-						if (racedLength > examinedFloor)
-						{
-							examinedFloor = racedLength;
-						}
 
 						ValueTask<ReadResult> followUp = reader.ReadAsync(context.CancellationToken);
 						if (!followUp.IsCompleted)
@@ -883,10 +877,10 @@ public partial record JsonSerializer
 			if (this.drainCanceledFollowUp && !this.drainedCancellation && result.IsCanceled)
 			{
 				this.drainedCancellation = true;
-				this.inner.AdvanceTo(result.Buffer.Start, result.Buffer.End);
-				this.innerOutstanding = false;
-				result = await this.inner.ReadAsync(cancellationToken).ConfigureAwait(false);
-				this.innerOutstanding = true;
+				cancellationToken.ThrowIfCancellationRequested();
+
+				// The canceled read can be the one that delivered the rest of the value. Keep those bytes.
+				result = new ReadResult(result.Buffer, isCanceled: false, result.IsCompleted);
 			}
 
 			this.activeBuffer = result.Buffer;
@@ -894,11 +888,24 @@ public partial record JsonSerializer
 
 			if (result.IsCanceled)
 			{
+				this.ReleaseOutstanding(result.Buffer);
 				cancellationToken.ThrowIfCancellationRequested();
 				throw new OperationCanceledException(cancellationToken);
 			}
 
 			return result;
+		}
+
+		private void ReleaseOutstanding(ReadOnlySequence<byte> buffer)
+		{
+			long alreadyExamined = this.examinedLength - this.consumedLength;
+			if (alreadyExamined < 0)
+			{
+				alreadyExamined = 0;
+			}
+
+			this.inner.AdvanceTo(buffer.Start, JsonSerializer.PositionAt(buffer, alreadyExamined));
+			this.innerOutstanding = false;
 		}
 	}
 }

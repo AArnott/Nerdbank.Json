@@ -211,6 +211,55 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	}
 
 	[Test]
+	public async Task OverCapRacedBuffer_TrailingValue_StaysReadable()
+	{
+		byte[] utf8 = """{"text":"one"}{"text":"two"}"""u8.ToArray();
+		TrailingValueRacePipeReader reader = new(utf8);
+		CountingConverter converter = new();
+		JsonSerializer serializer = new() { MaxAsyncBuffer = 4, Converters = [converter] };
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+
+		TrackedValue? first = await serializer.DeserializeAsync(reader, Shape<TrackedValue>(), timeout.Token);
+		TrackedValue? second = await serializer.DeserializeAsync(reader, Shape<TrackedValue>(), timeout.Token);
+
+		Assert.Equal("one", first!.Text);
+		Assert.Equal("two", second!.Text);
+		Assert.True(converter.AsyncReads >= 1);
+	}
+
+	[Test]
+	public async Task CanceledFollowUp_DeliversBytesThatCompleteTheValue()
+	{
+		byte[] utf8 = """{"text":"hello"}"""u8.ToArray();
+		CompletingCancelPipeReader reader = new(utf8);
+		CountingConverter converter = new();
+		JsonSerializer serializer = new() { MaxAsyncBuffer = 8, Converters = [converter] };
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+
+		TrackedValue? value = await serializer.DeserializeAsync(reader, Shape<TrackedValue>(), timeout.Token);
+
+		Assert.Equal("hello", value!.Text);
+		Assert.Equal(1, converter.AsyncReads);
+	}
+
+	[Test]
+	public async Task CanceledIncrementalRead_ReleasesThePipe()
+	{
+		byte[] utf8 = """{"text":"hello"}"""u8.ToArray();
+		CancelAfterPrefixPipeReader reader = new(utf8);
+		JsonSerializer serializer = new() { MaxAsyncBuffer = 8 };
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+
+		JsonSerializationException exception = await Assert.ThrowsAsync<JsonSerializationException>(
+			() => serializer.DeserializeAsync(reader, Shape<TrackedValue>(), timeout.Token).AsTask());
+		Assert.IsType<OperationCanceledException>(exception.InnerException);
+
+		ReadResult remaining = await reader.ReadAsync(timeout.Token);
+		Assert.True(remaining.Buffer.Length > 0);
+		reader.AdvanceTo(remaining.Buffer.Start, remaining.Buffer.End);
+	}
+
+	[Test]
 	public async Task OverCapPipe_ReleasesConsumedBytes()
 	{
 		JsonSerializer serializer = new() { MaxAsyncBuffer = 1 };
@@ -751,6 +800,203 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 			long endIndex = this.reads == 1
 				? Math.Min(this.buffer.Slice(0, this.consumed).Length + 1, this.buffer.Length)
 				: this.buffer.Length;
+			ReadOnlySequence<byte> slice = this.buffer.Slice(this.consumed, this.buffer.GetPosition(endIndex));
+			return new ReadResult(slice, isCanceled, isCompleted: false);
+		}
+	}
+
+	/// <summary>
+	/// Returns a one-byte prefix, an incomplete raced prefix, then a canceled follow-up that still lacks the
+	/// closing bytes. The next read is canceled and contains the rest of the value.
+	/// </summary>
+	private sealed class CompletingCancelPipeReader : PipeReader
+	{
+		private readonly ReadOnlySequence<byte> buffer;
+		private SequencePosition consumed;
+		private int reads;
+		private bool expectAdvance;
+		private TaskCompletionSource<ReadResult>? pending;
+
+		internal CompletingCancelPipeReader(byte[] payload)
+		{
+			this.buffer = new ReadOnlySequence<byte>(payload);
+			this.consumed = this.buffer.Start;
+		}
+
+		public override void AdvanceTo(SequencePosition consumed) => this.AdvanceTo(consumed, consumed);
+
+		public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
+		{
+			long consumedIndex = this.buffer.Slice(0, consumed).Length;
+			long examinedIndex = this.buffer.Slice(0, examined).Length;
+			if (consumedIndex > examinedIndex)
+			{
+				throw new InvalidOperationException("The consumed position cannot be later than the examined position.");
+			}
+
+			this.consumed = consumed;
+			this.expectAdvance = false;
+		}
+
+		public override void CancelPendingRead()
+		{
+			int read = this.reads;
+			this.pending?.TrySetResult(this.Slice(read == 2 || read == 3 ? 5 : this.buffer.Length, isCanceled: read != 2));
+		}
+
+		public override void Complete(Exception? exception = null)
+		{
+		}
+
+		public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
+		{
+			if (this.expectAdvance)
+			{
+				throw new InvalidOperationException("AdvanceTo was not called.");
+			}
+
+			this.reads++;
+			this.expectAdvance = true;
+			if (this.reads == 1)
+			{
+				return new ValueTask<ReadResult>(this.Slice(1, isCanceled: false));
+			}
+
+			if (this.reads is 2 or 3)
+			{
+				this.pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+				return new ValueTask<ReadResult>(this.pending.Task);
+			}
+
+			if (this.reads == 4)
+			{
+				return new ValueTask<ReadResult>(this.Slice(this.buffer.Length, isCanceled: true));
+			}
+
+			return new ValueTask<ReadResult>(WaitAsync(cancellationToken));
+
+			static async Task<ReadResult> WaitAsync(CancellationToken cancellationToken)
+			{
+				await Task.Delay(Timeout.Infinite, cancellationToken);
+				return new ReadResult(ReadOnlySequence<byte>.Empty, isCanceled: true, isCompleted: false);
+			}
+		}
+
+		public override bool TryRead(out ReadResult result) => throw new NotSupportedException();
+
+		private ReadResult Slice(long endIndex, bool isCanceled)
+		{
+			this.pending = null;
+			long consumedIndex = this.buffer.Slice(0, this.consumed).Length;
+			if (endIndex < consumedIndex)
+			{
+				endIndex = consumedIndex;
+			}
+
+			ReadOnlySequence<byte> slice = this.buffer.Slice(this.consumed, this.buffer.GetPosition(endIndex));
+			return new ReadResult(slice, isCanceled, isCompleted: false);
+		}
+	}
+
+	/// <summary>
+	/// Hands the incremental reader an incomplete prefix, then cancels the read that would have completed the value.
+	/// </summary>
+	private sealed class CancelAfterPrefixPipeReader : PipeReader
+	{
+		private readonly ReadOnlySequence<byte> buffer;
+		private SequencePosition consumed;
+		private SequencePosition examined;
+		private int reads;
+		private bool expectAdvance;
+		private TaskCompletionSource<ReadResult>? pending;
+
+		internal CancelAfterPrefixPipeReader(byte[] payload)
+		{
+			this.buffer = new ReadOnlySequence<byte>(payload);
+			this.consumed = this.buffer.Start;
+			this.examined = this.buffer.Start;
+		}
+
+		public override void AdvanceTo(SequencePosition consumed) => this.AdvanceTo(consumed, consumed);
+
+		public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
+		{
+			long consumedIndex = this.buffer.Slice(0, consumed).Length;
+			long examinedIndex = this.buffer.Slice(0, examined).Length;
+			long previousExamined = this.buffer.Slice(0, this.examined).Length;
+			if (examinedIndex < previousExamined)
+			{
+				throw new InvalidOperationException("The examined position cannot be earlier than the previously examined position.");
+			}
+
+			if (consumedIndex > examinedIndex)
+			{
+				throw new InvalidOperationException("The consumed position cannot be later than the examined position.");
+			}
+
+			this.consumed = consumed;
+			this.examined = examined;
+			this.expectAdvance = false;
+		}
+
+		public override void CancelPendingRead()
+			=> this.pending?.TrySetResult(this.Slice(5, isCanceled: false));
+
+		public override void Complete(Exception? exception = null)
+		{
+		}
+
+		public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = default)
+		{
+			if (this.expectAdvance)
+			{
+				throw new InvalidOperationException("AdvanceTo was not called.");
+			}
+
+			this.reads++;
+			this.expectAdvance = true;
+			if (this.reads == 1)
+			{
+				return new ValueTask<ReadResult>(this.Slice(1, isCanceled: false));
+			}
+
+			if (this.reads == 2)
+			{
+				this.pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+				return new ValueTask<ReadResult>(this.pending.Task);
+			}
+
+			if (this.reads == 3)
+			{
+				return new ValueTask<ReadResult>(this.Slice(5, isCanceled: false));
+			}
+
+			long examinedIndex = this.buffer.Slice(0, this.examined).Length;
+			if (examinedIndex >= this.buffer.Length)
+			{
+				return new ValueTask<ReadResult>(WaitAsync(cancellationToken));
+			}
+
+			return new ValueTask<ReadResult>(this.Slice(this.buffer.Length, isCanceled: true));
+
+			static async Task<ReadResult> WaitAsync(CancellationToken cancellationToken)
+			{
+				await Task.Delay(Timeout.Infinite, cancellationToken);
+				return new ReadResult(ReadOnlySequence<byte>.Empty, isCanceled: true, isCompleted: false);
+			}
+		}
+
+		public override bool TryRead(out ReadResult result) => throw new NotSupportedException();
+
+		private ReadResult Slice(long endIndex, bool isCanceled)
+		{
+			this.pending = null;
+			long consumedIndex = this.buffer.Slice(0, this.consumed).Length;
+			if (endIndex < consumedIndex)
+			{
+				endIndex = consumedIndex;
+			}
+
 			ReadOnlySequence<byte> slice = this.buffer.Slice(this.consumed, this.buffer.GetPosition(endIndex));
 			return new ReadResult(slice, isCanceled, isCompleted: false);
 		}
