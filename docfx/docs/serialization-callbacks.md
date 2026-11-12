@@ -1,7 +1,11 @@
 # Serialization callbacks
 
-Types that need to validate outgoing state or restore computed state after
+Reference types that need to validate outgoing state or restore computed state after
 deserialization may implement <xref:Nerdbank.Json.IJsonSerializationCallbacks>.
+The interface is supported only on reference types. Calling the methods on a struct
+boxes a copy, and mutations made by the callback are lost.
+[NBJson004](../analyzers/NBJson004.md) reports an error when a struct or record struct implements it.
+
 The interface has the same four methods as Nerdbank.MessagePack's
 `IMessagePackSerializationCallbacks`, and the serializer calls them at the same
 relative points the JSON format allows.

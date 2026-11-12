@@ -4,9 +4,13 @@
 namespace Nerdbank.Json;
 
 /// <summary>
-/// Receives notifications around the serialization and deserialization of an object.
+/// Receives notifications around the serialization and deserialization of a reference type.
 /// </summary>
 /// <remarks>
+/// <para>
+/// This interface is supported only on reference types. Calling the methods on a struct boxes a copy,
+/// and mutations made by the callback are lost.
+/// </para>
 /// <para>
 /// These callbacks are invoked by shape-generated object converters. A custom converter controls its own
 /// representation and is responsible for invoking callbacks when that is appropriate.

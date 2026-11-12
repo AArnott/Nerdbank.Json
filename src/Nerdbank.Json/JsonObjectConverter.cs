@@ -212,7 +212,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 	private void PopulateReference(ref JsonReader reader, ref T instance, SerializationContext context, bool skipDiscriminator, bool discriminatorConsumed = false)
 	{
 		context.DepthStep();
-		this.InvokeBeforeDeserialize(ref instance);
+		this.InvokeBeforeDeserialize(instance);
 
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
 		UnusedDataPacket.Map? unused = null;
@@ -224,7 +224,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 		if (reader.TryReadEndObject())
 		{
-			this.InvokeAfterDeserialize(ref instance);
+			this.InvokeAfterDeserialize(instance);
 			return;
 		}
 
@@ -317,7 +317,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		}
 
 		this.extensionData?.Apply(ref instance, unused);
-		this.InvokeAfterDeserialize(ref instance);
+		this.InvokeAfterDeserialize(instance);
 	}
 
 	private JsonProperty<T>? FindSplitProperty(ref JsonReader reader, long start, long length, out string? propertyName)
@@ -337,7 +337,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 	private async ValueTask<T> PopulateAsyncCore(JsonAsyncReader reader, T result, SerializationContext context, bool skipDiscriminator = false, bool discriminatorConsumed = false)
 	{
 		context.DepthStep();
-		this.InvokeBeforeDeserialize(ref result);
+		this.InvokeBeforeDeserialize(result);
 
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
 		UnusedDataPacket.Map? unused = null;
@@ -348,7 +348,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 		if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
 		{
-			this.InvokeAfterDeserialize(ref result);
+			this.InvokeAfterDeserialize(result);
 			return result;
 		}
 
@@ -404,47 +404,23 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		}
 
 		this.extensionData?.Apply(ref result, unused);
-		this.InvokeAfterDeserialize(ref result);
+		this.InvokeAfterDeserialize(result);
 		return result;
 	}
 
 	/// <summary>
-	/// Invokes <see cref="IJsonSerializationCallbacks.OnBeforeDeserialize"/> and copies struct mutations back.
+	/// Invokes <see cref="IJsonSerializationCallbacks.OnBeforeDeserialize"/> when <paramref name="instance"/> implements it.
 	/// </summary>
 	/// <param name="instance">The instance being populated.</param>
-	private void InvokeBeforeDeserialize(ref T instance)
-	{
-		if (instance is not IJsonSerializationCallbacks callbacks)
-		{
-			return;
-		}
-
-		callbacks.OnBeforeDeserialize();
-		this.CopyStructCallback(ref instance, callbacks);
-	}
+	private void InvokeBeforeDeserialize(T instance)
+		=> (instance as IJsonSerializationCallbacks)?.OnBeforeDeserialize();
 
 	/// <summary>
-	/// Invokes <see cref="IJsonSerializationCallbacks.OnAfterDeserialize"/> and copies struct mutations back.
+	/// Invokes <see cref="IJsonSerializationCallbacks.OnAfterDeserialize"/> when <paramref name="instance"/> implements it.
 	/// </summary>
 	/// <param name="instance">The instance being populated.</param>
-	private void InvokeAfterDeserialize(ref T instance)
-	{
-		if (instance is not IJsonSerializationCallbacks callbacks)
-		{
-			return;
-		}
-
-		callbacks.OnAfterDeserialize();
-		this.CopyStructCallback(ref instance, callbacks);
-	}
-
-	private void CopyStructCallback(ref T instance, IJsonSerializationCallbacks callbacks)
-	{
-		if (typeof(T).IsValueType)
-		{
-			instance = (T)(object)callbacks;
-		}
-	}
+	private void InvokeAfterDeserialize(T instance)
+		=> (instance as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 }
 
 internal sealed class JsonExtensionData<TDeclaring>

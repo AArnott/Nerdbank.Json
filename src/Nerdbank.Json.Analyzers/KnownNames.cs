@@ -50,6 +50,9 @@ internal static class KnownNames
 	/// <summary>The top-level serializer.</summary>
 	internal const string Serializer = "Nerdbank.Json.JsonSerializer";
 
+	/// <summary>The serialization and deserialization callback interface.</summary>
+	internal const string SerializationCallbacks = "Nerdbank.Json.IJsonSerializationCallbacks";
+
 	/// <summary>The schema customization method.</summary>
 	internal const string GetJsonSchema = "GetJsonSchema";
 

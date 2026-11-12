@@ -69,7 +69,7 @@ Current behavior:
 * `JsonSerializer.ConverterFactories` can register runtime converter factories for type-driven interception.
 * `JsonConverterAttribute` can attach custom converters directly to types, properties, and constructor parameters.
 * A field or property of type <xref:Nerdbank.Json.UnusedDataPacket> captures unknown object members as raw JSON for forward-compatible round-tripping; private members can be exposed with `PropertyShapeAttribute`.
-* Types implementing `IJsonSerializationCallbacks` can run code before and after serialization and deserialization. The four methods match Nerdbank.MessagePack, including empty default implementations on modern .NET.
+* Reference types implementing `IJsonSerializationCallbacks` can run code before and after serialization and deserialization. The four methods match Nerdbank.MessagePack, including empty default implementations on modern .NET. Structs are not supported, because calling the methods boxes a copy and mutations are lost.
 * <xref:Nerdbank.Json.UseComparerAttribute> selects a comparer type or provider property for a dictionary or set member so the deserializer preserves member-specific semantics such as case-insensitive keys.
 * <xref:Nerdbank.Json.JsonSerializer.SerializeDefaultValues> can omit default-valued properties, honoring optional constructor defaults and <xref:System.ComponentModel.DefaultValueAttribute> before falling back to the CLR default.
 * `JsonSerializer.SerializeEnumValuesByName` can serialize enums as strings when simple names exist.
