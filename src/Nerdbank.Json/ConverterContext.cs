@@ -90,9 +90,6 @@ public readonly struct ConverterContext
 	internal JsonConverter<T> GetConverterDynamically<T>()
 		=> this.cache?.GetOrAddConverter<T>() ?? throw new InvalidOperationException("No converter factory context is active.");
 
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(JsonSerializerExtensions.ResolveDynamicMessage)]
-#endif
 	internal JsonConverter<T> GetConverterDynamically<T, TProvider>()
 		=> this.GetConverter((this.cache ?? throw new InvalidOperationException("No converter factory context is active.")).ResolveDynamicTypeShapeOrThrow<T, TProvider>());
 }

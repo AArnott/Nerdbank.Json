@@ -35,7 +35,7 @@ using System.Text;
 [GenerateShapeFor<ReadOnlyMemory<byte>>]
 [GenerateShapeFor<string>]
 [GenerateShapeFor<string[]>]
-#if NET8_0_OR_GREATER
+#if NET
 [GenerateShapeFor<Half>]
 [GenerateShapeFor<Int128>]
 [GenerateShapeFor<UInt128>]
@@ -237,7 +237,7 @@ public partial class JsonSerializerTests : TestBase
 		this.AssertRoundtrip<ReadOnlyMemory<byte>, JsonSerializerTests>(new ReadOnlyMemory<byte>(new byte[] { 8, 9, 10 }), "\"CAkK\"");
 	}
 
-#if NET8_0_OR_GREATER
+#if NET
 	[Test]
 	public void SerializeDeserialize_ModernBuiltInTypes()
 	{

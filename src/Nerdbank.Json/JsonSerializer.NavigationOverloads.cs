@@ -153,9 +153,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="reader">The input pipe. <paramref name="options"/> controls whether it is completed.</param>
 	/// <param name="options">The path, missing-path behavior, and pipe ownership options.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement>(this JsonSerializer self, System.IO.Pipelines.PipeReader reader, JsonSerializer.StreamingEnumerationOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePathEnumerableAsync(reader, ResolveTypeShapeOrThrow<TRoot>(self.ConverterCache), options, cancellationToken);
 
@@ -167,9 +164,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="reader">The input pipe. <paramref name="options"/> controls whether it is completed.</param>
 	/// <param name="options">The path, missing-path behavior, and pipe ownership options.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement, TProvider>(this JsonSerializer self, System.IO.Pipelines.PipeReader reader, JsonSerializer.StreamingEnumerationOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePathEnumerableAsync(reader, ResolveTypeShapeOrThrow<TRoot, TProvider>(self.ConverterCache), options, cancellationToken);
 
@@ -180,9 +174,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="stream">The input stream, which remains open.</param>
 	/// <param name="options">The path and enumeration options. The internally created pipe is always completed.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement>(this JsonSerializer self, Stream stream, JsonSerializer.StreamingEnumerationOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePathEnumerableAsync(stream, ResolveTypeShapeOrThrow<TRoot>(self.ConverterCache), options, cancellationToken);
 
@@ -194,9 +185,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="stream">The input stream, which remains open.</param>
 	/// <param name="options">The path and enumeration options. The internally created pipe is always completed.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static IAsyncEnumerable<TElement?> DeserializePathEnumerableAsync<TRoot, TElement, TProvider>(this JsonSerializer self, Stream stream, JsonSerializer.StreamingEnumerationOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePathEnumerableAsync(stream, ResolveTypeShapeOrThrow<TRoot, TProvider>(self.ConverterCache), options, cancellationToken);
 
@@ -207,9 +195,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="reader">The reader positioned at the root document.</param>
 	/// <param name="options">The selection options.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static TElement? DeserializePath<TRoot, TElement>(this JsonSerializer self, ref JsonReader reader, in JsonSerializer.DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePath(ref reader, ResolveTypeShapeOrThrow<TRoot>(self.ConverterCache), options, cancellationToken);
 
@@ -221,9 +206,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="reader">The reader positioned at the root document.</param>
 	/// <param name="options">The selection options.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static TElement? DeserializePath<TRoot, TElement, TProvider>(this JsonSerializer self, ref JsonReader reader, in JsonSerializer.DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePath(ref reader, ResolveTypeShapeOrThrow<TRoot, TProvider>(self.ConverterCache), options, cancellationToken);
 
@@ -234,9 +216,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="utf8Json">The UTF-8 document.</param>
 	/// <param name="options">The selection options.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static TElement? DeserializePath<TRoot, TElement>(this JsonSerializer self, ReadOnlyMemory<byte> utf8Json, in JsonSerializer.DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePath(utf8Json, ResolveTypeShapeOrThrow<TRoot>(self.ConverterCache), options, cancellationToken);
 
@@ -248,9 +227,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="utf8Json">The UTF-8 document.</param>
 	/// <param name="options">The selection options.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static TElement? DeserializePath<TRoot, TElement, TProvider>(this JsonSerializer self, ReadOnlyMemory<byte> utf8Json, in JsonSerializer.DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePath(utf8Json, ResolveTypeShapeOrThrow<TRoot, TProvider>(self.ConverterCache), options, cancellationToken);
 
@@ -261,9 +237,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="utf8Json">The possibly segmented UTF-8 document.</param>
 	/// <param name="options">The selection options.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static TElement? DeserializePath<TRoot, TElement>(this JsonSerializer self, scoped in ReadOnlySequence<byte> utf8Json, in JsonSerializer.DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePath(utf8Json, ResolveTypeShapeOrThrow<TRoot>(self.ConverterCache), options, cancellationToken);
 
@@ -275,9 +248,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="utf8Json">The possibly segmented UTF-8 document.</param>
 	/// <param name="options">The selection options.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static TElement? DeserializePath<TRoot, TElement, TProvider>(this JsonSerializer self, scoped in ReadOnlySequence<byte> utf8Json, in JsonSerializer.DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePath(utf8Json, ResolveTypeShapeOrThrow<TRoot, TProvider>(self.ConverterCache), options, cancellationToken);
 
@@ -288,9 +258,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="stream">The document stream, which is read to its end and remains open.</param>
 	/// <param name="options">The selection options.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static TElement? DeserializePath<TRoot, TElement>(this JsonSerializer self, Stream stream, in JsonSerializer.DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePath(stream, ResolveTypeShapeOrThrow<TRoot>(self.ConverterCache), options, cancellationToken);
 
@@ -302,9 +269,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="stream">The document stream, which is read to its end and remains open.</param>
 	/// <param name="options">The selection options.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static TElement? DeserializePath<TRoot, TElement, TProvider>(this JsonSerializer self, Stream stream, in JsonSerializer.DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePath(stream, ResolveTypeShapeOrThrow<TRoot, TProvider>(self.ConverterCache), options, cancellationToken);
 
@@ -315,9 +279,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="json">The JSON document.</param>
 	/// <param name="options">The selection options.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static TElement? DeserializePath<TRoot, TElement>(this JsonSerializer self, string json, in JsonSerializer.DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePath(json, ResolveTypeShapeOrThrow<TRoot>(self.ConverterCache), options, cancellationToken);
 
@@ -329,9 +290,6 @@ public static partial class JsonSerializerExtensions
 	/// <param name="json">The JSON document.</param>
 	/// <param name="options">The selection options.</param>
 	/// <param name="cancellationToken">A cancellation token.</param>
-#if NET8_0
-	[System.Diagnostics.CodeAnalysis.RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	public static TElement? DeserializePath<TRoot, TElement, TProvider>(this JsonSerializer self, string json, in JsonSerializer.DeserializePathOptions<TRoot, TElement> options, CancellationToken cancellationToken = default)
 		=> RequireSerializer(self).DeserializePath(json, ResolveTypeShapeOrThrow<TRoot, TProvider>(self.ConverterCache), options, cancellationToken);
 }

@@ -409,7 +409,7 @@ public static class JsonPrimitives
 		}
 
 		Span<byte> scratch = stackalloc byte[32];
-#if NET8_0_OR_GREATER
+#if NET
 		Assumes.True(Utf8Formatter.TryFormat(value, scratch, out int written));
 #else
 		Assumes.True(Utf8Formatter.TryFormat(value, scratch, out int written, new StandardFormat('E', 8)));
@@ -436,7 +436,7 @@ public static class JsonPrimitives
 		}
 
 		Span<byte> scratch = stackalloc byte[32];
-#if NET8_0_OR_GREATER
+#if NET
 		Assumes.True(Utf8Formatter.TryFormat(value, scratch, out int written));
 #else
 		Assumes.True(Utf8Formatter.TryFormat(value, scratch, out int written, new StandardFormat('E', 16)));

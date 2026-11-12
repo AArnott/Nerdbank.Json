@@ -22,7 +22,7 @@ internal static class JsonSchemaScalars
 	internal static bool TryGetScalarSchema(Type type, JsonSchemaContext context, out JsonSchemaObject schema)
 	{
 		schema = new JsonSchemaObject();
-#if NET8_0_OR_GREATER
+#if NET
 		if (type == typeof(Half))
 		{
 			schema.Set("type", "number");

@@ -2,7 +2,6 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
 
 namespace Nerdbank.Json;
@@ -22,9 +21,6 @@ public static partial class JsonSerializerExtensions
 	/// For non-decorated types, apply <see cref="GenerateShapeForAttribute{T}"/> to a witness type and call <see cref="GetJsonSchema{T, TProvider}(JsonSerializer)"/> instead,
 	/// or use <see cref="JsonSerializer.GetJsonSchema{T}(ITypeShapeProvider)"/> for an option that does not require source generation.
 	/// </remarks>
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[EditorBrowsable(EditorBrowsableState.Never)]
 	[Obsolete("Use the JsonSerializer.GetJsonSchema<T>() instance method instead. If using the extension method syntax, check that your type argument actually has a [GenerateShape] attribute or otherwise implements IShapeable<T> to avoid a runtime failure.", error: true)]
@@ -45,9 +41,6 @@ public static partial class JsonSerializerExtensions
 	/// For non-decorated types, apply <see cref="GenerateShapeForAttribute{T}"/> to a witness type and call <see cref="GetJsonSchema{T, TProvider}(JsonSerializer)"/> instead,
 	/// or use <see cref="JsonSerializer.GetJsonSchema{T}(ITypeShapeProvider)"/> for an option that does not require source generation.
 	/// </remarks>
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[EditorBrowsable(EditorBrowsableState.Never)]
 	[Obsolete("Use the JsonSerializer.GetJsonSchema<T>(JsonSchemaOptions) instance method instead. If using the extension method syntax, check that your type argument actually has a [GenerateShape] attribute or otherwise implements IShapeable<T> to avoid a runtime failure.", error: true)]
@@ -67,9 +60,6 @@ public static partial class JsonSerializerExtensions
 	/// This overload should only be used when <typeparamref name="TProvider"/> is decorated with a <see cref="GenerateShapeForAttribute{T}"/>.
 	/// Use <see cref="JsonSerializer.GetJsonSchema{T}(ITypeShapeProvider)"/> for an option that does not require source generation.
 	/// </remarks>
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[EditorBrowsable(EditorBrowsableState.Never)]
 	[Obsolete("Use the JsonSerializer.GetJsonSchema<T, TProvider>() instance method instead. If using the extension method syntax, check that your type argument actually has a [GenerateShape] attribute or otherwise implements IShapeable<T> to avoid a runtime failure.", error: true)]
@@ -90,9 +80,6 @@ public static partial class JsonSerializerExtensions
 	/// This overload should only be used when <typeparamref name="TProvider"/> is decorated with a <see cref="GenerateShapeForAttribute{T}"/>.
 	/// Use <see cref="JsonSerializer.GetJsonSchema{T}(ITypeShapeProvider)"/> for an option that does not require source generation.
 	/// </remarks>
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[EditorBrowsable(EditorBrowsableState.Never)]
 	[Obsolete("Use the JsonSerializer.GetJsonSchema<T, TProvider>(JsonSchemaOptions) instance method instead. If using the extension method syntax, check that your type argument actually has a [GenerateShape] attribute or otherwise implements IShapeable<T> to avoid a runtime failure.", error: true)]

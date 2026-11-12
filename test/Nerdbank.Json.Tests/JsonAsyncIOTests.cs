@@ -269,16 +269,6 @@ public partial class JsonAsyncIOTests : TestBase
 		}
 	}
 
-#if NET8_0
-	[Test]
-	public async Task Deserialize_CallerOwnedStreamPipe_DocumentationSample()
-	{
-		using ChunkedStream stream = new(Encoding.UTF8.GetBytes("""{"kind":"temperature","value":1} {"kind":"humidity","value":2}"""), int.MaxValue);
-		await StreamFirstValuesSample.ReadTwoValuesAsync(stream);
-		Assert.True(stream.CanRead);
-	}
-#endif
-
 	[Test]
 	[Arguments("/*")]
 	[Arguments("/* body")]

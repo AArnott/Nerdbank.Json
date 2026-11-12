@@ -117,9 +117,6 @@ public static partial class JsonSerializerExtensions
 	/// or use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -135,9 +132,6 @@ public static partial class JsonSerializerExtensions
 	/// or use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -153,9 +147,6 @@ public static partial class JsonSerializerExtensions
 	/// or use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -171,9 +162,6 @@ public static partial class JsonSerializerExtensions
 	/// or use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -189,9 +177,6 @@ public static partial class JsonSerializerExtensions
 	/// or use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -207,9 +192,6 @@ public static partial class JsonSerializerExtensions
 	/// or use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -225,9 +207,6 @@ public static partial class JsonSerializerExtensions
 	/// or use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -243,9 +222,6 @@ public static partial class JsonSerializerExtensions
 	/// or use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -261,9 +237,6 @@ public static partial class JsonSerializerExtensions
 	/// or use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -278,9 +251,6 @@ public static partial class JsonSerializerExtensions
 	/// Use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -295,9 +265,6 @@ public static partial class JsonSerializerExtensions
 	/// Use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -312,9 +279,6 @@ public static partial class JsonSerializerExtensions
 	/// Use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -329,9 +293,6 @@ public static partial class JsonSerializerExtensions
 	/// Use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -346,9 +307,6 @@ public static partial class JsonSerializerExtensions
 	/// Use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -363,9 +321,6 @@ public static partial class JsonSerializerExtensions
 	/// Use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -380,9 +335,6 @@ public static partial class JsonSerializerExtensions
 	/// Use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -397,9 +349,6 @@ public static partial class JsonSerializerExtensions
 	/// Use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -414,9 +363,6 @@ public static partial class JsonSerializerExtensions
 	/// Use an overload that accepts a <see cref="ITypeShape{T}"/> for an option that does not require source generation.
 	/// </remarks>
 	[ExcludeFromCodeCoverage]
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]

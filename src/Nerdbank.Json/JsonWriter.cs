@@ -24,7 +24,7 @@ public ref struct JsonWriter
 
 	private static readonly Encoding Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
-#if NET8_0_OR_GREATER
+#if NET
 	// The common case is shallow nesting, so the first InlineStackCapacity levels are tracked in this
 	// inline (non-heap) buffer. `stack` remains null until nesting exceeds that capacity, or until this
 	// writer is constructed from previously-exported (necessarily heap-allocated) state.
@@ -311,7 +311,7 @@ public ref struct JsonWriter
 	public void Write(byte value)
 	{
 		this.BeforeValueToken();
-#if NET8_0_OR_GREATER
+#if NET
 		this.WriteUtf8Formattable(value, maxLength: 3);
 #else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
@@ -325,7 +325,7 @@ public ref struct JsonWriter
 	public void Write(sbyte value)
 	{
 		this.BeforeValueToken();
-#if NET8_0_OR_GREATER
+#if NET
 		this.WriteUtf8Formattable(value, maxLength: 4);
 #else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
@@ -339,7 +339,7 @@ public ref struct JsonWriter
 	public void Write(short value)
 	{
 		this.BeforeValueToken();
-#if NET8_0_OR_GREATER
+#if NET
 		this.WriteUtf8Formattable(value, maxLength: 6);
 #else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
@@ -353,7 +353,7 @@ public ref struct JsonWriter
 	public void Write(ushort value)
 	{
 		this.BeforeValueToken();
-#if NET8_0_OR_GREATER
+#if NET
 		this.WriteUtf8Formattable(value, maxLength: 5);
 #else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
@@ -367,7 +367,7 @@ public ref struct JsonWriter
 	public void Write(int value)
 	{
 		this.BeforeValueToken();
-#if NET8_0_OR_GREATER
+#if NET
 		this.WriteUtf8Formattable(value, maxLength: 11);
 #else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
@@ -381,7 +381,7 @@ public ref struct JsonWriter
 	public void Write(uint value)
 	{
 		this.BeforeValueToken();
-#if NET8_0_OR_GREATER
+#if NET
 		this.WriteUtf8Formattable(value, maxLength: 10);
 #else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
@@ -395,7 +395,7 @@ public ref struct JsonWriter
 	public void Write(long value)
 	{
 		this.BeforeValueToken();
-#if NET8_0_OR_GREATER
+#if NET
 		this.WriteUtf8Formattable(value, maxLength: 20);
 #else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
@@ -409,7 +409,7 @@ public ref struct JsonWriter
 	public void Write(ulong value)
 	{
 		this.BeforeValueToken();
-#if NET8_0_OR_GREATER
+#if NET
 		this.WriteUtf8Formattable(value, maxLength: 20);
 #else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
@@ -428,7 +428,7 @@ public ref struct JsonWriter
 		}
 
 		this.BeforeValueToken();
-#if NET8_0_OR_GREATER
+#if NET
 		this.WriteUtf8Formattable(value, maxLength: 32, format: "R");
 #else
 		this.WriteUtf8(value.ToString("R", CultureInfo.InvariantCulture).AsSpan());
@@ -447,7 +447,7 @@ public ref struct JsonWriter
 		}
 
 		this.BeforeValueToken();
-#if NET8_0_OR_GREATER
+#if NET
 		this.WriteUtf8Formattable(value, maxLength: 32, format: "R");
 #else
 		this.WriteUtf8(value.ToString("R", CultureInfo.InvariantCulture).AsSpan());
@@ -461,7 +461,7 @@ public ref struct JsonWriter
 	public void Write(decimal value)
 	{
 		this.BeforeValueToken();
-#if NET8_0_OR_GREATER
+#if NET
 		this.WriteUtf8Formattable(value, maxLength: 32);
 #else
 		this.WriteUtf8(value.ToString(CultureInfo.InvariantCulture).AsSpan());
@@ -555,7 +555,7 @@ public ref struct JsonWriter
 	/// <returns>The container stack, depth, and pending-property-value flag.</returns>
 	internal (ContainerState[] Stack, int Depth, bool PendingPropertyValue) ExportContainerState()
 	{
-#if NET8_0_OR_GREATER
+#if NET
 		if (this.stack is null)
 		{
 			// The nesting never exceeded the inline capacity, so no heap array exists yet. The caller
@@ -573,7 +573,7 @@ public ref struct JsonWriter
 		return (this.stack!, this.depth, this.pendingPropertyValue);
 	}
 
-#if NET8_0_OR_GREATER
+#if NET
 	/// <summary>
 	/// Writes a known-ASCII, escape-free formatted value directly to the UTF-8 output buffer as a JSON string.
 	/// </summary>
@@ -673,7 +673,7 @@ public ref struct JsonWriter
 
 	private void PushContainer(ContainerKind kind)
 	{
-#if NET8_0_OR_GREATER
+#if NET
 		if (this.stack is null)
 		{
 			if (this.depth < InlineStackCapacity)
@@ -733,7 +733,7 @@ public ref struct JsonWriter
 
 	private readonly ContainerState GetStack(int index)
 	{
-#if NET8_0_OR_GREATER
+#if NET
 		return this.stack is null ? this.inlineStack[index] : this.stack[index];
 #else
 		return this.stack[index];
@@ -742,7 +742,7 @@ public ref struct JsonWriter
 
 	private void SetStack(int index, ContainerState value)
 	{
-#if NET8_0_OR_GREATER
+#if NET
 		if (this.stack is null)
 		{
 			this.inlineStack[index] = value;
@@ -877,7 +877,7 @@ public ref struct JsonWriter
 
 	private void WriteUtf8(ReadOnlySpan<char> value)
 	{
-#if NET8_0_OR_GREATER
+#if NET
 		// Fast path: bulk-copy runs of 7-bit ASCII (the common case for property names and typical
 		// string content) using a vectorized narrowing conversion instead of writing one byte at a time.
 		// Non-ASCII content falls through to UTF-8 encoding and isolated-surrogate escaping below.
@@ -910,7 +910,7 @@ public ref struct JsonWriter
 		}
 	}
 
-#if NET8_0_OR_GREATER
+#if NET
 	/// <summary>
 	/// Formats a numeric value directly into the destination UTF-8 buffer, avoiding the intermediate
 	/// <see cref="string"/> allocation that <see cref="object.ToString()"/>-based formatting would require.
@@ -1013,7 +1013,7 @@ public ref struct JsonWriter
 		}
 	}
 
-#if NET8_0_OR_GREATER
+#if NET
 	[System.Runtime.CompilerServices.InlineArray(InlineStackCapacity)]
 	private struct InlineContainerStack
 	{

@@ -95,9 +95,6 @@ internal sealed class ConverterCache : ITypeShapeFunc
 	internal JsonConverter GetOrAddConverter(Type type, ITypeShapeProvider provider)
 		=> this.GetOrAddConverter(provider.GetTypeShape(type) ?? throw new NotSupportedException($"The type shape provider '{provider.GetType().FullName}' does not provide a shape for '{type.FullName}'."));
 
-#if NET8_0
-	[RequiresDynamicCode("Dynamic shape resolution may require runtime-generated code.")]
-#endif
 	internal ITypeShape<T> ResolveDynamicTypeShapeOrThrow<T>()
 	{
 		Type type = typeof(T);
@@ -110,9 +107,6 @@ internal sealed class ConverterCache : ITypeShapeFunc
 		return (ITypeShape<T>)shape;
 	}
 
-#if NET8_0
-	[RequiresDynamicCode("Dynamic witness shape resolution may require runtime-generated code.")]
-#endif
 	internal ITypeShape<T> ResolveDynamicTypeShapeOrThrow<T, TProvider>()
 	{
 		(Type, Type) key = (typeof(T), typeof(TProvider));
