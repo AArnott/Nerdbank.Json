@@ -701,7 +701,7 @@ public ref struct JsonReader
 
 	private static void ValidateStringBytes(ReadOnlySpan<byte> bytes)
 	{
-#if NET8_0_OR_GREATER
+#if NET
 		if (bytes.IndexOfAnyInRange((byte)0, (byte)0x1F) >= 0)
 		{
 			throw new FormatException("Unescaped control character in JSON string.");
@@ -901,7 +901,7 @@ public ref struct JsonReader
 		this.RequireCurrent((byte)'"');
 		this.position++;
 		long segmentStart = this.position;
-#if NET8_0_OR_GREATER
+#if NET
 		ReadOnlySpan<byte> contiguous = this.utf8Json.ContiguousSpan;
 		if (!contiguous.IsEmpty)
 		{

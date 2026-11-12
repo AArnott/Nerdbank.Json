@@ -4,7 +4,6 @@
 #pragma warning disable SA1601 // Partial elements should be documented
 
 using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Nerdbank.Json;
 
@@ -16,9 +15,6 @@ public static partial class JsonSerializerExtensions
 	/// <typeparam name="T">The type to convert.</typeparam>
 	/// <param name="context">The converter creation context.</param>
 	/// <returns>The converter.</returns>
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -31,9 +27,6 @@ public static partial class JsonSerializerExtensions
 	/// <typeparam name="TProvider">The shape witness.</typeparam>
 	/// <param name="context">The converter creation context.</param>
 	/// <returns>The converter.</returns>
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -45,9 +38,6 @@ public static partial class JsonSerializerExtensions
 	/// <typeparam name="T">The type to convert.</typeparam>
 	/// <param name="context">The serialization context.</param>
 	/// <returns>The converter.</returns>
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -60,9 +50,6 @@ public static partial class JsonSerializerExtensions
 	/// <typeparam name="TProvider">The shape witness.</typeparam>
 	/// <param name="context">The serialization context.</param>
 	/// <returns>The converter.</returns>
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 #if NET
 	[Obsolete(JsonSerializer.PreferTypeConstrainedInstanceOverloads, error: true)]
 	[EditorBrowsable(EditorBrowsableState.Never)]

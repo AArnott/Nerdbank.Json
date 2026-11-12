@@ -100,7 +100,7 @@ internal static class JsonCSharpUnionRules
 			|| type == typeof(decimal)
 			|| type == typeof(System.Numerics.BigInteger)
 			|| type == typeof(System.Drawing.Color)
-#if NET8_0_OR_GREATER
+#if NET
 			|| type == typeof(Half)
 			|| type == typeof(Int128)
 			|| type == typeof(UInt128)
@@ -121,7 +121,7 @@ internal static class JsonCSharpUnionRules
 			|| type == typeof(byte[])
 			|| type == typeof(Memory<byte>)
 			|| type == typeof(ReadOnlyMemory<byte>)
-#if NET8_0_OR_GREATER
+#if NET
 			|| type == typeof(DateOnly)
 			|| type == typeof(TimeOnly)
 			|| type == typeof(System.Text.Rune)

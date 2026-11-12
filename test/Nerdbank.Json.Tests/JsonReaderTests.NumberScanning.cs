@@ -86,7 +86,7 @@ public partial class JsonReaderTests
 			Assert.Equal(token, peek.ReadNumberToken());
 			Assert.True(peek.End);
 			double actual = reader.ReadDouble();
-#if NET8_0_OR_GREATER
+#if NET
 			Assert.Equal(BitConverter.DoubleToInt64Bits(expected), BitConverter.DoubleToInt64Bits(actual));
 #else
 			Assert.Equal(expected, actual);

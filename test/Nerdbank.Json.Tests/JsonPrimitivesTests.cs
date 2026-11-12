@@ -216,7 +216,7 @@ public class JsonPrimitivesTests
 	{
 		byte[] destination = new byte[32];
 		Assert.True(TryWrite(destination, value, out int size));
-#if NET8_0_OR_GREATER
+#if NET
 		Assert.Equal(value.ToString("R", CultureInfo.InvariantCulture), Encoding.UTF8.GetString(destination, 0, size));
 #else
 		Assert.Equal(value.ToString("E8", CultureInfo.InvariantCulture), Encoding.UTF8.GetString(destination, 0, size));
@@ -233,7 +233,7 @@ public class JsonPrimitivesTests
 		Assert.Equal(DecodeResult.Success, TryRead(source, out float value, out int size));
 		JsonReader reader = new(source);
 		Assert.Equal(reader.ReadSingle(), value);
-#if NET8_0_OR_GREATER
+#if NET
 		Assert.Equal(1.00000011920928955078125f, value);
 #endif
 		Assert.Equal(18, size);

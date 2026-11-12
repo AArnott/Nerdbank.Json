@@ -33,7 +33,7 @@ internal static class JsonDictionaryKeyConverter
 			|| type == typeof(TimeSpan)
 			|| type == typeof(Guid)
 			|| type.IsEnum
-#if NET8_0_OR_GREATER
+#if NET
 			|| type == typeof(Half)
 			|| type == typeof(Int128)
 			|| type == typeof(UInt128)
@@ -154,7 +154,7 @@ internal static class JsonDictionaryKeyConverter
 			return boxed.ToString()!;
 		}
 
-#if NET8_0_OR_GREATER
+#if NET
 		if (type == typeof(Half))
 		{
 			return ((Half)boxed).ToString(CultureInfo.InvariantCulture);
@@ -318,7 +318,7 @@ internal static class JsonDictionaryKeyConverter
 			return (TKey)Enum.Parse(type, key, ignoreCase: true);
 		}
 
-#if NET8_0_OR_GREATER
+#if NET
 		if (type == typeof(Half))
 		{
 			result = Half.Parse(key, CultureInfo.InvariantCulture);

@@ -1,8 +1,6 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Diagnostics.CodeAnalysis;
-
 namespace Nerdbank.Json;
 
 /// <summary>
@@ -24,22 +22,9 @@ namespace Nerdbank.Json;
 /// </remarks>
 public static partial class JsonSerializerExtensions
 {
-#if NET8_0
-	/// <summary>
-	/// A message to use as the argument to <see cref="RequiresDynamicCodeAttribute"/>
-	/// for methods that call into <see cref="TypeShapeResolver.ResolveDynamicOrThrow{T}()"/>.
-	/// </summary>
-	internal const string ResolveDynamicMessage =
-		"Dynamic resolution of IShapeable<T> interface may require dynamic code generation in .NET 8 Native AOT. " +
-		"It is recommended to switch to statically resolved IShapeable<T> APIs or upgrade your app to .NET 9 or later.";
-#endif
-
 	private static JsonSerializer RequireSerializer(JsonSerializer? serializer)
 		=> serializer ?? throw new ArgumentNullException(nameof(serializer));
 
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	private static ITypeShape<T>? TryResolveTypeShape<T>(ConverterCache? cache)
 	{
 		try
@@ -52,9 +37,6 @@ public static partial class JsonSerializerExtensions
 		}
 	}
 
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	private static ITypeShape<T> ResolveTypeShapeOrThrow<T>(ConverterCache? cache)
 	{
 		try
@@ -74,9 +56,6 @@ public static partial class JsonSerializerExtensions
 		}
 	}
 
-#if NET8_0
-	[RequiresDynamicCode(ResolveDynamicMessage)]
-#endif
 	private static ITypeShape<T> ResolveTypeShapeOrThrow<T, TProvider>(ConverterCache cache)
 	{
 		try

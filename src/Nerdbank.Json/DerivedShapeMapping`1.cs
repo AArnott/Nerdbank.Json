@@ -78,9 +78,6 @@ public class DerivedShapeMapping<TBase> : DerivedTypeUnion, IDerivedTypeMapping,
 	/// For non-decorated types, apply <see cref="GenerateShapeForAttribute{T}"/> to a witness type and call <see cref="AddSourceGenerated{TDerived, TProvider}(DerivedTypeIdentifier)"/> instead,
 	/// or use <see cref="Add{TDerived}(DerivedTypeIdentifier, ITypeShapeProvider)"/> for an option that does not require source generation.
 	/// </remarks>
-#if NET8_0
-	[RequiresDynamicCode(JsonSerializerExtensions.ResolveDynamicMessage)]
-#endif
 #if NET
 	[PreferDotNetAlternativeApi("Use Add<TDerived> instead, with a type that implements IShapeable<TDerived>.")]
 	[EditorBrowsable(EditorBrowsableState.Never)]
@@ -98,9 +95,6 @@ public class DerivedShapeMapping<TBase> : DerivedTypeUnion, IDerivedTypeMapping,
 	/// This overload should only be used when <typeparamref name="TProvider"/> is decorated with a <see cref="GenerateShapeForAttribute{T}"/>.
 	/// Use <see cref="Add{TDerived}(DerivedTypeIdentifier, ITypeShapeProvider)"/> for an option that does not require source generation.
 	/// </remarks>
-#if NET8_0
-	[RequiresDynamicCode(JsonSerializerExtensions.ResolveDynamicMessage)]
-#endif
 #if NET
 	[PreferDotNetAlternativeApi("Use Add<TDerived, TProvider> instead, with a witness that implements IShapeable<TDerived>.")]
 	[EditorBrowsable(EditorBrowsableState.Never)]

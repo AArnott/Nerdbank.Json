@@ -48,7 +48,7 @@ internal static class BuiltInJsonConverters
 			|| type == typeof(ReadOnlyMemory<byte>)
 			|| type == typeof(Color)
 			|| type == typeof(Point)
-#if NET8_0_OR_GREATER
+#if NET
 			|| type == typeof(Half)
 			|| type == typeof(Int128)
 			|| type == typeof(UInt128)
@@ -160,7 +160,7 @@ internal static class BuiltInJsonConverters
 
 		if (typeof(T) == typeof(DateTime))
 		{
-#if NET8_0_OR_GREATER
+#if NET
 			writer.WriteAsciiFormattedString(Unsafe.As<T, DateTime>(ref value), maxLength: 33, format: "O");
 #else
 			writer.Write(Unsafe.As<T, DateTime>(ref value).ToString("O", CultureInfo.InvariantCulture));
@@ -170,7 +170,7 @@ internal static class BuiltInJsonConverters
 
 		if (typeof(T) == typeof(DateTimeOffset))
 		{
-#if NET8_0_OR_GREATER
+#if NET
 			writer.WriteAsciiFormattedString(Unsafe.As<T, DateTimeOffset>(ref value), maxLength: 33, format: "O");
 #else
 			writer.Write(Unsafe.As<T, DateTimeOffset>(ref value).ToString("O", CultureInfo.InvariantCulture));
@@ -180,7 +180,7 @@ internal static class BuiltInJsonConverters
 
 		if (typeof(T) == typeof(TimeSpan))
 		{
-#if NET8_0_OR_GREATER
+#if NET
 			writer.WriteAsciiFormattedString(Unsafe.As<T, TimeSpan>(ref value), maxLength: 26, format: "c");
 #else
 			writer.Write(Unsafe.As<T, TimeSpan>(ref value).ToString("c", CultureInfo.InvariantCulture));
@@ -190,7 +190,7 @@ internal static class BuiltInJsonConverters
 
 		if (typeof(T) == typeof(Guid))
 		{
-#if NET8_0_OR_GREATER
+#if NET
 			writer.WriteAsciiFormattedString(Unsafe.As<T, Guid>(ref value), maxLength: 36, format: "D");
 #else
 			writer.Write(Unsafe.As<T, Guid>(ref value).ToString("D", CultureInfo.InvariantCulture));
@@ -257,7 +257,7 @@ internal static class BuiltInJsonConverters
 			return true;
 		}
 
-#if NET8_0_OR_GREATER
+#if NET
 		if (typeof(T) == typeof(Half))
 		{
 			writer.WriteRaw(Unsafe.As<T, Half>(ref value).ToString(CultureInfo.InvariantCulture));
@@ -484,7 +484,7 @@ internal static class BuiltInJsonConverters
 			return true;
 		}
 
-#if NET8_0_OR_GREATER
+#if NET
 		if (typeof(T) == typeof(Half))
 		{
 			Unsafe.As<T, Half>(ref value) = Half.Parse(reader.ReadNumberToken(), CultureInfo.InvariantCulture);
