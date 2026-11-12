@@ -498,7 +498,9 @@ public partial record JsonSerializer
 					return false;
 				}
 
-				return ScanAdditional(result.Buffer, ref scanner, ref scanned, framing) && scanned <= this.MaxAsyncBuffer;
+				// Cap plus one byte so a scalar terminator can be seen without scanning an entire open buffer.
+				return ScanAdditional(result.Buffer, ref scanner, ref scanned, framing, this.MaxAsyncBuffer + 1L)
+					&& scanned <= this.MaxAsyncBuffer;
 			}
 		}
 		finally
@@ -512,7 +514,7 @@ public partial record JsonSerializer
 			}
 		}
 
-		static bool ScanAdditional(ReadOnlySequence<byte> buffer, ref JsonStructureScanner scanner, ref long scanned, SerializationContext context)
+		static bool ScanAdditional(ReadOnlySequence<byte> buffer, ref JsonStructureScanner scanner, ref long scanned, SerializationContext context, long scanLimit)
 		{
 			if (scanned > buffer.Length)
 			{
@@ -521,7 +523,12 @@ public partial record JsonSerializer
 				scanned = 0;
 			}
 
-			ReadOnlySequence<byte> tail = buffer.Slice(scanned);
+			if (scanned >= scanLimit)
+			{
+				return false;
+			}
+
+			ReadOnlySequence<byte> tail = buffer.Slice(scanned, Math.Min(buffer.Length, scanLimit) - scanned);
 			long offset = scanned;
 			foreach (ReadOnlyMemory<byte> segment in tail)
 			{
@@ -534,7 +541,7 @@ public partial record JsonSerializer
 				offset += segment.Length;
 			}
 
-			scanned = buffer.Length;
+			scanned = offset;
 			return false;
 		}
 	}

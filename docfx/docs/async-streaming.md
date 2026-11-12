@@ -21,7 +21,8 @@ deserialization chooses a reader. The default is 1MB, the same starting point Ne
 and `0` forces the incremental reader. When the pipe completes, or when a complete JSON value is already
 buffered within the cap, the synchronous reader deserializes it. When the buffered prefix reaches the cap
 before the value is complete, the incremental reader takes over and the cap is not raised again for that
-operation. Json does not block waiting to fill the cap when more bytes are not already available: a
+operation. The framing scan stops at the cap plus one byte, so an open pipe that already holds a large
+unfinished value is not scanned twice. Json does not block waiting to fill the cap when more bytes are not already available: a
 caller-owned pipe can still return its first value, and an object that has not yet reached its closing
 brace can still be processed as bytes arrive.
 A converter that cannot read a fully buffered value overrides <xref:Nerdbank.Json.JsonConverter.SupportsSynchronousRead>
