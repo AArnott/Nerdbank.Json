@@ -96,6 +96,7 @@ Markup links are checked in CI with [mlc](https://github.com/becheran/mlc).
 Run `mlc` from the repository root to use the same settings, configured in `.mlc.toml`.
 
 API and hand-written docs are found under the `docfx/` directory and are built by [docfx](https://dotnet.github.io/docfx/).
+Benchmark evidence and the platform validation handoff live in `docs/` and are not published with that site.
 
 You can make changes and host the site locally to preview them by switching to that directory and running the `dotnet docfx --serve` command.
 After making a change, you can rebuild the docs site while the localhost server is running by running `dotnet docfx` again from a separate terminal.

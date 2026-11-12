@@ -1,5 +1,7 @@
 # Serialization benchmarks
 
+Maintainer notes. This page is kept in the repository and is not published on the documentation site.
+
 The benchmark project under `test/Benchmarks/` compares Nerdbank.Json with source-generated System.Text.Json using a reused `ArrayBufferWriter<byte>`. Each invocation creates a writer, serializes an already-constructed model, flushes, observes the byte count, and clears the buffer. Model construction and validation are outside the measured operation.
 
 | Workload | Shape | Coverage |
@@ -205,7 +207,7 @@ Minimum-iteration warnings and outliers remain in the raw reports; this is one m
 `PrimitiveBenchmarks` validates inputs and equivalent written bytes outside measurement and compares exact, already-framed scalar tokens rather than complete serializer workloads.
 The lower-level reads avoid reader setup and insignificant-character handling; that is useful specialization, not proof of general serializer acceleration.
 The direct-buffer writer case also uses transactional primitive formatting and is not faster than ordinary scalar writing in this sample; the APIs allow callers to encode directly but do not guarantee that every encoder is cheaper.
-Legacy numeric formatting/rounding behavior is documented separately in the [converter guide](custom-converters.md); these timing/allocation results are for modern .NET 9 only.
+Legacy numeric formatting/rounding behavior is documented separately in the [converter guide](../docfx/docs/custom-converters.md); these timing/allocation results are for modern .NET 9 only.
 Full reports, distributions, medians, and allocation counts are retained in session `70b1bb69-b0bc-449e-8893-8e6ae0ea5d2d`, under `files\api-final-medium-baseline` and `files\api-final-medium-candidate`.
 
 ## Contiguous lexical string scanning
