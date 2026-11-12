@@ -81,7 +81,7 @@ internal static class ManyModels
 		JsonSerializer serializer = new();
 
 		using MemoryStream arrayStream = new();
-		await serializer.SerializeArrayAsync(arrayStream, Source(1000), WitnessShape<int, IntWitness>());
+		await serializer.SerializeEnumerableAsync(arrayStream, Source(1000), WitnessShape<int, IntWitness>(), new() { Format = JsonSequenceFormat.JsonArray });
 		arrayStream.Position = 0;
 
 		int expected = 0;

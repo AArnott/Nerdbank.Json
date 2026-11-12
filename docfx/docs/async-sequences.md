@@ -46,5 +46,5 @@ A selected non-array value throws.
 
 <xref:Nerdbank.Json.JsonSerializer.SerializeEnumerableAsync*> writes an <xref:System.Collections.Generic.IAsyncEnumerable`1> using the same <xref:Nerdbank.Json.JsonSerializer.SequenceOptions> framing choices, defaulting to NDJSON.
 NDJSON output writes a newline after each value and does not indent values across multiple lines.
-The dedicated <xref:Nerdbank.Json.JsonSerializer.SerializeArrayAsync*> API writes a top-level JSON array.
-Both APIs flush periodically so a long or unbounded source streams with bounded memory and backpressure.
+<xref:Nerdbank.Json.JsonSequenceFormat.JsonArray> writes one top-level JSON array.
+The API flushes periodically so a long or unbounded source streams with bounded memory and backpressure.

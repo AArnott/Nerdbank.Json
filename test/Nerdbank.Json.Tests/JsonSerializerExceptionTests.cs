@@ -170,7 +170,7 @@ public partial class JsonSerializerExceptionTests
 			}
 			else
 			{
-				await serializer.SerializeArrayAsync(stream, Source(), Shape<int>());
+				await serializer.SerializeEnumerableAsync(stream, Source(), Shape<int>(), new() { Format = JsonSequenceFormat.JsonArray });
 			}
 		});
 		Assert.Same(cause, exception.InnerException);
@@ -355,7 +355,7 @@ public partial class JsonSerializerExceptionTests
 				await serializer.SerializeJsonValueAsync(stream, JsonValue.Create(1L));
 				break;
 			case "array":
-				await serializer.SerializeArrayAsync(stream, Source(), shape);
+				await serializer.SerializeEnumerableAsync(stream, Source(), shape, new() { Format = JsonSequenceFormat.JsonArray });
 				break;
 			case "ndjson":
 				await serializer.SerializeEnumerableAsync(stream, Source(), shape);

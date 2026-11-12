@@ -193,76 +193,6 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
-	/// Asynchronously serializes an <see cref="IAsyncEnumerable{T}"/> as a top-level JSON array, writing elements as they
-	/// are produced with bounded memory and backpressure.
-	/// </summary>
-	/// <typeparam name="T">The element type.</typeparam>
-	/// <param name="writer">The pipe to write to. It is flushed but never completed by this method.</param>
-	/// <param name="values">The asynchronous source of elements.</param>
-	/// <param name="shape">The shape of <typeparamref name="T"/>.</param>
-	/// <param name="cancellationToken">A cancellation token.</param>
-	/// <returns>A task tracking the serialization.</returns>
-	public async ValueTask SerializeArrayAsync<T>(PipeWriter writer, IAsyncEnumerable<T> values, ITypeShape<T> shape, CancellationToken cancellationToken = default)
-	{
-		Requires.NotNull(writer);
-		Requires.NotNull(values);
-		Requires.NotNull(shape);
-
-		SerializationContext context = this.CreateSerializationContext(cancellationToken);
-		try
-		{
-			JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
-			JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
-
-			JsonWriter syncWriter = asyncWriter.CreateWriter();
-			syncWriter.WriteStartArray();
-			asyncWriter.ReturnWriter(ref syncWriter);
-
-			bool first = true;
-			await foreach (T value in values.WithCancellation(context.CancellationToken).ConfigureAwait(false))
-			{
-				if (!first)
-				{
-					syncWriter = asyncWriter.CreateWriter();
-					syncWriter.WriteValueSeparator();
-					asyncWriter.ReturnWriter(ref syncWriter);
-				}
-
-				first = false;
-				await asyncWriter.WriteValueAsync(converter, value, context).ConfigureAwait(false);
-			}
-
-			syncWriter = asyncWriter.CreateWriter();
-			syncWriter.WriteEndArray();
-			asyncWriter.ReturnWriter(ref syncWriter);
-			await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
-		}
-		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
-		{
-			throw new JsonSerializationException("An error occurred during serialization.", ex);
-		}
-	}
-
-	/// <summary>
-	/// Asynchronously serializes an <see cref="IAsyncEnumerable{T}"/> as a top-level JSON array to a stream.
-	/// </summary>
-	/// <typeparam name="T">The element type.</typeparam>
-	/// <param name="stream">The stream to write to. It is flushed but not disposed or closed by this method.</param>
-	/// <param name="values">The asynchronous source of elements.</param>
-	/// <param name="shape">The shape of <typeparamref name="T"/>.</param>
-	/// <param name="cancellationToken">A cancellation token.</param>
-	/// <returns>A task tracking the serialization.</returns>
-	public async ValueTask SerializeArrayAsync<T>(Stream stream, IAsyncEnumerable<T> values, ITypeShape<T> shape, CancellationToken cancellationToken = default)
-	{
-		Requires.NotNull(stream);
-		Requires.NotNull(values);
-		Requires.NotNull(shape);
-		PipeWriter writer = PipeWriter.Create(stream, StreamPipeWriterLeaveOpen);
-		CancellationToken effectiveCancellationToken = cancellationToken.CanBeCanceled ? cancellationToken : this.StartingContext.CancellationToken;
-		await CompleteStreamSerializationAsync(writer, this.SerializeArrayAsync(writer, values, shape, cancellationToken), effectiveCancellationToken).ConfigureAwait(false);
-	}
-
-	/// <summary>
 	/// Asynchronously serializes an <see cref="IAsyncEnumerable{T}"/> using the selected JSON framing.
 	/// </summary>
 	/// <typeparam name="T">The value type.</typeparam>
@@ -280,7 +210,7 @@ public partial record JsonSerializer
 		ValidateSequenceOptions(options);
 		if (options.Format == JsonSequenceFormat.JsonArray)
 		{
-			await this.SerializeArrayAsync(writer, values, shape, cancellationToken).ConfigureAwait(false);
+			await this.SerializeJsonArrayCoreAsync(writer, values, shape, cancellationToken).ConfigureAwait(false);
 			return;
 		}
 
@@ -328,7 +258,48 @@ public partial record JsonSerializer
 		await CompleteStreamSerializationAsync(writer, this.SerializeEnumerableAsync(writer, values, shape, options, cancellationToken), effectiveCancellationToken).ConfigureAwait(false);
 	}
 
-#pragma warning disable SA1202 // Keep the private core enumerator adjacent to its public entry points.
+#pragma warning disable SA1202 // Keep private sequence helpers adjacent to their public entry points.
+	private async ValueTask SerializeJsonArrayCoreAsync<T>(PipeWriter writer, IAsyncEnumerable<T> values, ITypeShape<T> shape, CancellationToken cancellationToken)
+	{
+		Requires.NotNull(writer);
+		Requires.NotNull(values);
+		Requires.NotNull(shape);
+
+		SerializationContext context = this.CreateSerializationContext(cancellationToken);
+		try
+		{
+			JsonAsyncWriter asyncWriter = new(writer, this.WriteIndented);
+			JsonConverter<T> converter = this.ConverterCache.GetOrAddConverter(shape);
+
+			JsonWriter syncWriter = asyncWriter.CreateWriter();
+			syncWriter.WriteStartArray();
+			asyncWriter.ReturnWriter(ref syncWriter);
+
+			bool first = true;
+			await foreach (T value in values.WithCancellation(context.CancellationToken).ConfigureAwait(false))
+			{
+				if (!first)
+				{
+					syncWriter = asyncWriter.CreateWriter();
+					syncWriter.WriteValueSeparator();
+					asyncWriter.ReturnWriter(ref syncWriter);
+				}
+
+				first = false;
+				await asyncWriter.WriteValueAsync(converter, value, context).ConfigureAwait(false);
+			}
+
+			syncWriter = asyncWriter.CreateWriter();
+			syncWriter.WriteEndArray();
+			asyncWriter.ReturnWriter(ref syncWriter);
+			await asyncWriter.FlushAsync(context.CancellationToken).ConfigureAwait(false);
+		}
+		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
+		{
+			throw new JsonSerializationException("An error occurred during serialization.", ex);
+		}
+	}
+
 	private async IAsyncEnumerable<T?> DeserializeArrayCoreAsync<T>(PipeReader reader, ITypeShape<T> shape, [EnumeratorCancellation] CancellationToken cancellationToken)
 	{
 		SerializationContext context = this.CreateSerializationContext(cancellationToken);
@@ -492,14 +463,6 @@ public partial record JsonSerializer
 	/// <inheritdoc cref="DeserializeEnumerableAsync{T}(Stream, ITypeShape{T}, SequenceOptions, CancellationToken)"/>
 	public IAsyncEnumerable<T?> DeserializeEnumerableAsync<T>(Stream stream, SequenceOptions options = default, CancellationToken cancellationToken = default)
 		where T : IShapeable<T> => this.DeserializeEnumerableAsync(stream, T.GetTypeShape(), options, cancellationToken);
-
-	/// <inheritdoc cref="SerializeArrayAsync{T}(PipeWriter, IAsyncEnumerable{T}, ITypeShape{T}, CancellationToken)"/>
-	public ValueTask SerializeArrayAsync<T>(PipeWriter writer, IAsyncEnumerable<T> values, CancellationToken cancellationToken = default)
-		where T : IShapeable<T> => this.SerializeArrayAsync(writer, values, T.GetTypeShape(), cancellationToken);
-
-	/// <inheritdoc cref="SerializeArrayAsync{T}(Stream, IAsyncEnumerable{T}, ITypeShape{T}, CancellationToken)"/>
-	public ValueTask SerializeArrayAsync<T>(Stream stream, IAsyncEnumerable<T> values, CancellationToken cancellationToken = default)
-		where T : IShapeable<T> => this.SerializeArrayAsync(stream, values, T.GetTypeShape(), cancellationToken);
 
 	/// <inheritdoc cref="SerializeEnumerableAsync{T}(PipeWriter, IAsyncEnumerable{T}, ITypeShape{T}, SequenceOptions, CancellationToken)"/>
 	public ValueTask SerializeEnumerableAsync<T>(PipeWriter writer, IAsyncEnumerable<T> values, SequenceOptions options = default, CancellationToken cancellationToken = default)
