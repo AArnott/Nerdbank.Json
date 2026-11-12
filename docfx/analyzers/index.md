@@ -8,6 +8,7 @@ Diagnostics include errors, warnings, and informational guidance.
 | [NBJson001](NBJson001.md) | Usage | Warning | Serialized contracts contain unsupported delegate values |
 | [NBJson002](NBJson002.md) | Usage | Warning | Serialized dictionary keys cannot be represented as JSON property names |
 | [NBJson003](NBJson003.md) | Usage | Warning | `UseComparer` must target a dictionary or set with a compatible comparer or provider property |
+| [NBJson004](NBJson004.md) | Usage | Error | `IJsonSerializationCallbacks` is supported only on reference types |
 | [NBJson020](NBJson020.md) | Usage | Error | Attribute converter must be concrete and compatible with the decorated value type |
 | [NBJson021](NBJson021.md) | Usage | Error | Attribute converter requires a public parameterless constructor |
 | [NBJson030](NBJson030.md) | Usage | Warning | Do not construct or call the top-level serializer from a converter |
@@ -66,9 +67,9 @@ would otherwise produce false positives.
 The following behaviors were assessed and intentionally have **no** analyzer rule, because they are runtime concerns
 that cannot be diagnosed precisely and statically without excessive false positives:
 
-* **Lifecycle callbacks** (serialization callback interfaces/hooks). Whether a callback runs, its ordering relative to
-  reference registration, and reentrancy are runtime behaviors. There is no statically invalid declaration to flag
-  beyond what the compiler already enforces.
+* **Lifecycle callback ordering**. Whether a callback runs, its ordering relative to reference registration, and
+  reentrancy are runtime behaviors. A struct that implements <xref:Nerdbank.Json.IJsonSerializationCallbacks> is a
+  statically invalid declaration and is reported by [NBJson004](NBJson004.md).
 * **Targeted-navigation hooks** (<xref:Nerdbank.Json.JsonConverter.SkipToPropertyValue*> and <xref:Nerdbank.Json.JsonConverter.SkipToIndexValue*>, plus their async counterparts).
   The default implementation navigates plain objects and arrays; custom representations may need overrides.
   There is no statically invalid declaration to flag.

@@ -13,9 +13,11 @@ to return `true`.
 
 ## Rule description
 
-`PreferAsyncSerialization` returns `false` by default. When it is `false`, the serializer buffers the value and uses the
-synchronous `Read`/`Write` path, so a converter's custom `ReadAsync`/`WriteAsync` override is never actually invoked.
-Overriding `PreferAsyncSerialization` to return `true` opts the converter into the streaming asynchronous code path.
+`PreferAsyncSerialization` returns `false` by default. Synchronous `Read` and `Write` are always required. When the
+property is `false`, a nested value is buffered and read or written synchronously, so a custom `ReadAsync`/`WriteAsync`
+override is not used for that nested value. A value already complete within `MaxAsyncBuffer` is also read with `Read`.
+Overriding `PreferAsyncSerialization` to return `true` selects the asynchronous override for a nested value while an
+ancestor is reading asynchronously.
 
 ## How to fix violations
 

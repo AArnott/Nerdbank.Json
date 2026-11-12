@@ -148,8 +148,9 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	private void WriteObjectProperties(ref JsonWriter writer, T value, SerializationContext context, bool first)
 	{
+		IJsonSerializationCallbacks? callbacks = value as IJsonSerializationCallbacks;
+		callbacks?.OnBeforeSerialize();
 		context.DepthStep();
-		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
 
 		for (int i = 0; i < this.properties.Length; i++)
 		{
@@ -166,12 +167,14 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		}
 
 		this.extensionData?.Write(ref writer, value, ref first);
+		callbacks?.OnAfterSerialize();
 	}
 
 	private async ValueTask WriteObjectPropertiesAsync(JsonAsyncWriter writer, T value, SerializationContext context, bool first)
 	{
+		IJsonSerializationCallbacks? callbacks = value as IJsonSerializationCallbacks;
+		callbacks?.OnBeforeSerialize();
 		context.DepthStep();
-		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
 
 		for (int i = 0; i < this.properties.Length; i++)
 		{
@@ -190,11 +193,13 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		JsonWriter syncWriter = writer.CreateWriter();
 		this.extensionData?.Write(ref syncWriter, value, ref first);
 		writer.ReturnWriter(ref syncWriter);
+		callbacks?.OnAfterSerialize();
 	}
 
 	private void PopulateReference(ref JsonReader reader, ref T instance, SerializationContext context, bool skipDiscriminator, bool discriminatorConsumed = false)
 	{
 		context.DepthStep();
+		this.InvokeBeforeDeserialize(instance);
 
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
 		UnusedDataPacket.Map? unused = null;
@@ -206,7 +211,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 		if (reader.TryReadEndObject())
 		{
-			(instance as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+			this.InvokeAfterDeserialize(instance);
 			return;
 		}
 
@@ -299,7 +304,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		}
 
 		this.extensionData?.Apply(ref instance, unused);
-		(instance as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+		this.InvokeAfterDeserialize(instance);
 	}
 
 	private JsonProperty<T>? FindSplitProperty(ref JsonReader reader, long start, long length, out string? propertyName)
@@ -319,6 +324,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 	private async ValueTask<T> PopulateAsyncCore(JsonAsyncReader reader, T result, SerializationContext context, bool skipDiscriminator = false, bool discriminatorConsumed = false)
 	{
 		context.DepthStep();
+		this.InvokeBeforeDeserialize(result);
 
 		PropertyCollisionDetection collisionDetection = new(this.propertyNameComparer, this.properties.Length);
 		UnusedDataPacket.Map? unused = null;
@@ -329,7 +335,7 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 		if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
 		{
-			(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+			this.InvokeAfterDeserialize(result);
 			return result;
 		}
 
@@ -385,9 +391,23 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		}
 
 		this.extensionData?.Apply(ref result, unused);
-		(result as IJsonSerializationCallbacks)?.OnAfterDeserialize();
+		this.InvokeAfterDeserialize(result);
 		return result;
 	}
+
+	/// <summary>
+	/// Invokes <see cref="IJsonSerializationCallbacks.OnBeforeDeserialize"/> when <paramref name="instance"/> implements it.
+	/// </summary>
+	/// <param name="instance">The instance being populated.</param>
+	private void InvokeBeforeDeserialize(T instance)
+		=> (instance as IJsonSerializationCallbacks)?.OnBeforeDeserialize();
+
+	/// <summary>
+	/// Invokes <see cref="IJsonSerializationCallbacks.OnAfterDeserialize"/> when <paramref name="instance"/> implements it.
+	/// </summary>
+	/// <param name="instance">The instance being populated.</param>
+	private void InvokeAfterDeserialize(T instance)
+		=> (instance as IJsonSerializationCallbacks)?.OnAfterDeserialize();
 }
 
 internal sealed class JsonExtensionData<TDeclaring>

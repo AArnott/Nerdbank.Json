@@ -359,6 +359,14 @@ internal partial class DeviceSnapshot : IJsonSerializationCallbacks
 	{
 	}
 
+	public void OnAfterSerialize()
+	{
+	}
+
+	public void OnBeforeDeserialize()
+	{
+	}
+
 	public void OnAfterDeserialize() => this.callbackObserved = true;
 }
 

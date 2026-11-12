@@ -21,6 +21,8 @@ internal sealed class JsonFlattenedArrayConverter<TArray, TElement>(JsonConverte
 	public override bool PreferAsyncSerialization => true;
 
 	/// <inheritdoc/>
+
+	/// <inheritdoc/>
 	public override void Write(ref JsonWriter writer, in TArray? value, SerializationContext context)
 	{
 		if (value is null)

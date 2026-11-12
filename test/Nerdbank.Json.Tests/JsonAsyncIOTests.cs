@@ -32,6 +32,19 @@ public partial class JsonAsyncIOTests : TestBase
 	}
 
 	[Test]
+	public async Task Deserialize_SlowStream_AcceptsTrailingComments()
+	{
+		byte[] utf8 = Encoding.UTF8.GetBytes("""{"name":"Ada","age":36,"values":[]} /* trailing */ // done""" + "\n");
+		JsonSerializer serializer = this.Serializer with { ReadCommentHandling = JsonCommentHandling.Skip };
+		using DelayedByteStream stream = new(utf8);
+
+		Record? result = await serializer.DeserializeAsync(stream, Shape<Record, Record>());
+
+		Assert.Equal("Ada", result!.Name);
+		Assert.Equal(36, result.Age);
+	}
+
+	[Test]
 	public async Task Deserialize_OneBytePerRead_FramesAcrossBoundaries()
 	{
 		Record value = new("A\"b\\c\u00e9\ud83d\ude00", -12345, [0, 1000000, -7]);
@@ -431,10 +444,18 @@ public partial class JsonAsyncIOTests : TestBase
 		Pipe pipe = new();
 		await serializer.SerializeAsync(pipe.Writer, value, Shape<Tracked, Tracked>());
 		await pipe.Writer.CompleteAsync();
-		Tracked? result = await serializer.DeserializeAsync(pipe.Reader, Shape<Tracked, Tracked>());
+		Tracked? buffered = await serializer.DeserializeAsync(pipe.Reader, Shape<Tracked, Tracked>());
 
-		Assert.Equal("hello", result!.Text);
+		Assert.Equal("hello", buffered!.Text);
 		Assert.True(converter.WriteAsyncCalls > 0);
+		Assert.Equal(0, converter.ReadAsyncCalls);
+
+		Pipe incremental = new();
+		JsonSerializer streaming = serializer with { MaxAsyncBuffer = 0 };
+		await incremental.Writer.WriteAsync("\"hello\""u8.ToArray());
+		await incremental.Writer.CompleteAsync();
+		Tracked? streamed = await streaming.DeserializeAsync(incremental.Reader, Shape<Tracked, Tracked>());
+		Assert.Equal("hello", streamed!.Text);
 		Assert.True(converter.ReadAsyncCalls > 0);
 	}
 
@@ -588,6 +609,61 @@ public partial class JsonAsyncIOTests : TestBase
 		public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
 
 		public override void SetLength(long value) => throw new NotSupportedException();
+	}
+
+	/// <summary>
+	/// Returns one byte per read, and only after a short delay, so the read is not already completed.
+	/// A canceled read ends immediately without that byte.
+	/// </summary>
+	private sealed class DelayedByteStream(byte[] data) : Stream
+	{
+		private int position;
+
+		public override bool CanRead => true;
+
+		public override bool CanSeek => false;
+
+		public override bool CanWrite => false;
+
+		public override long Length => data.Length;
+
+		public override long Position
+		{
+			get => this.position;
+			set => throw new NotSupportedException();
+		}
+
+		public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+		public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+		{
+			if (this.position >= data.Length || count == 0)
+			{
+				return 0;
+			}
+
+			try
+			{
+				await Task.Delay(5, cancellationToken).ConfigureAwait(false);
+			}
+			catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+			{
+				return 0;
+			}
+
+			buffer[offset] = data[this.position++];
+			return 1;
+		}
+
+		public override void Flush()
+		{
+		}
+
+		public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+		public override void SetLength(long value) => throw new NotSupportedException();
+
+		public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 	}
 
 	private sealed class ChunkedStream : Stream

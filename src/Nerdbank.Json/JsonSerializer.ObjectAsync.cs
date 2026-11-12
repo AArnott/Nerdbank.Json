@@ -159,17 +159,50 @@ public partial record JsonSerializer
 	{
 		try
 		{
-			using JsonAsyncReader asyncReader = new(reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+			JsonConverter converter = this.ConverterCache.GetOrAddConverter(shape);
+			AsyncBufferPlan plan = await this.TryBufferWithinMaxAsyncBufferAsync(reader, context, requireFullyConsumed).ConfigureAwait(false);
+			if (plan.Synchronous is { } buffered
+				&& this.PreserveReferences != ReferencePreservationMode.AllowCycles)
 			{
-				CancellationToken = context.CancellationToken,
-			};
-			object? result = await this.ConverterCache.GetOrAddConverter(shape).ReadObjectAsync(asyncReader, context).ConfigureAwait(false);
-			if (requireFullyConsumed)
-			{
-				await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+				bool readFailed = true;
+				long unconsumedExamined = 0;
+				try
+				{
+					object? bufferedResult = this.ReadBufferedObject(reader, buffered.Buffer, shape, context, requireFullyConsumed, plan.ExaminedFloor, out unconsumedExamined);
+					readFailed = false;
+					return bufferedResult;
+				}
+				finally
+				{
+					if (plan.DrainSpeculativeCancellation)
+					{
+						await this.ReleaseSpeculativeCancellationAsync(reader, context, readFailed ? unconsumedExamined : 0).ConfigureAwait(false);
+					}
+				}
 			}
 
-			return result;
+			PipeReader incremental = await this.OpenIncrementalReaderAsync(reader, plan, context).ConfigureAwait(false);
+			try
+			{
+				using JsonAsyncReader asyncReader = new(incremental, this.AllowTrailingCommas, this.ReadCommentHandling)
+				{
+					CancellationToken = context.CancellationToken,
+				};
+				object? result = await converter.ReadObjectAsync(asyncReader, context).ConfigureAwait(false);
+				if (requireFullyConsumed)
+				{
+					await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+				}
+
+				return result;
+			}
+			finally
+			{
+				if (incremental is ForwardingPipeReader forwarding)
+				{
+					await forwarding.DrainSpeculativeCancellationAsync().ConfigureAwait(false);
+				}
+			}
 		}
 		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{

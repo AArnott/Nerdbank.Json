@@ -238,7 +238,7 @@ public partial class JsonMultidimensionalArrayTests
 	{
 		this.UseFlatFormat();
 		FlatProbeConverter converter = new();
-		this.Serializer = this.Serializer with { Converters = [converter] };
+		this.Serializer = this.Serializer with { MaxAsyncBuffer = 0, Converters = [converter] };
 		FlatProbe[,] value = { { new(1), new(2) } };
 		ITypeShape<FlatProbe[,]> shape = Shape<FlatProbe[,], JsonMultidimensionalArrayTests>();
 		string json = await this.WriteFlat(value, shape, async: true);

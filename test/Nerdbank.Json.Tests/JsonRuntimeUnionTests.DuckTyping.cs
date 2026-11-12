@@ -243,6 +243,14 @@ public partial class JsonRuntimeUnionTests
 
 		public void OnBeforeSerialize() => this.BeforeSerializeCount++;
 
+		public void OnAfterSerialize()
+		{
+		}
+
+		public void OnBeforeDeserialize()
+		{
+		}
+
 		public void OnAfterDeserialize() => this.AfterDeserializeCount++;
 	}
 

@@ -754,8 +754,9 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 	private void WriteObjectProperties(ref JsonWriter writer, TDeclaring value, SerializationContext context, bool first)
 	{
+		IJsonSerializationCallbacks? callbacks = value as IJsonSerializationCallbacks;
+		callbacks?.OnBeforeSerialize();
 		context.DepthStep();
-		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
 
 		for (int i = 0; i < this.properties.Length; i++)
 		{
@@ -772,12 +773,14 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		}
 
 		this.extensionData?.Write(ref writer, value, ref first);
+		callbacks?.OnAfterSerialize();
 	}
 
 	private async ValueTask WriteObjectPropertiesAsync(JsonAsyncWriter writer, TDeclaring value, SerializationContext context, bool first)
 	{
+		IJsonSerializationCallbacks? callbacks = value as IJsonSerializationCallbacks;
+		callbacks?.OnBeforeSerialize();
 		context.DepthStep();
-		(value as IJsonSerializationCallbacks)?.OnBeforeSerialize();
 
 		for (int i = 0; i < this.properties.Length; i++)
 		{
@@ -796,6 +799,7 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		JsonWriter syncWriter = writer.CreateWriter();
 		this.extensionData?.Write(ref syncWriter, value, ref first);
 		writer.ReturnWriter(ref syncWriter);
+		callbacks?.OnAfterSerialize();
 	}
 
 	private TDeclaring? ReadObject(ref JsonReader reader, SerializationContext context, bool skipDiscriminator, bool discriminatorConsumed = false)
