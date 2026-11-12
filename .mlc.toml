@@ -4,7 +4,9 @@ do-not-warn-for-redirect-to = [
     "https://dev.azure.com/*",
     "https://app.codecov.io/*",
 ]
-ignore-path = ["docfx"]
+# benchmarking.md and platform-validation.md are maintainer notes moved out of the published site.
+# They stay excluded from link checking, matching their former location under docfx/.
+ignore-path = ["docfx", "docs/benchmarking.md", "docs/platform-validation.md"]
 ignore-links = [
     "https://www.npmjs.com/package/*",
     "https://get.dot.net/",

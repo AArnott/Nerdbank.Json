@@ -108,7 +108,7 @@ Independent user-Mac handoff execution remains separate from the CI evidence now
 
 The user authorized continued measured performance investigation without requiring complete original-speed parity.
 The first retained change is contiguous lexical string scanning: local-span prefix handling plus an outlined SIMD search, preserving the original scalar handlers, permissive Unicode policy, failures/positions, and segmented/legacy paths.
-Matched repeated Medium runs cut the large escaped string-array cases from 576/833 us to 78/344 us without/with interning, with unchanged allocations; ordinary object timings do not establish a speedup and remain logged in the [benchmark report](docfx/docs/benchmarking.md).
+Matched repeated Medium runs cut the large escaped string-array cases from 576/833 us to 78/344 us without/with interning, with unchanged allocations; ordinary object timings do not establish a speedup and remain logged in the [benchmark report](docs/benchmarking.md).
 All 4,841 managed tests pass, including 432 lexical threshold/boundary cases across four core frameworks; the full Release build is warning-free.
 Four earlier variants are preserved on named local branches and not merged because of worse short-string or segmented tradeoffs.
 Next measured leads are repeated end traversal in segmented span probing and signed division in property-name bucket selection; no public API change is required for either.
@@ -117,7 +117,7 @@ The next retained fix removes a numeric leading-zero lookback that reset the seg
 This turns the tiny-segment 1,024-number case from approximately 7.3 ms into 0.218 ms (about 33 times faster), with the same 104 B allocation; scaling is now approximately linear and the 32-number control is about twice as fast.
 The digit loop, cancellation checks, grammar, failure outputs, token spellings, and public APIs remain unchanged; all 5,013 managed tests pass.
 The old constant-time span access became expensive with borrowed segmentation (`3737b21`) and was later copied into the shared lexer (`088ae4f`); warmed profiles and repeated original-source controls corroborate this cause.
-The [benchmark report](docfx/docs/benchmarking.md) includes scaling/error/allocation tables and an anomalous unchanged escaped-string control, not just the wins.
+The [benchmark report](docs/benchmarking.md) includes scaling/error/allocation tables and an anomalous unchanged escaped-string control, not just the wins.
 Remaining profiled targets include split-token copy setup, redundant span-probe traversal, per-byte segment access, and property lookup division.
 The retained span-probe change now avoids traversing a split token to its end simply to answer whether it is contiguous, while keeping range checks and exact position-based slicing semantics.
 Repeated Medium runs support roughly 10%/8% number/property improvements versus the first original baseline, with unchanged 104/768 B allocations; noisy initial pairs and write-control drift remain documented rather than normalized away.
@@ -197,7 +197,7 @@ DocFX builds with zero warnings/errors and formatting verification passes.
 Coordinator runtime validation supersedes the workers' permission-blocked test execution; no unexecuted worker checks are counted as passes.
 Full reports are `obj\final-api-windows-a28b0ef\validation.json` and the isolated Linux checkout's `obj/final-api-linux-a28b0ef/validation.json`.
 
-The [benchmark guide](docfx/docs/benchmarking.md) records fresh serial Medium object controls and the new scalar fixtures, including absolute means, errors, medians, allocations, and evidence paths.
+The [benchmark guide](docs/benchmarking.md) records fresh serial Medium object controls and the new scalar fixtures, including absolute means, errors, medians, allocations, and evidence paths.
 Object allocations remain 200/664/0/0 B for small/wide reads/writes; overlapping timing intervals do not establish a new causal regression or speedup.
 Exact-token primitive Int32/Single reads measured 25.73/47.61 ns versus 44.26/66.09 ns through a reader, all allocation-free on .NET 9; this is specialization, not full-serializer speed restoration.
 Direct-buffer Single writing measured 104.32 ns versus 101.42 ns through normal writing, so no universal fast-writer claim is made.
@@ -226,7 +226,7 @@ No original-speed-restoration claim is made.
 - [x] Profile warmed contiguous object reads and test one narrow property-hash hypothesis using Medium A/B/A; reject the inconclusive candidate.
 - [x] Validate the committed source with full Windows and Linux managed/native matrices, all four native fixtures, F# self-checks, and unchanged native size budgets.
 
-The [benchmark report](docfx/docs/benchmarking.md) contains exact scratch allocations, timing/error tables, the rejected experiment, and evidence paths.
+The [benchmark report](docs/benchmarking.md) contains exact scratch allocations, timing/error tables, the rejected experiment, and evidence paths.
 Split numbers/property-name allocations fall from 1384/2024 B to 104/768 B; string scenarios fall from 1496/3584 B to 1024 B.
 Compared with the repeated baseline, segmented number/property-name timings are approximately 13% slower and unescaped strings approximately 7% slower; no blanket throughput win is claimed.
 The latest remaining hotspot is object population/property lookup/dispatch, not the removed Unicode prepass.
@@ -294,7 +294,7 @@ Script fixes `0378400` (PowerShell working-directory artifact resolution and exp
 Earlier failed prerequisite/forwarding runs are retained history, not final failures.
 
 Actual macOS execution remains pending.
-The [platform guide](docfx/docs/platform-validation.md) contains requirements and a standalone Copilot prompt: use a dedicated checkout of this branch, then run `pwsh -NoProfile -File ./tools/Validate-Platform.ps1 -ArtifactDirectory ./obj/platform-macos`.
+The [platform guide](docs/platform-validation.md) contains requirements and a standalone Copilot prompt: use a dedicated checkout of this branch, then run `pwsh -NoProfile -File ./tools/Validate-Platform.ps1 -ArtifactDirectory ./obj/platform-macos`.
 Return the complete `validation.json`, logs, TRX, and native size artifacts, including failure evidence.
 Medium is optional and must wait until no other jobs are running.
 Do not recalibrate budgets: macOS arm64's historical 5.40 +/- 0.2 MiB guard remains unchanged and unverified on this source.
@@ -375,7 +375,7 @@ The scanner already frames ASCII boundaries independently of Unicode and require
 Async, native DOM, property-name, and interning paths consume the same reader; optional System.Text.Json converters still necessarily inherit that external DOM's own representation rules.
 Fresh full managed validation passed 4,165 tests with zero skips after a warning-free Release solution build.
 Filtered MTP invocations were permission-denied; the explicit solution invocation succeeded and actually executed the tests.
-The isolated Medium measurements and uncertainty are recorded in `docfx/docs/benchmarking.md`; this policy change alone does not establish full object-read speed recovery.
+The isolated Medium measurements and uncertainty are recorded in `docs/benchmarking.md`; this policy change alone does not establish full object-read speed recovery.
 
 ## HISTORICAL deferred integration QA (2026-10-21, through `c4f2121`)
 

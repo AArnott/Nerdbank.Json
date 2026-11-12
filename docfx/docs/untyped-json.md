@@ -80,4 +80,4 @@ converters are registered only when you ask for them, the default serializer kee
 The native DOM and the object and expando converters avoid reflection-based contract discovery.
 Supply source-generated shapes for any runtime-shaped objects written through the object converter.
 The System.Text.Json interop opt-in additionally brings that assembly into the application.
-Use the [native validation fixtures](benchmarking.md#native-image-size) to verify the integrated application; a minimal size report alone does not establish broad NativeAOT compatibility.
+Use the [native validation fixtures](https://github.com/AArnott/Nerdbank.Json/blob/main/docs/benchmarking.md#native-image-size) to verify the integrated application; a minimal size report alone does not establish broad NativeAOT compatibility.
