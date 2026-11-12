@@ -46,6 +46,8 @@ internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase
 	ValueTask<int> IJsonUnionObjectConverter.TryNavigateAfterDiscriminatorAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 		=> this.GetObjectConverter().TryNavigateAfterDiscriminatorAsync(reader, segment, options, context);
 
+	public override bool SupportsSynchronousRead => this.inner.SupportsSynchronousRead;
+
 	public override void Write(ref JsonWriter writer, in TBase? value, SerializationContext context)
 		=> this.inner.WriteObject(ref writer, value, context);
 
@@ -103,6 +105,27 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 		{
 			this.objectEnvelope.Add(JsonUnionObjectEnvelope.GetAlias(cases[i].Tag, cases[i].Name), cases[i].Converter);
 			this.byType[cases[i].CaseType] = i;
+		}
+	}
+
+	public override bool SupportsSynchronousRead
+	{
+		get
+		{
+			if (this.baseConverter is { SupportsSynchronousRead: false })
+			{
+				return false;
+			}
+
+			foreach (RuntimeUnionCaseEntry<TBase> entry in this.cases)
+			{
+				if (!entry.Converter.SupportsSynchronousRead)
+				{
+					return false;
+				}
+			}
+
+			return true;
 		}
 	}
 
@@ -209,6 +232,22 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 			{
 				throw new NotSupportedException($"Duck-typing union case '{cases[i].CaseType.FullName}' has no required properties, so it cannot be identified without a discriminator. Add a required property or use the default (discriminator) strategy.");
 			}
+		}
+	}
+
+	public override bool SupportsSynchronousRead
+	{
+		get
+		{
+			foreach (RuntimeUnionCaseEntry<TBase> entry in this.cases)
+			{
+				if (!entry.Converter.SupportsSynchronousRead)
+				{
+					return false;
+				}
+			}
+
+			return true;
 		}
 	}
 

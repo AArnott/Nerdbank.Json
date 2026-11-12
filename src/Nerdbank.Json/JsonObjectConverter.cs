@@ -42,6 +42,22 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	public override bool PreferAsyncSerialization => true;
 
+	public override bool SupportsSynchronousRead
+	{
+		get
+		{
+			foreach (JsonProperty<T> property in this.properties)
+			{
+				if (!property.SupportsSynchronousRead)
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+	}
+
 	bool IJsonUnionObjectConverter.SupportsInlineObject
 		=> this.supportsInlineObject;
 
@@ -484,6 +500,8 @@ internal abstract class JsonProperty<TDeclaring>
 
 	internal abstract bool CanDeserialize { get; }
 
+	internal abstract bool SupportsSynchronousRead { get; }
+
 	internal abstract bool Write(ref JsonWriter writer, TDeclaring container, in SerializationContext context, bool first);
 
 	internal abstract ValueTask<bool> WriteAsync(JsonAsyncWriter writer, TDeclaring container, SerializationContext context, bool first);
@@ -516,6 +534,8 @@ internal sealed class JsonProperty<TDeclaring, TProperty> : JsonProperty<TDeclar
 		this.isNonNullableReferenceType = isNonNullableReferenceType;
 		this.defaultValue = defaultValue;
 	}
+
+	internal override bool SupportsSynchronousRead => this.converter.SupportsSynchronousRead;
 
 	internal override bool CanSerialize => this.getter is not null;
 

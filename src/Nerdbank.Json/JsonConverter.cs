@@ -29,6 +29,22 @@ public abstract class JsonConverter
 	/// </remarks>
 	public virtual bool PreferAsyncSerialization => false;
 
+	/// <summary>
+	/// Gets a value indicating whether <c>Read</c> can decode a value that is already fully buffered.
+	/// </summary>
+	/// <remarks>
+	/// <para>
+	/// Asynchronous deserialization uses the incremental reader when this is <see langword="false"/>, including when
+	/// the value is already buffered. The decision is made before any constructor, setter, callback, or converter
+	/// reads the value, so a failure is not retried.
+	/// </para>
+	/// <para>
+	/// The default is <see langword="true"/>. Converters that throw <see cref="NotSupportedException"/> from their
+	/// synchronous read must override this and implement the asynchronous read.
+	/// </para>
+	/// </remarks>
+	public virtual bool SupportsSynchronousRead => true;
+
 	internal abstract Type DataType { get; }
 
 	/// <summary>

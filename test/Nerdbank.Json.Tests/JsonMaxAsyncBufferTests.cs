@@ -172,6 +172,62 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	}
 
 	[Test]
+	public async Task ExaminedPrefix_OverCap_DoesNotRewindCursor()
+	{
+		byte[] utf8 = """{"text":"hello"}"""u8.ToArray();
+		CountingConverter converter = new();
+		JsonSerializer serializer = new()
+		{
+			MaxAsyncBuffer = 8,
+			Converters = [converter],
+		};
+		FragmentedPipeReader reader = new(utf8, chunkSize: 4);
+
+		TrackedValue? value = await serializer.DeserializeAsync(reader, Shape<TrackedValue>());
+
+		Assert.Equal("hello", value!.Text);
+		Assert.Equal(1, converter.AsyncReads);
+		Assert.Equal(utf8.Length, reader.ConsumedLength);
+	}
+
+	[Test]
+	public async Task SpeculativeCancel_IncompleteValue_DoesNotWaitForMoreInput()
+	{
+		byte[] utf8 = """{"text":"hello"}"""u8.ToArray();
+		CancelRacePipeReader reader = new(utf8);
+		CountingConverter converter = new();
+		JsonSerializer serializer = new()
+		{
+			MaxAsyncBuffer = 4,
+			Converters = [converter],
+		};
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
+
+		TrackedValue? value = await serializer.DeserializeAsync(reader, Shape<TrackedValue>(), timeout.Token);
+
+		Assert.Equal("hello", value!.Text);
+		Assert.Equal(1, converter.AsyncReads);
+		Assert.True(reader.Reads < 4);
+	}
+
+	[Test]
+	public async Task OverCapPipe_ReleasesConsumedBytes()
+	{
+		JsonSerializer serializer = new() { MaxAsyncBuffer = 1 };
+		Pipe pipe = new();
+		await pipe.Writer.WriteAsync("\"hello\"rest"u8.ToArray());
+		using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+
+		string? value = await serializer.DeserializeAsync(pipe.Reader, Shape<string>(), timeout.Token);
+
+		Assert.Equal("hello", value);
+		ReadResult remainder = await pipe.Reader.ReadAsync(timeout.Token);
+		Assert.Equal("rest"u8.ToArray(), remainder.Buffer.ToArray());
+		await pipe.Writer.CompleteAsync();
+		await pipe.Reader.CompleteAsync();
+	}
+
+	[Test]
 	public async Task IncompletePipe_ReturnsFirstValueWithoutFillingTheCap()
 	{
 		Pipe pipe = new();
@@ -250,10 +306,25 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 			this.examined = this.buffer.Start;
 		}
 
+		internal long ConsumedLength => this.buffer.Slice(0, this.consumed).Length;
+
 		public override void AdvanceTo(SequencePosition consumed) => this.AdvanceTo(consumed, consumed);
 
 		public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
 		{
+			long consumedIndex = this.buffer.Slice(0, consumed).Length;
+			long examinedIndex = this.buffer.Slice(0, examined).Length;
+			long previousExamined = this.buffer.Slice(0, this.examined).Length;
+			if (examinedIndex < previousExamined)
+			{
+				throw new InvalidOperationException("The examined position cannot be earlier than the previously examined position.");
+			}
+
+			if (consumedIndex > examinedIndex)
+			{
+				throw new InvalidOperationException("The consumed position cannot be later than the examined position.");
+			}
+
 			this.consumed = consumed;
 			this.examined = examined;
 			this.expectAdvance = false;
@@ -286,6 +357,8 @@ public partial class JsonMaxAsyncBufferTests : TestBase
 	private sealed class AsyncOnlyIntConverter : JsonConverter<int>
 	{
 		public override bool PreferAsyncSerialization => true;
+
+		public override bool SupportsSynchronousRead => false;
 
 		internal int SynchronousReads { get; private set; }
 

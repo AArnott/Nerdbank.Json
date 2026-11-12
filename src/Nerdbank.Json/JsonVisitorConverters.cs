@@ -75,6 +75,8 @@ internal sealed class JsonOptionalConverter<TOptional, TElement> : JsonConverter
 		this.createSome = createSome;
 	}
 
+	public override bool SupportsSynchronousRead => this.elementConverter.SupportsSynchronousRead;
+
 	public override void Write(ref JsonWriter writer, in TOptional? value, SerializationContext context)
 	{
 		if (!this.deconstructor(value, out TElement? element))
@@ -198,6 +200,8 @@ internal sealed class JsonSurrogateConverter<T, TSurrogate> : JsonConverter<T>
 		this.surrogateConverter = surrogateConverter;
 	}
 
+	public override bool SupportsSynchronousRead => this.surrogateConverter.SupportsSynchronousRead;
+
 	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 		=> this.surrogateConverter.Write(ref writer, this.shape.Marshaler.Marshal(value), context);
 
@@ -262,6 +266,27 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 	}
 
 	public override bool PreferAsyncSerialization => true;
+
+	public override bool SupportsSynchronousRead
+	{
+		get
+		{
+			if (this.baseConverter is { SupportsSynchronousRead: false })
+			{
+				return false;
+			}
+
+			foreach (JsonUnionCaseMetadata<TUnion> entry in this.serializers)
+			{
+				if (!entry.Converter.SupportsSynchronousRead)
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+	}
 
 	public override void Write(ref JsonWriter writer, in TUnion? value, SerializationContext context)
 	{
@@ -514,6 +539,8 @@ internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter
 
 	public override bool PreferAsyncSerialization => true;
 
+	public override bool SupportsSynchronousRead => this.inner.SupportsSynchronousRead;
+
 	bool IJsonUnionObjectConverter.SupportsInlineObject
 		=> !this.isNullable && this.inner is IJsonUnionObjectConverter { SupportsInlineObject: true };
 
@@ -615,6 +642,8 @@ internal abstract class JsonConstructorParameter<TArgumentState>
 
 	internal bool IsRequired { get; }
 
+	internal abstract bool SupportsSynchronousRead { get; }
+
 	internal abstract void Read(ref JsonReader reader, ref TArgumentState argumentState, SerializationContext context);
 
 	internal abstract ValueTask<TArgumentState> ReadIntoAsync(JsonAsyncReader reader, TArgumentState argumentState, SerializationContext context);
@@ -633,6 +662,8 @@ internal sealed class JsonConstructorParameter<TArgumentState, TParameter> : Jso
 		this.converter = converter;
 		this.isNonNullableReferenceType = isNonNullableReferenceType;
 	}
+
+	internal override bool SupportsSynchronousRead => this.converter.SupportsSynchronousRead;
 
 	internal override void Read(ref JsonReader reader, ref TArgumentState argumentState, SerializationContext context)
 	{
@@ -687,6 +718,30 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 	}
 
 	public override bool PreferAsyncSerialization => true;
+
+	public override bool SupportsSynchronousRead
+	{
+		get
+		{
+			foreach (JsonProperty<TDeclaring> property in this.properties)
+			{
+				if (!property.SupportsSynchronousRead)
+				{
+					return false;
+				}
+			}
+
+			foreach (JsonConstructorParameter<TArgumentState> parameter in this.parameters)
+			{
+				if (!parameter.SupportsSynchronousRead)
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+	}
 
 	bool IJsonUnionObjectConverter.SupportsInlineObject
 		=> this.supportsInlineObject;

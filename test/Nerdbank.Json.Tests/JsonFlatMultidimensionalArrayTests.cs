@@ -341,6 +341,8 @@ public partial class JsonMultidimensionalArrayTests
 	{
 		public override bool PreferAsyncSerialization => true;
 
+		public override bool SupportsSynchronousRead => false;
+
 		public override void Write(ref JsonWriter writer, in FlatProbe value, SerializationContext context) => throw new NotSupportedException();
 
 		public override FlatProbe Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();

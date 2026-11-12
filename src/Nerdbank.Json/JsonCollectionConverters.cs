@@ -27,6 +27,8 @@ internal abstract class JsonEnumerableConverter<TEnumerable, TElement> : JsonCon
 
 	public override bool PreferAsyncSerialization => true;
 
+	public override bool SupportsSynchronousRead => this.elementConverter.SupportsSynchronousRead;
+
 	protected JsonConverter<TElement> ElementConverter => this.elementConverter;
 
 	public override void Write(ref JsonWriter writer, in TEnumerable? value, SerializationContext context)
@@ -273,6 +275,8 @@ internal abstract class JsonDictionaryConverter<TDictionary, TKey, TValue> : Jso
 
 	public override bool PreferAsyncSerialization => true;
 
+	public override bool SupportsSynchronousRead => this.valueConverter.SupportsSynchronousRead;
+
 	protected JsonConverter<TValue> ValueConverter => this.valueConverter;
 
 	public override void Write(ref JsonWriter writer, in TDictionary? value, SerializationContext context)
@@ -518,6 +522,8 @@ internal sealed class JsonListConverter<TCollection, TElement>(JsonConverter<TEl
 {
 	public override bool PreferAsyncSerialization => true;
 
+	public override bool SupportsSynchronousRead => elementConverter.SupportsSynchronousRead;
+
 	public override void Write(ref JsonWriter writer, in TCollection? value, SerializationContext context)
 	{
 		if (value is null)
@@ -652,6 +658,8 @@ internal sealed class JsonDictionaryCollectionConverter<TDictionary, TKey, TValu
 	where TKey : notnull
 {
 	public override bool PreferAsyncSerialization => true;
+
+	public override bool SupportsSynchronousRead => valueConverter.SupportsSynchronousRead;
 
 	public override void Write(ref JsonWriter writer, in TDictionary? value, SerializationContext context)
 	{

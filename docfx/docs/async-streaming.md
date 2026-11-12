@@ -24,6 +24,9 @@ before the value is complete, the incremental reader takes over and the cap is n
 operation. Json does not block waiting to fill the cap when more bytes are not already available: a
 caller-owned pipe can still return its first value, and an object that has not yet reached its closing
 brace can still be processed as bytes arrive.
+A converter that cannot read a fully buffered value overrides <xref:Nerdbank.Json.JsonConverter.SupportsSynchronousRead>
+so the incremental reader is selected before constructors, setters, callbacks, or `Read` run. An exception
+from that user code is propagated and the graph is not read again.
 
 Reading uses an incremental UTF-8 scanner that frames one JSON value at a time. Because it is a
 resumable, byte-level state machine, JSON tokens may be split at **any** buffer boundary — inside a

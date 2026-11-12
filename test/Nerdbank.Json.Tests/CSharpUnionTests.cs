@@ -762,6 +762,8 @@ public partial class CSharpUnionTests : TestBase
 	{
 		public override bool PreferAsyncSerialization => true;
 
+		public override bool SupportsSynchronousRead => false;
+
 		public override int Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();
 
 		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => throw new NotSupportedException();

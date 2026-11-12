@@ -159,18 +159,15 @@ public partial record JsonSerializer
 	{
 		try
 		{
+			JsonConverter converter = this.ConverterCache.GetOrAddConverter(shape);
 			AsyncBufferPlan plan = await this.TryBufferWithinMaxAsyncBufferAsync(reader, context, requireFullyConsumed).ConfigureAwait(false);
-			if (plan.Synchronous is { } buffered && this.PreserveReferences != ReferencePreservationMode.AllowCycles)
+			if (plan.Synchronous is { } buffered
+				&& this.PreserveReferences != ReferencePreservationMode.AllowCycles
+				&& this.ShouldReadBuffered(converter))
 			{
 				try
 				{
 					return this.ReadBufferedObject(reader, buffered.Buffer, shape, context, requireFullyConsumed);
-				}
-				catch (NotSupportedException)
-				{
-					// A converter supports only the incremental reader. Drop any partial reference or interning state
-					// before that reader runs, so the retry is not rejected as a duplicate reference.
-					context = context.Start(this, this.ConverterCache, context.CancellationToken);
 				}
 				finally
 				{
@@ -180,12 +177,9 @@ public partial record JsonSerializer
 					}
 				}
 			}
-			else
-			{
-				await this.ReleaseUnusedBufferedReadAsync(reader, plan, context).ConfigureAwait(false);
-			}
 
-			using JsonAsyncReader asyncReader = new(plan.Reader ?? reader, this.AllowTrailingCommas, this.ReadCommentHandling)
+			PipeReader incremental = await this.OpenIncrementalReaderAsync(reader, plan, context).ConfigureAwait(false);
+			using JsonAsyncReader asyncReader = new(incremental, this.AllowTrailingCommas, this.ReadCommentHandling)
 			{
 				CancellationToken = context.CancellationToken,
 			};

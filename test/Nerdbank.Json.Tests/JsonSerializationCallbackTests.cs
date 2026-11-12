@@ -134,16 +134,30 @@ public partial class JsonSerializationCallbackTests : TestBase
 	{
 		CallbackException expected = new();
 		DeserializeThrowingCallbackObject.ExceptionToThrow = expected;
+		DeserializeThrowingCallbackObject.Calls = 0;
 		try
 		{
 			JsonSerializationException actual = Assert.Throws<JsonSerializationException>(() => this.Serializer.Deserialize<DeserializeThrowingCallbackObject>("""{"name":"Ada"}"""));
 
 			Assert.Same(expected, actual.InnerException);
+			Assert.Equal(1, DeserializeThrowingCallbackObject.Calls);
 		}
 		finally
 		{
 			DeserializeThrowingCallbackObject.ExceptionToThrow = null;
 		}
+	}
+
+	[Test]
+	public async Task OnBeforeDeserialize_NotSupportedException_IsNotRetried()
+	{
+		NotSupportedCallbackObject.Calls = 0;
+		using MemoryStream stream = new(Encoding.UTF8.GetBytes("""{"name":"Ada"}"""));
+		JsonSerializationException actual = await Assert.ThrowsAsync<JsonSerializationException>(
+			() => this.Serializer.DeserializeAsync<NotSupportedCallbackObject>(stream).AsTask());
+
+		Assert.IsType<NotSupportedException>(actual.InnerException);
+		Assert.Equal(1, NotSupportedCallbackObject.Calls);
 	}
 
 	[Test]
@@ -399,11 +413,11 @@ public partial class JsonSerializationCallbackTests : TestBase
 	}
 
 	[GenerateShape]
-	internal partial class DeserializeThrowingCallbackObject : IJsonSerializationCallbacks
+	internal partial class NotSupportedCallbackObject : IJsonSerializationCallbacks
 	{
 		public string? Name { get; set; }
 
-		internal static Exception? ExceptionToThrow { get; set; }
+		internal static int Calls { get; set; }
 
 		public void OnBeforeSerialize()
 		{
@@ -413,7 +427,39 @@ public partial class JsonSerializationCallbackTests : TestBase
 		{
 		}
 
-		public void OnBeforeDeserialize() => throw ExceptionToThrow!;
+		public void OnBeforeDeserialize()
+		{
+			Calls++;
+			throw new NotSupportedException("once");
+		}
+
+		public void OnAfterDeserialize()
+		{
+		}
+	}
+
+	[GenerateShape]
+	internal partial class DeserializeThrowingCallbackObject : IJsonSerializationCallbacks
+	{
+		public string? Name { get; set; }
+
+		internal static Exception? ExceptionToThrow { get; set; }
+
+		internal static int Calls { get; set; }
+
+		public void OnBeforeSerialize()
+		{
+		}
+
+		public void OnAfterSerialize()
+		{
+		}
+
+		public void OnBeforeDeserialize()
+		{
+			Calls++;
+			throw ExceptionToThrow!;
+		}
 
 		public void OnAfterDeserialize()
 		{

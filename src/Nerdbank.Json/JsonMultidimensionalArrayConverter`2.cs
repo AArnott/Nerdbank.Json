@@ -42,6 +42,9 @@ internal sealed class JsonMultidimensionalArrayConverter<TArray, TElement> : Jso
 	}
 
 	/// <inheritdoc/>
+	public override bool SupportsSynchronousRead => this.elementConverter.SupportsSynchronousRead;
+
+	/// <inheritdoc/>
 	public override void Write(ref JsonWriter writer, in TArray? value, SerializationContext context)
 	{
 		if (value is null)
