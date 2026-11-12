@@ -223,31 +223,44 @@ public partial record JsonSerializer
 				&& this.PreserveReferences != ReferencePreservationMode.AllowCycles
 				&& JsonValueConverter.Instance.SupportsSynchronousRead)
 			{
+				bool readFailed = true;
 				try
 				{
-					return this.ReadBufferedJsonValue(reader, buffered.Buffer, context, requireFullyConsumed);
+					JsonValue? bufferedResult = this.ReadBufferedJsonValue(reader, buffered.Buffer, context, requireFullyConsumed, plan.ExaminedFloor);
+					readFailed = false;
+					return bufferedResult;
 				}
 				finally
 				{
 					if (plan.DrainSpeculativeCancellation)
 					{
-						await this.ReleaseSpeculativeCancellationAsync(reader, context).ConfigureAwait(false);
+						await this.ReleaseSpeculativeCancellationAsync(reader, context, readFailed).ConfigureAwait(false);
 					}
 				}
 			}
 
 			PipeReader incremental = await this.OpenIncrementalReaderAsync(reader, plan, context).ConfigureAwait(false);
-			using JsonAsyncReader asyncReader = new(incremental, this.AllowTrailingCommas, this.ReadCommentHandling)
+			try
 			{
-				CancellationToken = context.CancellationToken,
-			};
-			JsonValue? result = await JsonValueConverter.Instance.ReadAsync(asyncReader, context).ConfigureAwait(false);
-			if (requireFullyConsumed)
-			{
-				await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
-			}
+				using JsonAsyncReader asyncReader = new(incremental, this.AllowTrailingCommas, this.ReadCommentHandling)
+				{
+					CancellationToken = context.CancellationToken,
+				};
+				JsonValue? result = await JsonValueConverter.Instance.ReadAsync(asyncReader, context).ConfigureAwait(false);
+				if (requireFullyConsumed)
+				{
+					await asyncReader.EnsureFullyConsumedAsync(context).ConfigureAwait(false);
+				}
 
-			return result;
+				return result;
+			}
+			finally
+			{
+				if (incremental is ForwardingPipeReader forwarding)
+				{
+					await forwarding.DrainSpeculativeCancellationAsync().ConfigureAwait(false);
+				}
+			}
 		}
 		catch (Exception ex) when (ShouldWrapSerializationException(ex, context.CancellationToken))
 		{

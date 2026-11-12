@@ -136,7 +136,7 @@ public sealed class JsonAsyncReader : IDisposable
 	}
 
 	/// <summary>
-	/// Reads a value using the specified converter, streaming when the converter prefers asynchronous serialization.
+	/// Reads a value using the specified converter, streaming when the converter cannot read synchronously or prefers asynchronous serialization.
 	/// </summary>
 	/// <typeparam name="T">The value type.</typeparam>
 	/// <param name="converter">The converter for the value.</param>
@@ -145,7 +145,7 @@ public sealed class JsonAsyncReader : IDisposable
 	public async ValueTask<T?> ReadValueAsync<T>(JsonConverter<T> converter, SerializationContext context)
 	{
 		Requires.NotNull(converter);
-		if (converter.PreferAsyncSerialization)
+		if (converter.PreferAsyncSerialization || !converter.SupportsSynchronousRead)
 		{
 			return await converter.ReadAsync(this, context).ConfigureAwait(false);
 		}

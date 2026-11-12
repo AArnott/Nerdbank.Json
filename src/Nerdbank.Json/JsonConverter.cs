@@ -18,6 +18,14 @@ namespace Nerdbank.Json;
 /// </summary>
 public abstract class JsonConverter
 {
+	[ThreadStatic]
+	private static HashSet<JsonConverter>? computingSupportsSynchronousRead;
+
+	[ThreadStatic]
+	private static bool synchronousReadCycleAssumed;
+
+	private int supportsSynchronousReadState;
+
 	/// <summary>
 	/// Gets a value indicating whether this converter's asynchronous methods should be preferred over its synchronous
 	/// methods when a graph is being (de)serialized asynchronously.
@@ -40,10 +48,11 @@ public abstract class JsonConverter
 	/// </para>
 	/// <para>
 	/// The default is <see langword="true"/>. Converters that throw <see cref="NotSupportedException"/> from their
-	/// synchronous read must override this and implement the asynchronous read.
+	/// synchronous read must override <see cref="ComputeSupportsSynchronousRead"/> and implement the asynchronous read.
+	/// The result is remembered, including through shared and recursive converter graphs.
 	/// </para>
 	/// </remarks>
-	public virtual bool SupportsSynchronousRead => true;
+	public bool SupportsSynchronousRead => this.GetCachedSupportsSynchronousRead();
 
 	internal abstract Type DataType { get; }
 
@@ -207,6 +216,17 @@ public abstract class JsonConverter
 	/// <returns>The converter for the underlying value representation.</returns>
 	internal virtual JsonConverter UnwrapReferencePreservation() => this;
 
+	/// <summary>
+	/// Computes whether <c>Read</c> can decode a fully buffered value.
+	/// </summary>
+	/// <returns><see langword="true"/> when the synchronous read can decode a fully buffered value.</returns>
+	/// <remarks>
+	/// Container converters should combine this with the same result from their child converters. A recursive
+	/// appearance of a converter is treated as supported so the walk can finish; a descendant that returns
+	/// <see langword="false"/> still makes the container return <see langword="false"/>.
+	/// </remarks>
+	protected virtual bool ComputeSupportsSynchronousRead() => true;
+
 	private static JsonNavigationSegment CreatePropertySegment(IPropertyShape propertyShape, SerializationContext context)
 		=> new(JsonPathSegment.ForMember(context.Cache.GetSerializedPropertyName(propertyShape.Name, propertyShape.AttributeProvider), propertyShape));
 
@@ -234,6 +254,50 @@ public abstract class JsonConverter
 
 	private static JsonNavigationOptions GetNavigationOptions(SerializationContext context)
 		=> new(context.Cache.PropertyNameComparer, context.Cache.PropertyNameComparer.Equals("a", "A"));
+
+	private bool GetCachedSupportsSynchronousRead()
+	{
+		int state = Volatile.Read(ref this.supportsSynchronousReadState);
+		if (state != 0)
+		{
+			return state == 1;
+		}
+
+		HashSet<JsonConverter> stack = computingSupportsSynchronousRead ??= new();
+		if (!stack.Add(this))
+		{
+			// The converter is already on this walk. Assume it is supported so the walk can finish.
+			// Do not cache that assumption: a later sibling may still make the container unsupported.
+			synchronousReadCycleAssumed = true;
+			return true;
+		}
+
+		bool cycleBefore = synchronousReadCycleAssumed;
+		synchronousReadCycleAssumed = false;
+		try
+		{
+			bool supported = this.ComputeSupportsSynchronousRead();
+			if (!supported)
+			{
+				Volatile.Write(ref this.supportsSynchronousReadState, 2);
+				return false;
+			}
+
+			// A true result that depended on a cycle is not cached. The re-entered converter may still
+			// discover an unsupported descendant after this frame returns.
+			if (!synchronousReadCycleAssumed)
+			{
+				Volatile.Write(ref this.supportsSynchronousReadState, 1);
+			}
+
+			return true;
+		}
+		finally
+		{
+			stack.Remove(this);
+			synchronousReadCycleAssumed |= cycleBefore;
+		}
+	}
 }
 
 /// <summary>

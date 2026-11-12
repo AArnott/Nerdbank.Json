@@ -762,8 +762,6 @@ public partial class CSharpUnionTests : TestBase
 	{
 		public override bool PreferAsyncSerialization => true;
 
-		public override bool SupportsSynchronousRead => false;
-
 		public override int Read(ref JsonReader reader, SerializationContext context) => throw new NotSupportedException();
 
 		public override void Write(ref JsonWriter writer, in int value, SerializationContext context) => throw new NotSupportedException();
@@ -778,6 +776,8 @@ public partial class CSharpUnionTests : TestBase
 			writer.ReturnWriter(ref syncWriter);
 			return writer.FlushIfAppropriateAsync(context);
 		}
+
+		protected override bool ComputeSupportsSynchronousRead() => false;
 	}
 
 	private sealed class CustomPayloadConverter : JsonConverter<CustomPayload>

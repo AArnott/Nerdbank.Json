@@ -42,7 +42,6 @@ internal sealed class JsonMultidimensionalArrayConverter<TArray, TElement> : Jso
 	}
 
 	/// <inheritdoc/>
-	public override bool SupportsSynchronousRead => this.elementConverter.SupportsSynchronousRead;
 
 	/// <inheritdoc/>
 	public override void Write(ref JsonWriter writer, in TArray? value, SerializationContext context)
@@ -108,6 +107,9 @@ internal sealed class JsonMultidimensionalArrayConverter<TArray, TElement> : Jso
 		Populate(array, dimensions, elements);
 		return (TArray)(object)array;
 	}
+
+	/// <inheritdoc/>
+	protected override bool ComputeSupportsSynchronousRead() => this.elementConverter.SupportsSynchronousRead;
 
 	private static string DescribeDimensions(int[] dimensions) => string.Join("x", dimensions);
 

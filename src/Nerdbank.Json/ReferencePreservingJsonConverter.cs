@@ -50,8 +50,6 @@ internal sealed class ReferencePreservingJsonConverter<T>(JsonConverter<T> inner
 
 	public override bool PreferAsyncSerialization => inner.PreferAsyncSerialization;
 
-	public override bool SupportsSynchronousRead => inner.SupportsSynchronousRead;
-
 	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 	{
 		if (value is null)
@@ -101,4 +99,6 @@ internal sealed class ReferencePreservingJsonConverter<T>(JsonConverter<T> inner
 
 	/// <inheritdoc/>
 	internal override JsonConverter UnwrapReferencePreservation() => inner;
+
+	protected override bool ComputeSupportsSynchronousRead() => inner.SupportsSynchronousRead;
 }

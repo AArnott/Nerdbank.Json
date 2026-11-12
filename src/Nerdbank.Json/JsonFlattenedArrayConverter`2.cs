@@ -21,7 +21,6 @@ internal sealed class JsonFlattenedArrayConverter<TArray, TElement>(JsonConverte
 	public override bool PreferAsyncSerialization => true;
 
 	/// <inheritdoc/>
-	public override bool SupportsSynchronousRead => elementConverter.SupportsSynchronousRead;
 
 	/// <inheritdoc/>
 	public override void Write(ref JsonWriter writer, in TArray? value, SerializationContext context)
@@ -202,6 +201,9 @@ internal sealed class JsonFlattenedArrayConverter<TArray, TElement>(JsonConverte
 
 		return CreateArray(dimensions, elements, expected);
 	}
+
+	/// <inheritdoc/>
+	protected override bool ComputeSupportsSynchronousRead() => elementConverter.SupportsSynchronousRead;
 
 	/// <summary>
 	/// Reads a non-negative, 32-bit JSON integer dimension length.

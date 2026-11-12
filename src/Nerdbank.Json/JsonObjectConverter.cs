@@ -42,22 +42,6 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	public override bool PreferAsyncSerialization => true;
 
-	public override bool SupportsSynchronousRead
-	{
-		get
-		{
-			foreach (JsonProperty<T> property in this.properties)
-			{
-				if (!property.SupportsSynchronousRead)
-				{
-					return false;
-				}
-			}
-
-			return true;
-		}
-	}
-
 	bool IJsonUnionObjectConverter.SupportsInlineObject
 		=> this.supportsInlineObject;
 
@@ -161,6 +145,19 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	ValueTask<int> IJsonUnionObjectConverter.TryNavigateAfterDiscriminatorAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 		=> JsonAsyncTargetedNavigator.NavigateMemberAfterDiscriminatorAsync(reader, segment, options, context);
+
+	protected override bool ComputeSupportsSynchronousRead()
+	{
+		foreach (JsonProperty<T> property in this.properties)
+		{
+			if (!property.SupportsSynchronousRead)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
 
 	private void WriteObjectProperties(ref JsonWriter writer, T value, SerializationContext context, bool first)
 	{
