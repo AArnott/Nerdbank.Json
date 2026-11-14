@@ -80,7 +80,7 @@ Current behavior:
 * `JsonSerializer.ReadCommentHandling` can skip `//` and `/* */` comments while deserializing.
 * Closed unions declared with `DerivedTypeShapeAttribute` serialize tagged cases as `$type` metadata objects.
 * C# unions support unrelated payload types, nullable cases, recursion, and stable custom identifiers through <xref:Nerdbank.Json.JsonSerializer.UnionTypeAliasProvider>.
-* <xref:Nerdbank.Json.JsonSerializer.DerivedTypeUnions> can add, replace, extend, or disable unions at runtime using explicitly supplied type shapes, and can opt into an experimental discriminator-free duck-typing strategy.
+* <xref:Nerdbank.Json.JsonSerializer.DerivedTypeUnions> can add, replace, extend, or disable unions at runtime using explicitly supplied type shapes, and can opt into an experimental discriminator-free duck-typing strategy. See [Unions](unions.md#runtime-configuration).
 * `JsonSerializer.GetJsonSchema` exports a `System.Text.Json.Nodes.JsonObject` for draft 4, draft 7, or draft 2020-12, describing the effective representation of a type.
 * <xref:Nerdbank.Json.JsonSerializer.DeserializePath*> can deserialize only a single value selected by a <xref:Nerdbank.Json.JsonPath> or typed path options, skipping unrelated JSON.
 

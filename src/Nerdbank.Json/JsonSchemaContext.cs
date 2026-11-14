@@ -490,7 +490,16 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 
 		if (entry is DerivedTypeDuckTyping)
 		{
-			return new JsonSchemaObject().SetSchemas("oneOf", [.. cases.Select(c => c.CaseSchema)]);
+			List<(Type CaseType, HashSet<string> Required)> signatures = [];
+			foreach (KeyValuePair<DerivedTypeIdentifier, ITypeShape> pair in RuntimeUnionBuilder.GetCases(entry))
+			{
+				signatures.Add((pair.Value.Type, RuntimeUnionHelpers.GetRequiredSerializedPropertyNames(pair.Value, this.owner)));
+			}
+
+			RuntimeUnionHelpers.ValidateDuckTypingSignatures(typeof(T).FullName ?? typeof(T).Name, signatures);
+
+			// Cases overlap when a catch-all allows a property another case requires. anyOf accepts every value this serializer writes.
+			return new JsonSchemaObject().SetSchemas("anyOf", [.. cases.Select(c => c.CaseSchema)]);
 		}
 
 		ITypeShape baseShapeForFallback = shape is IUnionTypeShape fallbackUnion ? fallbackUnion.BaseType : shape;
