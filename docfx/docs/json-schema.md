@@ -37,7 +37,7 @@ Draft 4 and Draft 7 use an array-valued `items` keyword for tuples and `addition
   Object-case properties appear alongside the discriminator; scalar and custom-converter payloads use `$value`.
   Discriminator values use `const` in Draft 7 and Draft 2020-12 and single-value `enum` in Draft 4.
   Runtime mappings replace or disable generated cases in the schema just as they do during serialization;
-  duck-typing unions produce a `oneOf` of the bare case objects.
+  duck-typing unions produce an `anyOf` of the bare case objects.
 * **Reference preservation** — when enabled, a reference-typed schema becomes a `oneOf` of the `{"$ref": N}` and
   `{"$id": N, "$value": ...}` envelope forms. Union case payloads do not introduce a second identity envelope.
 * **Recursive types** — described once under `$defs` (Draft 2020-12) or `definitions` (Draft 4 and Draft 7) and referenced with
@@ -64,4 +64,4 @@ Schemas describe serialization; a converter applied only to a constructor parame
 
 * Output is deterministic: keyword order is stable and `$defs` are sorted by name.
 * Reference-typed and nullable value-type roots allow `null`; member schemas express their own nullability.
-* A duck-typed object may satisfy more than one `oneOf` branch. The runtime chooses the most specific match, or the catch-all when nothing else matches.
+* Duck-typed case schemas can overlap. The runtime chooses the most specific match, or the catch-all when nothing else matches.

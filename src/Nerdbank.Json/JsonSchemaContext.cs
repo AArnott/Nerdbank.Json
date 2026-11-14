@@ -497,7 +497,9 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 			}
 
 			RuntimeUnionHelpers.ValidateDuckTypingSignatures(typeof(T).FullName ?? typeof(T).Name, signatures);
-			return new JsonSchemaObject().SetSchemas("oneOf", [.. cases.Select(c => c.CaseSchema)]);
+
+			// Cases overlap when a catch-all allows a property another case requires. anyOf accepts every value this serializer writes.
+			return new JsonSchemaObject().SetSchemas("anyOf", [.. cases.Select(c => c.CaseSchema)]);
 		}
 
 		ITypeShape baseShapeForFallback = shape is IUnionTypeShape fallbackUnion ? fallbackUnion.BaseType : shape;

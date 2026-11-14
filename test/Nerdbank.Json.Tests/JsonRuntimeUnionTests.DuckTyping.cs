@@ -37,6 +37,7 @@ public partial class JsonRuntimeUnionTests
 		Assert.Equal(typeof(IAnimal), optionalCatchAll.BaseType);
 		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<IAnimal, IAnimal>(), Shape<OptionalOnlyAnimal, OptionalOnlyAnimal>(), Shape<EmptyAnimal, EmptyAnimal>()));
 		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<IAnimal, IAnimal>(), Shape<ComputedAnimal, ComputedAnimal>(), Shape<RequiredAnimal, RequiredAnimal>()));
+		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<IAnimal, IAnimal>(), Shape<MixedEvidenceAnimal, MixedEvidenceAnimal>(), Shape<RequiredAnimal, RequiredAnimal>()));
 	}
 
 	[Test]
@@ -143,7 +144,7 @@ public partial class JsonRuntimeUnionTests
 		Assert.Equal(value, await serializer.DeserializeAsync(stream, Shape<Shape2, Shape2>()));
 		Assert.Equal(2, converter.ReadCount);
 		System.Text.Json.Nodes.JsonObject schema = serializer.GetJsonSchema(Shape<Shape2, Shape2>());
-		Assert.Equal("CustomCircle", schema["anyOf"]![0]!["oneOf"]![0]!["title"]!.GetValue<string>());
+		Assert.Equal("CustomCircle", schema["anyOf"]![0]!["anyOf"]![0]!["title"]!.GetValue<string>());
 	}
 
 	[Test]
@@ -303,11 +304,117 @@ public partial class JsonRuntimeUnionTests
 	{
 		JsonSerializer serializer = DuckSerializer();
 		System.Text.Json.Nodes.JsonObject schema = serializer.GetJsonSchema(Shape<Shape2, Shape2>());
-		System.Text.Json.Nodes.JsonArray cases = schema["anyOf"]![0]!["oneOf"]!.AsArray();
+		System.Text.Json.Nodes.JsonArray cases = schema["anyOf"]![0]!["anyOf"]!.AsArray();
 		Assert.Equal(2, cases.Count);
 		Assert.Equal("object", cases[0]!["type"]!.GetValue<string>());
 		Assert.Equal("radius", cases[0]!["required"]![0]!.GetValue<string>());
 		Assert.Equal("side", cases[1]!["required"]![0]!.GetValue<string>());
+		Assert.Null(schema["anyOf"]![0]!["oneOf"]);
+	}
+
+	[Test]
+	public void DuckTyping_OverlappingCatchAllSchema_AcceptsSerializedValue()
+	{
+		JsonSerializer serializer = new()
+		{
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<ValueHolder, ValueHolder>(), Shape<OptionalValueHolder, OptionalValueHolder>(), Shape<RequiredValueHolder, RequiredValueHolder>())],
+		};
+		string json = serializer.Serialize<ValueHolder>(new RequiredValueHolder { Value = 1 });
+		Assert.Equal("""{"value":1}""", json);
+		System.Text.Json.Nodes.JsonObject schema = serializer.GetJsonSchema(Shape<ValueHolder, ValueHolder>());
+		System.Text.Json.Nodes.JsonObject union = schema["anyOf"]![0]!.AsObject();
+		Assert.Null(union["oneOf"]);
+		System.Text.Json.Nodes.JsonArray cases = union["anyOf"]!.AsArray();
+		System.Text.Json.Nodes.JsonObject written = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+		Assert.True(CountObjectMatches(cases, written) > 1);
+		Assert.Equal(1, CountObjectMatches(cases, []));
+		Assert.True(SchemaMatches(schema, written));
+
+		static int CountObjectMatches(System.Text.Json.Nodes.JsonArray alternatives, System.Text.Json.Nodes.JsonObject instance)
+		{
+			int matches = 0;
+			foreach (System.Text.Json.Nodes.JsonNode? alternative in alternatives)
+			{
+				if (SchemaMatches(alternative!.AsObject(), instance))
+				{
+					matches++;
+				}
+			}
+
+			return matches;
+		}
+
+		static bool SchemaMatches(System.Text.Json.Nodes.JsonObject schemaNode, System.Text.Json.Nodes.JsonNode? instance)
+		{
+			if (schemaNode["anyOf"] is System.Text.Json.Nodes.JsonArray anyOf)
+			{
+				foreach (System.Text.Json.Nodes.JsonNode? alternative in anyOf)
+				{
+					if (SchemaMatches(alternative!.AsObject(), instance))
+					{
+						return true;
+					}
+				}
+
+				return false;
+			}
+
+			if (schemaNode.TryGetPropertyValue("type", out System.Text.Json.Nodes.JsonNode? typeNode)
+				&& typeNode is System.Text.Json.Nodes.JsonValue typeValue
+				&& typeValue.GetValue<string>() == "null")
+			{
+				return instance is null;
+			}
+
+			if (instance is not System.Text.Json.Nodes.JsonObject instanceObject)
+			{
+				return false;
+			}
+
+			System.Text.Json.Nodes.JsonObject? properties = schemaNode["properties"]?.AsObject();
+			bool allowAdditional = schemaNode["additionalProperties"] is not System.Text.Json.Nodes.JsonValue additional || additional.GetValue<bool>();
+			if (!allowAdditional)
+			{
+				foreach (KeyValuePair<string, System.Text.Json.Nodes.JsonNode?> property in instanceObject)
+				{
+					if (properties?.ContainsKey(property.Key) != true)
+					{
+						return false;
+					}
+				}
+			}
+
+			if (schemaNode["required"] is System.Text.Json.Nodes.JsonArray required)
+			{
+				foreach (System.Text.Json.Nodes.JsonNode? name in required)
+				{
+					if (!instanceObject.ContainsKey(name!.GetValue<string>()))
+					{
+						return false;
+					}
+				}
+			}
+
+			if (properties is null)
+			{
+				return true;
+			}
+
+			foreach (KeyValuePair<string, System.Text.Json.Nodes.JsonNode?> property in instanceObject)
+			{
+				if (properties[property.Key] is System.Text.Json.Nodes.JsonObject propertySchema
+					&& propertySchema.TryGetPropertyValue("type", out System.Text.Json.Nodes.JsonNode? propertyType)
+					&& propertyType is System.Text.Json.Nodes.JsonValue expected
+					&& expected.GetValue<string>() == "integer"
+					&& property.Value is System.Text.Json.Nodes.JsonValue number
+					&& (!number.TryGetValue(out int _)))
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
 	}
 
 	[GenerateShape]
@@ -369,6 +476,30 @@ public partial class JsonRuntimeUnionTests
 	{
 		[PropertyShape(IsRequired = true)]
 		public int Computed => 1;
+	}
+
+	[GenerateShape]
+	internal partial class MixedEvidenceAnimal(string name) : IAnimal
+	{
+		public string Name { get; } = name;
+
+		[PropertyShape(IsRequired = true)]
+		public int Computed => 1;
+	}
+
+	[GenerateShape]
+	internal abstract partial record ValueHolder;
+
+	[GenerateShape]
+	internal partial record OptionalValueHolder : ValueHolder
+	{
+		public int Value { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial record RequiredValueHolder : ValueHolder
+	{
+		public required int Value { get; set; }
 	}
 
 	[GenerateShape]

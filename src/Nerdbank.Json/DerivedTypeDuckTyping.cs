@@ -90,15 +90,15 @@ public class DerivedTypeDuckTyping : DerivedTypeUnion
 	private static void ValidateCase(ITypeShape shape, string parameterName, ref int catchAlls)
 	{
 		Requires.Argument(RuntimeUnionHelpers.IsObjectShape(shape), parameterName, $"Duck-typing union case '{shape.Type.FullName}' must be an object.");
+		Requires.Argument(
+			!RuntimeUnionHelpers.HasRequiredPropertyThatCannotBeRead(shape),
+			parameterName,
+			$"Duck-typing union case '{shape.Type.FullName}' has required members that cannot be read, so it cannot be identified or used as a catch-all.");
 		if (RuntimeUnionHelpers.GetRequiredProperties(shape).Any())
 		{
 			return;
 		}
 
-		Requires.Argument(
-			!RuntimeUnionHelpers.HasRequiredPropertyThatCannotBeRead(shape),
-			parameterName,
-			$"Duck-typing union case '{shape.Type.FullName}' has required members that cannot be read, so it cannot be identified or used as a catch-all.");
 		catchAlls++;
 		Requires.Argument(catchAlls == 1, parameterName, "A duck-typing union can include only one case with no required properties.");
 	}
