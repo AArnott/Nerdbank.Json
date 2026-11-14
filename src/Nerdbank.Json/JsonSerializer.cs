@@ -222,18 +222,20 @@ public partial record JsonSerializer
 	}
 
 	/// <summary>
-	/// Gets a value indicating whether union discriminator metadata may appear after ordinary object properties.
+	/// Gets a value indicating whether a union <c>$type</c> may appear after other properties of an object.
 	/// </summary>
-	/// <value>The default is <see langword="false"/>.</value>
+	/// <value>The default is <see langword="false"/>: <c>$type</c> must be the first property.</value>
 	/// <remarks>
-	/// By default, <c>$type</c> must appear first in the object, matching System.Text.Json's metadata ordering rule.
-	/// Allowing it to appear later requires scanning ahead while preserving the payload for subsequent deserialization.
-	/// Deeply nested unions can therefore require quadratic work.
+	/// <para>
+	/// <strong>Security:</strong> when <c>$type</c> is not first, the union value is buffered in full before it is classified,
+	/// as with any sync-only converter, and the reader must scan and skip sibling values, however large, to find it.
+	/// Nested unions can make that work quadratic. Enable this only for trusted input.
+	/// </para>
 	/// </remarks>
-	public bool AllowOutOfOrderMetadataProperties
+	public bool AllowOutOfOrderDiscriminator
 	{
-		get => this.configuration.AllowOutOfOrderMetadataProperties;
-		init => this.configuration = this.configuration with { AllowOutOfOrderMetadataProperties = value };
+		get => this.configuration.AllowOutOfOrderDiscriminator;
+		init => this.configuration = this.configuration with { AllowOutOfOrderDiscriminator = value };
 	}
 
 	/// <summary>

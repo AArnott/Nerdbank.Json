@@ -27,7 +27,7 @@ namespace Nerdbank.Json;
 /// Serialized names honor <see cref="PropertyShapeAttribute.Name"/>, the serializer's naming policy, and its case-insensitive setting.
 /// Those names are resolved when the converter is created, because one union can be reused with different serializers.
 /// Cases that require the same names under that policy are rejected then.
-/// The value is buffered so every case can be considered.
+/// Sync reads scan the object in place. Async reads buffer the value first, then scan it, as any sync converter does.
 /// Custom case converters are used, but they do not change which names count as evidence.
 /// </para>
 /// </remarks>
