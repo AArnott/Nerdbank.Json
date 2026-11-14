@@ -64,4 +64,4 @@ Schemas describe serialization; a converter applied only to a constructor parame
 
 * Output is deterministic: keyword order is stable and `$defs` are sorted by name.
 * Reference-typed and nullable value-type roots allow `null`; member schemas express their own nullability.
-* Duck-typing union schemas are permissive by nature; a JSON object may satisfy more than one `oneOf` branch.
+* A duck-typed object may satisfy more than one `oneOf` branch. The runtime chooses the most specific match, or the catch-all when nothing else matches.

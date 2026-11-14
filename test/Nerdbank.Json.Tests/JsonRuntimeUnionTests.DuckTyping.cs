@@ -11,6 +11,9 @@ public partial class JsonRuntimeUnionTests
 	[GenerateShape]
 	internal partial interface IAnimal;
 
+	[GenerateShape]
+	internal partial interface ISame;
+
 	[Test]
 	public void DuckTyping_ConstructorValidatesCases()
 	{
@@ -28,8 +31,11 @@ public partial class JsonRuntimeUnionTests
 	[Test]
 	public void DuckTyping_ConstructorValidatesConcreteBaseAndObjectContracts()
 	{
-		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<EmptyConcreteBase, EmptyConcreteBase>(), Shape<ConcreteCase, ConcreteCase>()));
-		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<IAnimal, IAnimal>(), Shape<OptionalOnlyAnimal, OptionalOnlyAnimal>(), Shape<RequiredAnimal, RequiredAnimal>()));
+		DerivedTypeDuckTyping catchAll = new(Shape<EmptyConcreteBase, EmptyConcreteBase>(), Shape<ConcreteCase, ConcreteCase>());
+		Assert.Equal(typeof(EmptyConcreteBase), catchAll.BaseType);
+		DerivedTypeDuckTyping optionalCatchAll = new(Shape<IAnimal, IAnimal>(), Shape<OptionalOnlyAnimal, OptionalOnlyAnimal>(), Shape<RequiredAnimal, RequiredAnimal>());
+		Assert.Equal(typeof(IAnimal), optionalCatchAll.BaseType);
+		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<IAnimal, IAnimal>(), Shape<OptionalOnlyAnimal, OptionalOnlyAnimal>(), Shape<EmptyAnimal, EmptyAnimal>()));
 		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<IAnimal, IAnimal>(), Shape<ComputedAnimal, ComputedAnimal>(), Shape<RequiredAnimal, RequiredAnimal>()));
 	}
 
@@ -105,7 +111,7 @@ public partial class JsonRuntimeUnionTests
 	}
 
 	[Test]
-	public void DuckTyping_SerializerDependentNameCollisions_RemainAmbiguous()
+	public void DuckTyping_SerializerDependentNameCollisions_AreRejectedWhenBuilt()
 	{
 		DerivedTypeDuckTyping union = new(Shape<Shape2, Shape2>(), Shape<Circle, Circle>(), Shape<Square, Square>());
 		JsonSerializer serializer = new()
@@ -114,7 +120,9 @@ public partial class JsonRuntimeUnionTests
 			DerivedTypeUnions = [union],
 		};
 		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"value":1}""", Shape<Shape2, Shape2>()));
-		Assert.Contains("ambiguous", error.Message, StringComparison.OrdinalIgnoreCase);
+		Assert.IsType<NotSupportedException>(error.InnerException);
+		Assert.Contains("same properties", error.Message, StringComparison.OrdinalIgnoreCase);
+		Assert.Throws<NotSupportedException>(() => serializer.GetJsonSchema(Shape<Shape2, Shape2>()));
 		JsonSerializer normalNames = serializer with { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 		Assert.Equal(new Circle(1), normalNames.Deserialize("""{"radius":1}""", Shape<Shape2, Shape2>()));
 	}
@@ -161,12 +169,11 @@ public partial class JsonRuntimeUnionTests
 		Animal2 value = new("Ada");
 		Assert.Equal("""{"name":"Ada"}""", serializer.Serialize(value, Shape<Animal2, Animal2>()));
 		Assert.Equal(value, serializer.Deserialize("""{"name":"Ada"}""", Shape<Animal2, Animal2>()));
-		foreach (string json in new[] { """{"name":"Milo","lives":9}""", """{"other":1}""" })
-		{
-			Assert.Throws<JsonSerializationException>(() => serializer.Deserialize(json, Shape<Animal2, Animal2>()));
-			using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
-			await Assert.ThrowsAsync<JsonSerializationException>(async () => await serializer.DeserializeAsync(stream, Shape<Animal2, Animal2>()));
-		}
+		Assert.Equal(new Cat2("Milo", 9), serializer.Deserialize("""{"name":"Milo","lives":9}""", Shape<Animal2, Animal2>()));
+		const string unknown = """{"other":1}""";
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize(unknown, Shape<Animal2, Animal2>()));
+		using MemoryStream stream = new(Encoding.UTF8.GetBytes(unknown));
+		await Assert.ThrowsAsync<JsonSerializationException>(async () => await serializer.DeserializeAsync(stream, Shape<Animal2, Animal2>()));
 
 		Assert.Throws<JsonSerializationException>(() => serializer.Serialize<Animal2>(new Dog2("Rex", "Lab"), Shape<Animal2, Animal2>()));
 	}
@@ -215,6 +222,80 @@ public partial class JsonRuntimeUnionTests
 		result = (await serializer.DeserializeAsync(stream, Shape<IAnimal[], DuckWitness>()))!;
 		Assert.Same(result[0], result[1]);
 		Assert.Equal(1, Assert.IsType<RequiredAnimal>(result[0]).AfterDeserializeCount);
+	}
+
+	[Test]
+	public async Task DuckTyping_MostSpecificCase_WinsNestedSets()
+	{
+		JsonSerializer serializer = new()
+		{
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<Speck, Speck>(), Shape<BiggerSpeck, BiggerSpeck>(), Shape<BiggestSpeck, BiggestSpeck>(), Shape<OtherSpeck, OtherSpeck>())],
+		};
+
+		Assert.IsType<Speck>(serializer.Deserialize("""{"a":"1"}""", Shape<Speck, Speck>()));
+		Assert.IsType<BiggerSpeck>(serializer.Deserialize("""{"a":"1","b":"2"}""", Shape<Speck, Speck>()));
+		BiggestSpeck nested = Assert.IsType<BiggestSpeck>(serializer.Deserialize("""{"a":"1","b":"2","c":"3"}""", Shape<Speck, Speck>()));
+		Assert.Equal("3", nested.C);
+		Assert.IsType<OtherSpeck>(serializer.Deserialize("""{"a":"1","d":"4"}""", Shape<Speck, Speck>()));
+
+		foreach (string json in new[] { """{"a":"1","b":"2","d":"4"}""", """{"a":"1","b":"2","c":"3","d":"4"}""" })
+		{
+			JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize(json, Shape<Speck, Speck>()));
+			Assert.Contains("ambiguous", error.Message, StringComparison.OrdinalIgnoreCase);
+			using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+			await Assert.ThrowsAsync<JsonSerializationException>(async () => await serializer.DeserializeAsync(stream, Shape<Speck, Speck>()));
+		}
+	}
+
+	[Test]
+	public async Task DuckTyping_CatchAll_IsChosenOnlyWhenNothingElseMatches()
+	{
+		JsonSerializer serializer = new()
+		{
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<EmptyConcreteBase, EmptyConcreteBase>(), Shape<ConcreteCase, ConcreteCase>(), Shape<OtherConcreteCase, OtherConcreteCase>())],
+		};
+
+		Assert.IsType<EmptyConcreteBase>(serializer.Deserialize("{}", Shape<EmptyConcreteBase, EmptyConcreteBase>()));
+		Assert.IsType<EmptyConcreteBase>(serializer.Deserialize("""{"extra":1}""", Shape<EmptyConcreteBase, EmptyConcreteBase>()));
+		Assert.Equal(3, Assert.IsType<ConcreteCase>(serializer.Deserialize("""{"number":3}""", Shape<EmptyConcreteBase, EmptyConcreteBase>())).Number);
+		Assert.Equal(3, Assert.IsType<ConcreteCase>(serializer.Deserialize("""{"number":3,"extra":true}""", Shape<EmptyConcreteBase, EmptyConcreteBase>())).Number);
+		Assert.Equal("x", Assert.IsType<OtherConcreteCase>(serializer.Deserialize("""{"label":"x"}""", Shape<EmptyConcreteBase, EmptyConcreteBase>())).Label);
+		JsonSerializationException ambiguous = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"number":1,"label":"x"}""", Shape<EmptyConcreteBase, EmptyConcreteBase>()));
+		Assert.Contains("ambiguous", ambiguous.Message, StringComparison.OrdinalIgnoreCase);
+		using MemoryStream stream = new(Encoding.UTF8.GetBytes("""{"extra":1}"""));
+		Assert.IsType<EmptyConcreteBase>(await serializer.DeserializeAsync(stream, Shape<EmptyConcreteBase, EmptyConcreteBase>()));
+	}
+
+	[Test]
+	public void DuckTyping_IdenticalRequiredNames_AreRejectedWhenBuilt()
+	{
+		JsonSerializer serializer = new()
+		{
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<ISame, ISame>(), Shape<SameA, SameA>(), Shape<SameB, SameB>())],
+		};
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.Serialize<ISame>(new SameA(1), Shape<ISame, ISame>()));
+		Assert.IsType<NotSupportedException>(error.InnerException);
+		Assert.Contains("same properties", error.Message, StringComparison.OrdinalIgnoreCase);
+		Assert.Throws<NotSupportedException>(() => serializer.GetJsonSchema(Shape<ISame, ISame>()));
+	}
+
+	[Test]
+	public void DuckTyping_CaseFoldingCollisions_AreRejectedWhenBuilt()
+	{
+		// A null naming policy keeps the explicit "Volume" and "volume" names distinct except for case.
+		JsonSerializer serializer = new()
+		{
+			PropertyNamingPolicy = null,
+			PropertyNameCaseInsensitive = true,
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<IAnimal, IAnimal>(), Shape<LoudAnimal, LoudAnimal>(), Shape<QuietAnimal, QuietAnimal>())],
+		};
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"volume":1}""", Shape<IAnimal, IAnimal>()));
+		Assert.IsType<NotSupportedException>(error.InnerException);
+		Assert.Contains("same properties", error.Message, StringComparison.OrdinalIgnoreCase);
+
+		JsonSerializer sensitive = serializer with { PropertyNameCaseInsensitive = false };
+		Assert.Equal(1, Assert.IsType<LoudAnimal>(sensitive.Deserialize("""{"Volume":1}""", Shape<IAnimal, IAnimal>())).Level);
+		Assert.Equal(2, Assert.IsType<QuietAnimal>(sensitive.Deserialize("""{"volume":2}""", Shape<IAnimal, IAnimal>())).Pitch);
 	}
 
 	[Test]
@@ -297,6 +378,59 @@ public partial class JsonRuntimeUnionTests
 	internal partial class ConcreteCase(int number) : EmptyConcreteBase
 	{
 		public int Number { get; } = number;
+	}
+
+	[GenerateShape]
+	internal partial class OtherConcreteCase(string label) : EmptyConcreteBase
+	{
+		public string Label { get; } = label;
+	}
+
+	[GenerateShape]
+	internal partial class EmptyAnimal : IAnimal;
+
+	[GenerateShape]
+	internal partial record SameA(int Value) : ISame;
+
+	[GenerateShape]
+	internal partial record SameB(int Value) : ISame;
+
+	[GenerateShape]
+	internal partial class LoudAnimal : IAnimal
+	{
+		[PropertyShape(Name = "Volume")]
+		public required int Level { get; init; }
+	}
+
+	[GenerateShape]
+	internal partial class QuietAnimal : IAnimal
+	{
+		[PropertyShape(Name = "volume")]
+		public required int Pitch { get; init; }
+	}
+
+	[GenerateShape]
+	internal partial class Speck
+	{
+		public required string A { get; init; }
+	}
+
+	[GenerateShape]
+	internal partial class BiggerSpeck : Speck
+	{
+		public required string B { get; init; }
+	}
+
+	[GenerateShape]
+	internal partial class BiggestSpeck : BiggerSpeck
+	{
+		public required string C { get; init; }
+	}
+
+	[GenerateShape]
+	internal partial class OtherSpeck : Speck
+	{
+		public required string D { get; init; }
 	}
 
 	[GenerateShapeFor<IAnimal[]>]
