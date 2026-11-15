@@ -75,7 +75,7 @@ jobs:
       run: |
         $extension = if ($IsWindows) { '.exe' } else { '' }
         # Preserve the existing baselines; recalibrate only with measurements on each OS.
-        $expectedSizeMiB = if ($IsLinux) { 6.10 } elseif ($IsMacOS) { 5.65 } else { 5.79 }
+        $expectedSizeMiB = if ($IsLinux) { 6.56 } elseif ($IsMacOS) { 6.16 } else { 6.32 }
         ./tools/Measure-AotImage.ps1 `
           -Path "./bin/AotNativeConsole/${{ env.BUILDCONFIGURATION }}/net10.0/${{ matrix.rid }}/publish/AotNativeConsole$extension" `
           -RuntimeIdentifier '${{ matrix.rid }}' `
@@ -140,9 +140,9 @@ jobs:
       run: |
         $FailedChecks = @()
         $Combinations = @(
-          @{ OS = 'ubuntu-26.04'; RID = 'linux-x64'; ExpectedSizeMiB = 6.10 },
-          @{ OS = 'macOS-15'; RID = 'osx-arm64'; ExpectedSizeMiB = 5.65 },
-          @{ OS = 'windows-2025'; RID = 'win-x64'; ExpectedSizeMiB = 5.79 }
+          @{ OS = 'ubuntu-26.04'; RID = 'linux-x64'; ExpectedSizeMiB = 6.56 },
+          @{ OS = 'macOS-15'; RID = 'osx-arm64'; ExpectedSizeMiB = 6.16 },
+          @{ OS = 'windows-2025'; RID = 'win-x64'; ExpectedSizeMiB = 6.32 }
         )
 
         "Target | Broad image bytes | Broad image MiB | Expected MiB | Size and round-trip

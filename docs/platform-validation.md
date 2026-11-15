@@ -6,7 +6,7 @@ Use `tools/Validate-Platform.ps1` from this branch to collect platform evidence 
 It runs serial Release builds, core/MVC/analyzer managed tests for every declared framework (including .NET Framework on Windows), the F# round-trip self-check, eligible NativeAOT test variants discovered through the existing traversal, and all four native fixtures.
 Benchmarks and CPU traces are opt-in and must wait until other performance measurements have finished.
 Full Windows and WSL Ubuntu 26.04 runs against source `a28b0ef` pass, including the permissive Unicode policy, split-token scratch, scalar overloads, and direct writer-buffer APIs.
-macOS arm64 CI has also executed the build, tests, and native fixtures; its 5.6566 MiB broad image informed the operator-approved baseline below, while an independent run of this handoff script on the user's Mac has not been claimed.
+macOS arm64 CI has also executed the build, tests, and native fixtures; an earlier arm64 image of 5.6566 MiB informed a 5.65 MiB center. An independent run of this handoff script on the user's Mac has not been claimed.
 The script's existence alone is not evidence for any other host or revision.
 
 ## Requirements
@@ -94,9 +94,8 @@ Previously existing native outputs may be collected after a failure, but they ar
 Missing test reports, zero executed tests, incomplete results, missing image reports, failed commands, or blocked stages produce a nonzero exit.
 Inspect both the exit code and JSON status; never infer success from an artifact folder merely existing.
 
-The broad `AotNativeConsole` guard uses **linux-x64 6.10 MiB**, **osx-arm64 5.65 MiB**, and **win-x64 5.79 MiB**, each **+/- 0.2 MiB**.
-The macOS baseline was explicitly reviewed and approved after CI measured 5,931,376 bytes (5.6566009521484375 MiB); only that platform's center changed, not the tolerance, fixture, or runtime checks.
-The Linux center moved to 6.10 MiB after the serialization-callback and async-buffering changes. CI measured 6.095 MiB on that tree, and a later linux-x64 publish measured 6,399,712 bytes (6.103 MiB). The Windows baseline remains 5.79 MiB, and calibration is not automatic.
+The broad `AotNativeConsole` guard uses **linux-x64 6.56 MiB**, **osx-arm64 6.16 MiB**, and **win-x64 6.32 MiB**, each **+/- 0.2 MiB**.
+Object converters write and validate union discriminator members, and that code is part of the broad image. CI run `43659132718` measured linux-x64 6,883,480 bytes (6.5646 MiB), osx-arm64 6,462,816 bytes (6.1634 MiB), and win-x64 6,626,816 bytes (6.3198 MiB). Calibration is not automatic.
 Other supported RIDs are reported as `NOT_CALIBRATED`, not as a passed size guard.
 The separate minimal `AotSizeTest` remains uncalibrated on every RID and cannot replace the broad guard.
 `AotCompatibilityTest` roots the shipping assemblies, while `AotRuntimeCompatibilityTest` checks native runtime behavior; both published executables are also run.
