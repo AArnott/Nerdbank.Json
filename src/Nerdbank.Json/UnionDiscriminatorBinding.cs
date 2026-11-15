@@ -20,6 +20,13 @@ internal interface IUnionDiscriminatorSource
 	UnionDiscriminatorBinding? Discriminator { get; }
 }
 
+/// <summary>Exposes a cycle placeholder's converter once construction has finished.</summary>
+internal interface IDelayedJsonConverter
+{
+	/// <summary>Gets the completed converter, or <see langword="null"/> while construction is still in progress.</summary>
+	JsonConverter? CompletedConverter { get; }
+}
+
 internal abstract class UnionDiscriminatorBinding
 {
 	private readonly byte[] quotedUtf8Name;
@@ -41,34 +48,23 @@ internal abstract class UnionDiscriminatorBinding
 	internal string SerializedToken { get; }
 
 	internal static UnionDiscriminatorBinding? FromConverter(JsonConverter converter)
-		=> converter is IUnionDiscriminatorSource source ? source.Discriminator : null;
-
-	internal static void ValidateUnion(IEnumerable<JsonConverter> converters, StringComparer comparer)
 	{
-		UnionDiscriminatorBinding? first = null;
-		HashSet<string> values = new(StringComparer.Ordinal);
-		foreach (JsonConverter converter in converters)
+		converter = Unwrap(converter);
+		return converter is IUnionDiscriminatorSource source ? source.Discriminator : null;
+	}
+
+	internal static void ValidateUnion(IEnumerable<ITypeShape> caseShapes, ConverterCache owner)
+	{
+		List<UnionDiscriminatorBinding> discriminators = [];
+		foreach (ITypeShape shape in caseShapes)
 		{
-			UnionDiscriminatorBinding? discriminator = FromConverter(converter);
-			if (discriminator is null)
+			if (TryCreate(shape, owner) is UnionDiscriminatorBinding discriminator)
 			{
-				continue;
-			}
-
-			if (first is null)
-			{
-				first = discriminator;
-			}
-			else if (!comparer.Equals(first.Name, discriminator.Name))
-			{
-				throw new NotSupportedException($"Union cases declare discriminator names '{first.Name}' and '{discriminator.Name}'. Cases in one union must use the same discriminator name.");
-			}
-
-			if (!values.Add(discriminator.SerializedToken))
-			{
-				throw new NotSupportedException($"The union discriminator '{discriminator.Name}' value {discriminator.SerializedToken} is declared by more than one case.");
+				discriminators.Add(discriminator);
 			}
 		}
+
+		ValidateBindings(discriminators, owner.PropertyNameComparer);
 	}
 
 	internal static UnionDiscriminatorBinding? Create<T>(IObjectTypeShape<T> shape, ConverterCache owner)
@@ -109,7 +105,9 @@ internal abstract class UnionDiscriminatorBinding
 				}
 			}
 
-			return (UnionDiscriminatorBinding)member.Accept(new MemberFactory<T>(owner, memberLevel!, parameters))!;
+			UnionDiscriminatorBinding binding = (UnionDiscriminatorBinding)member.Accept(new MemberFactory<T>(owner, memberLevel!, parameters))!;
+			EnsureUniqueName(shape, binding.Name, member, owner);
+			return binding;
 		}
 
 		if (typeLevel is null)
@@ -122,15 +120,7 @@ internal abstract class UnionDiscriminatorBinding
 			throw new NotSupportedException($"Type '{typeof(T).FullName}' declares a union discriminator without a property name.");
 		}
 
-		foreach (IPropertyShape property in shape.Properties)
-		{
-			string serialized = owner.GetSerializedPropertyName(property.Name, property.AttributeProvider);
-			if (owner.PropertyNameComparer.Equals(serialized, typeLevel.PropertyName))
-			{
-				throw new NotSupportedException($"Type '{typeof(T).FullName}' already has a property serialized as '{typeLevel.PropertyName}'.");
-			}
-		}
-
+		EnsureUniqueName(shape, typeLevel.PropertyName!, source: null, owner);
 		return CreateTypeLevel(typeof(T), typeLevel, owner);
 	}
 
@@ -188,6 +178,71 @@ internal abstract class UnionDiscriminatorBinding
 
 		schema["const"] = node;
 		return schema;
+	}
+
+	private static UnionDiscriminatorBinding? TryCreate(ITypeShape shape, ConverterCache owner)
+	{
+		ITypeShape bare = shape is IUnionTypeShape union ? union.BaseType : shape;
+		return bare.Accept(new ObjectFactory(owner)) as UnionDiscriminatorBinding;
+	}
+
+	private static JsonConverter Unwrap(JsonConverter converter)
+	{
+		while (true)
+		{
+			if (converter is IJsonReferencePreservingWrapper wrapper)
+			{
+				converter = wrapper.InnerConverter;
+				continue;
+			}
+
+			if (converter is IDelayedJsonConverter delayed && delayed.CompletedConverter is JsonConverter completed)
+			{
+				converter = completed;
+				continue;
+			}
+
+			return converter;
+		}
+	}
+
+	private static void ValidateBindings(List<UnionDiscriminatorBinding> discriminators, StringComparer comparer)
+	{
+		UnionDiscriminatorBinding? first = null;
+		HashSet<string> values = new(StringComparer.Ordinal);
+		foreach (UnionDiscriminatorBinding discriminator in discriminators)
+		{
+			if (first is null)
+			{
+				first = discriminator;
+			}
+			else if (!comparer.Equals(first.Name, discriminator.Name))
+			{
+				throw new NotSupportedException($"Union cases declare discriminator names '{first.Name}' and '{discriminator.Name}'. Cases in one union must use the same discriminator name.");
+			}
+
+			if (!values.Add(discriminator.SerializedToken))
+			{
+				throw new NotSupportedException($"The union discriminator '{discriminator.Name}' value {discriminator.SerializedToken} is declared by more than one case.");
+			}
+		}
+	}
+
+	private static void EnsureUniqueName<T>(IObjectTypeShape<T> shape, string name, IPropertyShape? source, ConverterCache owner)
+	{
+		foreach (IPropertyShape property in shape.Properties)
+		{
+			if (source is not null && ReferenceEquals(property, source))
+			{
+				continue;
+			}
+
+			string serialized = owner.GetSerializedPropertyName(property.Name, property.AttributeProvider);
+			if (owner.PropertyNameComparer.Equals(serialized, name))
+			{
+				throw new NotSupportedException($"Type '{typeof(T).FullName}' already has a property serialized as '{name}'.");
+			}
+		}
 	}
 
 	private static UnionDiscriminatorAttribute? FirstAttribute(IGenericCustomAttributeProvider? provider)
@@ -298,7 +353,17 @@ internal abstract class UnionDiscriminatorBinding
 	}
 
 	private static string IntegerToken(object value)
-		=> value is ulong unsigned ? unsigned.ToString(CultureInfo.InvariantCulture) : Convert.ToInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+	{
+		if (value is ulong unsigned || IsUnsignedEnum(value))
+		{
+			return Convert.ToUInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+		}
+
+		return Convert.ToInt64(value, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+	}
+
+	private static bool IsUnsignedEnum(object value)
+		=> value is Enum && Enum.GetUnderlyingType(value.GetType()) == typeof(ulong);
 
 	private sealed class MemberFactory<TDeclaring> : TypeShapeVisitor
 	{
@@ -371,6 +436,11 @@ internal abstract class UnionDiscriminatorBinding
 			string name = owner.GetSerializedPropertyName(property.Name, property.AttributeProvider);
 			RejectReservedName(typeof(TDeclaring), name);
 			TProperty actual = ReadConstant(property);
+			if (actual is null)
+			{
+				throw new NotSupportedException($"Union discriminator '{property.Name}' on '{typeof(TDeclaring).FullName}' cannot be null.");
+			}
+
 			TProperty expected = attribute.HasValue ? ConvertValue(property.Name, attribute.Value) : actual;
 			if (!EqualityComparer<TProperty>.Default.Equals(actual, expected))
 			{
@@ -478,7 +548,16 @@ internal abstract class UnionDiscriminatorBinding
 
 		internal override void Read(ref JsonReader reader, SerializationContext context)
 		{
-			T actual = this.converter.Read(ref reader, context)!;
+			T actual;
+			try
+			{
+				actual = this.converter.Read(ref reader, context)!;
+			}
+			catch (FormatException) when (this.converter is IJsonEnumNameConverter)
+			{
+				throw Mismatch(this.Name, "an unrecognized value", this.SerializedToken);
+			}
+
 			if (!EqualityComparer<T>.Default.Equals(actual, this.expected))
 			{
 				throw Mismatch(this.Name, Token(actual, this.converter), this.SerializedToken);
@@ -535,7 +614,7 @@ internal abstract class UnionDiscriminatorBinding
 
 			if (value is Enum)
 			{
-				return ("integer", Convert.ToInt64(value, CultureInfo.InvariantCulture));
+				return ("integer", IsUnsignedEnum(value) ? Convert.ToUInt64(value, CultureInfo.InvariantCulture) : Convert.ToInt64(value, CultureInfo.InvariantCulture));
 			}
 
 			return ("integer", value!);
@@ -650,29 +729,35 @@ internal abstract class UnionDiscriminatorBinding
 	private sealed class EnumBinding : UnionDiscriminatorBinding
 	{
 		private readonly bool byName;
+		private readonly bool unsigned;
 		private readonly string? expectedName;
-		private readonly long expectedNumber;
+		private readonly long expectedSigned;
+		private readonly ulong expectedUnsigned;
 
-		private EnumBinding(string name, bool byName, string? expectedName, long expectedNumber)
-			: base(name, source: null, byName ? Quote(expectedName!) : expectedNumber.ToString(CultureInfo.InvariantCulture))
+		private EnumBinding(string name, bool byName, bool unsigned, string? expectedName, long expectedSigned, ulong expectedUnsigned)
+			: base(name, source: null, byName ? Quote(expectedName!) : unsigned ? expectedUnsigned.ToString(CultureInfo.InvariantCulture) : expectedSigned.ToString(CultureInfo.InvariantCulture))
 		{
 			this.byName = byName;
+			this.unsigned = unsigned;
 			this.expectedName = expectedName;
-			this.expectedNumber = expectedNumber;
+			this.expectedSigned = expectedSigned;
+			this.expectedUnsigned = expectedUnsigned;
 		}
 
 		internal static EnumBinding Create(Type declaringType, string name, object value, ConverterCache owner)
 		{
 			_ = declaringType;
-			long number = Convert.ToInt64(value, CultureInfo.InvariantCulture);
-			if (!owner.SerializeEnumValuesByName)
+			bool unsigned = IsUnsignedEnum(value);
+			ulong unsignedNumber = unsigned ? Convert.ToUInt64(value, CultureInfo.InvariantCulture) : 0;
+			long signedNumber = unsigned ? 0 : Convert.ToInt64(value, CultureInfo.InvariantCulture);
+			string? member = Enum.GetName(value.GetType(), value);
+			if (owner.SerializeEnumValuesByName && member is not null)
 			{
-				return new EnumBinding(name, byName: false, expectedName: null, number);
+				member = owner.PropertyNamingPolicy?.ConvertName(member) ?? member;
+				return new EnumBinding(name, byName: true, unsigned, member, signedNumber, unsignedNumber);
 			}
 
-			string member = Enum.GetName(value.GetType(), value) ?? number.ToString(CultureInfo.InvariantCulture);
-			member = owner.PropertyNamingPolicy?.ConvertName(member) ?? member;
-			return new EnumBinding(name, byName: true, member, number);
+			return new EnumBinding(name, byName: false, unsigned, expectedName: null, signedNumber, unsignedNumber);
 		}
 
 		internal override void Write(ref JsonWriter writer, SerializationContext context, bool first)
@@ -683,9 +768,13 @@ internal abstract class UnionDiscriminatorBinding
 			{
 				writer.Write(this.expectedName!);
 			}
+			else if (this.unsigned)
+			{
+				writer.Write(this.expectedUnsigned);
+			}
 			else
 			{
-				writer.Write(this.expectedNumber);
+				writer.Write(this.expectedSigned);
 			}
 		}
 
@@ -711,7 +800,10 @@ internal abstract class UnionDiscriminatorBinding
 				return;
 			}
 
-			if (reader.ReadInt64() != this.expectedNumber)
+			bool matches = this.unsigned
+				? reader.ReadUInt64() == this.expectedUnsigned
+				: reader.ReadInt64() == this.expectedSigned;
+			if (!matches)
 			{
 				throw Mismatch(this.Name, "a different number", this.SerializedToken);
 			}
@@ -723,6 +815,34 @@ internal abstract class UnionDiscriminatorBinding
 		internal override JsonSchemaObject CreateSchema(JsonSchemaDialect dialect)
 			=> this.byName
 				? ConstantSchema(dialect, "string", this.expectedName!)
-				: ConstantSchema(dialect, "integer", this.expectedNumber);
+				: ConstantSchema(dialect, "integer", this.unsigned ? this.expectedUnsigned : this.expectedSigned);
+	}
+
+	private sealed class ObjectFactory(ConverterCache owner) : TypeShapeVisitor
+	{
+		public override object? VisitObject<T>(IObjectTypeShape<T> objectShape, object? state = null)
+			=> Create(objectShape, owner);
+
+		public override object? VisitProperty<TDeclaringType, TPropertyType>(IPropertyShape<TDeclaringType, TPropertyType> propertyShape, object? state = null) => null;
+
+		public override object? VisitConstructor<TDeclaringType, TArgumentState>(IConstructorShape<TDeclaringType, TArgumentState> constructorShape, object? state = null) => null;
+
+		public override object? VisitEnumerable<TEnumerable, TElement>(IEnumerableTypeShape<TEnumerable, TElement> enumerableShape, object? state = null) => null;
+
+		public override object? VisitDictionary<TDictionary, TKey, TValue>(IDictionaryTypeShape<TDictionary, TKey, TValue> dictionaryShape, object? state = null) => null;
+
+		public override object? VisitEnum<TEnum, TUnderlying>(IEnumTypeShape<TEnum, TUnderlying> enumShape, object? state = null) => null;
+
+		public override object? VisitOptional<TOptional, TElement>(IOptionalTypeShape<TOptional, TElement> optionalShape, object? state = null) => null;
+
+		public override object? VisitFunction<TFunction, TArgumentState, TResult>(IFunctionTypeShape<TFunction, TArgumentState, TResult> functionShape, object? state = null) => null;
+
+		public override object? VisitSurrogate<T, TSurrogate>(ISurrogateTypeShape<T, TSurrogate> surrogateShape, object? state = null) => null;
+
+		public override object? VisitUnion<TUnion>(IUnionTypeShape<TUnion> unionShape, object? state = null) => null;
+
+		public override object? VisitUnionCase<TUnionCase, TUnion>(IUnionCaseShape<TUnionCase, TUnion> unionCaseShape, object? state = null) => null;
+
+		public override object? VisitParameter<TArgumentState, TParameterType>(IParameterShape<TArgumentState, TParameterType> parameterShape, object? state = null) => null;
 	}
 }

@@ -541,6 +541,7 @@ internal static class RuntimeUnionBuilder
 		}
 
 		List<RuntimeUnionCaseEntry<TBase>> caseEntries = [];
+		List<ITypeShape> caseShapes = [];
 		foreach (KeyValuePair<DerivedTypeIdentifier, ITypeShape> pair in GetCases(entry))
 		{
 			DerivedTypeIdentifier alias = pair.Key;
@@ -550,6 +551,7 @@ internal static class RuntimeUnionBuilder
 				: new JsonRuntimeUnionCaseConverter<TBase>(owner.GetOrAddConverter(caseShape));
 			HashSet<string> required = RuntimeUnionHelpers.GetRequiredSerializedPropertyNames(caseShape, owner);
 			caseEntries.Add(new(caseShape.Type, alias.Type == DerivedTypeIdentifier.AliasType.Integer ? alias.IntAlias : null, alias.Type == DerivedTypeIdentifier.AliasType.String ? alias.StringAlias : null, caseConverter, required));
+			caseShapes.Add(caseShape);
 		}
 
 		if (caseEntries.Count == 0)
@@ -558,7 +560,7 @@ internal static class RuntimeUnionBuilder
 		}
 
 		VerifyUniqueAliases(caseEntries);
-		UnionDiscriminatorBinding.ValidateUnion(caseEntries.Select(static entry => (JsonConverter)entry.Converter), nameComparer);
+		UnionDiscriminatorBinding.ValidateUnion(caseShapes, owner);
 
 		return entry is DerivedTypeDuckTyping
 			? new JsonDuckTypingUnionConverter<TBase>([.. caseEntries], nameComparer)

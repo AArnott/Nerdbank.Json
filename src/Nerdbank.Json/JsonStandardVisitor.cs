@@ -238,7 +238,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			}
 		}
 
-		UnionDiscriminatorBinding.ValidateUnion(serializers.Select(static entry => entry.Converter), owner.PropertyNameComparer);
+		UnionDiscriminatorBinding.ValidateUnion(unionShape.UnionCases.Select(static unionCase => unionCase.UnionCaseType), owner);
 		return new JsonUnionConverter<TUnion>(baseConverter, getUnionCaseIndex, serializers, isCSharpUnion);
 	}
 

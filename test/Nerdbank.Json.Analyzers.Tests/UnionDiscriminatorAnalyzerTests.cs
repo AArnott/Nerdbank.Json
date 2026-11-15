@@ -203,4 +203,93 @@ public class UnionDiscriminatorAnalyzerTests
 				}
 			}
 			""");
+
+	[Test]
+	public Task PrivateFieldDoesNotCollideWithATypeLevelName()
+		=> VerifyCS.VerifyAnalyzerAsync(
+			/* lang=c#-test */ """
+			using Nerdbank.Json;
+			[UnionDiscriminator("kind", "create")]
+			class Model
+			{
+				private string kind = "hidden";
+				public string? Uri { get; set; }
+				public string Hidden => this.kind;
+			}
+			""");
+
+	[Test]
+	public Task IncludedPrivatePropertyCollidesWithATypeLevelName()
+		=> VerifyCS.VerifyAnalyzerAsync(
+			/* lang=c#-test */ """
+			using Nerdbank.Json;
+			using PolyType;
+			[UnionDiscriminator("kind", "create")]
+			class {|NBJson121:Model|}
+			{
+				[PropertyShape]
+				private string kind => "hidden";
+			}
+			""");
+
+	[Test]
+	public Task NullInferredConstantIsAnError()
+		=> VerifyCS.VerifyAnalyzerAsync(
+			/* lang=c#-test */ """
+			using Nerdbank.Json;
+			class Model
+			{
+				[UnionDiscriminator]
+				public string? {|NBJson122:Kind|} => null;
+			}
+			""");
+
+	[Test]
+	public Task UnselectedConstructorParameterIsIgnored()
+		=> VerifyCS.VerifyAnalyzerAsync(
+			/* lang=c#-test */ """
+			using Nerdbank.Json;
+			class Model
+			{
+				public Model() { }
+				public Model(string kind) { }
+				[UnionDiscriminator("create")]
+				public string Kind => "create";
+			}
+			""");
+
+	[Test]
+	public Task SelectedConstructorParameterIsAnError()
+		=> VerifyCS.VerifyAnalyzerAsync(
+			/* lang=c#-test */ """
+			using Nerdbank.Json;
+			class Model
+			{
+				public Model(string kind) { }
+				[UnionDiscriminator("create")]
+				public string {|NBJson121:Kind|} => "create";
+			}
+			""");
+
+	[Test]
+	public async Task PartialConstantIsReadFromItsOwnDeclaration()
+	{
+		VerifyCS.Test test = new();
+		test.TestState.Sources.Add(("Model.Properties.cs", /* lang=c#-test */ """
+			using Nerdbank.Json;
+			partial class Model
+			{
+				public string? Uri { get; set; }
+			}
+			"""));
+		test.TestState.Sources.Add(("Model.Discriminator.cs", /* lang=c#-test */ """
+			using Nerdbank.Json;
+			partial class Model
+			{
+				[UnionDiscriminator("create")]
+				public string Kind => "create";
+			}
+			"""));
+		await test.RunAsync();
+	}
 }

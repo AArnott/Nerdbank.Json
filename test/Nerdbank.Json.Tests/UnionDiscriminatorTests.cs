@@ -52,6 +52,8 @@ public partial class UnionDiscriminatorTests : TestBase
 		Assert.Equal(Color.Red, named.Deserialize("""{"Color":"Red"}""", Shape<EnumNumber>())!.Color);
 		JsonSerializationException mismatch = Assert.Throws<JsonSerializationException>(() => named.Deserialize("""{"Color":"Blue"}""", Shape<EnumNumber>()));
 		Assert.Equal(JsonSerializationException.ErrorCode.DiscriminatorMismatch, mismatch.Code);
+		JsonSerializationException unknown = Assert.Throws<JsonSerializationException>(() => named.Deserialize("""{"Color":"Missing"}""", Shape<EnumNumber>()));
+		Assert.Equal(JsonSerializationException.ErrorCode.DiscriminatorMismatch, unknown.Code);
 	}
 
 	[Test]
@@ -116,6 +118,45 @@ public partial class UnionDiscriminatorTests : TestBase
 		AssertNotSupported<TwoDiscriminators>("more than one");
 		AssertNotSupported<FileChangeMixed>("discriminator names");
 		AssertNotSupported<FileChangeDuplicate>("more than one case");
+	}
+
+	[Test]
+	public void MemberNameCollision_FailsWhenTheConverterIsBuilt()
+		=> AssertNotSupported<MemberNameCollision>("already has a property");
+
+	[Test]
+	public void NullConstant_FailsWhenTheConverterIsBuilt()
+		=> AssertNotSupported<NullKind>("cannot be null");
+
+	[Test]
+	public void RecursiveUnion_RejectsDuplicateDiscriminatorValues()
+		=> AssertNotSupported<RecursiveHost>("more than one case");
+
+	[Test]
+	public void ReferencePreservation_RejectsDuplicateDiscriminatorValues()
+	{
+		JsonSerializer serializer = new() { PreserveReferences = ReferencePreservationMode.AllowCycles };
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.Serialize(new CreateCase("file:///a.cs"), Shape<FileChangeDuplicate>()));
+		Assert.IsType<NotSupportedException>(error.InnerException);
+		Assert.Contains("more than one case", error.InnerException!.Message, StringComparison.OrdinalIgnoreCase);
+	}
+
+	[Test]
+	public void PrivateField_DoesNotCollideWithTheTypeLevelName()
+	{
+		PrivateKindField value = this.Roundtrip(new PrivateKindField { Uri = "file:///a.cs" })!;
+		Assert.Equal("file:///a.cs", value.Uri);
+		Assert.Equal("""{"kind":"create","uri":"file:///a.cs"}""", this.LastSerializedJson);
+	}
+
+	[Test]
+	public void UnsignedAndUnnamedEnums_KeepTheirJsonKind()
+	{
+		Assert.Equal("""{"code":18446744073709551615,"value":0}""", this.Roundtrip(new BigEnumCase()) is not null ? this.LastSerializedJson : null);
+		JsonSerializer named = new() { SerializeEnumValuesByName = true, PropertyNamingPolicy = null };
+		Assert.Equal("""{"Code":"High"}""", named.Serialize(new BigEnumMember(), Shape<BigEnumMember>()));
+		Assert.Equal("""{"perm":3,"X":1}""", named.Serialize(new FlagType { X = 1 }, Shape<FlagType>()));
+		Assert.Equal(18446744073709551615UL, this.Schema<BigEnumCase>()["properties"]!["code"]!["const"]!.GetValue<ulong>());
 	}
 
 	[Test]
@@ -291,5 +332,85 @@ public partial class UnionDiscriminatorTests : TestBase
 	{
 		Red = 1,
 		Blue = 2,
+	}
+
+	[GenerateShape]
+	public partial class MemberNameCollision
+	{
+		[PropertyShape(Name = "kind")]
+		public string? Label { get; set; }
+
+		[UnionDiscriminator("create")]
+		public string Kind => "create";
+	}
+
+	[GenerateShape]
+	public partial class NullKind
+	{
+		[UnionDiscriminator]
+		public string? Kind => null;
+	}
+
+	[GenerateShape]
+	public partial class RecursiveHost
+	{
+		[UnionDiscriminator("same")]
+		public string Kind => "same";
+
+		public RecursiveChoice? Choice { get; set; }
+	}
+
+	[GenerateShape]
+	public partial class RecursivePeer
+	{
+		[UnionDiscriminator("same")]
+		public string Kind => "same";
+	}
+
+	[GenerateShape]
+	public partial union RecursiveChoice(RecursiveHost, RecursivePeer);
+
+	[GenerateShape]
+	[UnionDiscriminator("kind", "create")]
+	public partial class PrivateKindField
+	{
+		private string kind = "hidden";
+
+		public string? Uri { get; set; }
+
+		public string Hidden => this.kind;
+	}
+
+	[GenerateShape]
+	[UnionDiscriminator("code", BigColor.High)]
+	public partial class BigEnumCase
+	{
+		public int Value { get; set; }
+	}
+
+	[GenerateShape]
+	public partial class BigEnumMember
+	{
+		[UnionDiscriminator(BigColor.High)]
+		public BigColor Code => BigColor.High;
+	}
+
+	[Flags]
+	public enum Perm
+	{
+		Read = 1,
+		Write = 2,
+	}
+
+	[GenerateShape]
+	[UnionDiscriminator("perm", (Perm)3)]
+	public partial class FlagType
+	{
+		public int X { get; set; }
+	}
+
+	public enum BigColor : ulong
+	{
+		High = ulong.MaxValue,
 	}
 }

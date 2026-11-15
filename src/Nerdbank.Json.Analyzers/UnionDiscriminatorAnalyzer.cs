@@ -105,13 +105,14 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 				KeyAttribute = start.Compilation.GetTypeByMetadataName(KnownNames.KeyAttribute),
 				UnionAttribute = start.Compilation.GetTypeByMetadataName(KnownNames.UnionAttribute),
 				DerivedTypeShapeAttribute = start.Compilation.GetTypeByMetadataName(KnownNames.DerivedTypeShapeAttribute),
+				ConstructorShapeAttribute = start.Compilation.GetTypeByMetadataName(KnownNames.ConstructorShapeAttribute),
 			};
 			start.RegisterSemanticModelAction(modelContext => scan.Visit(modelContext));
 			start.RegisterCompilationEndAction(end => scan.Finish(end));
 		});
 	}
 
-	private static DiscriminatorFact? AnalyzeType(INamedTypeSymbol type, INamedTypeSymbol discriminatorAttribute, INamedTypeSymbol? keyAttribute, List<Diagnostic> diagnostics, SemanticModel model, CancellationToken cancellationToken)
+	private static DiscriminatorFact? AnalyzeType(INamedTypeSymbol type, INamedTypeSymbol discriminatorAttribute, INamedTypeSymbol? keyAttribute, INamedTypeSymbol? constructorShapeAttribute, List<Diagnostic> diagnostics, SemanticModel model, CancellationToken cancellationToken)
 	{
 		List<ISymbol> members = [];
 		foreach (ISymbol member in type.GetMembers())
@@ -147,7 +148,7 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 		}
 		else if (members.Count == 1)
 		{
-			fact = AnalyzeMember(type, members[0], discriminatorAttribute, diagnostics, model, cancellationToken);
+			fact = AnalyzeMember(type, members[0], discriminatorAttribute, constructorShapeAttribute, diagnostics, model, cancellationToken);
 		}
 
 		if (keyAttribute is not null && (typeLevel || members.Count == 1) && TypeUsesKey(type, keyAttribute))
@@ -186,7 +187,7 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 
 		foreach (ISymbol member in type.GetMembers())
 		{
-			if (member.IsImplicitlyDeclared || member.IsStatic || IsIgnored(member) || member is not (IPropertySymbol or IFieldSymbol))
+			if (!IsIncludedInShape(member))
 			{
 				continue;
 			}
@@ -201,7 +202,7 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 		return Token(value.Value) is string token ? new DiscriminatorFact(name, token) : null;
 	}
 
-	private static DiscriminatorFact? AnalyzeMember(INamedTypeSymbol type, ISymbol member, INamedTypeSymbol discriminatorAttribute, List<Diagnostic> diagnostics, SemanticModel model, CancellationToken cancellationToken)
+	private static DiscriminatorFact? AnalyzeMember(INamedTypeSymbol type, ISymbol member, INamedTypeSymbol discriminatorAttribute, INamedTypeSymbol? constructorShapeAttribute, List<Diagnostic> diagnostics, SemanticModel model, CancellationToken cancellationToken)
 	{
 		ITypeSymbol? memberType = member switch
 		{
@@ -216,7 +217,7 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 			return null;
 		}
 
-		if (IsConstructorParameter(type, member.Name))
+		if (IsConstructorParameter(type, member.Name, constructorShapeAttribute))
 		{
 			diagnostics.Add(Diagnostic.Create(InvalidShape, location, $"Union discriminator '{member.Name}' on '{type.Name}' must not be a constructor parameter."));
 			return null;
@@ -262,6 +263,12 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 		else if (!hasConstant)
 		{
 			diagnostics.Add(Diagnostic.Create(NotConstant, location, member.Name));
+			return null;
+		}
+
+		if (tokenValue is null)
+		{
+			diagnostics.Add(Diagnostic.Create(UnsupportedType, location, member.Name, "null"));
 			return null;
 		}
 
@@ -391,16 +398,96 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 		return false;
 	}
 
-	private static bool IsConstructorParameter(INamedTypeSymbol type, string name)
+	private static bool IsConstructorParameter(INamedTypeSymbol type, string name, INamedTypeSymbol? constructorShapeAttribute)
 	{
-		foreach (IMethodSymbol constructor in type.InstanceConstructors)
+		IMethodSymbol? constructor = SelectedConstructor(type, constructorShapeAttribute);
+		if (constructor is null)
 		{
-			foreach (IParameterSymbol parameter in constructor.Parameters)
+			return false;
+		}
+
+		foreach (IParameterSymbol parameter in constructor.Parameters)
+		{
+			if (string.Equals(parameter.Name, name, StringComparison.OrdinalIgnoreCase))
 			{
-				if (string.Equals(parameter.Name, name, StringComparison.OrdinalIgnoreCase))
-				{
-					return true;
-				}
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static IMethodSymbol? SelectedConstructor(INamedTypeSymbol type, INamedTypeSymbol? constructorShapeAttribute)
+	{
+		IMethodSymbol[] constructors = [.. type.InstanceConstructors];
+		if (constructorShapeAttribute is not null)
+		{
+			IMethodSymbol[] attributed = [.. constructors.Where(constructor => HasAttribute(constructor, constructorShapeAttribute))];
+			if (attributed.Length > 0)
+			{
+				return attributed.Length == 1 ? attributed[0] : null;
+			}
+		}
+
+		IMethodSymbol[] accessible = [.. constructors.Where(constructor => constructor.DeclaredAccessibility == Accessibility.Public)];
+		return accessible.FirstOrDefault(constructor => constructor.Parameters.Length == 0)
+			?? (accessible.Length == 1 ? accessible[0] : null);
+	}
+
+	private static bool DiscriminatorIsDeclaredElsewhere(INamedTypeSymbol type, INamedTypeSymbol discriminatorAttribute, SemanticModel model)
+	{
+		foreach (ISymbol member in type.GetMembers())
+		{
+			if (member.IsImplicitlyDeclared || !HasAttribute(member, discriminatorAttribute))
+			{
+				continue;
+			}
+
+			return member.DeclaringSyntaxReferences.Length > 0 &&
+				member.DeclaringSyntaxReferences.All(reference => reference.SyntaxTree != model.SyntaxTree);
+		}
+
+		return false;
+	}
+
+	private static bool IsIncludedInShape(ISymbol member)
+	{
+		if (member.IsStatic || member.IsImplicitlyDeclared || IsIgnored(member))
+		{
+			return false;
+		}
+
+		bool explicitShape = HasPropertyShape(member);
+		if (member is IPropertySymbol property)
+		{
+			if (property.IsIndexer)
+			{
+				return false;
+			}
+
+			return explicitShape || (property.DeclaredAccessibility == Accessibility.Public && property.GetMethod?.DeclaredAccessibility == Accessibility.Public);
+		}
+
+		if (member is IFieldSymbol field)
+		{
+			if (field.IsConst)
+			{
+				return false;
+			}
+
+			return explicitShape || field.DeclaredAccessibility == Accessibility.Public;
+		}
+
+		return false;
+	}
+
+	private static bool HasPropertyShape(ISymbol member)
+	{
+		foreach (AttributeData attribute in member.GetAttributes())
+		{
+			if (attribute.AttributeClass?.Name == "PropertyShapeAttribute")
+			{
+				return true;
 			}
 		}
 
@@ -539,6 +626,8 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 
 		internal INamedTypeSymbol? DerivedTypeShapeAttribute { get; init; }
 
+		internal INamedTypeSymbol? ConstructorShapeAttribute { get; init; }
+
 		internal void Visit(SemanticModelAnalysisContext context)
 		{
 			if (context.SemanticModel.SyntaxTree.FilePath.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase))
@@ -551,12 +640,14 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 				List<Diagnostic> diagnostics = [];
 				foreach (TypeDeclarationSyntax declaration in context.SemanticModel.SyntaxTree.GetRoot(context.CancellationToken).DescendantNodes().OfType<TypeDeclarationSyntax>())
 				{
-					if (context.SemanticModel.GetDeclaredSymbol(declaration, context.CancellationToken) is not INamedTypeSymbol type || !this.seen.Add(type))
+					if (context.SemanticModel.GetDeclaredSymbol(declaration, context.CancellationToken) is not INamedTypeSymbol type ||
+						DiscriminatorIsDeclaredElsewhere(type, this.discriminatorAttribute, context.SemanticModel) ||
+						!this.seen.Add(type))
 					{
 						continue;
 					}
 
-					if (AnalyzeType(type, this.discriminatorAttribute, this.KeyAttribute, diagnostics, context.SemanticModel, context.CancellationToken) is DiscriminatorFact fact)
+					if (AnalyzeType(type, this.discriminatorAttribute, this.KeyAttribute, this.ConstructorShapeAttribute, diagnostics, context.SemanticModel, context.CancellationToken) is DiscriminatorFact fact)
 					{
 						this.facts[type] = fact;
 					}
