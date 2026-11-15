@@ -89,9 +89,9 @@ public partial class UnionDiscriminatorTests : TestBase
 	}
 
 	[Test]
-	public void Union_WritesTypeThenDiscriminator()
+	public void Union_WritesDiscriminatedCaseBareAndWrapsTheAmbiguousCase()
 	{
-		Assert.Equal("""{"$type":"CreateCase","kind":"create","uri":"file:///a.cs"}""", this.Roundtrip<FileChange>(new CreateCase("file:///a.cs")) is not null ? this.LastSerializedJson : null);
+		Assert.Equal("""{"kind":"create","uri":"file:///a.cs"}""", this.Roundtrip<FileChange>(new CreateCase("file:///a.cs")) is not null ? this.LastSerializedJson : null);
 		Assert.Equal("""{"$type":"EditCase","uri":"file:///a.cs"}""", this.Roundtrip<FileChange>(new EditCase("file:///a.cs")) is not null ? this.LastSerializedJson : null);
 	}
 

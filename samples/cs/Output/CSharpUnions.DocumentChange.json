@@ -1,2 +1,2 @@
-{"$type":"CreateFile","kind":"create","uri":"file:///a.cs"}
-{"$type":"TextDocumentEdit","textDocument":{"uri":"file:///a.cs"},"edits":[]}
+{"kind":"create","uri":"file:///a.cs"}
+{"textDocument":{"uri":"file:///a.cs"},"edits":[]}

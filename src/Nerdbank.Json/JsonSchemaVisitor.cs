@@ -175,15 +175,15 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 		DerivedTypeIdentifier[] aliases = aliasResolution.Aliases;
 		bool isCSharpUnion = unionShape.UnionKind == UnionTypeShapeKind.CSharpUnion;
 		UnionTagging tagging = isCSharpUnion ? JsonCSharpUnionRules.ResolveMode(unionShape, this.owner) : UnionTagging.Tagged;
-		JsonCSharpUnionCaseRepresentation[] representations = new JsonCSharpUnionCaseRepresentation[unionShape.UnionCases.Count];
-		for (int i = 0; i < representations.Length; i++)
+		JsonCSharpUnionCaseRepresentation[] representations = isCSharpUnion
+			? JsonCSharpUnionRules.Plan(unionShape, this.owner, tagging, aliasResolution)
+			: new JsonCSharpUnionCaseRepresentation[unionShape.UnionCases.Count];
+		if (!isCSharpUnion)
 		{
-			IUnionCaseShape unionCase = unionShape.UnionCases[i];
-			representations[i] = isCSharpUnion
-				? !typeof(TUnion).IsValueType && unionCase.IsNullable
-					? JsonCSharpUnionCaseRepresentation.Tagged
-					: JsonCSharpUnionRules.GetRepresentation(unionCase.UnionCaseType, aliasResolution.ExplicitlySpecified[i], this.owner, tagging)
-				: JsonCSharpUnionCaseRepresentation.Tagged;
+			for (int i = 0; i < representations.Length; i++)
+			{
+				representations[i] = JsonCSharpUnionCaseRepresentation.Tagged;
+			}
 		}
 
 		JsonCSharpUnionFormat? format = isCSharpUnion ? new JsonCSharpUnionFormat(representations, tagging) : null;

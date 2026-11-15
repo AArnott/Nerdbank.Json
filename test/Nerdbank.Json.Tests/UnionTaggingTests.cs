@@ -23,18 +23,22 @@ public partial class UnionTaggingTests : TestBase
 	}
 
 	[Test]
-	public void Untagged_RejectsCasesThatShareAJsonKind()
+	public void Untagged_RejectsObjectsThatCannotBeDistinguished()
 	{
 		JsonSerializer serializer = this.Serializer with { DefaultUnionTagging = UnionTagging.Untagged };
-		Assert.Throws<JsonSerializationException>(() => serializer.Serialize(new Widths(1)));
+		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() => serializer.Serialize(new Twins(new Left(1))));
+		Assert.IsType<NotSupportedException>(ex.InnerException);
+		Assert.Equal("1", serializer.Serialize(new Widths(1)));
 		Assert.Equal("""{"x":1,"y":0}""", serializer.Serialize(new Measure(new Plot(1, 0))));
 	}
 
 	[Test]
-	public void Auto_WrapsCasesThatShareAJsonKind()
+	public void Auto_WritesCollidingScalarsBare()
 	{
-		Assert.Equal("""{"$type":"Int32","$value":1}""", this.Serializer.Serialize(new Widths(1)));
-		Assert.Equal(2L, this.Serializer.Deserialize<Widths>("""{"$type":"Int64","$value":2}""").Value);
+		Assert.Equal("1", this.Serializer.Serialize(new Widths(1)));
+		Assert.Equal(1, this.Serializer.Deserialize<Widths>("1").Value);
+		Assert.Equal(5_000_000_000L, this.Serializer.Deserialize<Widths>("5000000000").Value);
+		Assert.Equal("""{"$type":"Left","value":1}""", this.Serializer.Serialize(new Twins(new Left(1))));
 	}
 
 	[Test]
@@ -52,7 +56,7 @@ public partial class UnionTaggingTests : TestBase
 			UnionTaggingProvider = new DelegateUnionTaggingProvider(union => union == typeof(TaggedMeasure) ? UnionTagging.Auto : null),
 		};
 		Assert.Equal("""{"x":1,"y":2}""", serializer.Serialize(new TaggedMeasure(new Plot(1, 2))));
-		Assert.Equal("""{"$type":"Int32","$value":1}""", serializer.Serialize(new Widths(1)));
+		Assert.Equal("1", serializer.Serialize(new Widths(1)));
 	}
 
 	[Test]
@@ -83,6 +87,15 @@ public partial class UnionTaggingTests : TestBase
 
 	[GenerateShape]
 	public partial union Widths(int, long);
+
+	[GenerateShape]
+	public partial union Twins(Left, Right);
+
+	[GenerateShape]
+	public partial record Left(int Value);
+
+	[GenerateShape]
+	public partial record Right(int Value);
 
 	[GenerateShape]
 	public partial record Plot(int X, int Y);

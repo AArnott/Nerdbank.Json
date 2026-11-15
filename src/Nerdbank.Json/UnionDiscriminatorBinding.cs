@@ -69,6 +69,16 @@ internal abstract class UnionDiscriminatorBinding
 		ValidateBindings(discriminators, owner.PropertyNameComparer);
 	}
 
+	internal static UnionDiscriminatorBinding? TryGet(ITypeShape shape, ConverterCache owner)
+	{
+		if (shape.Kind != TypeShapeKind.Object && shape is not IUnionTypeShape)
+		{
+			return null;
+		}
+
+		return TryCreate(shape, owner);
+	}
+
 	internal static UnionDiscriminatorBinding? Create<T>(IObjectTypeShape<T> shape, ConverterCache owner)
 	{
 		UnionDiscriminatorAttribute? typeLevel = FirstAttribute(shape.AttributeProvider);
