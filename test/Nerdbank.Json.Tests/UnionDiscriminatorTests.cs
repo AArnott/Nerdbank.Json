@@ -171,6 +171,15 @@ public partial class UnionDiscriminatorTests : TestBase
 	}
 
 	[Test]
+	public void ConverterCapture_UsesAnOperationContextAndJsonKind()
+	{
+		FractionalCode value = this.Roundtrip(new FractionalCode())!;
+		Assert.Equal(7, value.Code);
+		Assert.Equal("""{"code":7.5}""", this.LastSerializedJson);
+		Assert.Equal("number", this.Schema<FractionalCode>()["properties"]!["code"]!["type"]!.GetValue<string>());
+	}
+
+	[Test]
 	public void PropertyConverter_DefinesTheWireValueAndSchema()
 	{
 		TextCode value = this.Roundtrip(new TextCode())!;
@@ -539,6 +548,30 @@ public partial class UnionDiscriminatorTests : TestBase
 		[JsonConverter(typeof(AsyncIntConverter))]
 		[UnionDiscriminator(1)]
 		public int Code => 1;
+	}
+
+	[GenerateShape]
+	public partial class FractionalCode
+	{
+		[JsonConverter(typeof(ContextIntConverter))]
+		[UnionDiscriminator(7)]
+		public int Code => 7;
+	}
+
+	public sealed class ContextIntConverter : JsonConverter<int>
+	{
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context)
+		{
+			context.DepthStep();
+			_ = context.GetConverter(typeof(int));
+			writer.Write(value + 0.5);
+		}
+
+		public override int Read(ref JsonReader reader, SerializationContext context)
+		{
+			context.DepthStep();
+			return (int)reader.ReadDouble();
+		}
 	}
 
 	public sealed class TextIntConverter : JsonConverter<int>

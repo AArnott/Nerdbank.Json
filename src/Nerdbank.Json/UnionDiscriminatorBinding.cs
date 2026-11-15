@@ -8,8 +8,8 @@
 #if NET
 using System.Diagnostics.CodeAnalysis;
 #endif
-using System.Buffers;
 using System.Globalization;
+using System.IO;
 using System.Text;
 using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
 using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
@@ -185,7 +185,7 @@ internal abstract class UnionDiscriminatorBinding
 	private protected static JsonSchemaObject SchemaForToken(JsonSchemaDialect dialect, string token)
 	{
 		JsonSchemaNode node = JsonSchemaNode.Parse(token)!;
-		string type = token.StartsWith('"') ? "string" : token is "true" or "false" ? "boolean" : "integer";
+		string type = SchemaType(token);
 		JsonSchemaObject schema = new JsonSchemaObject().Set("type", type);
 		if (dialect == JsonSchemaDialect.Draft4)
 		{
@@ -195,6 +195,40 @@ internal abstract class UnionDiscriminatorBinding
 
 		schema["const"] = node;
 		return schema;
+	}
+
+	private static string SchemaType(string token)
+	{
+		if (token.Length == 0)
+		{
+			return "integer";
+		}
+
+		switch (token[0])
+		{
+			case '"':
+				return "string";
+			case 't':
+			case 'f':
+				return "boolean";
+			case 'n':
+				return "null";
+			case '[':
+				return "array";
+			case '{':
+				return "object";
+			default:
+				for (int i = 0; i < token.Length; i++)
+				{
+					char ch = token[i];
+					if (ch is '.' or 'e' or 'E')
+					{
+						return "number";
+					}
+				}
+
+				return "integer";
+		}
 	}
 
 	private static UnionDiscriminatorBinding? TryCreate(ITypeShape shape, ConverterCache owner)
@@ -465,7 +499,13 @@ internal abstract class UnionDiscriminatorBinding
 			}
 
 			JsonConverter<TProperty> converter = owner.GetConverter(property.PropertyType, property.AttributeProvider);
-			return new ConverterBinding<TProperty>(name, property, expected, converter);
+			SerializationContext captureContext = new()
+			{
+				Cache = owner,
+				TypeShapeProvider = property.PropertyType.Provider,
+			};
+			string token = ConverterBinding<TProperty>.Capture(converter, expected, captureContext);
+			return new ConverterBinding<TProperty>(name, property, expected, converter, token);
 		}
 
 		private static bool IsSupported(Type type)
@@ -550,8 +590,8 @@ internal abstract class UnionDiscriminatorBinding
 		private readonly T expected;
 		private readonly JsonConverter<T> converter;
 
-		internal ConverterBinding(string name, IPropertyShape source, T expected, JsonConverter<T> converter)
-			: base(name, source, Capture(converter, expected))
+		internal ConverterBinding(string name, IPropertyShape source, T expected, JsonConverter<T> converter, string token)
+			: base(name, source, token)
 		{
 			this.expected = expected;
 			this.converter = converter;
@@ -576,16 +616,16 @@ internal abstract class UnionDiscriminatorBinding
 			T actual = this.ReadCore(ref reader, context);
 			if (!EqualityComparer<T>.Default.Equals(actual, this.expected))
 			{
-				throw Mismatch(this.Name, Capture(this.converter, actual), this.SerializedToken);
+				throw Mismatch(this.Name, Capture(this.converter, actual, context), this.SerializedToken);
 			}
 		}
 
 		internal override async ValueTask ReadAsync(JsonAsyncReader reader, SerializationContext context)
 		{
-			T? actual;
+			T actual;
 			try
 			{
-				actual = await reader.ReadValueAsync(this.converter, context).ConfigureAwait(false);
+				actual = (await reader.ReadValueAsync(this.converter, context).ConfigureAwait(false))!;
 			}
 			catch (Exception ex) when (ex is FormatException or OverflowException)
 			{
@@ -594,12 +634,22 @@ internal abstract class UnionDiscriminatorBinding
 
 			if (!EqualityComparer<T>.Default.Equals(actual, this.expected))
 			{
-				throw Mismatch(this.Name, Capture(this.converter, actual), this.SerializedToken);
+				throw Mismatch(this.Name, Capture(this.converter, actual, context), this.SerializedToken);
 			}
 		}
 
 		internal override JsonSchemaObject CreateSchema(JsonSchemaDialect dialect)
 			=> SchemaForToken(dialect, this.SerializedToken);
+
+		internal static string Capture(JsonConverter<T> converter, T? value, SerializationContext context)
+		{
+			using MemoryStream stream = new();
+			using StreamBufferWriter destination = new(stream);
+			JsonWriter writer = new(destination);
+			converter.Write(ref writer, value, context);
+			writer.Flush();
+			return Encoding.UTF8.GetString(stream.ToArray());
+		}
 
 		private T ReadCore(ref JsonReader reader, SerializationContext context)
 		{
@@ -611,15 +661,6 @@ internal abstract class UnionDiscriminatorBinding
 			{
 				throw Mismatch(this.Name, "an unrecognized value", this.SerializedToken);
 			}
-		}
-
-		private static string Capture(JsonConverter<T> converter, T? value)
-		{
-			ArrayBufferWriter<byte> buffer = new();
-			JsonWriter writer = new(buffer);
-			converter.Write(ref writer, value, default);
-			writer.Flush();
-			return Encoding.UTF8.GetString(buffer.WrittenSpan);
 		}
 	}
 
