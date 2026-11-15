@@ -13,7 +13,7 @@ using System.Text;
 
 namespace Nerdbank.Json;
 
-internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase>, IJsonUnionObjectConverter
+internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase>, IJsonUnionObjectConverter, IUnionDiscriminatorSource
 {
 	private readonly JsonConverter inner;
 
@@ -24,6 +24,9 @@ internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase
 
 	bool IJsonUnionObjectConverter.SupportsInlineObject
 		=> this.inner is IJsonUnionObjectConverter { SupportsInlineObject: true };
+
+	UnionDiscriminatorBinding? IUnionDiscriminatorSource.Discriminator
+		=> UnionDiscriminatorBinding.FromConverter(this.inner);
 
 	void IJsonUnionObjectConverter.WriteObjectProperties(ref JsonWriter writer, object value, SerializationContext context, bool first)
 		=> this.GetObjectConverter().WriteObjectProperties(ref writer, value, context, first);
@@ -555,6 +558,7 @@ internal static class RuntimeUnionBuilder
 		}
 
 		VerifyUniqueAliases(caseEntries);
+		UnionDiscriminatorBinding.ValidateUnion(caseEntries.Select(static entry => (JsonConverter)entry.Converter), nameComparer);
 
 		return entry is DerivedTypeDuckTyping
 			? new JsonDuckTypingUnionConverter<TBase>([.. caseEntries], nameComparer)

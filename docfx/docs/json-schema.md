@@ -33,6 +33,8 @@ Draft 4 and Draft 7 use an array-valued `items` keyword for tuples and `addition
   reports `additionalProperties: true`.
 * **Arrays** — `type: array` with `items`; rectangular multidimensional arrays nest `items` per rank by default, or use a dimensions/data tuple when <xref:Nerdbank.Json.JsonSerializer.MultiDimensionalArrayFormat> is <xref:Nerdbank.Json.MultiDimensionalArrayFormat.Flat>.
 * **Dictionaries** — `type: object` with `additionalProperties` describing the value type.
+* **Discriminator members** — <xref:Nerdbank.Json.UnionDiscriminatorAttribute> adds an optional property, listed first.
+  Its schema is a `const` (a single-value `enum` in Draft 4) and it is not included in `required`.
 * **Unions** — generated and runtime envelope unions produce a `oneOf` of `$type` metadata objects.
   Object-case properties appear alongside the discriminator; scalar and custom-converter payloads use `$value`.
   Discriminator values use `const` in Draft 7 and Draft 2020-12 and single-value `enum` in Draft 4.

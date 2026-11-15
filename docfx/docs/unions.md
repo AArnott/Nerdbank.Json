@@ -131,6 +131,19 @@ Required properties follow object deserialization: constructor parameters, C# `r
 Names honor <xref:PolyType.PropertyShapeAttribute.Name>, the naming policy, and case-insensitive matching.
 Cases that require the same names after that policy are rejected when the converter is created.
 
+### Discriminator members
+
+<xref:Nerdbank.Json.UnionDiscriminatorAttribute> names the constant written with an object, whether or not that object is used as a union case.
+The member is written ahead of the type's other properties.
+On read it is optional. A value that is present must match, or deserialization throws <xref:Nerdbank.Json.JsonSerializationException> with <xref:Nerdbank.Json.JsonSerializationException.ErrorCode.DiscriminatorMismatch>.
+
+[!code-csharp[](../../samples/cs/CSharpUnions.cs#DocumentChange)]
+
+[!code-json[](../../samples/cs/Output/CSharpUnions.DocumentChange.json)]
+
+`kind` is part of `CreateFile` and `DeleteFile`. `TextDocumentEdit` has no discriminator.
+These object cases are still wrapped in `$type`.
+
 ### Duck typing derived types
 
 [!code-csharp[](../../samples/cs/RuntimeUnions.cs#DuckTypingUnions)]
