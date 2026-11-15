@@ -9,6 +9,7 @@ namespace Nerdbank.Json;
 /// <remarks>
 /// Implementations must be thread-safe and return consistent results for the lifetime of a serializer that uses them.
 /// Aliases are resolved while constructing converters, not for each serialized value.
+/// A case with an alias is written with <c>$type</c> in every <see cref="UnionTagging"/> mode.
 /// </remarks>
 public interface IUnionTypeAliasProvider
 {

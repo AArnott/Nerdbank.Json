@@ -140,7 +140,7 @@ public partial class CSharpUnionTests : TestBase
 		UppercaseTypeUnion value = new(new UppercaseTypeProperty("payload"));
 		using MemoryStream stream = new();
 		await serializer.SerializeAsync(stream, value);
-		Assert.Equal("""{"$type":"UppercaseTypeProperty","$TYPE":"payload"}""", Encoding.UTF8.GetString(stream.ToArray()));
+		Assert.Equal("""{"$TYPE":"payload"}""", Encoding.UTF8.GetString(stream.ToArray()));
 		stream.Position = 0;
 		UppercaseTypeUnion? result = await serializer.DeserializeAsync<UppercaseTypeUnion>(stream);
 		Assert.Equal(value.Value, result!.Value.Value);
@@ -155,7 +155,7 @@ public partial class CSharpUnionTests : TestBase
 		string objectFirstJson = objectFirst.Serialize(value);
 
 		string unionFirstJson = new JsonSerializer().Serialize(value);
-		Assert.Equal("""{"$type":"RecursiveUnionContainingObject","next":null}""", unionFirstJson);
+		Assert.Equal("""{"next":null}""", unionFirstJson);
 		Assert.Equal(unionFirstJson, objectFirstJson);
 	}
 
@@ -164,7 +164,7 @@ public partial class CSharpUnionTests : TestBase
 	{
 		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<RecursiveUnionContainingObject>()!);
 		JsonSchemaObject nextCase = schema["$defs"]!["NullableOfRecursiveObjectUnion"]!["anyOf"]![0]!["oneOf"]![0]!.AsObject();
-		Assert.NotNull(nextCase["properties"]?["$type"]);
+		Assert.Null(nextCase["properties"]?["$type"]);
 		Assert.NotNull(nextCase["properties"]?["next"]);
 		Assert.Contains("$ref", nextCase["properties"]!["next"]!.ToJsonString(), StringComparison.Ordinal);
 		Assert.Null(nextCase["properties"]?["$value"]);
@@ -178,17 +178,15 @@ public partial class CSharpUnionTests : TestBase
 		JsonSchemaObject objectDefinition = definitions["MultipleRecursiveUnionCases"]!.AsObject();
 		JsonSchemaObject firstUnionCase = definitions["NullableOfFirstRecursiveObjectUnion"]!["anyOf"]![0]!["oneOf"]![0]!.AsObject();
 		JsonSchemaObject secondUnionCase = definitions["NullableOfSecondRecursiveObjectUnion"]!["anyOf"]![0]!["oneOf"]![0]!.AsObject();
-		JsonSchemaObject nestedSecondUnionCase = firstUnionCase["properties"]!["secondUnion"]!["anyOf"]![0]!["anyOf"]![0]!["oneOf"]![0]!.AsObject();
 		Assert.Equal(false, objectDefinition["additionalProperties"]!.GetValue<bool>());
 		Assert.Null(objectDefinition["properties"]?["$type"]);
 		Assert.Equal("object", firstUnionCase["type"]!.GetValue<string>());
-		Assert.NotNull(firstUnionCase["properties"]?["$type"]);
+		Assert.Null(firstUnionCase["properties"]?["$type"]);
 		Assert.Equal(false, firstUnionCase["additionalProperties"]!.GetValue<bool>());
 		Assert.Equal("object", secondUnionCase["type"]!.GetValue<string>());
-		Assert.NotNull(secondUnionCase["properties"]?["$type"]);
+		Assert.Null(secondUnionCase["properties"]?["$type"]);
 		Assert.Equal(false, secondUnionCase["additionalProperties"]!.GetValue<bool>());
-		Assert.Equal("object", nestedSecondUnionCase["type"]!.GetValue<string>());
-		Assert.NotNull(nestedSecondUnionCase["properties"]?["$type"]);
+		Assert.Equal("#/$defs/MultipleRecursiveUnionCases", firstUnionCase["properties"]!["secondUnion"]!["anyOf"]![0]!["anyOf"]![0]!["oneOf"]![0]!["$ref"]!.GetValue<string>());
 	}
 
 	[Test]
@@ -217,7 +215,7 @@ public partial class CSharpUnionTests : TestBase
 	{
 		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<RecursivePayloadUnionHolder>()!);
 		JsonSchemaObject unionCase = schema["properties"]!["union"]!["oneOf"]![0]!.AsObject();
-		Assert.Contains("$type", unionCase["required"]!.AsArray().Select(static item => item!.GetValue<string>()));
+		Assert.Null(unionCase["properties"]?["$type"]);
 		Assert.NotNull(unionCase["properties"]?["name"]);
 		Assert.NotNull(unionCase["properties"]?["next"]);
 	}
@@ -267,8 +265,8 @@ public partial class CSharpUnionTests : TestBase
 		Assert.Equal(array.Value, this.Serializer.Deserialize<ArrayOrDog>("""[1,2]""").Value);
 
 		ArrayOrDog dog = new(new Dog("Rover", 10));
-		Assert.Equal("""{"$type":"Dog","name":"Rover","barkVolume":10}""", this.Serializer.Serialize(dog));
-		Assert.Equal(dog.Value, this.Serializer.Deserialize<ArrayOrDog>("""{"$type":"Dog","name":"Rover","barkVolume":10}""").Value);
+		Assert.Equal("""{"name":"Rover","barkVolume":10}""", this.Serializer.Serialize(dog));
+		Assert.Equal(dog.Value, this.Serializer.Deserialize<ArrayOrDog>("""{"name":"Rover","barkVolume":10}""").Value);
 
 		DictionaryOrDog dictionary = new(new Dictionary<string, int> { ["one"] = 1 });
 		Assert.Equal("""{"$type":"Dictionary_String_Int32","$value":{"one":1}}""", this.Serializer.Serialize(dictionary));
@@ -294,18 +292,17 @@ public partial class CSharpUnionTests : TestBase
 	}
 
 	[Test]
-	public void NullableObjectCase_UsesValueEnvelopeForNullPayload()
+	public void NullableObjectCase_WritesBareNull()
 	{
 		NullableDog value = new((Dog?)null);
 		string json = this.Serializer.Serialize(value);
-		Assert.Equal("""{"$type":"Dog","$value":null}""", json);
+		Assert.Equal("null", json);
 		Assert.Null(this.Serializer.Deserialize<NullableDog>(json).Value);
 
 		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<NullableDog>()!);
-		JsonSchemaObject objectCase = Assert.Single(schema["oneOf"]!.AsArray(), candidate => candidate!["properties"]?["$value"] is not null)!.AsObject();
-		IEnumerable<string> valueTypes = objectCase["properties"]!["$value"]!["type"]!.AsArray().Select(static item => item!.GetValue<string>());
-		Assert.Contains("object", valueTypes);
-		Assert.Contains("null", valueTypes);
+		string schemaJson = schema.ToJsonString();
+		Assert.Contains("\"null\"", schemaJson, StringComparison.Ordinal);
+		Assert.DoesNotContain("$value", schemaJson, StringComparison.Ordinal);
 	}
 
 	[Test]
@@ -325,20 +322,24 @@ public partial class CSharpUnionTests : TestBase
 	{
 		RecursivePayloadUnion value = new(new RecursivePayload { Name = "root", Next = new() { Name = "child" } });
 		string json = this.Serializer.Serialize(value);
-		Assert.Equal("""{"$type":"RecursivePayload","name":"root","next":{"name":"child","next":null}}""", json);
+		Assert.Equal("""{"name":"root","next":{"name":"child","next":null}}""", json);
 
 		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<RecursivePayloadUnion>()!);
 		JsonSchemaObject objectCase = Assert.Single(schema["oneOf"]!.AsArray(), candidate => candidate!["type"]?.GetValue<string>() == "object")!.AsObject();
-		Assert.Contains("$type", objectCase["required"]!.AsArray().Select(static item => item!.GetValue<string>()));
+		Assert.Null(objectCase["properties"]?["$type"]);
+		Assert.NotNull(objectCase["properties"]?["name"]);
 		Assert.Contains("\"$ref\":", schema.ToJsonString(), StringComparison.Ordinal);
 	}
 
 	[Test]
-	public void AmbiguousNativeCases_AreRejected()
+	public void AmbiguousNativeCases_AreWrapped()
 	{
-		Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize(new Numbers(1)));
-		Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize(new TextCases("text")));
-		Assert.Throws<JsonSerializationException>(() => this.Serializer.Serialize(new Collections(new int[] { 1 })));
+		Assert.Equal("""{"$type":"Int32","$value":1}""", this.Serializer.Serialize(new Numbers(1)));
+		Assert.Equal(2L, this.Serializer.Deserialize<Numbers>("""{"$type":"Int64","$value":2}""").Value);
+		Assert.Equal("""{"$type":"String","$value":"text"}""", this.Serializer.Serialize(new TextCases("text")));
+		Assert.Equal("""{"$type":"Array_Int32","$value":[1]}""", this.Serializer.Serialize(new Collections(new int[] { 1 })));
+		JsonSerializer untagged = this.Serializer with { DefaultUnionTagging = UnionTagging.Untagged };
+		Assert.Throws<JsonSerializationException>(() => untagged.Serialize(new Numbers(1)));
 
 		this.Serializer = this.Serializer with
 		{
@@ -366,7 +367,7 @@ public partial class CSharpUnionTests : TestBase
 	{
 		using MemoryStream stream = new();
 		await this.Serializer.SerializeAsync(stream, new NullableDog((Dog?)null));
-		Assert.Equal("""{"$type":"Dog","$value":null}""", Encoding.UTF8.GetString(stream.ToArray()));
+		Assert.Equal("null", Encoding.UTF8.GetString(stream.ToArray()));
 		stream.Position = 0;
 		Assert.Null((await this.Serializer.DeserializeAsync<NullableDog>(stream))!.Value);
 	}
@@ -377,7 +378,7 @@ public partial class CSharpUnionTests : TestBase
 		using MemoryStream stream = new();
 		await this.Serializer.SerializeAsync(stream, new StreamingUnion(new StreamingPayload { Values = ValuesAsync() }));
 		Assert.Equal(
-			"""{"$type":"StreamingPayload","values":[1,2]}""",
+			"""{"values":[1,2]}""",
 			Encoding.UTF8.GetString(stream.ToArray()));
 
 		static async IAsyncEnumerable<int> ValuesAsync()

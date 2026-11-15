@@ -50,6 +50,14 @@ public static class Examples
 	// </CSharpUnionAliasDelegate>
 }
 
+// <Value>
+[GenerateShape]
+public partial union SampleValue(int, string, Point);
+
+[GenerateShape]
+public partial record Point(int X, int Y);
+// </Value>
+
 // <DocumentChange>
 [GenerateShape]
 public partial union DocumentChange(TextDocumentEdit, CreateFile, DeleteFile);

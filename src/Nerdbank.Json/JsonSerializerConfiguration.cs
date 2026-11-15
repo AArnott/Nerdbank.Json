@@ -27,12 +27,55 @@ internal record JsonSerializerConfiguration
 	private ReferencePreservationMode preserveReferences;
 	private DerivedTypeUnionCollection derivedTypeUnions = [];
 	private IUnionTypeAliasProvider? unionTypeAliasProvider;
+	private IUnionTaggingProvider? unionTaggingProvider;
+	private UnionTagging defaultUnionTagging = UnionTagging.Auto;
 	private bool serializeEnumValuesByName;
 	private SerializeDefaultValuesPolicy serializeDefaultValues = SerializeDefaultValuesPolicy.Always;
 	private bool writeIndented;
 	private bool allowOutOfOrderDiscriminator;
 
 	internal ConverterCache ConverterCache => Volatile.Read(ref this.converterCache) ?? LazyInitializer.EnsureInitialized(ref this.converterCache, () => new(this))!;
+
+	/// <summary>
+	/// Gets the tagging mode applied to C# unions that have no attribute or runtime provider.
+	/// </summary>
+	/// <value>The default is <see cref="UnionTagging.Auto"/>.</value>
+	/// <remarks>
+	/// Under <see cref="UnionTagging.Auto"/>, an object case is written bare when it is the only object case.
+	/// <see cref="UnionTagging.Tagged"/> writes every object case with <c>$type</c>.
+	/// Derived type hierarchies and F# unions ignore this setting.
+	/// </remarks>
+	internal UnionTagging DefaultUnionTagging
+	{
+		get => this.defaultUnionTagging;
+		init
+		{
+			if (!Enum.IsDefined(typeof(UnionTagging), value))
+			{
+				throw new ArgumentOutOfRangeException(nameof(value));
+			}
+
+			this.defaultUnionTagging = value;
+			this.converterCache = null;
+		}
+	}
+
+	/// <summary>
+	/// Gets the provider that selects a tagging mode for individual C# unions.
+	/// </summary>
+	/// <remarks>
+	/// A non-null result overrides <see cref="UnionTaggingAttribute"/> and <see cref="DefaultUnionTagging"/>.
+	/// Providers must be thread-safe and return consistent results while in use.
+	/// </remarks>
+	internal IUnionTaggingProvider? UnionTaggingProvider
+	{
+		get => this.unionTaggingProvider;
+		init
+		{
+			this.unionTaggingProvider = value;
+			this.converterCache = null;
+		}
+	}
 
 	/// <summary>Gets the optional provider of custom C# union case identifiers.</summary>
 	/// <remarks>

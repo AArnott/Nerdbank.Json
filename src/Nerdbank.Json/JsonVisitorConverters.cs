@@ -233,9 +233,9 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 	private readonly JsonConverter? nullDeserializer;
 	private readonly bool isCSharpUnion;
 	private readonly JsonUnionObjectEnvelope? objectEnvelope;
-	private readonly bool tagObjectCases;
+	private readonly JsonCSharpUnionFormat? format;
 
-	internal JsonUnionConverter(JsonConverter<TUnion>? baseConverter, Getter<TUnion, int> getUnionCaseIndex, JsonUnionCaseMetadata<TUnion>[] serializers, bool isCSharpUnion)
+	internal JsonUnionConverter(JsonConverter<TUnion>? baseConverter, Getter<TUnion, int> getUnionCaseIndex, JsonUnionCaseMetadata<TUnion>[] serializers, bool isCSharpUnion, UnionTagging tagging)
 	{
 		this.baseConverter = baseConverter;
 		this.getUnionCaseIndex = getUnionCaseIndex;
@@ -244,13 +244,11 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 		bool useObjectEnvelope = !isCSharpUnion;
 		if (isCSharpUnion)
 		{
-			JsonCSharpUnionFormat format = new(serializers.Select(static entry => entry.Representation).ToArray());
-			this.tagObjectCases = format.TagObjectCases;
+			this.format = new(serializers.Select(static entry => entry.Representation).ToArray(), tagging);
 			this.nativeDeserializers = new();
 			foreach (JsonUnionCaseMetadata<TUnion> entry in serializers)
 			{
-				if (entry.Representation == JsonCSharpUnionCaseRepresentation.Tagged ||
-					(this.tagObjectCases && entry.Representation == JsonCSharpUnionCaseRepresentation.Object))
+				if (this.format.IsTagged(entry.Representation))
 				{
 					continue;
 				}
@@ -262,7 +260,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 				}
 			}
 
-			useObjectEnvelope = serializers.Any(static entry => entry.Representation == JsonCSharpUnionCaseRepresentation.Tagged) || this.tagObjectCases;
+			useObjectEnvelope = serializers.Any(entry => this.format.IsTagged(entry.Representation));
 		}
 
 		if (useObjectEnvelope)
@@ -270,9 +268,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 			this.objectEnvelope = new(baseConverter);
 			foreach (JsonUnionCaseMetadata<TUnion> entry in serializers)
 			{
-				if (!isCSharpUnion ||
-					entry.Representation == JsonCSharpUnionCaseRepresentation.Tagged ||
-					(this.tagObjectCases && entry.Representation == JsonCSharpUnionCaseRepresentation.Object))
+				if (!isCSharpUnion || this.format!.IsTagged(entry.Representation))
 				{
 					this.objectEnvelope.Add(entry.ObjectAlias, entry.Converter);
 				}
@@ -514,8 +510,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 	}
 
 	private bool IsNativeCase(JsonUnionCaseMetadata<TUnion> unionCase)
-		=> unionCase.Representation != JsonCSharpUnionCaseRepresentation.Tagged &&
-			!(this.tagObjectCases && unionCase.Representation == JsonCSharpUnionCaseRepresentation.Object);
+		=> this.format is not null && !this.format.IsTagged(unionCase.Representation);
 }
 
 internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter<TUnion>, IJsonUnionObjectConverter, IUnionDiscriminatorSource
