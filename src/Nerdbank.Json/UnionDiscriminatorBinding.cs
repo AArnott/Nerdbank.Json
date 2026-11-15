@@ -478,10 +478,12 @@ internal abstract class UnionDiscriminatorBinding
 			}
 
 #if NET
-			return (TDeclaring)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(TDeclaring));
+			TDeclaring instance = (TDeclaring)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(TDeclaring));
 #else
-			return (TDeclaring)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(TDeclaring));
+			TDeclaring instance = (TDeclaring)System.Runtime.Serialization.FormatterServices.GetUninitializedObject(typeof(TDeclaring));
 #endif
+			GC.SuppressFinalize(instance);
+			return instance;
 		}
 
 		private static TProperty ConvertValue(string propertyName, object? value)

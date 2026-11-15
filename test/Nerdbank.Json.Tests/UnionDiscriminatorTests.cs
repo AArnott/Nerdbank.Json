@@ -160,6 +160,17 @@ public partial class UnionDiscriminatorTests : TestBase
 	}
 
 	[Test]
+	public void ProbeInstance_DoesNotFinalizeUninitializedState()
+	{
+		this.Roundtrip(new FinalizerProbe());
+		GC.Collect();
+		GC.WaitForPendingFinalizers();
+		GC.Collect();
+		GC.WaitForPendingFinalizers();
+		Assert.Equal(0, FinalizerProbe.UninitializedFinalizations);
+	}
+
+	[Test]
 	public void RuntimeUnion_RejectsMixedDiscriminatorNamesWhenBuilt()
 	{
 		JsonSerializer serializer = new()
@@ -412,5 +423,24 @@ public partial class UnionDiscriminatorTests : TestBase
 	public enum BigColor : ulong
 	{
 		High = ulong.MaxValue,
+	}
+
+	[GenerateShape]
+	public partial class FinalizerProbe
+	{
+		internal static int UninitializedFinalizations;
+
+		private readonly object? resource = new();
+
+		[UnionDiscriminator("create")]
+		public string Kind => "create";
+
+		~FinalizerProbe()
+		{
+			if (this.resource is null)
+			{
+				Interlocked.Increment(ref UninitializedFinalizations);
+			}
+		}
 	}
 }
