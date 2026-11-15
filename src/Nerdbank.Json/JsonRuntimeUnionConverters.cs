@@ -13,7 +13,7 @@ using System.Text;
 
 namespace Nerdbank.Json;
 
-internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase>, IJsonUnionObjectConverter
+internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase>, IJsonUnionObjectConverter, IUnionDiscriminatorSource
 {
 	private readonly JsonConverter inner;
 
@@ -24,6 +24,9 @@ internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase
 
 	bool IJsonUnionObjectConverter.SupportsInlineObject
 		=> this.inner is IJsonUnionObjectConverter { SupportsInlineObject: true };
+
+	UnionDiscriminatorBinding? IUnionDiscriminatorSource.Discriminator
+		=> UnionDiscriminatorBinding.FromConverter(this.inner);
 
 	void IJsonUnionObjectConverter.WriteObjectProperties(ref JsonWriter writer, object value, SerializationContext context, bool first)
 		=> this.GetObjectConverter().WriteObjectProperties(ref writer, value, context, first);
@@ -538,6 +541,7 @@ internal static class RuntimeUnionBuilder
 		}
 
 		List<RuntimeUnionCaseEntry<TBase>> caseEntries = [];
+		List<ITypeShape> caseShapes = [];
 		foreach (KeyValuePair<DerivedTypeIdentifier, ITypeShape> pair in GetCases(entry))
 		{
 			DerivedTypeIdentifier alias = pair.Key;
@@ -547,6 +551,7 @@ internal static class RuntimeUnionBuilder
 				: new JsonRuntimeUnionCaseConverter<TBase>(owner.GetOrAddConverter(caseShape));
 			HashSet<string> required = RuntimeUnionHelpers.GetRequiredSerializedPropertyNames(caseShape, owner);
 			caseEntries.Add(new(caseShape.Type, alias.Type == DerivedTypeIdentifier.AliasType.Integer ? alias.IntAlias : null, alias.Type == DerivedTypeIdentifier.AliasType.String ? alias.StringAlias : null, caseConverter, required));
+			caseShapes.Add(caseShape);
 		}
 
 		if (caseEntries.Count == 0)
@@ -555,6 +560,7 @@ internal static class RuntimeUnionBuilder
 		}
 
 		VerifyUniqueAliases(caseEntries);
+		UnionDiscriminatorBinding.ValidateUnion(caseShapes, owner);
 
 		return entry is DerivedTypeDuckTyping
 			? new JsonDuckTypingUnionConverter<TBase>([.. caseEntries], nameComparer)

@@ -32,6 +32,7 @@ public class SampleOutputTests
 		yield return ("Unions.RoundtrippingFarmAnimal", static () => Text(new JsonSerializer().Serialize(new UnionFarm())));
 		yield return ("RuntimeUnions.RuntimeUnions", static () => Text(RuntimeUnionSamples.TaggedJson()));
 		yield return ("RuntimeUnions.DuckTypingUnions", static () => Text(RuntimeUnionSamples.DuckJson()));
+		yield return ("CSharpUnions.DocumentChange", static () => Text(DocumentChangeJson()));
 	}
 
 	[Test]
@@ -91,6 +92,14 @@ public class SampleOutputTests
 			.Cast<string>()
 			.ToArray();
 		Assert.Empty(orphans);
+	}
+
+	private static string DocumentChangeJson()
+	{
+		JsonSerializer serializer = new();
+		string created = serializer.Serialize(new CSharpUnions.DocumentChange(new CSharpUnions.CreateFile("file:///a.cs")));
+		string edited = serializer.Serialize(new CSharpUnions.DocumentChange(new CSharpUnions.TextDocumentEdit(new("file:///a.cs"), [])));
+		return created + "\n" + edited;
 	}
 
 	private static string Text(string json) => json + "\n";

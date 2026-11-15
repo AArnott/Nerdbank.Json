@@ -350,8 +350,10 @@ internal sealed class DelayedJsonConverterFactory : IDelayedValueFactory
 	public DelayedValue Create<T>(ITypeShape<T> typeShape)
 		=> new DelayedValue<JsonConverter>(self => new DelayedJsonConverter<T>(self));
 
-	private sealed class DelayedJsonConverter<T>(DelayedValue<JsonConverter> self) : JsonConverter<T>, IJsonUnionObjectConverter
+	private sealed class DelayedJsonConverter<T>(DelayedValue<JsonConverter> self) : JsonConverter<T>, IJsonUnionObjectConverter, IDelayedJsonConverter
 	{
+		JsonConverter? IDelayedJsonConverter.CompletedConverter => self.IsCompleted ? self.Result : null;
+
 		bool IJsonUnionObjectConverter.SupportsInlineObject
 			=> this.InnerUnionObjectConverter?.SupportsInlineObject == true;
 

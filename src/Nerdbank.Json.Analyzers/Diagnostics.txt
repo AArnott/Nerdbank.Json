@@ -49,6 +49,26 @@ The code fix adds a fully qualified [DefaultValue(...)] for constant initializer
 and preserves primitive conversions. It deliberately does not fix computed
 initializers or shared multi-variable fields, since either could change behavior.
 
+NBJson120 (Usage, Warning): A union discriminator getter or field must be a constant,
+and that constant must match the attribute argument when one is supplied. The code
+fix replaces the attribute argument with the member's constant expression.
+
+NBJson121 (Usage, Error): A type has more than one union discriminator, a field,
+setter, or constructor binding, a missing type-level name, a reserved name, or a
+name that collides with another property. Constant fields are not part of the
+object shape.
+
+NBJson122 (Usage, Error): The discriminator constant is not a string, boolean,
+integer primitive, or enum.
+
+NBJson123 (Usage, Error): A C# union or DerivedTypeShape hierarchy declares
+discriminator names that differ as written, or repeats a discriminator value.
+Names are compared without a naming policy. Cases without a discriminator are allowed.
+
+NBJson124 (Usage, Warning): A type that uses Nerdbank.MessagePack.KeyAttribute should
+give its discriminator Key(0). Types that do not use Key are not diagnosed. JSON does
+not require the attribute.
+
 NBJson050 (Usage, Warning): Pass JsonReader and JsonWriter parameters by ref to
 preserve changes to their mutable state. Explicit in/ref/out parameters are not
 diagnosed, nor are unrelated types or the asynchronous reader/writer classes.

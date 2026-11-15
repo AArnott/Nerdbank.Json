@@ -23,6 +23,15 @@ internal static class KnownNames
 	/// <summary>The declarative union case attribute.</summary>
 	internal const string DerivedTypeShapeAttribute = "PolyType.DerivedTypeShapeAttribute";
 
+	/// <summary>The constant that identifies an object union case.</summary>
+	internal const string UnionDiscriminatorAttribute = "Nerdbank.Json.UnionDiscriminatorAttribute";
+
+	/// <summary>The compiler attribute applied to a C# union.</summary>
+	internal const string UnionAttribute = "System.Runtime.CompilerServices.UnionAttribute";
+
+	/// <summary>The keyed-layout attribute used by Nerdbank.MessagePack.</summary>
+	internal const string KeyAttribute = "Nerdbank.MessagePack.KeyAttribute";
+
 	/// <summary>The surrogate marshaler interface.</summary>
 	internal const string Marshaler = "PolyType.IMarshaler`2";
 

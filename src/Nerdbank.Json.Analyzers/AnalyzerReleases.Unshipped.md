@@ -22,3 +22,8 @@ NBJson037 | Usage | Warning | Async converters should override PreferAsyncSerial
 NBJson050 | Usage | Warning | JsonReader and JsonWriter parameters should be passed by ref
 NBJson051 | Usage | Warning | Prefer statically resolved shape APIs on modern .NET
 NBJson110 | Usage | Warning | Initialized members should declare DefaultValueAttribute
+NBJson120 | Usage | Warning | Union discriminator must be a matching constant
+NBJson121 | Usage | Error | Union discriminator must be one get-only member
+NBJson122 | Usage | Error | Union discriminator value type is not supported
+NBJson123 | Usage | Error | Union cases must share a discriminator name and distinct values
+NBJson124 | Usage | Warning | Keyed types should use Key(0) for the union discriminator

@@ -22,6 +22,11 @@ Diagnostics include errors, warnings, and informational guidance.
 | [NBJson050](NBJson050.md) | Usage | Warning | Pass `JsonReader` and `JsonWriter` parameters by `ref` |
 | [NBJson051](NBJson051.md) | Usage | Warning | Prefer statically resolved shape APIs on modern .NET |
 | [NBJson110](NBJson110.md) | Usage | Warning | Describe initialized serializable defaults with `DefaultValueAttribute` |
+| [NBJson120](NBJson120.md) | Usage | Warning | Union discriminator must be a constant that matches its attribute |
+| [NBJson121](NBJson121.md) | Usage | Error | A type has one get-only union discriminator |
+| [NBJson122](NBJson122.md) | Usage | Error | Union discriminator values are string, boolean, integer, or enum |
+| [NBJson123](NBJson123.md) | Usage | Error | Union cases share a discriminator name and use distinct values |
+| [NBJson124](NBJson124.md) | Usage | Warning | Keyed types should use `Key(0)` for the discriminator |
 
 ## Converter and contract guidance
 
@@ -73,6 +78,8 @@ that cannot be diagnosed precisely and statically without excessive false positi
 * **Targeted-navigation hooks** (<xref:Nerdbank.Json.JsonConverter.SkipToPropertyValue*> and <xref:Nerdbank.Json.JsonConverter.SkipToIndexValue*>, plus their async counterparts).
   The default implementation navigates plain objects and arrays; custom representations may need overrides.
   There is no statically invalid declaration to flag.
+* **Missing `Key` on JSON models**. JSON objects are name-keyed, so a discriminator without `Key` is valid.
+  [NBJson124](NBJson124.md) warns only when the type already uses `Nerdbank.MessagePack.KeyAttribute` and the discriminator is not `Key(0)`.
 * **Runtime union configuration**. Unions are registered at runtime with explicitly supplied `ITypeShape` instances and
   generic helpers; ambiguity and insufficient evidence are validated at configuration time with precise exceptions. The
   registrations are values computed at runtime, so they are not statically analyzable.
