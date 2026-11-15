@@ -166,7 +166,7 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 	private static DiscriminatorFact? AnalyzeTypeLevel(INamedTypeSymbol type, INamedTypeSymbol discriminatorAttribute, List<Diagnostic> diagnostics)
 	{
 		AttributeData attribute = type.GetAttributes().First(candidate => SymbolEqualityComparer.Default.Equals(candidate.AttributeClass, discriminatorAttribute));
-		if (attribute.ConstructorArguments.Length < 2 || attribute.ConstructorArguments[0].Value is not string name || name.Length == 0)
+		if (attribute.ConstructorArguments.Length < 2 || !TryGetScalar(attribute.ConstructorArguments[0], out object? nameValue) || nameValue is not string name || name.Length == 0)
 		{
 			diagnostics.Add(Diagnostic.Create(InvalidShape, type.Locations.FirstOrDefault(), $"Type '{type.Name}' declares a union discriminator without a property name."));
 			return null;
@@ -179,7 +179,7 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 		}
 
 		TypedConstant value = attribute.ConstructorArguments[1];
-		if (value.Value is null || value.Type is not ITypeSymbol valueType || !IsSupported(valueType))
+		if (!TryGetScalar(value, out object? scalar) || scalar is null || value.Type is not ITypeSymbol valueType || !IsSupported(valueType))
 		{
 			diagnostics.Add(Diagnostic.Create(UnsupportedType, type.Locations.FirstOrDefault(), type.Name, value.Type?.ToDisplayString() ?? "null"));
 			return null;
@@ -199,7 +199,7 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 			}
 		}
 
-		return Token(value.Value) is string token ? new DiscriminatorFact(name, token) : null;
+		return Token(scalar) is string token ? new DiscriminatorFact(name, token) : null;
 	}
 
 	private static DiscriminatorFact? AnalyzeMember(INamedTypeSymbol type, ISymbol member, INamedTypeSymbol discriminatorAttribute, INamedTypeSymbol? constructorShapeAttribute, List<Diagnostic> diagnostics, SemanticModel model, CancellationToken cancellationToken)
@@ -247,10 +247,10 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 		object? tokenValue = actual;
 		if (attribute.ConstructorArguments.Length > 0)
 		{
-			object? expected = attribute.ConstructorArguments[0].Value;
-			if (expected is null)
+			TypedConstant expectedConstant = attribute.ConstructorArguments[0];
+			if (!TryGetScalar(expectedConstant, out object? expected) || expected is null)
 			{
-				diagnostics.Add(Diagnostic.Create(UnsupportedType, location, member.Name, "null"));
+				diagnostics.Add(Diagnostic.Create(UnsupportedType, location, member.Name, expectedConstant.Type?.ToDisplayString() ?? "null"));
 				return null;
 			}
 
@@ -317,6 +317,18 @@ public sealed class UnionDiscriminatorAnalyzer : DiagnosticAnalyzer
 		}
 
 		return cases;
+	}
+
+	private static bool TryGetScalar(TypedConstant constant, out object? value)
+	{
+		if (constant.Kind is TypedConstantKind.Array or TypedConstantKind.Error)
+		{
+			value = null;
+			return false;
+		}
+
+		value = constant.Value;
+		return true;
 	}
 
 	private static bool TryGetConstant(ISymbol member, SemanticModel model, CancellationToken cancellationToken, out object? value)

@@ -8,9 +8,11 @@
 #if NET
 using System.Diagnostics.CodeAnalysis;
 #endif
+using System.Buffers;
 using System.Globalization;
 using System.Text;
 using JsonSchemaArray = System.Text.Json.Nodes.JsonArray;
+using JsonSchemaNode = System.Text.Json.Nodes.JsonNode;
 using JsonSchemaObject = System.Text.Json.Nodes.JsonObject;
 
 namespace Nerdbank.Json;
@@ -170,6 +172,21 @@ internal abstract class UnionDiscriminatorBinding
 	{
 		JsonSchemaObject schema = new JsonSchemaObject().Set("type", type);
 		System.Text.Json.Nodes.JsonNode? node = JsonSchemaExtensions.CreatePrimitiveValue(constValue);
+		if (dialect == JsonSchemaDialect.Draft4)
+		{
+			schema["enum"] = new JsonSchemaArray(node);
+			return schema;
+		}
+
+		schema["const"] = node;
+		return schema;
+	}
+
+	private protected static JsonSchemaObject SchemaForToken(JsonSchemaDialect dialect, string token)
+	{
+		JsonSchemaNode node = JsonSchemaNode.Parse(token)!;
+		string type = token.StartsWith('"') ? "string" : token is "true" or "false" ? "boolean" : "integer";
+		JsonSchemaObject schema = new JsonSchemaObject().Set("type", type);
 		if (dialect == JsonSchemaDialect.Draft4)
 		{
 			schema["enum"] = new JsonSchemaArray(node);
@@ -447,7 +464,7 @@ internal abstract class UnionDiscriminatorBinding
 				throw new NotSupportedException($"Union discriminator '{property.Name}' on '{typeof(TDeclaring).FullName}' returns '{actual}' instead of '{expected}'.");
 			}
 
-			JsonConverter<TProperty> converter = owner.GetConverter(property.PropertyType, attributeProvider: null);
+			JsonConverter<TProperty> converter = owner.GetConverter(property.PropertyType, property.AttributeProvider);
 			return new ConverterBinding<TProperty>(name, property, expected, converter);
 		}
 
@@ -500,7 +517,16 @@ internal abstract class UnionDiscriminatorBinding
 
 			if (typeof(TProperty).IsEnum && IsInteger(value.GetType()))
 			{
-				return (TProperty)Enum.ToObject(typeof(TProperty), value);
+				Type underlying = Enum.GetUnderlyingType(typeof(TProperty));
+				try
+				{
+					object converted = Convert.ChangeType(value, underlying, CultureInfo.InvariantCulture);
+					return (TProperty)Enum.ToObject(typeof(TProperty), converted);
+				}
+				catch (Exception ex) when (ex is OverflowException or InvalidCastException or FormatException)
+				{
+					throw new NotSupportedException($"Union discriminator '{propertyName}' on '{typeof(TDeclaring).FullName}' value '{value}' does not fit '{typeof(TProperty).FullName}'.", ex);
+				}
 			}
 
 			if (IsInteger(value.GetType()) && IsInteger(typeof(TProperty)))
@@ -523,15 +549,12 @@ internal abstract class UnionDiscriminatorBinding
 	{
 		private readonly T expected;
 		private readonly JsonConverter<T> converter;
-		private readonly string schemaType;
-		private readonly object schemaValue;
 
 		internal ConverterBinding(string name, IPropertyShape source, T expected, JsonConverter<T> converter)
-			: base(name, source, Token(expected, converter))
+			: base(name, source, Capture(converter, expected))
 		{
 			this.expected = expected;
 			this.converter = converter;
-			(this.schemaType, this.schemaValue) = SchemaValue(expected, converter);
 		}
 
 		internal override void Write(ref JsonWriter writer, SerializationContext context, bool first)
@@ -540,86 +563,63 @@ internal abstract class UnionDiscriminatorBinding
 			this.converter.Write(ref writer, this.expected, context);
 		}
 
-		internal override ValueTask WriteAsync(JsonAsyncWriter writer, SerializationContext context, bool first)
+		internal override async ValueTask WriteAsync(JsonAsyncWriter writer, SerializationContext context, bool first)
 		{
 			JsonWriter sync = writer.CreateWriter();
-			this.Write(ref sync, context, first);
+			this.WriteName(ref sync, first);
 			writer.ReturnWriter(ref sync);
-			return default;
+			await writer.WriteValueAsync(this.converter, this.expected, context).ConfigureAwait(false);
 		}
 
 		internal override void Read(ref JsonReader reader, SerializationContext context)
 		{
-			T actual;
+			T actual = this.ReadCore(ref reader, context);
+			if (!EqualityComparer<T>.Default.Equals(actual, this.expected))
+			{
+				throw Mismatch(this.Name, Capture(this.converter, actual), this.SerializedToken);
+			}
+		}
+
+		internal override async ValueTask ReadAsync(JsonAsyncReader reader, SerializationContext context)
+		{
+			T? actual;
 			try
 			{
-				actual = this.converter.Read(ref reader, context)!;
+				actual = await reader.ReadValueAsync(this.converter, context).ConfigureAwait(false);
 			}
-			catch (FormatException) when (this.converter is IJsonEnumNameConverter)
+			catch (Exception ex) when (ex is FormatException or OverflowException)
 			{
 				throw Mismatch(this.Name, "an unrecognized value", this.SerializedToken);
 			}
 
 			if (!EqualityComparer<T>.Default.Equals(actual, this.expected))
 			{
-				throw Mismatch(this.Name, Token(actual, this.converter), this.SerializedToken);
+				throw Mismatch(this.Name, Capture(this.converter, actual), this.SerializedToken);
 			}
 		}
-
-		internal override ValueTask ReadAsync(JsonAsyncReader reader, SerializationContext context)
-			=> this.ReadBufferedAsync(reader, context);
 
 		internal override JsonSchemaObject CreateSchema(JsonSchemaDialect dialect)
-			=> ConstantSchema(dialect, this.schemaType, this.schemaValue);
+			=> SchemaForToken(dialect, this.SerializedToken);
 
-		private static string Token(T value, JsonConverter<T> converter)
+		private T ReadCore(ref JsonReader reader, SerializationContext context)
 		{
-			if (converter is IJsonEnumNameConverter names && value is not null && names.TryGetSerializedName(value, out string? enumName))
+			try
 			{
-				return Quote(enumName!);
+				return this.converter.Read(ref reader, context)!;
 			}
-
-			if (value is string text)
+			catch (Exception ex) when (ex is FormatException or OverflowException)
 			{
-				return Quote(text);
+				throw Mismatch(this.Name, "an unrecognized value", this.SerializedToken);
 			}
-
-			if (value is bool boolean)
-			{
-				return boolean ? "true" : "false";
-			}
-
-			if (value is Enum)
-			{
-				return IntegerToken(value);
-			}
-
-			return Convert.ToString(value, CultureInfo.InvariantCulture)!;
 		}
 
-		private static (string Type, object Value) SchemaValue(T value, JsonConverter<T> converter)
+		private static string Capture(JsonConverter<T> converter, T? value)
 		{
-			if (converter is IJsonEnumNameConverter names && value is not null && names.TryGetSerializedName(value, out string? enumName))
-			{
-				return ("string", enumName!);
-			}
-
-			if (value is string text)
-			{
-				return ("string", text);
-			}
-
-			if (value is bool boolean)
-			{
-				return ("boolean", boolean);
-			}
-
-			if (value is Enum)
-			{
-				return ("integer", IsUnsignedEnum(value) ? Convert.ToUInt64(value, CultureInfo.InvariantCulture) : Convert.ToInt64(value, CultureInfo.InvariantCulture));
-			}
-
-			return ("integer", value!);
+			ArrayBufferWriter<byte> buffer = new();
+			JsonWriter writer = new(buffer);
+			converter.Write(ref writer, value, default);
+			writer.Flush();
+			return Encoding.UTF8.GetString(buffer.WrittenSpan);
 		}
 	}
 
@@ -712,9 +712,18 @@ internal abstract class UnionDiscriminatorBinding
 		internal override void Read(ref JsonReader reader, SerializationContext context)
 		{
 			_ = context;
-			bool matches = this.unsigned
-				? reader.ReadUInt64() == (ulong)this.expected
-				: reader.ReadInt64() == Convert.ToInt64(this.expected, CultureInfo.InvariantCulture);
+			bool matches;
+			try
+			{
+				matches = this.unsigned
+					? reader.ReadUInt64() == (ulong)this.expected
+					: reader.ReadInt64() == Convert.ToInt64(this.expected, CultureInfo.InvariantCulture);
+			}
+			catch (Exception ex) when (ex is OverflowException or FormatException)
+			{
+				throw Mismatch(this.Name, "an unrecognized value", this.SerializedToken);
+			}
+
 			if (!matches)
 			{
 				throw Mismatch(this.Name, "a different number", this.SerializedToken);
@@ -732,15 +741,17 @@ internal abstract class UnionDiscriminatorBinding
 	{
 		private readonly bool byName;
 		private readonly bool unsigned;
+		private readonly StringComparison nameComparison;
 		private readonly string? expectedName;
 		private readonly long expectedSigned;
 		private readonly ulong expectedUnsigned;
 
-		private EnumBinding(string name, bool byName, bool unsigned, string? expectedName, long expectedSigned, ulong expectedUnsigned)
+		private EnumBinding(string name, bool byName, bool unsigned, StringComparison nameComparison, string? expectedName, long expectedSigned, ulong expectedUnsigned)
 			: base(name, source: null, byName ? Quote(expectedName!) : unsigned ? expectedUnsigned.ToString(CultureInfo.InvariantCulture) : expectedSigned.ToString(CultureInfo.InvariantCulture))
 		{
 			this.byName = byName;
 			this.unsigned = unsigned;
+			this.nameComparison = nameComparison;
 			this.expectedName = expectedName;
 			this.expectedSigned = expectedSigned;
 			this.expectedUnsigned = expectedUnsigned;
@@ -752,14 +763,16 @@ internal abstract class UnionDiscriminatorBinding
 			bool unsigned = IsUnsignedEnum(value);
 			ulong unsignedNumber = unsigned ? Convert.ToUInt64(value, CultureInfo.InvariantCulture) : 0;
 			long signedNumber = unsigned ? 0 : Convert.ToInt64(value, CultureInfo.InvariantCulture);
-			string? member = Enum.GetName(value.GetType(), value);
+			Type enumType = value.GetType();
+			StringComparison nameComparison = EnumNameComparison(enumType, owner.PropertyNamingPolicy);
+			string? member = Enum.GetName(enumType, value);
 			if (owner.SerializeEnumValuesByName && member is not null)
 			{
 				member = owner.PropertyNamingPolicy?.ConvertName(member) ?? member;
-				return new EnumBinding(name, byName: true, unsigned, member, signedNumber, unsignedNumber);
+				return new EnumBinding(name, byName: true, unsigned, nameComparison, member, signedNumber, unsignedNumber);
 			}
 
-			return new EnumBinding(name, byName: false, unsigned, expectedName: null, signedNumber, unsignedNumber);
+			return new EnumBinding(name, byName: false, unsigned, nameComparison, expectedName: null, signedNumber, unsignedNumber);
 		}
 
 		internal override void Write(ref JsonWriter writer, SerializationContext context, bool first)
@@ -791,10 +804,10 @@ internal abstract class UnionDiscriminatorBinding
 		internal override void Read(ref JsonReader reader, SerializationContext context)
 		{
 			_ = context;
-			if (this.byName)
+			if (reader.PeekValueToken() == '"')
 			{
 				string actual = reader.ReadRequiredString();
-				if (!string.Equals(actual, this.expectedName, StringComparison.Ordinal))
+				if (!this.byName || !string.Equals(actual, this.expectedName, this.nameComparison))
 				{
 					throw Mismatch(this.Name, Quote(actual), this.SerializedToken);
 				}
@@ -802,9 +815,18 @@ internal abstract class UnionDiscriminatorBinding
 				return;
 			}
 
-			bool matches = this.unsigned
-				? reader.ReadUInt64() == this.expectedUnsigned
-				: reader.ReadInt64() == this.expectedSigned;
+			bool matches;
+			try
+			{
+				matches = this.unsigned
+					? reader.ReadUInt64() == this.expectedUnsigned
+					: reader.ReadInt64() == this.expectedSigned;
+			}
+			catch (Exception ex) when (ex is OverflowException or FormatException)
+			{
+				throw Mismatch(this.Name, "an unrecognized value", this.SerializedToken);
+			}
+
 			if (!matches)
 			{
 				throw Mismatch(this.Name, "a different number", this.SerializedToken);
@@ -818,6 +840,24 @@ internal abstract class UnionDiscriminatorBinding
 			=> this.byName
 				? ConstantSchema(dialect, "string", this.expectedName!)
 				: ConstantSchema(dialect, "integer", this.unsigned ? this.expectedUnsigned : this.expectedSigned);
+
+		private static StringComparison EnumNameComparison(Type enumType, JsonNamingPolicy? policy)
+		{
+			Dictionary<string, object> seen = new(StringComparer.OrdinalIgnoreCase);
+			foreach (string name in Enum.GetNames(enumType))
+			{
+				string serialized = policy?.ConvertName(name) ?? name;
+				object value = Enum.Parse(enumType, name);
+				if (seen.TryGetValue(serialized, out object? existing) && !Equals(existing, value))
+				{
+					return StringComparison.Ordinal;
+				}
+
+				seen[serialized] = value;
+			}
+
+			return StringComparison.OrdinalIgnoreCase;
+		}
 	}
 
 	private sealed class ObjectFactory(ConverterCache owner) : TypeShapeVisitor

@@ -292,4 +292,55 @@ public class UnionDiscriminatorAnalyzerTests
 			"""));
 		await test.RunAsync();
 	}
+
+	[Test]
+	public Task ArrayConstantIsAnErrorInsteadOfCrashing()
+		=> VerifyCS.VerifyAnalyzerAsync(
+			/* lang=c#-test */ """
+			using Nerdbank.Json;
+			[UnionDiscriminator("kind", new int[] { 1 })]
+			class {|NBJson122:Model|}
+			{
+			}
+			""");
+
+	[Test]
+	public Task NullConstantDoesNotOfferAFix()
+		=> VerifyCS.VerifyCodeFixAsync(
+			/* lang=c#-test */ """
+			using Nerdbank.Json;
+			class Model
+			{
+				[UnionDiscriminator("create")]
+				public string? {|NBJson120:Kind|} => null;
+			}
+			""",
+			/* lang=c#-test */ """
+			using Nerdbank.Json;
+			class Model
+			{
+				[UnionDiscriminator("create")]
+				public string? {|NBJson120:Kind|} => null;
+			}
+			""");
+
+	[Test]
+	public Task DefaultLiteralKeepsThePropertyType()
+		=> VerifyCS.VerifyCodeFixAsync(
+			/* lang=c#-test */ """
+			using Nerdbank.Json;
+			class Model
+			{
+				[UnionDiscriminator(1)]
+				public int {|NBJson120:Kind|} => default;
+			}
+			""",
+			/* lang=c#-test */ """
+			using Nerdbank.Json;
+			class Model
+			{
+				[UnionDiscriminator((int)default)]
+				public int Kind => default;
+			}
+			""");
 }

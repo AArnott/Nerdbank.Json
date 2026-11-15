@@ -160,6 +160,56 @@ public partial class UnionDiscriminatorTests : TestBase
 	}
 
 	[Test]
+	public void OutOfRangeEnumConstant_IsRejected()
+		=> AssertNotSupported<WideEnum>("does not fit");
+
+	[Test]
+	public void OutOfRangeNumber_IsADiscriminatorMismatch()
+	{
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => this.Read<IntCase>("""{"code":2147483648}"""));
+		Assert.Equal(JsonSerializationException.ErrorCode.DiscriminatorMismatch, error.Code);
+	}
+
+	[Test]
+	public void PropertyConverter_DefinesTheWireValueAndSchema()
+	{
+		TextCode value = this.Roundtrip(new TextCode())!;
+		Assert.Equal(7, value.Code);
+		Assert.Equal("""{"code":"7"}""", this.LastSerializedJson);
+		Assert.Equal("string", this.Schema<TextCode>()["properties"]!["code"]!["type"]!.GetValue<string>());
+		Assert.Equal("7", this.Schema<TextCode>()["properties"]!["code"]!["const"]!.GetValue<string>());
+	}
+
+	[Test]
+	public void ConverterOutput_CollidesWithAStringDiscriminator()
+		=> AssertNotSupported<TextCollision>("more than one case");
+
+	[Test]
+	public void TypeLevelEnum_FollowsTheEnumConverterRules()
+	{
+		JsonSerializer named = new() { SerializeEnumValuesByName = true, PropertyNamingPolicy = null };
+		Assert.NotNull(named.Deserialize("""{"color":"RED"}""", Shape<EnumLevel>()));
+		Assert.NotNull(named.Deserialize("""{"color":1}""", Shape<EnumLevel>()));
+		JsonSerializationException collision = Assert.Throws<JsonSerializationException>(() => named.Deserialize("""{"color":"RED"}""", Shape<EnumCollision>()));
+		Assert.Equal(JsonSerializationException.ErrorCode.DiscriminatorMismatch, collision.Code);
+		Assert.NotNull(named.Deserialize("""{"color":"Red"}""", Shape<EnumCollision>()));
+	}
+
+	[Test]
+	public async Task AsyncConverter_IsUsedWhenSerializingAsynchronously()
+	{
+		JsonSerializer serializer = new();
+		Assert.Equal("""{"code":1}""", serializer.Serialize(new AsyncCode(), Shape<AsyncCode>()));
+		AsyncIntConverter.SyncWrites = 0;
+		AsyncIntConverter.AsyncWrites = 0;
+		using MemoryStream stream = new();
+		await serializer.SerializeAsync(stream, new AsyncCode(), Shape<AsyncCode>());
+		Assert.Equal(0, AsyncIntConverter.SyncWrites);
+		Assert.True(AsyncIntConverter.AsyncWrites > 0);
+		Assert.Equal("""{"code":1}""", Encoding.UTF8.GetString(stream.ToArray()));
+	}
+
+	[Test]
 	public void ProbeInstance_DoesNotFinalizeUninitializedState()
 	{
 		this.Roundtrip(new FinalizerProbe());
@@ -423,6 +473,108 @@ public partial class UnionDiscriminatorTests : TestBase
 	public enum BigColor : ulong
 	{
 		High = ulong.MaxValue,
+	}
+
+	[GenerateShape]
+	public partial class WideEnum
+	{
+		[UnionDiscriminator(256)]
+		public ByteColor Code => 0;
+	}
+
+	public enum ByteColor : byte
+	{
+		None = 0,
+	}
+
+	[GenerateShape]
+	public partial class TextCode
+	{
+		[JsonConverter(typeof(TextIntConverter))]
+		[UnionDiscriminator(7)]
+		public int Code => 7;
+	}
+
+	[GenerateShape]
+	[UnionDiscriminator("code", "7")]
+	public partial class TextStringCase
+	{
+		public int X { get; set; }
+	}
+
+	[GenerateShape]
+	public partial class TextIntCase
+	{
+		[JsonConverter(typeof(TextIntConverter))]
+		[UnionDiscriminator(7)]
+		public int Code => 7;
+	}
+
+	[GenerateShape]
+	public partial union TextCollision(TextStringCase, TextIntCase);
+
+	[GenerateShape]
+	[UnionDiscriminator("color", Color.Red)]
+	public partial class EnumLevel
+	{
+		public int X { get; set; }
+	}
+
+	public enum CollidingColor
+	{
+		Red = 1,
+		RED = 2,
+	}
+
+	[GenerateShape]
+	[UnionDiscriminator("color", CollidingColor.Red)]
+	public partial class EnumCollision
+	{
+		public int X { get; set; }
+	}
+
+	[GenerateShape]
+	public partial class AsyncCode
+	{
+		[JsonConverter(typeof(AsyncIntConverter))]
+		[UnionDiscriminator(1)]
+		public int Code => 1;
+	}
+
+	public sealed class TextIntConverter : JsonConverter<int>
+	{
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context)
+			=> writer.Write(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+		public override int Read(ref JsonReader reader, SerializationContext context)
+			=> int.Parse(reader.ReadRequiredString(), System.Globalization.CultureInfo.InvariantCulture);
+	}
+
+	public sealed class AsyncIntConverter : JsonConverter<int>
+	{
+		public static int SyncWrites;
+
+		public static int AsyncWrites;
+
+		public override bool PreferAsyncSerialization => true;
+
+		public override void Write(ref JsonWriter writer, in int value, SerializationContext context)
+		{
+			SyncWrites++;
+			writer.Write(value);
+		}
+
+		public override int Read(ref JsonReader reader, SerializationContext context)
+			=> reader.ReadInt32();
+
+		public override ValueTask WriteAsync(JsonAsyncWriter writer, int value, SerializationContext context)
+		{
+			AsyncWrites++;
+			JsonWriter sync = writer.CreateWriter();
+			sync.Write(value);
+			writer.ReturnWriter(ref sync);
+			return default;
+		}
 	}
 
 	[GenerateShape]

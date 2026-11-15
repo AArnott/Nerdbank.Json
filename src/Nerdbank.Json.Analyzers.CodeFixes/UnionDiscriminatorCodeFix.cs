@@ -42,15 +42,22 @@ public sealed class UnionDiscriminatorCodeFix : CodeFixProvider
 		MemberDeclarationSyntax? member = node.FirstAncestorOrSelf<MemberDeclarationSyntax>();
 		AttributeSyntax? attribute = member?.AttributeLists.SelectMany(list => list.Attributes).FirstOrDefault(candidate => IsDiscriminator(semanticModel, candidate, context.CancellationToken));
 		ExpressionSyntax? constant = member is null ? null : ConstantExpression(member);
-		if (attribute is null || constant is null || !semanticModel.GetConstantValue(constant, context.CancellationToken).HasValue)
+		Optional<object?> evaluated = constant is null ? default : semanticModel.GetConstantValue(constant, context.CancellationToken);
+		if (attribute is null || constant is null || !evaluated.HasValue || evaluated.Value is null)
 		{
 			return;
+		}
+
+		ExpressionSyntax argument = constant.WithoutTrivia();
+		if (argument.IsKind(SyntaxKind.DefaultLiteralExpression) && member is PropertyDeclarationSyntax property)
+		{
+			argument = SyntaxFactory.CastExpression(property.Type.WithoutTrivia(), argument);
 		}
 
 		context.RegisterCodeFix(
 			CodeAction.Create(
 				"Use the member's constant",
-				cancellationToken => ReplaceAsync(context.Document, attribute, constant, cancellationToken),
+				cancellationToken => ReplaceAsync(context.Document, attribute, argument, cancellationToken),
 				equivalenceKey: nameof(UnionDiscriminatorCodeFix)),
 			context.Diagnostics);
 	}
@@ -88,7 +95,7 @@ public sealed class UnionDiscriminatorCodeFix : CodeFixProvider
 	private static async Task<Document> ReplaceAsync(Document document, AttributeSyntax attribute, ExpressionSyntax constant, CancellationToken cancellationToken)
 	{
 		SyntaxNode root = (await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false))!;
-		AttributeArgumentSyntax argument = SyntaxFactory.AttributeArgument(constant.WithoutTrivia());
+		AttributeArgumentSyntax argument = SyntaxFactory.AttributeArgument(constant);
 		AttributeArgumentListSyntax arguments = SyntaxFactory.AttributeArgumentList(SyntaxFactory.SingletonSeparatedList(argument));
 		AttributeSyntax updated = attribute.WithArgumentList(arguments).WithAdditionalAnnotations(Formatter.Annotation);
 		return document.WithSyntaxRoot(root.ReplaceNode(attribute, updated));
