@@ -295,6 +295,8 @@ internal sealed class JsonUnionObjectEnvelope
 		}
 	}
 
+	internal bool OwnsAlias(string alias) => this.converters.ContainsKey(alias);
+
 	internal void Add(string alias, JsonConverter converter)
 	{
 		if (alias == BaseAlias || this.converters.ContainsKey(alias))

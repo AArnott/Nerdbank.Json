@@ -34,14 +34,14 @@ public partial class CSharpUnionTests : TestBase
 		Assert.Equal("null", this.LastSerializedJson);
 		PetClass result = this.Roundtrip(new PetClass(new Dog("Rover", 10)))!;
 		Assert.Equal(new Dog("Rover", 10), result.Value);
-		Assert.Equal("""{"$type":"Dog","name":"Rover","barkVolume":10}""", this.LastSerializedJson);
+		Assert.Equal("""{"name":"Rover","barkVolume":10}""", this.LastSerializedJson);
 	}
 
 	[Test]
 	public void ObjectPayload()
 	{
 		Assert.Equal(new Dog("Rover", 10), this.Roundtrip(new Pet(new Dog("Rover", 10)))!.Value);
-		Assert.Equal("""{"$type":"Dog","name":"Rover","barkVolume":10}""", this.LastSerializedJson);
+		Assert.Equal("""{"name":"Rover","barkVolume":10}""", this.LastSerializedJson);
 	}
 
 	[Test]
@@ -269,12 +269,12 @@ public partial class CSharpUnionTests : TestBase
 		Assert.Equal(dog.Value, this.Serializer.Deserialize<ArrayOrDog>("""{"name":"Rover","barkVolume":10}""").Value);
 
 		DictionaryOrDog dictionary = new(new Dictionary<string, int> { ["one"] = 1 });
-		Assert.Equal("""{"$type":"Dictionary_String_Int32","$value":{"one":1}}""", this.Serializer.Serialize(dictionary));
-		Assert.Equal(dictionary.Value, this.Serializer.Deserialize<DictionaryOrDog>("""{"$type":"Dictionary_String_Int32","$value":{"one":1}}""").Value);
+		Assert.Equal("""{"one":1}""", this.Serializer.Serialize(dictionary));
+		Assert.Equal(dictionary.Value, this.Serializer.Deserialize<DictionaryOrDog>("""{"one":1}""").Value);
 
 		DictionaryOrDog taggedDog = new(new Dog("Rover", 10));
-		Assert.Equal("""{"$type":"Dog","name":"Rover","barkVolume":10}""", this.Serializer.Serialize(taggedDog));
-		Assert.Equal(taggedDog.Value, this.Serializer.Deserialize<DictionaryOrDog>("""{"$type":"Dog","name":"Rover","barkVolume":10}""").Value);
+		Assert.Equal("""{"name":"Rover","barkVolume":10}""", this.Serializer.Serialize(taggedDog));
+		Assert.Equal(taggedDog.Value, this.Serializer.Deserialize<DictionaryOrDog>("""{"name":"Rover","barkVolume":10}""").Value);
 
 		ByteBufferOrDog bytes = new(new byte[] { 1, 2 });
 		Assert.Equal("\"AQI=\"", this.Serializer.Serialize(bytes));
@@ -287,7 +287,7 @@ public partial class CSharpUnionTests : TestBase
 		JsonSchemaObject schema = this.Serializer.GetJsonSchema(TypeShapeProvider_Nerdbank_Json_Tests.Default.GetTypeShape<DictionaryOrDog>()!);
 		string json = schema.ToJsonString();
 
-		Assert.Contains("\"$value\":", json, StringComparison.Ordinal);
+		Assert.DoesNotContain("\"$value\"", json, StringComparison.Ordinal);
 		Assert.Contains("\"additionalProperties\":{\"type\":\"integer\"", json, StringComparison.Ordinal);
 	}
 
@@ -334,12 +334,13 @@ public partial class CSharpUnionTests : TestBase
 	[Test]
 	public void AmbiguousNativeCases_AreWrapped()
 	{
-		Assert.Equal("""{"$type":"Int32","$value":1}""", this.Serializer.Serialize(new Numbers(1)));
-		Assert.Equal(2L, this.Serializer.Deserialize<Numbers>("""{"$type":"Int64","$value":2}""").Value);
-		Assert.Equal("""{"$type":"String","$value":"text"}""", this.Serializer.Serialize(new TextCases("text")));
-		Assert.Equal("""{"$type":"Array_Int32","$value":[1]}""", this.Serializer.Serialize(new Collections(new int[] { 1 })));
+		Assert.Equal("1", this.Serializer.Serialize(new Numbers(1)));
+		Assert.Equal(1, this.Serializer.Deserialize<Numbers>("1").Value);
+		Assert.Equal(5_000_000_000L, this.Serializer.Deserialize<Numbers>("5000000000").Value);
+		Assert.Equal("\"text\"", this.Serializer.Serialize(new TextCases("text")));
+		Assert.Equal("""[1]""", this.Serializer.Serialize(new Collections(new int[] { 1 })));
 		JsonSerializer untagged = this.Serializer with { DefaultUnionTagging = UnionTagging.Untagged };
-		Assert.Throws<JsonSerializationException>(() => untagged.Serialize(new Numbers(1)));
+		Assert.Equal("1", untagged.Serialize(new Numbers(1)));
 
 		this.Serializer = this.Serializer with
 		{
