@@ -70,28 +70,48 @@ Integer tags are decimal strings, so tag `7` is `"$type":"7"`.
 
 ## C# unions
 
-C# 15 [union types](https://github.com/dotnet/csharplang/blob/main/proposals/csharp-15.0/unions.md) hold one of a closed set of case types.
-Cases need not share a base type.
+C# 15 [union types](https://github.com/dotnet/csharplang/blob/main/proposals/csharp-15.0/unions.md) hold exactly one of a closed set of case types.
 They need no attributes beyond <xref:PolyType.GenerateShapeAttribute>.
-There is no base-type fallback.
 
 ### Tagging modes
 
-A case whose JSON kind is unique in the union is written bare, such as `42` or `"hi"`.
-Object cases, nested unions, and custom converters are written with `$type`.
-JSON cannot tell numeric widths, `float` from `double`, or two string or collection cases apart.
-Those cases need [explicit identifiers](#custom-case-identifiers).
-Only one untagged array case and one untagged object case are allowed.
-An ambiguous union is rejected instead of guessed.
+| Mode | Writes | Reads |
+|--|--|--|
+| `Auto` (default) | Bare when the JSON kind is unique, including a single object case. Otherwise `{"$type": ..., ...}` | That bare value, or `$type` when the case is wrapped |
+| `Untagged` | Never adds `$type`, except for a case with an alias. An ambiguous union is rejected | Bare values, and `$type` for an aliased case |
+| `Tagged` | Every object uses `$type`. Other values are bare only when no other case shares their JSON kind | `$type`, and a bare value when it is unambiguous |
+
+Keep `Auto` for most JSON APIs.
+Use `Tagged` when every object should carry its type.
+<xref:Nerdbank.Json.JsonSerializer.DefaultUnionTagging> set to `Tagged` writes those object cases with `$type`.
+
+JSON cannot tell numeric widths, `float` from `double`, or two string, collection, or object cases apart.
+`Auto` and `Tagged` wrap those cases.
+`Untagged` rejects the union unless an alias identifies the case.
+Nested unions and custom converters are wrapped, because their JSON kind is not fixed.
 
 ### Options
 
 | Option | Purpose |
 |--|--|
+| <xref:Nerdbank.Json.JsonSerializer.DefaultUnionTagging> | Mode for every C# union. Default: `Auto`. |
+| <xref:Nerdbank.Json.UnionTaggingAttribute> | Mode for one union. Overrides the serializer property. |
+| <xref:Nerdbank.Json.JsonSerializer.UnionTaggingProvider> | Mode for unions you can't annotate. Overrides both. |
 | <xref:Nerdbank.Json.JsonSerializer.UnionTypeAliasProvider> | Custom `$type` values. A case with an alias is always tagged. |
 | <xref:Nerdbank.Json.JsonSerializer.AllowOutOfOrderDiscriminator> | Allow `$type` after other properties. See [Security](#security). |
 
+The provider wins, then the attribute, then the serializer property.
+Derived type hierarchies and F# unions ignore these settings.
+
 ### Example
+
+[!code-csharp[](../../samples/cs/CSharpUnions.cs#Value)]
+
+`Auto` (default), then `Tagged`:
+
+[!code-json[](../../samples/cs/Output/CSharpUnions.Value.Auto.json)]
+
+[!code-json[](../../samples/cs/Output/CSharpUnions.Value.Tagged.json)]
 
 [!code-csharp[](../../samples/cs/CSharpUnions.cs#CSharpUnion)]
 
@@ -107,7 +127,7 @@ This does not change payload converters, and it does not affect type hierarchies
 
 [!code-csharp[](../../samples/cs/CSharpUnions.cs#CSharpUnionAliases)]
 
-An alias forces `$type` even when the case's JSON kind would otherwise be enough.
+An alias forces a `$type` wrapper in every tagging mode, including `Untagged`, even when the case's JSON kind would otherwise be enough.
 That case then accepts only the alias, not its inferred name.
 Providers must be thread-safe and return the same result for as long as they are used.
 Aliases are resolved when the converter is built.
@@ -191,7 +211,7 @@ Reusing one collection keeps the same configuration. Assigning another rebuilds 
 
 ### Runtime tagging and aliases
 
-<xref:Nerdbank.Json.JsonSerializer.UnionTypeAliasProvider> sets `$type` values for C# unions you can't annotate.
+<xref:Nerdbank.Json.JsonSerializer.UnionTaggingProvider> and <xref:Nerdbank.Json.JsonSerializer.UnionTypeAliasProvider> set the mode and `$type` values for C# unions you can't annotate.
 See [Custom case identifiers](#custom-case-identifiers).
 
 ## Security

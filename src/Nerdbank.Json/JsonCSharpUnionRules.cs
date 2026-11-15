@@ -21,11 +21,13 @@ internal enum JsonCSharpUnionCaseRepresentation
 
 internal sealed class JsonCSharpUnionFormat
 {
-	internal JsonCSharpUnionFormat(IReadOnlyList<JsonCSharpUnionCaseRepresentation> representations)
+	private readonly bool tagObjects;
+	private readonly HashSet<JsonCSharpUnionCaseRepresentation>? collided;
+
+	internal JsonCSharpUnionFormat(IReadOnlyList<JsonCSharpUnionCaseRepresentation> representations, UnionTagging mode)
 	{
-		bool hasObject = false;
 		bool hasTagged = false;
-		HashSet<JsonCSharpUnionCaseRepresentation> nativeRepresentations = [];
+		Dictionary<JsonCSharpUnionCaseRepresentation, int> counts = [];
 		foreach (JsonCSharpUnionCaseRepresentation representation in representations)
 		{
 			if (representation == JsonCSharpUnionCaseRepresentation.Tagged)
@@ -34,23 +36,64 @@ internal sealed class JsonCSharpUnionFormat
 				continue;
 			}
 
-			if (!nativeRepresentations.Add(representation))
-			{
-				throw new NotSupportedException($"C# union cases with the '{representation}' JSON representation require explicit case identifiers.");
-			}
-
-			hasObject |= representation == JsonCSharpUnionCaseRepresentation.Object;
+			counts.TryGetValue(representation, out int count);
+			counts[representation] = count + 1;
 		}
 
-		this.TagObjectCases = hasObject && hasTagged;
+		foreach (KeyValuePair<JsonCSharpUnionCaseRepresentation, int> pair in counts)
+		{
+			if (pair.Value <= 1)
+			{
+				continue;
+			}
+
+			if (mode == UnionTagging.Untagged)
+			{
+				throw new NotSupportedException($"C# union cases with the '{pair.Key}' JSON representation require explicit case identifiers.");
+			}
+
+			(this.collided ??= []).Add(pair.Key);
+		}
+
+		bool objectCollidesWithEnvelope = counts.ContainsKey(JsonCSharpUnionCaseRepresentation.Object) && (hasTagged || this.collided is not null);
+		if (objectCollidesWithEnvelope)
+		{
+			if (mode == UnionTagging.Untagged)
+			{
+				throw new NotSupportedException("C# union object cases cannot be distinguished from a $type wrapper without explicit case identifiers.");
+			}
+
+			this.tagObjects = true;
+		}
 	}
 
-	internal bool TagObjectCases { get; }
+	internal bool IsTagged(JsonCSharpUnionCaseRepresentation representation)
+		=> representation == JsonCSharpUnionCaseRepresentation.Tagged
+			|| (this.tagObjects && representation == JsonCSharpUnionCaseRepresentation.Object)
+			|| (this.collided?.Contains(representation) ?? false);
 }
 
 internal static class JsonCSharpUnionRules
 {
-	internal static JsonCSharpUnionCaseRepresentation GetRepresentation(ITypeShape shape, bool hasExplicitIdentifier, ConverterCache owner)
+	internal static UnionTagging ResolveMode(IUnionTypeShape unionShape, ConverterCache owner)
+	{
+		if (owner.UnionTaggingProvider?.GetTagging(unionShape) is UnionTagging provided)
+		{
+			return provided;
+		}
+
+		if (unionShape.AttributeProvider is not null)
+		{
+			foreach (UnionTaggingAttribute attribute in unionShape.AttributeProvider.GetCustomAttributes<UnionTaggingAttribute>(inherit: false))
+			{
+				return attribute.Mode;
+			}
+		}
+
+		return owner.DefaultUnionTagging;
+	}
+
+	internal static JsonCSharpUnionCaseRepresentation GetRepresentation(ITypeShape shape, bool hasExplicitIdentifier, ConverterCache owner, UnionTagging mode)
 	{
 		if (hasExplicitIdentifier || owner.ShouldPreserveReferences(shape.Type) || (owner.TryGetCustomConverter(shape, out JsonConverter? customConverter) && customConverter is not null))
 		{
@@ -78,12 +121,19 @@ internal static class JsonCSharpUnionRules
 			return JsonCSharpUnionCaseRepresentation.Array;
 		}
 
-		return shape.Kind switch
+		if (shape.Kind is TypeShapeKind.Enumerable)
 		{
-			TypeShapeKind.Enumerable => JsonCSharpUnionCaseRepresentation.Array,
-			TypeShapeKind.Dictionary => JsonCSharpUnionCaseRepresentation.Object,
-			_ => JsonCSharpUnionCaseRepresentation.Tagged,
-		};
+			return JsonCSharpUnionCaseRepresentation.Array;
+		}
+
+		if (shape.Kind is TypeShapeKind.Object or TypeShapeKind.Dictionary)
+		{
+			return mode == UnionTagging.Tagged
+				? JsonCSharpUnionCaseRepresentation.Tagged
+				: JsonCSharpUnionCaseRepresentation.Object;
+		}
+
+		return JsonCSharpUnionCaseRepresentation.Tagged;
 	}
 
 	private static bool IsNumber(Type type)

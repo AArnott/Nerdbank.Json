@@ -56,6 +56,12 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 	internal bool AllowOutOfOrderDiscriminator => this.configuration.AllowOutOfOrderDiscriminator;
 
+	/// <inheritdoc cref="JsonSerializerConfiguration.DefaultUnionTagging"/>
+	internal UnionTagging DefaultUnionTagging => this.configuration.DefaultUnionTagging;
+
+	/// <inheritdoc cref="JsonSerializerConfiguration.UnionTaggingProvider"/>
+	internal IUnionTaggingProvider? UnionTaggingProvider => this.configuration.UnionTaggingProvider;
+
 	/// <inheritdoc cref="JsonSerializerConfiguration.UnionTypeAliasProvider"/>
 	internal IUnionTypeAliasProvider? UnionTypeAliasProvider => this.configuration.UnionTypeAliasProvider;
 

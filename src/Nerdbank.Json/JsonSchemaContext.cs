@@ -304,15 +304,14 @@ public sealed class JsonSchemaContext : ITypeShapeFunc
 		return new JsonSchemaObject().SetSchemas("oneOf", options);
 	}
 
-	internal JsonSchemaObject CreateCSharpUnionRepresentation(IReadOnlyList<(object Alias, JsonCSharpUnionCaseRepresentation Representation, JsonSchemaObject CaseSchema, bool CanInlineObject)> cases)
+	internal JsonSchemaObject CreateCSharpUnionRepresentation(IReadOnlyList<(object Alias, JsonCSharpUnionCaseRepresentation Representation, JsonSchemaObject CaseSchema, bool CanInlineObject)> cases, UnionTagging tagging)
 	{
-		JsonCSharpUnionFormat format = new(cases.Select(static c => c.Representation).ToArray());
+		JsonCSharpUnionFormat format = new(cases.Select(static c => c.Representation).ToArray(), tagging);
 		List<JsonSchemaObject> options = new(cases.Count);
 		HashSet<string> objectAliases = new(StringComparer.Ordinal);
 		foreach ((object alias, JsonCSharpUnionCaseRepresentation representation, JsonSchemaObject caseSchema, bool canInlineObject) in cases)
 		{
-			bool tagged = representation == JsonCSharpUnionCaseRepresentation.Tagged ||
-				(format.TagObjectCases && representation == JsonCSharpUnionCaseRepresentation.Object);
+			bool tagged = format.IsTagged(representation);
 			if (!tagged)
 			{
 				options.Add(caseSchema);

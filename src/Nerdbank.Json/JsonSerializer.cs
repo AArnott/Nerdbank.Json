@@ -214,6 +214,20 @@ public partial record JsonSerializer
 		init => this.configuration = this.configuration with { DerivedTypeUnions = value };
 	}
 
+	/// <inheritdoc cref="JsonSerializerConfiguration.DefaultUnionTagging"/>
+	public UnionTagging DefaultUnionTagging
+	{
+		get => this.configuration.DefaultUnionTagging;
+		init => this.configuration = this.configuration with { DefaultUnionTagging = value };
+	}
+
+	/// <inheritdoc cref="JsonSerializerConfiguration.UnionTaggingProvider"/>
+	public IUnionTaggingProvider? UnionTaggingProvider
+	{
+		get => this.configuration.UnionTaggingProvider;
+		init => this.configuration = this.configuration with { UnionTaggingProvider = value };
+	}
+
 	/// <inheritdoc cref="JsonSerializerConfiguration.UnionTypeAliasProvider"/>
 	public IUnionTypeAliasProvider? UnionTypeAliasProvider
 	{
