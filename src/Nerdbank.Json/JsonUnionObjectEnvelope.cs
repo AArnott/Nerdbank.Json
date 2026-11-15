@@ -306,16 +306,16 @@ internal sealed class JsonUnionObjectEnvelope
 		this.utf8Converters.Add((Encoding.UTF8.GetBytes(alias), converter));
 	}
 
-	internal JsonConverter ReadDiscriminator(ref JsonReader reader, bool allowOutOfOrderMetadataProperties, SerializationContext context)
+	internal JsonConverter ReadDiscriminator(ref JsonReader reader, bool allowOutOfOrderDiscriminator, SerializationContext context)
 	{
 		JsonReader peek = reader.CreatePeekReader();
-		return this.ReadDiscriminatorCore(ref peek, allowOutOfOrderMetadataProperties, context);
+		return this.ReadDiscriminatorCore(ref peek, allowOutOfOrderDiscriminator, context);
 	}
 
-	internal JsonConverter ReadDiscriminator(ref JsonReader reader, bool allowOutOfOrderMetadataProperties, SerializationContext context, out bool discriminatorConsumed)
+	internal JsonConverter ReadDiscriminator(ref JsonReader reader, bool allowOutOfOrderDiscriminator, SerializationContext context, out bool discriminatorConsumed)
 	{
 		discriminatorConsumed = false;
-		if (!allowOutOfOrderMetadataProperties)
+		if (!allowOutOfOrderDiscriminator)
 		{
 			JsonReader original = reader;
 			JsonConverter converter = this.ReadFirstPropertyDiscriminator(ref reader);
@@ -328,23 +328,23 @@ internal sealed class JsonUnionObjectEnvelope
 			reader = original;
 		}
 
-		return this.ReadDiscriminator(ref reader, allowOutOfOrderMetadataProperties, context);
+		return this.ReadDiscriminator(ref reader, allowOutOfOrderDiscriminator, context);
 	}
 
-	internal async ValueTask<(JsonConverter Converter, bool DiscriminatorConsumed)> ReadDiscriminatorAsync(JsonAsyncReader reader, bool allowOutOfOrderMetadataProperties, SerializationContext context)
+	internal async ValueTask<(JsonConverter Converter, bool DiscriminatorConsumed)> ReadDiscriminatorAsync(JsonAsyncReader reader, bool allowOutOfOrderDiscriminator, SerializationContext context)
 	{
-		if (!allowOutOfOrderMetadataProperties)
+		if (!allowOutOfOrderDiscriminator)
 		{
 			await reader.ReadStartObjectAsync(context).ConfigureAwait(false);
 			if (await reader.TryReadEndObjectAsync(context).ConfigureAwait(false))
 			{
-				throw new FormatException("The union discriminator object is missing the '$type' property.");
+				throw TypeMissing();
 			}
 
 			string propertyName = await reader.ReadPropertyNameAsync(context).ConfigureAwait(false);
 			if (propertyName != DiscriminatorPropertyName)
 			{
-				throw new FormatException("The '$type' metadata property must appear first.");
+				throw TypeNotFirst();
 			}
 
 			string alias = await reader.ReadStringValueAsync(context).ConfigureAwait(false);
@@ -356,7 +356,7 @@ internal sealed class JsonUnionObjectEnvelope
 		JsonReader peek = buffered.CreatePeekReader();
 		try
 		{
-			return (this.ReadDiscriminatorCore(ref peek, allowOutOfOrderMetadataProperties, context), false);
+			return (this.ReadDiscriminatorCore(ref peek, allowOutOfOrderDiscriminator, context), false);
 		}
 		finally
 		{
@@ -364,7 +364,7 @@ internal sealed class JsonUnionObjectEnvelope
 		}
 	}
 
-	private JsonConverter ReadDiscriminatorCore(ref JsonReader reader, bool allowOutOfOrderMetadataProperties, SerializationContext context)
+	private JsonConverter ReadDiscriminatorCore(ref JsonReader reader, bool allowOutOfOrderDiscriminator, SerializationContext context)
 	{
 		reader.ReadStartObject();
 		int propertyIndex = 0;
@@ -383,9 +383,9 @@ internal sealed class JsonUnionObjectEnvelope
 					else
 					{
 						isDiscriminator = utf8PropertyName.SequenceEqual("\"$type\""u8);
-						if (!isDiscriminator && !allowOutOfOrderMetadataProperties)
+						if (!isDiscriminator && !allowOutOfOrderDiscriminator)
 						{
-							throw new FormatException("The '$type' metadata property must appear first.");
+							throw TypeNotFirst();
 						}
 					}
 				}
@@ -402,9 +402,9 @@ internal sealed class JsonUnionObjectEnvelope
 						throw new FormatException("A union discriminator object may contain only one '$type' property.");
 					}
 
-					if (propertyIndex != 0 && !allowOutOfOrderMetadataProperties)
+					if (propertyIndex != 0 && !allowOutOfOrderDiscriminator)
 					{
-						throw new FormatException("The '$type' metadata property must appear first.");
+						throw TypeNotFirst();
 					}
 
 					converter = this.Resolve(ref reader);
@@ -430,7 +430,7 @@ internal sealed class JsonUnionObjectEnvelope
 
 		return converter is not null
 			? converter
-			: throw new FormatException("The union discriminator object is missing the '$type' property.");
+			: throw TypeMissing();
 	}
 
 	private JsonConverter ReadFirstPropertyDiscriminator(ref JsonReader reader)
@@ -438,7 +438,7 @@ internal sealed class JsonUnionObjectEnvelope
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
 		{
-			throw new FormatException("The union discriminator object is missing the '$type' property.");
+			throw TypeMissing();
 		}
 
 		bool isDiscriminator;
@@ -455,7 +455,7 @@ internal sealed class JsonUnionObjectEnvelope
 
 		if (!isDiscriminator)
 		{
-			throw new FormatException("The '$type' metadata property must appear first.");
+			throw TypeNotFirst();
 		}
 
 		reader.ReadNameSeparator();
@@ -464,7 +464,7 @@ internal sealed class JsonUnionObjectEnvelope
 
 	private JsonConverter Resolve(string alias) => this.converters.TryGetValue(alias, out JsonConverter? converter)
 		? converter
-		: throw new FormatException($"Unrecognized union discriminator '{alias}'.");
+		: throw Unrecognized(alias);
 
 	private JsonConverter Resolve(ref JsonReader reader)
 	{
@@ -481,6 +481,25 @@ internal sealed class JsonUnionObjectEnvelope
 			}
 		}
 
-		throw new FormatException($"Unrecognized union discriminator '{Encoding.UTF8.GetString(alias)}'.");
+		throw Unrecognized(Encoding.UTF8.GetString(alias));
 	}
+
+#pragma warning disable SA1204 // These factories sit with the readers that throw them.
+	private static JsonSerializationException TypeNotFirst()
+		=> new("The '$type' property was not first. Set AllowOutOfOrderDiscriminator to accept it later in the object.")
+		{
+			Code = JsonSerializationException.ErrorCode.NoMatchingUnionCase,
+		};
+
+	private static JsonSerializationException TypeMissing()
+		=> new("The union value requires a '$type' property.")
+		{
+			Code = JsonSerializationException.ErrorCode.UnionTagRequired,
+		};
+
+	private static JsonSerializationException Unrecognized(string alias)
+		=> new($"Unrecognized union discriminator '{alias}'.")
+		{
+			Code = JsonSerializationException.ErrorCode.NoMatchingUnionCase,
+		};
 }

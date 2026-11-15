@@ -359,7 +359,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 
 		JsonUnionObjectEnvelope objectEnvelope = this.objectEnvelope
 			?? throw new FormatException($"No tagged cases are registered for union '{typeof(TUnion).FullName}'.");
-		JsonConverter objectConverter = objectEnvelope.ReadDiscriminator(ref reader, context.Cache.AllowOutOfOrderMetadataProperties, context, out bool discriminatorConsumed);
+		JsonConverter objectConverter = objectEnvelope.ReadDiscriminator(ref reader, context.Cache.AllowOutOfOrderDiscriminator, context, out bool discriminatorConsumed);
 		return (TUnion?)(objectConverter is IJsonUnionObjectConverter { SupportsInlineObject: true } inlineConverter
 			? discriminatorConsumed
 				? inlineConverter.ReadObjectWithMetadataAfterDiscriminator(ref reader, context)
@@ -382,7 +382,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 			return (TUnion?)await nativeConverter.ReadObjectAsync(reader, context).ConfigureAwait(false);
 		}
 
-		(JsonConverter objectConverter, bool discriminatorConsumed) = await (this.objectEnvelope?.ReadDiscriminatorAsync(reader, context.Cache.AllowOutOfOrderMetadataProperties, context)
+		(JsonConverter objectConverter, bool discriminatorConsumed) = await (this.objectEnvelope?.ReadDiscriminatorAsync(reader, context.Cache.AllowOutOfOrderDiscriminator, context)
 			?? throw new FormatException($"No tagged cases are registered for union '{typeof(TUnion).FullName}'.")).ConfigureAwait(false);
 		return (TUnion?)(objectConverter is IJsonUnionObjectConverter { SupportsInlineObject: true } inlineConverter
 			? discriminatorConsumed
@@ -401,7 +401,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 
 		if (this.objectEnvelope is not null)
 		{
-			JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader, context.Cache.AllowOutOfOrderMetadataProperties, context);
+			JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader, context.Cache.AllowOutOfOrderDiscriminator, context);
 			context.DepthStep();
 			if (objectConverter is not IJsonUnionObjectConverter { SupportsInlineObject: true })
 			{
@@ -424,7 +424,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 
 		if (this.objectEnvelope is not null)
 		{
-			(JsonConverter objectConverter, bool discriminatorConsumed) = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context.Cache.AllowOutOfOrderMetadataProperties, context).ConfigureAwait(false);
+			(JsonConverter objectConverter, bool discriminatorConsumed) = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context.Cache.AllowOutOfOrderDiscriminator, context).ConfigureAwait(false);
 			context.DepthStep();
 			if (discriminatorConsumed)
 			{

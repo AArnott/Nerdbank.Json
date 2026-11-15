@@ -54,7 +54,7 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 	internal DerivedTypeUnionCollection DerivedTypeUnions => this.configuration.DerivedTypeUnions;
 
-	internal bool AllowOutOfOrderMetadataProperties => this.configuration.AllowOutOfOrderMetadataProperties;
+	internal bool AllowOutOfOrderDiscriminator => this.configuration.AllowOutOfOrderDiscriminator;
 
 	/// <inheritdoc cref="JsonSerializerConfiguration.UnionTypeAliasProvider"/>
 	internal IUnionTypeAliasProvider? UnionTypeAliasProvider => this.configuration.UnionTypeAliasProvider;
