@@ -33,6 +33,8 @@ public class SampleOutputTests
 		yield return ("RuntimeUnions.RuntimeUnions", static () => Text(RuntimeUnionSamples.TaggedJson()));
 		yield return ("RuntimeUnions.DuckTypingUnions", static () => Text(RuntimeUnionSamples.DuckJson()));
 		yield return ("CSharpUnions.DocumentChange", static () => Text(DocumentChangeJson()));
+		yield return ("CSharpUnions.Value.Auto", static () => Text(ValueJson(UnionTagging.Auto)));
+		yield return ("CSharpUnions.Value.Tagged", static () => Text(ValueJson(UnionTagging.Tagged)));
 	}
 
 	[Test]
@@ -100,6 +102,15 @@ public class SampleOutputTests
 		string created = serializer.Serialize(new CSharpUnions.DocumentChange(new CSharpUnions.CreateFile("file:///a.cs")));
 		string edited = serializer.Serialize(new CSharpUnions.DocumentChange(new CSharpUnions.TextDocumentEdit(new("file:///a.cs"), [])));
 		return created + "\n" + edited;
+	}
+
+	private static string ValueJson(UnionTagging mode)
+	{
+		JsonSerializer serializer = new() { DefaultUnionTagging = mode };
+		string number = serializer.Serialize(new CSharpUnions.SampleValue(5));
+		string text = serializer.Serialize(new CSharpUnions.SampleValue("hi"));
+		string point = serializer.Serialize(new CSharpUnions.SampleValue(new CSharpUnions.Point(1, 2)));
+		return number + "\n" + text + "\n" + point;
 	}
 
 	private static string Text(string json) => json + "\n";
