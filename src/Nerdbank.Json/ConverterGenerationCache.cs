@@ -1,35 +1,30 @@
 // Copyright (c) Andrew Arnott. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using PolyType.Utilities;
 
 namespace Nerdbank.Json;
 
 /// <summary>
-/// A converter cache keyed by type shape provider and type, whose entries are strongly owned by the cache instance.
+/// A converter generation cache with weak provider keys, type keys, and converter values.
 /// </summary>
 /// <remarks>
 /// <para>
-/// PolyType's <see cref="MultiProviderTypeCache"/> and <see cref="TypeCache"/> store their values in a
-/// <see cref="ConditionalWeakTable{TKey, TValue}"/> keyed by the <see cref="ITypeShapeProvider"/> and <see cref="Type"/>.
-/// Generated shape providers and runtime types generally live for the life of the process,
-/// and the cached converters (and the value builder factory) refer back to the owning <see cref="ConverterCache"/>.
-/// The dependent handles therefore keep the table itself reachable, so neither the table nor the serializer
-/// configuration that owns it (including any connection-specific converter factories) can ever be collected.
+/// Weak keys allow collectible types and providers to unload. Weak values prevent dependent handles
+/// for globally rooted keys from retaining converters that refer back to the owning serializer configuration.
+/// Provider scopes must not reference the value builder or the owning cache for the same reason.
 /// </para>
 /// <para>
-/// This cache avoids that by holding its entries in ordinary dictionaries, so that it and everything it references
-/// become collectible as soon as the owning serializer is unreachable.
+/// Resolved top-level converters remain strongly owned by <see cref="ConverterCache"/>; their nested converters
+/// and any in-progress generation context keep recursive converters alive while they are needed.
 /// </para>
 /// </remarks>
 internal sealed class ConverterGenerationCache
 {
-	private readonly ConcurrentDictionary<ITypeShapeProvider, ConcurrentDictionary<Type, object?>> providerScopes = new(ProviderReferenceComparer.Instance);
+	private readonly ConditionalWeakTable<ITypeShapeProvider, ProviderScope> providerScopes = new();
 	private readonly Func<ConverterGenerationCache, TypeGenerationContext, ITypeShapeFunc> valueBuilderFactory;
 	private readonly IDelayedValueFactory? delayedValueFactory;
-	private readonly Func<ITypeShapeProvider, ConcurrentDictionary<Type, object?>> createScope = _ => new();
 
 	/// <summary>
 	/// Initializes a new instance of the <see cref="ConverterGenerationCache"/> class.
@@ -55,7 +50,7 @@ internal sealed class ConverterGenerationCache
 			return value;
 		}
 
-		ConcurrentDictionary<Type, object?> scope = this.GetScope(typeShape.Provider);
+		ProviderScope scope = this.GetScope(typeShape.Provider);
 
 		// Uses optimistic concurrency when committing values to the cache.
 		// If conflicting entries are found in the cache, the value is re-evaluated.
@@ -85,7 +80,7 @@ internal sealed class ConverterGenerationCache
 	internal bool TryGetValue(ITypeShape typeShape, out object? value)
 	{
 		if (!typeShape.IsContextual
-			&& this.providerScopes.TryGetValue(typeShape.Provider, out ConcurrentDictionary<Type, object?>? scope)
+			&& this.providerScopes.TryGetValue(typeShape.Provider, out ProviderScope? scope)
 			&& scope.TryGetValue(typeShape.Type, out value))
 		{
 			return true;
@@ -112,7 +107,7 @@ internal sealed class ConverterGenerationCache
 		return context;
 	}
 
-	private static bool TryCommitResults(ConcurrentDictionary<Type, object?> scope, TypeGenerationContext context)
+	private static bool TryCommitResults(ProviderScope scope, TypeGenerationContext context)
 	{
 		IReadOnlyDictionary<Type, object?> results = context;
 		lock (scope)
@@ -127,14 +122,21 @@ internal sealed class ConverterGenerationCache
 
 			foreach (KeyValuePair<Type, object?> entry in results)
 			{
-				scope.TryAdd(entry.Key, entry.Value);
+				if (scope.Values.TryGetValue(entry.Key, out WeakReference<object>? reference))
+				{
+					reference.SetTarget(entry.Value!);
+				}
+				else
+				{
+					scope.Values.Add(entry.Key, new(entry.Value!));
+				}
 			}
 
 			return true;
 		}
 	}
 
-	private ConcurrentDictionary<Type, object?> GetScope(ITypeShapeProvider provider) => this.providerScopes.GetOrAdd(provider, this.createScope);
+	private ProviderScope GetScope(ITypeShapeProvider provider) => this.providerScopes.GetValue(provider, static _ => new());
 
 	private sealed class ValueBuilderProxy : ITypeShapeFunc
 	{
@@ -144,13 +146,24 @@ internal sealed class ConverterGenerationCache
 		public object? Invoke<T>(ITypeShape<T> typeShape, object? state = null) => this.Inner!.Invoke(typeShape, state);
 	}
 
-	private sealed class ProviderReferenceComparer : IEqualityComparer<ITypeShapeProvider>
+	private sealed class ProviderScope
 	{
-		/// <summary>Gets the comparer for exact provider identity.</summary>
-		internal static readonly ProviderReferenceComparer Instance = new();
+		/// <summary>Gets the weakly held converters keyed by their runtime types.</summary>
+		internal ConditionalWeakTable<Type, WeakReference<object>> Values { get; } = new();
 
-		public bool Equals(ITypeShapeProvider? x, ITypeShapeProvider? y) => ReferenceEquals(x, y);
+		/// <summary>Looks up a converter that is still reachable.</summary>
+		/// <param name="type">The runtime type.</param>
+		/// <param name="value">Receives the converter, if found.</param>
+		/// <returns>Whether a live converter was found.</returns>
+		internal bool TryGetValue(Type type, out object? value)
+		{
+			if (this.Values.TryGetValue(type, out WeakReference<object>? reference) && reference.TryGetTarget(out value))
+			{
+				return true;
+			}
 
-		public int GetHashCode(ITypeShapeProvider obj) => RuntimeHelpers.GetHashCode(obj);
+			value = null;
+			return false;
+		}
 	}
 }

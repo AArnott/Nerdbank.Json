@@ -65,8 +65,7 @@ internal sealed class ConverterCache : ITypeShapeFunc
 	/// <inheritdoc cref="JsonSerializerConfiguration.UnionTypeAliasProvider"/>
 	internal IUnionTypeAliasProvider? UnionTypeAliasProvider => this.configuration.UnionTypeAliasProvider;
 
-	// These caches must not be PolyType's MultiProviderTypeCache: its ConditionalWeakTable keys (providers and types)
-	// typically live forever, and its values refer back to this instance, which would root this serializer configuration.
+	// Generation entries must not strongly reference their owner through conditional weak table values.
 	private ConverterGenerationCache CachedConverters => Volatile.Read(ref this.cachedConverters) ?? LazyInitializer.EnsureInitialized(ref this.cachedConverters, () => new(
 		(cache, ctx) => new JsonStandardVisitor(this, cache, ctx, directShapeDispatch: false),
 		new DelayedJsonConverterFactory()))!;
