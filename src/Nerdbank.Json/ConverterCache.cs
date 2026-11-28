@@ -67,11 +67,11 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 	// Generation entries must not strongly reference their owner through conditional weak table values.
 	private ConverterGenerationCache CachedConverters => Volatile.Read(ref this.cachedConverters) ?? LazyInitializer.EnsureInitialized(ref this.cachedConverters, () => new(
-		(cache, ctx) => new JsonStandardVisitor(this, cache, ctx, directShapeDispatch: false),
+		(cache, ctx, provider) => new JsonStandardVisitor(this, cache, ctx, provider, directShapeDispatch: false),
 		new DelayedJsonConverterFactory()))!;
 
 	private ConverterGenerationCache NativeAotCachedConverters => Volatile.Read(ref this.nativeAotCachedConverters) ?? LazyInitializer.EnsureInitialized(ref this.nativeAotCachedConverters, () => new(
-		(cache, ctx) => new JsonStandardVisitor(this, cache, ctx, directShapeDispatch: true),
+		(cache, ctx, provider) => new JsonStandardVisitor(this, cache, ctx, provider, directShapeDispatch: true),
 		new DelayedJsonConverterFactory()))!;
 
 	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state) => this.ResolveConverter(typeShape);
@@ -255,7 +255,7 @@ internal sealed class ConverterCache : ITypeShapeFunc
 		{
 			if (visitor is null)
 			{
-				this.NativeAotCachedConverters.CreateGenerationContext(out ITypeShapeFunc valueBuilder);
+				this.NativeAotCachedConverters.CreateGenerationContext(shape.Provider, out ITypeShapeFunc valueBuilder);
 				visitor = (TypeShapeVisitor)valueBuilder;
 			}
 

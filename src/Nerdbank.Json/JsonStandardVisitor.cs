@@ -9,7 +9,7 @@ using PolyType.Utilities;
 
 namespace Nerdbank.Json;
 
-internal sealed class JsonStandardVisitor(ConverterCache owner, ConverterGenerationCache cache, TypeGenerationContext context, bool directShapeDispatch) : TypeShapeVisitor, ITypeShapeFunc
+internal sealed class JsonStandardVisitor(ConverterCache owner, ConverterGenerationCache cache, TypeGenerationContext context, ITypeShapeProvider provider, bool directShapeDispatch) : TypeShapeVisitor, ITypeShapeFunc
 {
 	/// <summary>Marker used when constructing a runtime union's plain base-object converter.</summary>
 	internal static readonly object RuntimeUnionBaseShape = new();
@@ -309,6 +309,11 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, ConverterGenerat
 
 	private JsonConverter<T> GetOrAddFromContext<T>(ITypeShape<T> shape)
 	{
+		if (!ReferenceEquals(provider, shape.Provider))
+		{
+			throw new ArgumentException("The specified shape provider is not valid for this cache.", nameof(provider));
+		}
+
 		// Consult the persistent cache first to reuse converters committed by earlier generations.
 		return cache.TryGetValue(shape, out object? cached)
 			? (JsonConverter<T>)cached!

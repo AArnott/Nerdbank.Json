@@ -23,7 +23,7 @@ namespace Nerdbank.Json;
 internal sealed class ConverterGenerationCache
 {
 	private readonly ConditionalWeakTable<ITypeShapeProvider, ProviderScope> providerScopes = new();
-	private readonly Func<ConverterGenerationCache, TypeGenerationContext, ITypeShapeFunc> valueBuilderFactory;
+	private readonly Func<ConverterGenerationCache, TypeGenerationContext, ITypeShapeProvider, ITypeShapeFunc> valueBuilderFactory;
 	private readonly IDelayedValueFactory? delayedValueFactory;
 
 	/// <summary>
@@ -31,7 +31,7 @@ internal sealed class ConverterGenerationCache
 	/// </summary>
 	/// <param name="valueBuilderFactory">Creates the function that builds values for a new generation context.</param>
 	/// <param name="delayedValueFactory">The factory for delayed values used to handle recursive types.</param>
-	internal ConverterGenerationCache(Func<ConverterGenerationCache, TypeGenerationContext, ITypeShapeFunc> valueBuilderFactory, IDelayedValueFactory? delayedValueFactory)
+	internal ConverterGenerationCache(Func<ConverterGenerationCache, TypeGenerationContext, ITypeShapeProvider, ITypeShapeFunc> valueBuilderFactory, IDelayedValueFactory? delayedValueFactory)
 	{
 		this.valueBuilderFactory = valueBuilderFactory;
 		this.delayedValueFactory = delayedValueFactory;
@@ -56,7 +56,7 @@ internal sealed class ConverterGenerationCache
 		// If conflicting entries are found in the cache, the value is re-evaluated.
 		while (true)
 		{
-			TypeGenerationContext context = this.CreateGenerationContext(out _);
+			TypeGenerationContext context = this.CreateGenerationContext(typeShape.Provider, out _);
 			value = typeShape.Invoke(context);
 			if (TryCommitResults(scope, context))
 			{
@@ -93,9 +93,10 @@ internal sealed class ConverterGenerationCache
 	/// <summary>
 	/// Creates a new generation context whose results are not committed to this cache.
 	/// </summary>
+	/// <param name="provider">The provider whose shapes may be used in the generation context.</param>
 	/// <param name="valueBuilder">Receives the value builder used by the context.</param>
 	/// <returns>The new generation context.</returns>
-	internal TypeGenerationContext CreateGenerationContext(out ITypeShapeFunc valueBuilder)
+	internal TypeGenerationContext CreateGenerationContext(ITypeShapeProvider provider, out ITypeShapeFunc valueBuilder)
 	{
 		ValueBuilderProxy proxy = new();
 		TypeGenerationContext context = new()
@@ -103,7 +104,7 @@ internal sealed class ConverterGenerationCache
 			ValueBuilder = proxy,
 			DelayedValueFactory = this.delayedValueFactory,
 		};
-		valueBuilder = proxy.Inner = this.valueBuilderFactory(this, context);
+		valueBuilder = proxy.Inner = this.valueBuilderFactory(this, context, provider);
 		return context;
 	}
 

@@ -95,6 +95,48 @@ public partial class SerializerLifetimeTests
 	}
 
 #if NET
+	[Test]
+	[Arguments(false, false)]
+	[Arguments(true, false)]
+	[Arguments(false, true)]
+	[Arguments(true, true)]
+	public void RejectNestedShapeFromAnotherProvider(bool cachedChild, bool contextualChild)
+	{
+		JsonSerializer serializer = new() { PropertyNamingPolicy = null };
+		ITypeShape<Token> child = Provider.GetTypeShape<Token>()!;
+		if (cachedChild)
+		{
+			serializer.Serialize(new Token(1), child);
+		}
+
+		if (contextualChild)
+		{
+			child = new SourceGenObjectTypeShape<Token> { Provider = Provider, IsContextual = true };
+		}
+
+		IObjectTypeShape<Ping> original = (IObjectTypeShape<Ping>)Provider.GetTypeShape<Ping>()!;
+		SourceGenObjectTypeShape<Ping> root = null!;
+		root = new()
+		{
+			Provider = new TemporaryProvider(),
+			PropertiesFactory = () =>
+			[
+				new SourceGenPropertyShape<Ping, Token>
+				{
+					Position = 0,
+					Name = nameof(Ping.Token),
+					DeclaringType = root,
+					PropertyType = child,
+					Getter = (ref Ping value) => value.Token,
+				},
+			],
+			ConstructorFactory = () => original.Constructor!,
+		};
+
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.Serialize(new Ping("hi", new Token(2)), root));
+		Assert.IsType<ArgumentException>(error.GetBaseException());
+	}
+
 	[RequiresDynamicCode("Creates a collectible runtime type and its generic shape.")]
 	[RequiresUnreferencedCode("Creates a generic shape through reflection.")]
 	[MethodImpl(MethodImplOptions.NoInlining)]
