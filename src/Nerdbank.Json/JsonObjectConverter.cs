@@ -10,20 +10,22 @@ using System.Text;
 
 namespace Nerdbank.Json;
 
-internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferencePreservingConverter<T>, IJsonUnionObjectConverter
+internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferencePreservingConverter<T>, IJsonUnionObjectConverter, IUnionDiscriminatorSource
 {
 	private readonly Func<T> factory;
 	private readonly JsonExtensionData<T>? extensionData;
+	private readonly UnionDiscriminatorBinding? discriminator;
 	private readonly JsonProperty<T>[] properties;
 	private readonly Utf8PropertyLookup<T>? utf8PropertiesByName;
 	private readonly Dictionary<string, JsonProperty<T>> propertiesByName;
 	private readonly StringComparer propertyNameComparer;
 	private readonly bool supportsInlineObject;
 
-	internal JsonObjectConverter(Func<T> factory, JsonProperty<T>[] properties, StringComparer propertyNameComparer, bool supportsInlineObject, JsonExtensionData<T>? extensionData = null)
+	internal JsonObjectConverter(Func<T> factory, JsonProperty<T>[] properties, StringComparer propertyNameComparer, bool supportsInlineObject, JsonExtensionData<T>? extensionData = null, UnionDiscriminatorBinding? discriminator = null)
 	{
 		this.factory = factory;
 		this.extensionData = extensionData;
+		this.discriminator = discriminator;
 		this.supportsInlineObject = supportsInlineObject;
 		this.properties = properties;
 		this.propertyNameComparer = propertyNameComparer;
@@ -44,6 +46,8 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 	bool IJsonUnionObjectConverter.SupportsInlineObject
 		=> this.supportsInlineObject;
+
+	UnionDiscriminatorBinding? IUnionDiscriminatorSource.Discriminator => this.discriminator;
 
 	public override void Write(ref JsonWriter writer, in T? value, SerializationContext context)
 	{
@@ -151,6 +155,11 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		IJsonSerializationCallbacks? callbacks = value as IJsonSerializationCallbacks;
 		callbacks?.OnBeforeSerialize();
 		context.DepthStep();
+		if (this.discriminator is not null)
+		{
+			this.discriminator.Write(ref writer, context, first);
+			first = false;
+		}
 
 		for (int i = 0; i < this.properties.Length; i++)
 		{
@@ -175,6 +184,11 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 		IJsonSerializationCallbacks? callbacks = value as IJsonSerializationCallbacks;
 		callbacks?.OnBeforeSerialize();
 		context.DepthStep();
+		if (this.discriminator is not null)
+		{
+			await this.discriminator.WriteAsync(writer, context, first).ConfigureAwait(false);
+			first = false;
+		}
 
 		for (int i = 0; i < this.properties.Length; i++)
 		{
@@ -235,6 +249,10 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 				{
 					isDiscriminator = true;
 				}
+				else if (this.discriminator is not null && this.discriminator.MatchesUtf8(utf8PropertyName))
+				{
+					propertyName = this.discriminator.Name;
+				}
 				else if (!this.utf8PropertiesByName.TryGetValue(utf8PropertyName, out property))
 				{
 					propertyName = Encoding.UTF8.GetString(utf8PropertyName[1..^1]);
@@ -280,6 +298,10 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 				foundDiscriminator = true;
 				_ = reader.ReadRequiredString();
+			}
+			else if (this.discriminator is not null && property is null && propertyName is not null && this.propertyNameComparer.Equals(propertyName, this.discriminator.Name))
+			{
+				this.discriminator.Read(ref reader, context);
 			}
 			else if (property is not null && property.CanDeserialize)
 			{
@@ -368,6 +390,10 @@ internal sealed class JsonObjectConverter<T> : JsonConverter<T>, IJsonReferenceP
 
 				foundDiscriminator = true;
 				_ = await reader.ReadStringValueAsync(context).ConfigureAwait(false);
+			}
+			else if (this.discriminator is not null && property is null && this.propertyNameComparer.Equals(propertyName, this.discriminator.Name))
+			{
+				await this.discriminator.ReadAsync(reader, context).ConfigureAwait(false);
 			}
 			else if (property is not null && property.CanDeserialize)
 			{

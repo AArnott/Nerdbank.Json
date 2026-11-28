@@ -97,7 +97,14 @@ internal sealed class JsonOptionalConverter<TOptional, TElement> : JsonConverter
 	}
 }
 
-internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnum>
+#pragma warning disable SA1201 // Interface is adjacent to the enum converter that implements it.
+internal interface IJsonEnumNameConverter
+{
+	bool TryGetSerializedName(object value, out string? name);
+}
+#pragma warning restore SA1201
+
+internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnum>, IJsonEnumNameConverter
 	where TEnum : struct
 	where TUnderlying : struct
 {
@@ -112,6 +119,18 @@ internal sealed class JsonEnumConverter<TEnum, TUnderlying> : JsonConverter<TEnu
 		{
 			(this.valuesByName, this.namesByValue) = CreateNameMaps(members, namingPolicy);
 		}
+	}
+
+	bool IJsonEnumNameConverter.TryGetSerializedName(object value, out string? name)
+	{
+		if (value is TEnum typed && this.namesByValue?.TryGetValue((TUnderlying)(object)typed, out string? serialized) == true)
+		{
+			name = serialized;
+			return true;
+		}
+
+		name = null;
+		return false;
 	}
 
 	public override void Write(ref JsonWriter writer, in TEnum value, SerializationContext context)
@@ -499,7 +518,7 @@ internal sealed class JsonUnionConverter<TUnion> : JsonConverter<TUnion>
 			!(this.tagObjectCases && unionCase.Representation == JsonCSharpUnionCaseRepresentation.Object);
 }
 
-internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter<TUnion>, IJsonUnionObjectConverter
+internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter<TUnion>, IJsonUnionObjectConverter, IUnionDiscriminatorSource
 {
 	private readonly JsonConverter<TUnionCase> inner;
 	private readonly IMarshaler<TUnionCase, TUnion> marshaler;
@@ -516,6 +535,9 @@ internal sealed class JsonUnionCaseConverter<TUnionCase, TUnion> : JsonConverter
 
 	bool IJsonUnionObjectConverter.SupportsInlineObject
 		=> !this.isNullable && this.inner is IJsonUnionObjectConverter { SupportsInlineObject: true };
+
+	UnionDiscriminatorBinding? IUnionDiscriminatorSource.Discriminator
+		=> UnionDiscriminatorBinding.FromConverter(this.inner);
 
 	void IJsonUnionObjectConverter.WriteObjectProperties(ref JsonWriter writer, object value, SerializationContext context, bool first)
 		=> this.GetObjectConverter().WriteObjectProperties(ref writer, this.marshaler.Unmarshal((TUnion)value)!, context, first);
@@ -571,17 +593,21 @@ internal sealed class JsonConstructorVisitorState<TDeclaring>
 	/// <param name="serializedPropertyNamesByClrName">Maps CLR property names to serialized names.</param>
 	/// <param name="extensionData">The extension-data property, if any.</param>
 	/// <param name="ignoreDerivedTypeUnion">Whether the converter represents a runtime union's plain base object.</param>
-	internal JsonConstructorVisitorState(JsonProperty<TDeclaring>[] properties, Dictionary<string, string> serializedPropertyNamesByClrName, JsonExtensionData<TDeclaring>? extensionData = null, bool ignoreDerivedTypeUnion = false)
+	/// <param name="discriminator">The union discriminator written with this object, if any.</param>
+	internal JsonConstructorVisitorState(JsonProperty<TDeclaring>[] properties, Dictionary<string, string> serializedPropertyNamesByClrName, JsonExtensionData<TDeclaring>? extensionData = null, bool ignoreDerivedTypeUnion = false, UnionDiscriminatorBinding? discriminator = null)
 	{
 		this.Properties = properties;
 		this.serializedPropertyNamesByClrName = serializedPropertyNamesByClrName;
 		this.ExtensionData = extensionData;
 		this.IgnoreDerivedTypeUnion = ignoreDerivedTypeUnion;
+		this.Discriminator = discriminator;
 	}
 
 	internal JsonProperty<TDeclaring>[] Properties { get; }
 
 	internal JsonExtensionData<TDeclaring>? ExtensionData { get; }
+
+	internal UnionDiscriminatorBinding? Discriminator { get; }
 
 	/// <summary>Gets a value indicating whether this converter represents a runtime union's plain base object.</summary>
 	internal bool IgnoreDerivedTypeUnion { get; }
@@ -662,10 +688,11 @@ internal sealed class JsonConstructorParameter<TArgumentState, TParameter> : Jso
 	}
 }
 
-internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentState> : JsonConverter<TDeclaring>, IJsonUnionObjectConverter
+internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentState> : JsonConverter<TDeclaring>, IJsonUnionObjectConverter, IUnionDiscriminatorSource
 	where TArgumentState : IArgumentState
 {
 	private readonly JsonExtensionData<TDeclaring>? extensionData;
+	private readonly UnionDiscriminatorBinding? discriminator;
 	private readonly JsonProperty<TDeclaring>[] properties;
 	private readonly Func<TArgumentState> argumentStateFactory;
 	private readonly Constructor<TArgumentState, TDeclaring> constructor;
@@ -674,9 +701,10 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 	private readonly StringComparer propertyNameComparer;
 	private readonly bool supportsInlineObject;
 
-	internal JsonObjectWithConstructorConverter(JsonProperty<TDeclaring>[] properties, Func<TArgumentState> argumentStateFactory, Constructor<TArgumentState, TDeclaring> constructor, JsonConstructorParameter<TArgumentState>[] parameters, Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName, StringComparer propertyNameComparer, bool supportsInlineObject, JsonExtensionData<TDeclaring>? extensionData = null)
+	internal JsonObjectWithConstructorConverter(JsonProperty<TDeclaring>[] properties, Func<TArgumentState> argumentStateFactory, Constructor<TArgumentState, TDeclaring> constructor, JsonConstructorParameter<TArgumentState>[] parameters, Dictionary<string, JsonConstructorParameter<TArgumentState>> parametersByName, StringComparer propertyNameComparer, bool supportsInlineObject, JsonExtensionData<TDeclaring>? extensionData = null, UnionDiscriminatorBinding? discriminator = null)
 	{
 		this.extensionData = extensionData;
+		this.discriminator = discriminator;
 		this.supportsInlineObject = supportsInlineObject;
 		this.properties = properties;
 		this.argumentStateFactory = argumentStateFactory;
@@ -687,6 +715,8 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 	}
 
 	public override bool PreferAsyncSerialization => true;
+
+	UnionDiscriminatorBinding? IUnionDiscriminatorSource.Discriminator => this.discriminator;
 
 	bool IJsonUnionObjectConverter.SupportsInlineObject
 		=> this.supportsInlineObject;
@@ -757,6 +787,11 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		IJsonSerializationCallbacks? callbacks = value as IJsonSerializationCallbacks;
 		callbacks?.OnBeforeSerialize();
 		context.DepthStep();
+		if (this.discriminator is not null)
+		{
+			this.discriminator.Write(ref writer, context, first);
+			first = false;
+		}
 
 		for (int i = 0; i < this.properties.Length; i++)
 		{
@@ -781,6 +816,11 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 		IJsonSerializationCallbacks? callbacks = value as IJsonSerializationCallbacks;
 		callbacks?.OnBeforeSerialize();
 		context.DepthStep();
+		if (this.discriminator is not null)
+		{
+			await this.discriminator.WriteAsync(writer, context, first).ConfigureAwait(false);
+			first = false;
+		}
 
 		for (int i = 0; i < this.properties.Length; i++)
 		{
@@ -850,6 +890,10 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 						foundDiscriminator = true;
 						_ = reader.ReadRequiredString();
+					}
+					else if (this.discriminator is not null && this.propertyNameComparer.Equals(propertyName, this.discriminator.Name))
+					{
+						this.discriminator.Read(ref reader, context);
 					}
 					else if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
 					{
@@ -945,6 +989,10 @@ internal sealed class JsonObjectWithConstructorConverter<TDeclaring, TArgumentSt
 
 						foundDiscriminator = true;
 						_ = await reader.ReadStringValueAsync(context).ConfigureAwait(false);
+					}
+					else if (this.discriminator is not null && this.propertyNameComparer.Equals(propertyName, this.discriminator.Name))
+					{
+						await this.discriminator.ReadAsync(reader, context).ConfigureAwait(false);
 					}
 					else if (this.parametersByName.TryGetValue(propertyName, out JsonConstructorParameter<TArgumentState>? parameter))
 					{

@@ -34,6 +34,12 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 		List<string> required = [];
 		bool hasExtensionData = false;
 
+		UnionDiscriminatorBinding? discriminator = UnionDiscriminatorBinding.Create(objectShape, this.owner);
+		if (discriminator is not null)
+		{
+			properties.Add(new(discriminator.Name, discriminator.CreateSchema(this.context.Dialect)));
+		}
+
 		HashSet<string> requiredConstructorParameters = new(StringComparer.Ordinal);
 		Dictionary<string, IParameterShape> constructorParameters = new(StringComparer.OrdinalIgnoreCase);
 		if (objectShape.Constructor is { } constructor)
@@ -50,6 +56,11 @@ internal sealed class JsonSchemaVisitor : TypeShapeVisitor
 
 		foreach (IPropertyShape property in objectShape.Properties)
 		{
+			if (ReferenceEquals(property, discriminator?.Source))
+			{
+				continue;
+			}
+
 			if (property.PropertyType.Type == typeof(UnusedDataPacket))
 			{
 				hasExtensionData = true;

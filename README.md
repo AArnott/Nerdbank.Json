@@ -219,7 +219,7 @@ Raw JSON and unescaped UTF-8 views preserve source bytes; UTF-8 string writes es
 
 Matched Medium performance evidence, causal fixes, exact native sizes, and artifact locations are recorded in [TODO.md](TODO.md) and the [benchmark guide](docs/benchmarking.md).
 Original object allocation parity is preserved, but full speed restoration is **not** claimed; remaining timing tradeoffs and suspected sources are logged as non-blocking performance follow-ups rather than reasons to defer preferred APIs.
-macOS arm64 CI has executed the build, tests, and native fixtures; its measured **5.6566 MiB** broad image informed the explicitly approved **5.65 +/- 0.2 MiB** baseline, while the [platform validation guide](docs/platform-validation.md) remains available for independent validation.
+macOS arm64 CI has executed the build, tests, and native fixtures. The current broad-image centers are **6.56 MiB** on Linux x64, **6.16 MiB** on macOS arm64, and **6.32 MiB** on Windows x64, each **+/- 0.2 MiB**. The [platform validation guide](docs/platform-validation.md) remains available for independent validation.
 In a dedicated checkout of this branch on the Mac, run `pwsh -NoProfile -File ./tools/Validate-Platform.ps1 -ArtifactDirectory ./obj/platform-macos` and return the complete evidence directory without changing size budgets.
 
 Segmented parsing, owned raw values, UTF-8 string/token APIs, scalar `JsonPrimitives`, and NBJson001/NBJson002/NBJson031/NBJson051 are implemented.
