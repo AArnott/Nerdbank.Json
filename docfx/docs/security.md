@@ -118,5 +118,6 @@ When data to be deserialized can specify the type into which the data is deseria
 Nerdbank.Json does not support deserialization of arbitrary types.
 Data must deserialize into a graph of a known, closed set of types.
 [Unions](unions.md) may be used to allow the data to dictate which of a closed set of derived types may be activated for a given base class, however.
+Allowing `$type` after other properties buffers the union value, and nested unions can take quadratic time. See [Unions](unions.md#security).
 
 An application may author a [custom converter](custom-converters.md) to add support for data dictating the type to be deserialized, but this is not recommended for security reasons.

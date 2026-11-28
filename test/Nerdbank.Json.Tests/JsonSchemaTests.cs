@@ -121,7 +121,7 @@ public partial class JsonSchemaTests : TestBase
 	}
 
 	[Test]
-	public void DuckTypingUnion_ProducesOneOfOfObjects()
+	public void DuckTypingUnion_ProducesAnyOfOfObjects()
 	{
 		JsonSerializer serializer = new()
 		{
@@ -129,7 +129,8 @@ public partial class JsonSchemaTests : TestBase
 		};
 
 		string schema = serializer.GetJsonSchema(Shape<Animal, Animal>()).ToJsonString();
-		Assert.Contains("\"oneOf\":[{\"type\":\"object\"", schema, StringComparison.Ordinal);
+		Assert.Contains("\"anyOf\":[{\"type\":\"object\"", schema, StringComparison.Ordinal);
+		Assert.DoesNotContain("\"oneOf\"", schema, StringComparison.Ordinal);
 		Assert.DoesNotContain("prefixItems", schema, StringComparison.Ordinal);
 	}
 

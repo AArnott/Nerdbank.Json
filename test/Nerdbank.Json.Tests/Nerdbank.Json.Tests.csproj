@@ -15,6 +15,11 @@
     <ProjectReference Include="..\..\src\Nerdbank.Json\Nerdbank.Json.csproj" />
     <Compile Include="..\..\src\Nerdbank.Json\JsonInput.cs" Link="JsonInput.cs" />
     <Compile Include="..\..\samples\cs\CSharpUnions.cs" Link="Samples\CSharpUnions.cs" />
+    <Compile Include="..\..\samples\cs\Unions.cs" Link="Samples\Unions.cs" />
+    <Compile Include="..\..\samples\cs\RuntimeUnions.cs" Link="Samples\RuntimeUnions.cs" />
+    <AssemblyMetadata Include="SampleOutputPath">
+      <Value>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)','..','..','samples','cs','Output'))</Value>
+    </AssemblyMetadata>
   </ItemGroup>
 
   <!-- Documentation samples, including the reflective factory example, are exercised in the managed-only target. -->

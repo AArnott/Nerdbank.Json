@@ -11,6 +11,9 @@ public partial class JsonRuntimeUnionTests
 	[GenerateShape]
 	internal partial interface IAnimal;
 
+	[GenerateShape]
+	internal partial interface ISame;
+
 	[Test]
 	public void DuckTyping_ConstructorValidatesCases()
 	{
@@ -28,9 +31,13 @@ public partial class JsonRuntimeUnionTests
 	[Test]
 	public void DuckTyping_ConstructorValidatesConcreteBaseAndObjectContracts()
 	{
-		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<EmptyConcreteBase, EmptyConcreteBase>(), Shape<ConcreteCase, ConcreteCase>()));
-		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<IAnimal, IAnimal>(), Shape<OptionalOnlyAnimal, OptionalOnlyAnimal>(), Shape<RequiredAnimal, RequiredAnimal>()));
+		DerivedTypeDuckTyping catchAll = new(Shape<EmptyConcreteBase, EmptyConcreteBase>(), Shape<ConcreteCase, ConcreteCase>());
+		Assert.Equal(typeof(EmptyConcreteBase), catchAll.BaseType);
+		DerivedTypeDuckTyping optionalCatchAll = new(Shape<IAnimal, IAnimal>(), Shape<OptionalOnlyAnimal, OptionalOnlyAnimal>(), Shape<RequiredAnimal, RequiredAnimal>());
+		Assert.Equal(typeof(IAnimal), optionalCatchAll.BaseType);
+		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<IAnimal, IAnimal>(), Shape<OptionalOnlyAnimal, OptionalOnlyAnimal>(), Shape<EmptyAnimal, EmptyAnimal>()));
 		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<IAnimal, IAnimal>(), Shape<ComputedAnimal, ComputedAnimal>(), Shape<RequiredAnimal, RequiredAnimal>()));
+		Assert.Throws<ArgumentException>(() => new DerivedTypeDuckTyping(Shape<IAnimal, IAnimal>(), Shape<MixedEvidenceAnimal, MixedEvidenceAnimal>(), Shape<RequiredAnimal, RequiredAnimal>()));
 	}
 
 	[Test]
@@ -105,7 +112,7 @@ public partial class JsonRuntimeUnionTests
 	}
 
 	[Test]
-	public void DuckTyping_SerializerDependentNameCollisions_RemainAmbiguous()
+	public void DuckTyping_SerializerDependentNameCollisions_AreRejectedWhenBuilt()
 	{
 		DerivedTypeDuckTyping union = new(Shape<Shape2, Shape2>(), Shape<Circle, Circle>(), Shape<Square, Square>());
 		JsonSerializer serializer = new()
@@ -114,7 +121,9 @@ public partial class JsonRuntimeUnionTests
 			DerivedTypeUnions = [union],
 		};
 		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"value":1}""", Shape<Shape2, Shape2>()));
-		Assert.Contains("ambiguous", error.Message, StringComparison.OrdinalIgnoreCase);
+		Assert.IsType<NotSupportedException>(error.InnerException);
+		Assert.Contains("same properties", error.Message, StringComparison.OrdinalIgnoreCase);
+		Assert.Throws<NotSupportedException>(() => serializer.GetJsonSchema(Shape<Shape2, Shape2>()));
 		JsonSerializer normalNames = serializer with { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 		Assert.Equal(new Circle(1), normalNames.Deserialize("""{"radius":1}""", Shape<Shape2, Shape2>()));
 	}
@@ -135,7 +144,7 @@ public partial class JsonRuntimeUnionTests
 		Assert.Equal(value, await serializer.DeserializeAsync(stream, Shape<Shape2, Shape2>()));
 		Assert.Equal(2, converter.ReadCount);
 		System.Text.Json.Nodes.JsonObject schema = serializer.GetJsonSchema(Shape<Shape2, Shape2>());
-		Assert.Equal("CustomCircle", schema["anyOf"]![0]!["oneOf"]![0]!["title"]!.GetValue<string>());
+		Assert.Equal("CustomCircle", schema["anyOf"]![0]!["anyOf"]![0]!["title"]!.GetValue<string>());
 	}
 
 	[Test]
@@ -161,12 +170,11 @@ public partial class JsonRuntimeUnionTests
 		Animal2 value = new("Ada");
 		Assert.Equal("""{"name":"Ada"}""", serializer.Serialize(value, Shape<Animal2, Animal2>()));
 		Assert.Equal(value, serializer.Deserialize("""{"name":"Ada"}""", Shape<Animal2, Animal2>()));
-		foreach (string json in new[] { """{"name":"Milo","lives":9}""", """{"other":1}""" })
-		{
-			Assert.Throws<JsonSerializationException>(() => serializer.Deserialize(json, Shape<Animal2, Animal2>()));
-			using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
-			await Assert.ThrowsAsync<JsonSerializationException>(async () => await serializer.DeserializeAsync(stream, Shape<Animal2, Animal2>()));
-		}
+		Assert.Equal(new Cat2("Milo", 9), serializer.Deserialize("""{"name":"Milo","lives":9}""", Shape<Animal2, Animal2>()));
+		const string unknown = """{"other":1}""";
+		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize(unknown, Shape<Animal2, Animal2>()));
+		using MemoryStream stream = new(Encoding.UTF8.GetBytes(unknown));
+		await Assert.ThrowsAsync<JsonSerializationException>(async () => await serializer.DeserializeAsync(stream, Shape<Animal2, Animal2>()));
 
 		Assert.Throws<JsonSerializationException>(() => serializer.Serialize<Animal2>(new Dog2("Rex", "Lab"), Shape<Animal2, Animal2>()));
 	}
@@ -218,15 +226,195 @@ public partial class JsonRuntimeUnionTests
 	}
 
 	[Test]
+	public async Task DuckTyping_MostSpecificCase_WinsNestedSets()
+	{
+		JsonSerializer serializer = new()
+		{
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<Speck, Speck>(), Shape<BiggerSpeck, BiggerSpeck>(), Shape<BiggestSpeck, BiggestSpeck>(), Shape<OtherSpeck, OtherSpeck>())],
+		};
+
+		Assert.IsType<Speck>(serializer.Deserialize("""{"a":"1"}""", Shape<Speck, Speck>()));
+		Assert.IsType<BiggerSpeck>(serializer.Deserialize("""{"a":"1","b":"2"}""", Shape<Speck, Speck>()));
+		BiggestSpeck nested = Assert.IsType<BiggestSpeck>(serializer.Deserialize("""{"a":"1","b":"2","c":"3"}""", Shape<Speck, Speck>()));
+		Assert.Equal("3", nested.C);
+		Assert.IsType<OtherSpeck>(serializer.Deserialize("""{"a":"1","d":"4"}""", Shape<Speck, Speck>()));
+
+		foreach (string json in new[] { """{"a":"1","b":"2","d":"4"}""", """{"a":"1","b":"2","c":"3","d":"4"}""" })
+		{
+			JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize(json, Shape<Speck, Speck>()));
+			Assert.Contains("ambiguous", error.Message, StringComparison.OrdinalIgnoreCase);
+			using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+			await Assert.ThrowsAsync<JsonSerializationException>(async () => await serializer.DeserializeAsync(stream, Shape<Speck, Speck>()));
+		}
+	}
+
+	[Test]
+	public async Task DuckTyping_CatchAll_IsChosenOnlyWhenNothingElseMatches()
+	{
+		JsonSerializer serializer = new()
+		{
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<EmptyConcreteBase, EmptyConcreteBase>(), Shape<ConcreteCase, ConcreteCase>(), Shape<OtherConcreteCase, OtherConcreteCase>())],
+		};
+
+		Assert.IsType<EmptyConcreteBase>(serializer.Deserialize("{}", Shape<EmptyConcreteBase, EmptyConcreteBase>()));
+		Assert.IsType<EmptyConcreteBase>(serializer.Deserialize("""{"extra":1}""", Shape<EmptyConcreteBase, EmptyConcreteBase>()));
+		Assert.Equal(3, Assert.IsType<ConcreteCase>(serializer.Deserialize("""{"number":3}""", Shape<EmptyConcreteBase, EmptyConcreteBase>())).Number);
+		Assert.Equal(3, Assert.IsType<ConcreteCase>(serializer.Deserialize("""{"number":3,"extra":true}""", Shape<EmptyConcreteBase, EmptyConcreteBase>())).Number);
+		Assert.Equal("x", Assert.IsType<OtherConcreteCase>(serializer.Deserialize("""{"label":"x"}""", Shape<EmptyConcreteBase, EmptyConcreteBase>())).Label);
+		JsonSerializationException ambiguous = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"number":1,"label":"x"}""", Shape<EmptyConcreteBase, EmptyConcreteBase>()));
+		Assert.Contains("ambiguous", ambiguous.Message, StringComparison.OrdinalIgnoreCase);
+		using MemoryStream stream = new(Encoding.UTF8.GetBytes("""{"extra":1}"""));
+		Assert.IsType<EmptyConcreteBase>(await serializer.DeserializeAsync(stream, Shape<EmptyConcreteBase, EmptyConcreteBase>()));
+	}
+
+	[Test]
+	public void DuckTyping_IdenticalRequiredNames_AreRejectedWhenBuilt()
+	{
+		JsonSerializer serializer = new()
+		{
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<ISame, ISame>(), Shape<SameA, SameA>(), Shape<SameB, SameB>())],
+		};
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.Serialize<ISame>(new SameA(1), Shape<ISame, ISame>()));
+		Assert.IsType<NotSupportedException>(error.InnerException);
+		Assert.Contains("same properties", error.Message, StringComparison.OrdinalIgnoreCase);
+		Assert.Throws<NotSupportedException>(() => serializer.GetJsonSchema(Shape<ISame, ISame>()));
+	}
+
+	[Test]
+	public void DuckTyping_CaseFoldingCollisions_AreRejectedWhenBuilt()
+	{
+		// A null naming policy keeps the explicit "Volume" and "volume" names distinct except for case.
+		JsonSerializer serializer = new()
+		{
+			PropertyNamingPolicy = null,
+			PropertyNameCaseInsensitive = true,
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<IAnimal, IAnimal>(), Shape<LoudAnimal, LoudAnimal>(), Shape<QuietAnimal, QuietAnimal>())],
+		};
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"volume":1}""", Shape<IAnimal, IAnimal>()));
+		Assert.IsType<NotSupportedException>(error.InnerException);
+		Assert.Contains("same properties", error.Message, StringComparison.OrdinalIgnoreCase);
+
+		JsonSerializer sensitive = serializer with { PropertyNameCaseInsensitive = false };
+		Assert.Equal(1, Assert.IsType<LoudAnimal>(sensitive.Deserialize("""{"Volume":1}""", Shape<IAnimal, IAnimal>())).Level);
+		Assert.Equal(2, Assert.IsType<QuietAnimal>(sensitive.Deserialize("""{"volume":2}""", Shape<IAnimal, IAnimal>())).Pitch);
+	}
+
+	[Test]
 	public void DuckTyping_SchemaUsesBareObjectCases()
 	{
 		JsonSerializer serializer = DuckSerializer();
 		System.Text.Json.Nodes.JsonObject schema = serializer.GetJsonSchema(Shape<Shape2, Shape2>());
-		System.Text.Json.Nodes.JsonArray cases = schema["anyOf"]![0]!["oneOf"]!.AsArray();
+		System.Text.Json.Nodes.JsonArray cases = schema["anyOf"]![0]!["anyOf"]!.AsArray();
 		Assert.Equal(2, cases.Count);
 		Assert.Equal("object", cases[0]!["type"]!.GetValue<string>());
 		Assert.Equal("radius", cases[0]!["required"]![0]!.GetValue<string>());
 		Assert.Equal("side", cases[1]!["required"]![0]!.GetValue<string>());
+		Assert.Null(schema["anyOf"]![0]!["oneOf"]);
+	}
+
+	[Test]
+	public void DuckTyping_OverlappingCatchAllSchema_AcceptsSerializedValue()
+	{
+		JsonSerializer serializer = new()
+		{
+			DerivedTypeUnions = [new DerivedTypeDuckTyping(Shape<ValueHolder, ValueHolder>(), Shape<OptionalValueHolder, OptionalValueHolder>(), Shape<RequiredValueHolder, RequiredValueHolder>())],
+		};
+		string json = serializer.Serialize<ValueHolder>(new RequiredValueHolder { Value = 1 });
+		Assert.Equal("""{"value":1}""", json);
+		System.Text.Json.Nodes.JsonObject schema = serializer.GetJsonSchema(Shape<ValueHolder, ValueHolder>());
+		System.Text.Json.Nodes.JsonObject union = schema["anyOf"]![0]!.AsObject();
+		Assert.Null(union["oneOf"]);
+		System.Text.Json.Nodes.JsonArray cases = union["anyOf"]!.AsArray();
+		System.Text.Json.Nodes.JsonObject written = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+		Assert.True(CountObjectMatches(cases, written) > 1);
+		Assert.Equal(1, CountObjectMatches(cases, []));
+		Assert.True(SchemaMatches(schema, written));
+
+		static int CountObjectMatches(System.Text.Json.Nodes.JsonArray alternatives, System.Text.Json.Nodes.JsonObject instance)
+		{
+			int matches = 0;
+			foreach (System.Text.Json.Nodes.JsonNode? alternative in alternatives)
+			{
+				if (SchemaMatches(alternative!.AsObject(), instance))
+				{
+					matches++;
+				}
+			}
+
+			return matches;
+		}
+
+		static bool SchemaMatches(System.Text.Json.Nodes.JsonObject schemaNode, System.Text.Json.Nodes.JsonNode? instance)
+		{
+			if (schemaNode["anyOf"] is System.Text.Json.Nodes.JsonArray anyOf)
+			{
+				foreach (System.Text.Json.Nodes.JsonNode? alternative in anyOf)
+				{
+					if (SchemaMatches(alternative!.AsObject(), instance))
+					{
+						return true;
+					}
+				}
+
+				return false;
+			}
+
+			if (schemaNode.TryGetPropertyValue("type", out System.Text.Json.Nodes.JsonNode? typeNode)
+				&& typeNode is System.Text.Json.Nodes.JsonValue typeValue
+				&& typeValue.GetValue<string>() == "null")
+			{
+				return instance is null;
+			}
+
+			if (instance is not System.Text.Json.Nodes.JsonObject instanceObject)
+			{
+				return false;
+			}
+
+			System.Text.Json.Nodes.JsonObject? properties = schemaNode["properties"]?.AsObject();
+			bool allowAdditional = schemaNode["additionalProperties"] is not System.Text.Json.Nodes.JsonValue additional || additional.GetValue<bool>();
+			if (!allowAdditional)
+			{
+				foreach (KeyValuePair<string, System.Text.Json.Nodes.JsonNode?> property in instanceObject)
+				{
+					if (properties?.ContainsKey(property.Key) != true)
+					{
+						return false;
+					}
+				}
+			}
+
+			if (schemaNode["required"] is System.Text.Json.Nodes.JsonArray required)
+			{
+				foreach (System.Text.Json.Nodes.JsonNode? name in required)
+				{
+					if (!instanceObject.ContainsKey(name!.GetValue<string>()))
+					{
+						return false;
+					}
+				}
+			}
+
+			if (properties is null)
+			{
+				return true;
+			}
+
+			foreach (KeyValuePair<string, System.Text.Json.Nodes.JsonNode?> property in instanceObject)
+			{
+				if (properties[property.Key] is System.Text.Json.Nodes.JsonObject propertySchema
+					&& propertySchema.TryGetPropertyValue("type", out System.Text.Json.Nodes.JsonNode? propertyType)
+					&& propertyType is System.Text.Json.Nodes.JsonValue expected
+					&& expected.GetValue<string>() == "integer"
+					&& property.Value is System.Text.Json.Nodes.JsonValue number
+					&& (!number.TryGetValue(out int _)))
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
 	}
 
 	[GenerateShape]
@@ -291,12 +479,89 @@ public partial class JsonRuntimeUnionTests
 	}
 
 	[GenerateShape]
+	internal partial class MixedEvidenceAnimal(string name) : IAnimal
+	{
+		public string Name { get; } = name;
+
+		[PropertyShape(IsRequired = true)]
+		public int Computed => 1;
+	}
+
+	[GenerateShape]
+	internal abstract partial record ValueHolder;
+
+	[GenerateShape]
+	internal partial record OptionalValueHolder : ValueHolder
+	{
+		public int Value { get; set; }
+	}
+
+	[GenerateShape]
+	internal partial record RequiredValueHolder : ValueHolder
+	{
+		public required int Value { get; set; }
+	}
+
+	[GenerateShape]
 	internal partial class EmptyConcreteBase;
 
 	[GenerateShape]
 	internal partial class ConcreteCase(int number) : EmptyConcreteBase
 	{
 		public int Number { get; } = number;
+	}
+
+	[GenerateShape]
+	internal partial class OtherConcreteCase(string label) : EmptyConcreteBase
+	{
+		public string Label { get; } = label;
+	}
+
+	[GenerateShape]
+	internal partial class EmptyAnimal : IAnimal;
+
+	[GenerateShape]
+	internal partial record SameA(int Value) : ISame;
+
+	[GenerateShape]
+	internal partial record SameB(int Value) : ISame;
+
+	[GenerateShape]
+	internal partial class LoudAnimal : IAnimal
+	{
+		[PropertyShape(Name = "Volume")]
+		public required int Level { get; init; }
+	}
+
+	[GenerateShape]
+	internal partial class QuietAnimal : IAnimal
+	{
+		[PropertyShape(Name = "volume")]
+		public required int Pitch { get; init; }
+	}
+
+	[GenerateShape]
+	internal partial class Speck
+	{
+		public required string A { get; init; }
+	}
+
+	[GenerateShape]
+	internal partial class BiggerSpeck : Speck
+	{
+		public required string B { get; init; }
+	}
+
+	[GenerateShape]
+	internal partial class BiggestSpeck : BiggerSpeck
+	{
+		public required string C { get; init; }
+	}
+
+	[GenerateShape]
+	internal partial class OtherSpeck : Speck
+	{
+		public required string D { get; init; }
 	}
 
 	[GenerateShapeFor<IAnimal[]>]

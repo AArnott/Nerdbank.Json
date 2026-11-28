@@ -224,6 +224,6 @@ In a dedicated checkout of this branch on the Mac, run `pwsh -NoProfile -File ./
 
 Segmented parsing, owned raw values, UTF-8 string/token APIs, scalar `JsonPrimitives`, and NBJson001/NBJson002/NBJson031/NBJson051 are implemented.
 Stateless decoded strings and general raw/container framing remain outside the implemented primitive contract; use the stateful reader/writer and borrowed raw APIs for these JSON-specific operations.
-Experimental duck typing validates candidates against object contract metadata but remains an experimental selection strategy.
+Experimental duck typing selects a case from required properties: the most specific match wins, and one case with no required properties can act as a catch-all.
 Async-stream first-value reads cannot safely retain prefetch; use caller-owned pipes.
 See [TODO.md](TODO.md) for final evidence, constraints, and superseded checkpoints.

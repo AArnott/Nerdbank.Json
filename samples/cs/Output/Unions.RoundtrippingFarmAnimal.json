@@ -1,0 +1,1 @@
+{"animals":[{"$type":"UnionCow","weight":1400,"name":"Bessie"},{"$type":"UnionHorse","speed":45,"name":"Lightning"},{"$type":"UnionDog","color":"Brown","name":"Rover"}]}

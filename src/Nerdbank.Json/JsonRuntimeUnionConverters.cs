@@ -66,7 +66,7 @@ internal sealed class JsonRuntimeUnionCaseConverter<TBase> : JsonConverter<TBase
 
 internal readonly struct RuntimeUnionCaseEntry<TBase>
 {
-	internal RuntimeUnionCaseEntry(Type caseType, int? tag, string? name, JsonConverter<TBase> converter, IReadOnlyCollection<string> requiredPropertyNames)
+	internal RuntimeUnionCaseEntry(Type caseType, int? tag, string? name, JsonConverter<TBase> converter, HashSet<string> requiredPropertyNames)
 	{
 		this.CaseType = caseType;
 		this.Tag = tag;
@@ -83,7 +83,7 @@ internal readonly struct RuntimeUnionCaseEntry<TBase>
 
 	internal JsonConverter<TBase> Converter { get; }
 
-	internal IReadOnlyCollection<string> RequiredPropertyNames { get; }
+	internal HashSet<string> RequiredPropertyNames { get; }
 }
 
 internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
@@ -194,6 +194,7 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 	private readonly StringComparer nameComparer;
 	private readonly bool allowTrailingCommas;
 	private readonly JsonCommentHandling commentHandling;
+	private readonly int catchAllIndex;
 
 	internal JsonDuckTypingUnionConverter(RuntimeUnionCaseEntry<TBase>[] cases, StringComparer nameComparer, bool allowTrailingCommas, JsonCommentHandling commentHandling)
 	{
@@ -202,14 +203,19 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 		this.allowTrailingCommas = allowTrailingCommas;
 		this.commentHandling = commentHandling;
 		this.byType = new(cases.Length);
+		this.catchAllIndex = -1;
+		(Type CaseType, HashSet<string> Required)[] signatures = new (Type, HashSet<string>)[cases.Length];
 		for (int i = 0; i < cases.Length; i++)
 		{
 			this.byType[cases[i].CaseType] = i;
+			signatures[i] = (cases[i].CaseType, cases[i].RequiredPropertyNames);
 			if (cases[i].RequiredPropertyNames.Count == 0)
 			{
-				throw new NotSupportedException($"Duck-typing union case '{cases[i].CaseType.FullName}' has no required properties, so it cannot be identified without a discriminator. Add a required property or use the default (discriminator) strategy.");
+				this.catchAllIndex = i;
 			}
 		}
+
+		RuntimeUnionHelpers.ValidateDuckTypingSignatures(typeof(TBase).FullName ?? typeof(TBase).Name, signatures);
 	}
 
 	public override void Write(ref JsonWriter writer, in TBase? value, SerializationContext context)
@@ -240,21 +246,7 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 		byte[] rawUtf8 = Encoding.UTF8.GetBytes(raw);
 
 		HashSet<string> presentNames = this.ScanPropertyNames(rawUtf8, context);
-
-		int match = -1;
-		for (int i = 0; i < this.cases.Length; i++)
-		{
-			if (AllPresent(this.cases[i].RequiredPropertyNames, presentNames))
-			{
-				if (match >= 0)
-				{
-					throw new FormatException($"The JSON object is ambiguous for duck-typing union '{typeof(TBase).FullName}': it matches both '{this.cases[match].CaseType.FullName}' and '{this.cases[i].CaseType.FullName}'.");
-				}
-
-				match = i;
-			}
-		}
-
+		int match = this.SelectCase(presentNames);
 		if (match < 0)
 		{
 			throw new FormatException($"The JSON object provides insufficient evidence to select a duck-typing union case for '{typeof(TBase).FullName}'; no configured case had all its required properties present.");
@@ -264,7 +256,77 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 		return this.cases[match].Converter.Read(ref inner, context);
 	}
 
-	private static bool AllPresent(IReadOnlyCollection<string> required, HashSet<string> present)
+	private int SelectCase(HashSet<string> presentNames)
+	{
+		int matchCount = 0;
+		int[] matches = new int[this.cases.Length];
+		for (int i = 0; i < this.cases.Length; i++)
+		{
+			HashSet<string> required = this.cases[i].RequiredPropertyNames;
+			if (required.Count == 0 || !AllPresent(required, presentNames))
+			{
+				continue;
+			}
+
+			matches[matchCount++] = i;
+		}
+
+		if (matchCount == 0)
+		{
+			return this.catchAllIndex;
+		}
+
+		if (matchCount == 1)
+		{
+			return matches[0];
+		}
+
+		for (int i = 0; i < matchCount; i++)
+		{
+			HashSet<string> candidate = this.cases[matches[i]].RequiredPropertyNames;
+			bool strictOverAll = true;
+			for (int j = 0; j < matchCount; j++)
+			{
+				if (i == j)
+				{
+					continue;
+				}
+
+				HashSet<string> other = this.cases[matches[j]].RequiredPropertyNames;
+				if (candidate.Count <= other.Count || !candidate.IsSupersetOf(other))
+				{
+					strictOverAll = false;
+					break;
+				}
+			}
+
+			if (strictOverAll)
+			{
+				return matches[i];
+			}
+		}
+
+		StringBuilder builder = new();
+		builder.Append("The JSON object is ambiguous for duck-typing union '");
+		builder.Append(typeof(TBase).FullName);
+		builder.Append("': it matches ");
+		for (int i = 0; i < matchCount; i++)
+		{
+			if (i > 0)
+			{
+				builder.Append(i == matchCount - 1 ? " and " : ", ");
+			}
+
+			builder.Append('\'');
+			builder.Append(this.cases[matches[i]].CaseType.FullName);
+			builder.Append('\'');
+		}
+
+		builder.Append('.');
+		throw new FormatException(builder.ToString());
+	}
+
+	private static bool AllPresent(HashSet<string> required, HashSet<string> present)
 	{
 		foreach (string name in required)
 		{
@@ -329,7 +391,7 @@ internal static class RuntimeUnionBuilder
 			JsonConverter<TBase> caseConverter = caseShape.Type == typeof(TBase) && baseConverter is not null
 				? baseConverter
 				: new JsonRuntimeUnionCaseConverter<TBase>(owner.GetOrAddConverter(caseShape));
-			IReadOnlyCollection<string> required = RuntimeUnionHelpers.GetRequiredSerializedPropertyNames(caseShape, owner);
+			HashSet<string> required = RuntimeUnionHelpers.GetRequiredSerializedPropertyNames(caseShape, owner);
 			caseEntries.Add(new(caseShape.Type, alias.Type == DerivedTypeIdentifier.AliasType.Integer ? alias.IntAlias : null, alias.Type == DerivedTypeIdentifier.AliasType.String ? alias.StringAlias : null, caseConverter, required));
 		}
 
@@ -407,11 +469,11 @@ internal static class RuntimeUnionHelpers
 {
 	/// <summary>Gets required object properties using the same metadata as the object converter.</summary>
 	/// <param name="shape">The case shape, possibly including generated union metadata.</param>
-	/// <returns>The required properties of the case's bare object contract.</returns>
+	/// <returns>The required properties of the case's bare object contract that can be read back.</returns>
 	internal static IEnumerable<IPropertyShape> GetRequiredProperties(ITypeShape shape)
 	{
-		ITypeShape bareShape = shape is IUnionTypeShape unionShape ? unionShape.BaseType : shape;
-		if (bareShape is not IObjectTypeShape objectShape)
+		IObjectTypeShape? objectShape = GetObjectShape(shape);
+		if (objectShape is null)
 		{
 			yield break;
 		}
@@ -419,20 +481,51 @@ internal static class RuntimeUnionHelpers
 		foreach (IPropertyShape property in objectShape.Properties)
 		{
 			IParameterShape? parameter = GetMatchingConstructorParameter(objectShape, property);
-			bool canReadProperty = property.HasSetter || parameter is not null
-				|| (property.HasGetter && property.PropertyType is IEnumerableTypeShape { ConstructionStrategy: CollectionConstructionStrategy.Mutable } or IDictionaryTypeShape { ConstructionStrategy: CollectionConstructionStrategy.Mutable });
-			if (canReadProperty && property.PropertyType.Type != typeof(UnusedDataPacket) && IsRequiredProperty(property, parameter))
+			if (CanReadProperty(property, parameter) && property.PropertyType.Type != typeof(UnusedDataPacket) && IsRequiredProperty(property, parameter))
 			{
 				yield return property;
 			}
 		}
 	}
 
+	/// <summary>Reports whether the case is an object contract.</summary>
+	/// <param name="shape">The case shape.</param>
+	/// <returns><see langword="true"/> when the bare contract is an object.</returns>
+	internal static bool IsObjectShape(ITypeShape shape) => GetObjectShape(shape) is not null;
+
+	/// <summary>Reports a required member that cannot contribute evidence because it cannot be read.</summary>
+	/// <param name="shape">The case shape.</param>
+	/// <returns><see langword="true"/> when such a member exists.</returns>
+	internal static bool HasRequiredPropertyThatCannotBeRead(ITypeShape shape)
+	{
+		IObjectTypeShape? objectShape = GetObjectShape(shape);
+		if (objectShape is null)
+		{
+			return false;
+		}
+
+		foreach (IPropertyShape property in objectShape.Properties)
+		{
+			IParameterShape? parameter = GetMatchingConstructorParameter(objectShape, property);
+			if (property.PropertyType.Type == typeof(UnusedDataPacket) || !IsRequiredProperty(property, parameter))
+			{
+				continue;
+			}
+
+			if (!CanReadProperty(property, parameter))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	/// <summary>Resolves required property names using the serializer's naming and comparison policies.</summary>
 	/// <param name="shape">The case shape.</param>
 	/// <param name="owner">The converter cache with the effective serializer configuration.</param>
 	/// <returns>The required serialized property names.</returns>
-	internal static IReadOnlyCollection<string> GetRequiredSerializedPropertyNames(ITypeShape shape, ConverterCache owner)
+	internal static HashSet<string> GetRequiredSerializedPropertyNames(ITypeShape shape, ConverterCache owner)
 	{
 		HashSet<string> required = new(owner.PropertyNameComparer);
 		foreach (IPropertyShape property in GetRequiredProperties(shape))
@@ -441,6 +534,48 @@ internal static class RuntimeUnionHelpers
 		}
 
 		return required;
+	}
+
+	/// <summary>Rejects duck-typing unions whose required names cannot choose a case.</summary>
+	/// <param name="unionTypeName">The closed union type name, for the error message.</param>
+	/// <param name="cases">Each case and its required serialized names.</param>
+	/// <exception cref="NotSupportedException">More than one case has no required names, or two cases require the same names.</exception>
+	internal static void ValidateDuckTypingSignatures(string unionTypeName, IReadOnlyList<(Type CaseType, HashSet<string> Required)> cases)
+	{
+		int catchAll = -1;
+		for (int i = 0; i < cases.Count; i++)
+		{
+			if (cases[i].Required.Count != 0)
+			{
+				continue;
+			}
+
+			if (catchAll >= 0)
+			{
+				throw new NotSupportedException($"Duck-typing union '{unionTypeName}' can include only one case with no required properties. Both '{cases[catchAll].CaseType.FullName}' and '{cases[i].CaseType.FullName}' qualify.");
+			}
+
+			catchAll = i;
+		}
+
+		for (int i = 0; i < cases.Count; i++)
+		{
+			HashSet<string> required = cases[i].Required;
+			if (required.Count == 0)
+			{
+				continue;
+			}
+
+			for (int j = i + 1; j < cases.Count; j++)
+			{
+				HashSet<string> other = cases[j].Required;
+				if (other.Count > 0 && required.SetEquals(other))
+				{
+					string names = string.Join(", ", required.OrderBy(static name => name, StringComparer.Ordinal));
+					throw new NotSupportedException($"Duck-typing union '{unionTypeName}' cannot distinguish '{cases[i].CaseType.FullName}' from '{cases[j].CaseType.FullName}' because they require the same properties: {names}.");
+				}
+			}
+		}
 	}
 
 	/// <summary>Matches constructor metadata to a property, preferring an exact name over a unique case-insensitive match.</summary>
@@ -491,4 +626,14 @@ internal static class RuntimeUnionHelpers
 
 		return false;
 	}
+
+	private static IObjectTypeShape? GetObjectShape(ITypeShape shape)
+	{
+		ITypeShape bareShape = shape is IUnionTypeShape unionShape ? unionShape.BaseType : shape;
+		return bareShape as IObjectTypeShape;
+	}
+
+	private static bool CanReadProperty(IPropertyShape property, IParameterShape? parameter)
+		=> property.HasSetter || parameter is not null
+			|| (property.HasGetter && property.PropertyType is IEnumerableTypeShape { ConstructionStrategy: CollectionConstructionStrategy.Mutable } or IDictionaryTypeShape { ConstructionStrategy: CollectionConstructionStrategy.Mutable });
 }
