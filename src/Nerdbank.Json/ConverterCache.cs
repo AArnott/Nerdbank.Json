@@ -18,8 +18,8 @@ internal sealed class ConverterCache : ITypeShapeFunc
 	private readonly JsonSerializerConfiguration configuration;
 	private readonly Func<ITypeShape, CacheEntry> createCacheEntry;
 	private CacheEntry? lastConverter;
-	private MultiProviderTypeCache? cachedConverters;
-	private MultiProviderTypeCache? nativeAotCachedConverters;
+	private ConverterGenerationCache? cachedConverters;
+	private ConverterGenerationCache? nativeAotCachedConverters;
 
 	internal ConverterCache(JsonSerializerConfiguration configuration)
 	{
@@ -65,17 +65,15 @@ internal sealed class ConverterCache : ITypeShapeFunc
 	/// <inheritdoc cref="JsonSerializerConfiguration.UnionTypeAliasProvider"/>
 	internal IUnionTypeAliasProvider? UnionTypeAliasProvider => this.configuration.UnionTypeAliasProvider;
 
-	private MultiProviderTypeCache CachedConverters => Volatile.Read(ref this.cachedConverters) ?? LazyInitializer.EnsureInitialized(ref this.cachedConverters, () => new()
-	{
-		DelayedValueFactory = new DelayedJsonConverterFactory(),
-		ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: false),
-	})!;
+	// These caches must not be PolyType's MultiProviderTypeCache: its ConditionalWeakTable keys (providers and types)
+	// typically live forever, and its values refer back to this instance, which would root this serializer configuration.
+	private ConverterGenerationCache CachedConverters => Volatile.Read(ref this.cachedConverters) ?? LazyInitializer.EnsureInitialized(ref this.cachedConverters, () => new(
+		(cache, ctx) => new JsonStandardVisitor(this, cache, ctx, directShapeDispatch: false),
+		new DelayedJsonConverterFactory()))!;
 
-	private MultiProviderTypeCache NativeAotCachedConverters => Volatile.Read(ref this.nativeAotCachedConverters) ?? LazyInitializer.EnsureInitialized(ref this.nativeAotCachedConverters, () => new()
-	{
-		DelayedValueFactory = new DelayedJsonConverterFactory(),
-		ValueBuilderFactory = ctx => new JsonStandardVisitor(this, ctx, directShapeDispatch: true),
-	})!;
+	private ConverterGenerationCache NativeAotCachedConverters => Volatile.Read(ref this.nativeAotCachedConverters) ?? LazyInitializer.EnsureInitialized(ref this.nativeAotCachedConverters, () => new(
+		(cache, ctx) => new JsonStandardVisitor(this, cache, ctx, directShapeDispatch: true),
+		new DelayedJsonConverterFactory()))!;
 
 	object? ITypeShapeFunc.Invoke<T>(ITypeShape<T> typeShape, object? state) => this.ResolveConverter(typeShape);
 
@@ -256,7 +254,12 @@ internal sealed class ConverterCache : ITypeShapeFunc
 
 		if (this.configuration.DerivedTypeUnions.TryGetDerivedTypeUnion(shape.Type, out DerivedTypeUnion? unionEntry) && unionEntry is not null)
 		{
-			visitor ??= new JsonStandardVisitor(this, this.NativeAotCachedConverters.GetScopedCache(shape).CreateGenerationContext(), directShapeDispatch: true);
+			if (visitor is null)
+			{
+				this.NativeAotCachedConverters.CreateGenerationContext(out ITypeShapeFunc valueBuilder);
+				visitor = (TypeShapeVisitor)valueBuilder;
+			}
+
 			converter = RuntimeUnionBuilder.Build(this, shape, unionEntry, visitor);
 			return true;
 		}
