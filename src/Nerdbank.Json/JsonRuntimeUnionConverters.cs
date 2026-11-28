@@ -138,7 +138,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 
 		context.DepthStep();
 
-		JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader, context.Cache.AllowOutOfOrderMetadataProperties, context, out bool discriminatorConsumed);
+		JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader, context.Cache.AllowOutOfOrderDiscriminator, context, out bool discriminatorConsumed);
 		return (TBase?)(objectConverter is IJsonUnionObjectConverter { SupportsInlineObject: true } inlineConverter
 			? discriminatorConsumed
 				? inlineConverter.ReadObjectWithMetadataAfterDiscriminator(ref reader, context)
@@ -149,7 +149,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 	internal override bool TryNavigate(ref JsonReader reader, in JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
 		context.DepthStep();
-		JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader, context.Cache.AllowOutOfOrderMetadataProperties, context);
+		JsonConverter objectConverter = this.objectEnvelope.ReadDiscriminator(ref reader, context.Cache.AllowOutOfOrderDiscriminator, context);
 		if (objectConverter is not IJsonUnionObjectConverter { SupportsInlineObject: true })
 		{
 			JsonUnionObjectEnvelope.ReadValueStart(ref reader, context);
@@ -161,7 +161,7 @@ internal sealed class JsonRuntimeUnionConverter<TBase> : JsonConverter<TBase>
 	internal override async ValueTask<int> TryNavigateAsync(JsonAsyncReader reader, JsonNavigationSegment segment, JsonNavigationOptions options, SerializationContext context)
 	{
 		context.DepthStep();
-		(JsonConverter objectConverter, bool discriminatorConsumed) = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context.Cache.AllowOutOfOrderMetadataProperties, context).ConfigureAwait(false);
+		(JsonConverter objectConverter, bool discriminatorConsumed) = await this.objectEnvelope.ReadDiscriminatorAsync(reader, context.Cache.AllowOutOfOrderDiscriminator, context).ConfigureAwait(false);
 		if (discriminatorConsumed)
 		{
 			int inlineInner = objectConverter is IJsonUnionObjectConverter { SupportsInlineObject: true } inlineConverter
@@ -192,30 +192,64 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 	private readonly RuntimeUnionCaseEntry<TBase>[] cases;
 	private readonly Dictionary<Type, int> byType;
 	private readonly StringComparer nameComparer;
-	private readonly bool allowTrailingCommas;
-	private readonly JsonCommentHandling commentHandling;
+	private readonly bool ignoreCase;
 	private readonly int catchAllIndex;
+	private readonly string[] evidenceNames;
+	private readonly byte[][] evidenceUtf8;
+	private readonly int wordCount;
+	private readonly ulong[] caseMasks;
 
-	internal JsonDuckTypingUnionConverter(RuntimeUnionCaseEntry<TBase>[] cases, StringComparer nameComparer, bool allowTrailingCommas, JsonCommentHandling commentHandling)
+	internal JsonDuckTypingUnionConverter(RuntimeUnionCaseEntry<TBase>[] cases, StringComparer nameComparer)
 	{
 		this.cases = cases;
 		this.nameComparer = nameComparer;
-		this.allowTrailingCommas = allowTrailingCommas;
-		this.commentHandling = commentHandling;
+		this.ignoreCase = nameComparer.Equals("A", "a");
 		this.byType = new(cases.Length);
 		this.catchAllIndex = -1;
 		(Type CaseType, HashSet<string> Required)[] signatures = new (Type, HashSet<string>)[cases.Length];
+		Dictionary<string, int> evidenceIndex = new(nameComparer);
+		List<string> names = [];
 		for (int i = 0; i < cases.Length; i++)
 		{
 			this.byType[cases[i].CaseType] = i;
-			signatures[i] = (cases[i].CaseType, cases[i].RequiredPropertyNames);
-			if (cases[i].RequiredPropertyNames.Count == 0)
+			HashSet<string> required = cases[i].RequiredPropertyNames;
+			signatures[i] = (cases[i].CaseType, required);
+			if (required.Count == 0)
 			{
 				this.catchAllIndex = i;
+			}
+
+			foreach (string name in required)
+			{
+				if (!evidenceIndex.ContainsKey(name))
+				{
+					evidenceIndex.Add(name, names.Count);
+					names.Add(name);
+				}
 			}
 		}
 
 		RuntimeUnionHelpers.ValidateDuckTypingSignatures(typeof(TBase).FullName ?? typeof(TBase).Name, signatures);
+		this.evidenceNames = names.ToArray();
+		this.evidenceUtf8 = new byte[names.Count][];
+		for (int i = 0; i < names.Count; i++)
+		{
+			this.evidenceUtf8[i] = Encoding.UTF8.GetBytes(names[i]);
+		}
+
+		this.wordCount = names.Count == 0 ? 0 : ((names.Count - 1) / 64) + 1;
+		this.caseMasks = new ulong[cases.Length * Math.Max(this.wordCount, 1)];
+		if (this.wordCount > 0)
+		{
+			for (int i = 0; i < cases.Length; i++)
+			{
+				foreach (string name in cases[i].RequiredPropertyNames)
+				{
+					int bit = evidenceIndex[name];
+					this.caseMasks[(i * this.wordCount) + (bit / 64)] |= 1UL << (bit % 64);
+				}
+			}
+		}
 	}
 
 	public override void Write(ref JsonWriter writer, in TBase? value, SerializationContext context)
@@ -242,28 +276,23 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 			return default;
 		}
 
-		string raw = reader.ReadRawValue(context);
-		byte[] rawUtf8 = Encoding.UTF8.GetBytes(raw);
-
-		HashSet<string> presentNames = this.ScanPropertyNames(rawUtf8, context);
-		int match = this.SelectCase(presentNames);
-		if (match < 0)
-		{
-			throw new FormatException($"The JSON object provides insufficient evidence to select a duck-typing union case for '{typeof(TBase).FullName}'; no configured case had all its required properties present.");
-		}
-
-		JsonReader inner = new(rawUtf8, this.allowTrailingCommas, this.commentHandling);
-		return this.cases[match].Converter.Read(ref inner, context);
+		JsonReader peek = reader.CreatePeekReader();
+		Span<ulong> present = this.wordCount <= 4 ? stackalloc ulong[4] : new ulong[this.wordCount];
+		present = present[..this.wordCount];
+		present.Clear();
+		this.ScanEvidence(ref peek, context, present);
+		int match = this.SelectCase(present);
+		return this.cases[match].Converter.Read(ref reader, context);
 	}
 
-	private int SelectCase(HashSet<string> presentNames)
+	private int SelectCase(scoped ReadOnlySpan<ulong> present)
 	{
 		int matchCount = 0;
-		int[] matches = new int[this.cases.Length];
+		Span<int> matches = this.cases.Length <= 16 ? stackalloc int[16] : new int[this.cases.Length];
+		matches = matches[..this.cases.Length];
 		for (int i = 0; i < this.cases.Length; i++)
 		{
-			HashSet<string> required = this.cases[i].RequiredPropertyNames;
-			if (required.Count == 0 || !AllPresent(required, presentNames))
+			if (i == this.catchAllIndex || !this.Covers(present, i))
 			{
 				continue;
 			}
@@ -273,7 +302,12 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 
 		if (matchCount == 0)
 		{
-			return this.catchAllIndex;
+			return this.catchAllIndex >= 0
+				? this.catchAllIndex
+				: throw new JsonSerializationException($"The JSON object provides insufficient evidence to select a duck-typing union case for '{typeof(TBase).FullName}'; no configured case had all its required properties present.")
+				{
+					Code = JsonSerializationException.ErrorCode.NoMatchingUnionCase,
+				};
 		}
 
 		if (matchCount == 1)
@@ -283,17 +317,10 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 
 		for (int i = 0; i < matchCount; i++)
 		{
-			HashSet<string> candidate = this.cases[matches[i]].RequiredPropertyNames;
 			bool strictOverAll = true;
 			for (int j = 0; j < matchCount; j++)
 			{
-				if (i == j)
-				{
-					continue;
-				}
-
-				HashSet<string> other = this.cases[matches[j]].RequiredPropertyNames;
-				if (candidate.Count <= other.Count || !candidate.IsSupersetOf(other))
+				if (i != j && !this.IsStrictSuperset(matches[i], matches[j]))
 				{
 					strictOverAll = false;
 					break;
@@ -323,14 +350,19 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 		}
 
 		builder.Append('.');
-		throw new FormatException(builder.ToString());
+		throw new JsonSerializationException(builder.ToString())
+		{
+			Code = JsonSerializationException.ErrorCode.AmbiguousUnionCase,
+		};
 	}
 
-	private static bool AllPresent(HashSet<string> required, HashSet<string> present)
+	private bool Covers(scoped ReadOnlySpan<ulong> present, int caseIndex)
 	{
-		foreach (string name in required)
+		int offset = caseIndex * this.wordCount;
+		for (int word = 0; word < this.wordCount; word++)
 		{
-			if (!present.Contains(name))
+			ulong required = this.caseMasks[offset + word];
+			if ((present[word] & required) != required)
 			{
 				return false;
 			}
@@ -339,32 +371,154 @@ internal sealed class JsonDuckTypingUnionConverter<TBase> : JsonConverter<TBase>
 		return true;
 	}
 
-	private HashSet<string> ScanPropertyNames(byte[] rawUtf8, SerializationContext context)
+	private bool IsStrictSuperset(int candidate, int other)
+	{
+		bool extra = false;
+		int candidateOffset = candidate * this.wordCount;
+		int otherOffset = other * this.wordCount;
+		for (int word = 0; word < this.wordCount; word++)
+		{
+			ulong left = this.caseMasks[candidateOffset + word];
+			ulong right = this.caseMasks[otherOffset + word];
+			if ((left & right) != right)
+			{
+				return false;
+			}
+
+			if (left != right)
+			{
+				extra = true;
+			}
+		}
+
+		return extra;
+	}
+
+	private void ScanEvidence(ref JsonReader reader, SerializationContext context, scoped Span<ulong> present)
 	{
 		context.DepthStep();
-		HashSet<string> names = new(this.nameComparer);
-		JsonReader reader = new(rawUtf8, this.allowTrailingCommas, this.commentHandling);
+		int maxMembers = context.Security.MaxObjectMemberCount;
 		reader.ReadStartObject();
 		if (reader.TryReadEndObject())
 		{
-			return names;
+			return;
 		}
 
+		int count = 0;
 		while (true)
 		{
-			string name = reader.ReadRequiredString();
+			if (count++ >= maxMembers)
+			{
+				throw new FormatException($"The JSON object exceeds the configured maximum of {maxMembers} members.");
+			}
+
+			int evidence = this.ReadEvidenceIndex(ref reader);
+			if (evidence >= 0)
+			{
+				present[evidence / 64] |= 1UL << (evidence % 64);
+			}
+
 			reader.ReadNameSeparator();
 			reader.Skip(context);
-			names.Add(name);
 			if (reader.TryReadEndObject())
 			{
-				break;
+				return;
 			}
 
 			reader.ReadValueSeparator();
 		}
+	}
 
-		return names;
+	private int ReadEvidenceIndex(ref JsonReader reader)
+	{
+		if (reader.TryReadUnescapedUtf8StringToken(out ReadOnlySpan<byte> token, out _, out _))
+		{
+			if (!token.IsEmpty)
+			{
+				return this.FindEvidence(token[1..^1]);
+			}
+		}
+
+		return this.FindEvidence(reader.ReadRequiredString());
+	}
+
+	private int FindEvidence(ReadOnlySpan<byte> utf8Name)
+	{
+		if (this.ignoreCase && ContainsNonAscii(utf8Name))
+		{
+			return this.FindEvidence(Encoding.UTF8.GetString(utf8Name));
+		}
+
+		for (int i = 0; i < this.evidenceUtf8.Length; i++)
+		{
+			if (NamesEqual(utf8Name, this.evidenceUtf8[i], this.ignoreCase))
+			{
+				return i;
+			}
+		}
+
+		return -1;
+	}
+
+	private int FindEvidence(string name)
+	{
+		for (int i = 0; i < this.evidenceNames.Length; i++)
+		{
+			if (this.nameComparer.Equals(name, this.evidenceNames[i]))
+			{
+				return i;
+			}
+		}
+
+		return -1;
+	}
+
+	private static bool ContainsNonAscii(ReadOnlySpan<byte> utf8Name)
+	{
+		foreach (byte value in utf8Name)
+		{
+			if (value >= 0x80)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	private static bool NamesEqual(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right, bool ignoreCase)
+	{
+		if (left.Length != right.Length)
+		{
+			return false;
+		}
+
+		if (!ignoreCase)
+		{
+			return left.SequenceEqual(right);
+		}
+
+		for (int i = 0; i < left.Length; i++)
+		{
+			byte x = left[i];
+			byte y = right[i];
+			if (x >= (byte)'A' && x <= (byte)'Z')
+			{
+				x += 32;
+			}
+
+			if (y >= (byte)'A' && y <= (byte)'Z')
+			{
+				y += 32;
+			}
+
+			if (x != y)
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 }
 
@@ -403,7 +557,7 @@ internal static class RuntimeUnionBuilder
 		VerifyUniqueAliases(caseEntries);
 
 		return entry is DerivedTypeDuckTyping
-			? new JsonDuckTypingUnionConverter<TBase>([.. caseEntries], nameComparer, owner.AllowTrailingCommas, owner.ReadCommentHandling)
+			? new JsonDuckTypingUnionConverter<TBase>([.. caseEntries], nameComparer)
 			: new JsonRuntimeUnionConverter<TBase>(baseConverter, [.. caseEntries]);
 	}
 

@@ -133,7 +133,7 @@ public partial class CSharpUnionTests : TestBase
 	{
 		JsonSerializer serializer = this.Serializer with
 		{
-			AllowOutOfOrderMetadataProperties = true,
+			AllowOutOfOrderDiscriminator = true,
 			PropertyNameCaseInsensitive = true,
 			PropertyNamingPolicy = new UppercaseTypeNamingPolicy(),
 		};

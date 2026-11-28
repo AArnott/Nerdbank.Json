@@ -178,7 +178,7 @@ public partial class JsonRuntimeUnionTests
 	{
 		JsonSerializer serializer = new()
 		{
-			AllowOutOfOrderMetadataProperties = true,
+			AllowOutOfOrderDiscriminator = true,
 			DerivedTypeUnions = [new DerivedShapeMapping<Shape2> { { "circle", Shape<Circle, Circle>() } }],
 		};
 		Shape2 expected = new Circle(1.5);
@@ -188,8 +188,15 @@ public partial class JsonRuntimeUnionTests
 		using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
 		Assert.Equal(expected, await serializer.DeserializeAsync(stream, Shape<Shape2, Shape2>()));
 
-		JsonSerializer orderedSerializer = serializer with { AllowOutOfOrderMetadataProperties = false };
-		Assert.Throws<JsonSerializationException>(() => orderedSerializer.Deserialize(json, Shape<Shape2, Shape2>()));
+		JsonSerializer orderedSerializer = serializer with { AllowOutOfOrderDiscriminator = false };
+		JsonSerializationException rejected = Assert.Throws<JsonSerializationException>(() => orderedSerializer.Deserialize(json, Shape<Shape2, Shape2>()));
+		Assert.Equal(JsonSerializationException.ErrorCode.NoMatchingUnionCase, rejected.Code);
+		Assert.Contains("AllowOutOfOrderDiscriminator", rejected.Message, StringComparison.Ordinal);
+
+		JsonSerializationException missing = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("{}", Shape<Shape2, Shape2>()));
+		Assert.Equal(JsonSerializationException.ErrorCode.UnionTagRequired, missing.Code);
+		JsonSerializationException unknown = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"$type":"missing","radius":1}""", Shape<Shape2, Shape2>()));
+		Assert.Equal(JsonSerializationException.ErrorCode.NoMatchingUnionCase, unknown.Code);
 	}
 
 	[Test]

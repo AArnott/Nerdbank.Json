@@ -74,6 +74,26 @@ public class JsonSerializationException : Exception
 		/// Deserialization failed because the data contained a token that was not expected at this time.
 		/// </summary>
 		UnexpectedToken,
+
+		/// <summary>
+		/// Deserialization failed because more than one union case matched and none was a unique strict superset of the others.
+		/// </summary>
+		AmbiguousUnionCase,
+
+		/// <summary>
+		/// Deserialization failed because no union case matched the value.
+		/// </summary>
+		NoMatchingUnionCase,
+
+		/// <summary>
+		/// Deserialization failed because a tagged union value did not include its <c>$type</c> discriminator.
+		/// </summary>
+		UnionTagRequired,
+
+		/// <summary>
+		/// Deserialization failed because a discriminator value did not match the case being read.
+		/// </summary>
+		DiscriminatorMismatch,
 	}
 
 	/// <summary>

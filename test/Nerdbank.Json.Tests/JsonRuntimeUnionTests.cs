@@ -144,6 +144,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 		};
 
 		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"shared":1,"a":2,"b":3}""", Shape<Overlap, Overlap>()));
+		Assert.Equal(JsonSerializationException.ErrorCode.AmbiguousUnionCase, ex.Code);
 		Assert.Contains("ambiguous", ex.Message, StringComparison.OrdinalIgnoreCase);
 	}
 
@@ -156,6 +157,7 @@ public partial class JsonRuntimeUnionTests : TestBase
 		};
 
 		JsonSerializationException ex = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"unrelated":1}""", Shape<Shape2, Shape2>()));
+		Assert.Equal(JsonSerializationException.ErrorCode.NoMatchingUnionCase, ex.Code);
 		Assert.Contains("insufficient", ex.Message, StringComparison.OrdinalIgnoreCase);
 	}
 
@@ -213,6 +215,24 @@ public partial class JsonRuntimeUnionTests : TestBase
 		JsonSerializer serializer = DuckSerializer();
 
 		Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"radius":2.5,}""", Shape<Shape2, Shape2>()));
+	}
+
+	[Test]
+	public void DuckTyping_EscapedEvidenceName_IsMatchedInPlace()
+	{
+		JsonSerializer serializer = DuckSerializer();
+		Assert.Equal(new Circle(2.5), serializer.Deserialize("""{"\u0072adius":2.5}""", Shape<Shape2, Shape2>()));
+	}
+
+	[Test]
+	public void DuckTyping_ScanHonorsMaxObjectMemberCount()
+	{
+		JsonSerializer serializer = DuckSerializer() with
+		{
+			StartingContext = new SerializationContext { Security = new() { MaxObjectMemberCount = 1 } },
+		};
+		JsonSerializationException error = Assert.Throws<JsonSerializationException>(() => serializer.Deserialize("""{"radius":2.5,"extra":true}""", Shape<Shape2, Shape2>()));
+		Assert.Contains("maximum of 1", error.Message, StringComparison.Ordinal);
 	}
 
 	[Test]

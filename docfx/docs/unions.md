@@ -66,7 +66,7 @@ Object properties sit beside `$type`.
 Scalars and custom converters use `$value`.
 The base contract uses `"$type":"$base"`.
 Integer tags are decimal strings, so tag `7` is `"$type":"7"`.
-`$type` is the first property unless [out-of-order metadata](#security) is enabled.
+`$type` is the first property unless [out-of-order discriminators](#security) are enabled.
 
 ## C# unions
 
@@ -89,7 +89,7 @@ An ambiguous union is rejected instead of guessed.
 | Option | Purpose |
 |--|--|
 | <xref:Nerdbank.Json.JsonSerializer.UnionTypeAliasProvider> | Custom `$type` values. A case with an alias is always tagged. |
-| <xref:Nerdbank.Json.JsonSerializer.AllowOutOfOrderMetadataProperties> | Allow `$type` after other properties. See [Security](#security). |
+| <xref:Nerdbank.Json.JsonSerializer.AllowOutOfOrderDiscriminator> | Allow `$type` after other properties. See [Security](#security). |
 
 ### Example
 
@@ -183,10 +183,9 @@ See [Custom case identifiers](#custom-case-identifiers).
 
 ## Security
 
-`$type` must be the first property, so the reader can choose a case without buffering.
-<xref:Nerdbank.Json.JsonSerializer.AllowOutOfOrderMetadataProperties> allows it later.
-The union value is then buffered, and nested unions can take quadratic time.
-Enable that only for trusted input.
+`$type` must be the first property.
+<xref:Nerdbank.Json.JsonSerializer.AllowOutOfOrderDiscriminator> accepts it later, but then the whole union value is buffered and nested unions can take quadratic time.
+Enable it only for trusted input.
 See [Security](security.md).
 
 ## Custom converters
