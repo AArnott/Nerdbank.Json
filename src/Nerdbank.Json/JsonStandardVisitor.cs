@@ -218,17 +218,16 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 			: null;
 		Getter<TUnion, int> getUnionCaseIndex = unionShape.GetGetUnionCaseIndex();
 		var serializers = new JsonUnionCaseMetadata<TUnion>[unionShape.UnionCases.Count];
+		JsonCSharpUnionCaseRepresentation[]? representations = isCSharpUnion
+			? JsonCSharpUnionRules.Plan(unionShape, owner, tagging, aliasResolution)
+			: null;
 
 		for (int i = 0; i < unionShape.UnionCases.Count; i++)
 		{
 			IUnionCaseShape unionCase = unionShape.UnionCases[i];
 			var caseConverter = (JsonConverter<TUnion>)unionCase.Accept(this, caseState)!;
 			DerivedTypeIdentifier alias = aliases[i];
-			JsonCSharpUnionCaseRepresentation representation = isCSharpUnion
-				? !typeof(TUnion).IsValueType && unionCase.IsNullable
-					? JsonCSharpUnionCaseRepresentation.Tagged
-					: JsonCSharpUnionRules.GetRepresentation(unionCase.UnionCaseType, aliasResolution.ExplicitlySpecified[i], owner, tagging)
-				: JsonCSharpUnionCaseRepresentation.Tagged;
+			JsonCSharpUnionCaseRepresentation representation = representations?[i] ?? JsonCSharpUnionCaseRepresentation.Tagged;
 			if (alias.Type == DerivedTypeIdentifier.AliasType.Integer)
 			{
 				serializers[i] = JsonUnionCaseMetadata<TUnion>.Create(alias.IntAlias, caseConverter, representation, unionCase.IsNullable);
@@ -240,7 +239,7 @@ internal sealed class JsonStandardVisitor(ConverterCache owner, TypeGenerationCo
 		}
 
 		UnionDiscriminatorBinding.ValidateUnion(unionShape.UnionCases.Select(static unionCase => unionCase.UnionCaseType), owner);
-		return new JsonUnionConverter<TUnion>(baseConverter, getUnionCaseIndex, serializers, isCSharpUnion, tagging);
+		return new JsonUnionConverter<TUnion>(baseConverter, getUnionCaseIndex, serializers, isCSharpUnion, tagging, isCSharpUnion ? unionShape : null, owner);
 	}
 
 	public override object? VisitUnionCase<TUnionCase, TUnion>(IUnionCaseShape<TUnionCase, TUnion> unionCaseShape, object? state = null)

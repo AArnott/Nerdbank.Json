@@ -17,6 +17,9 @@ internal enum JsonCSharpUnionCaseRepresentation
 	String,
 	Array,
 	Object,
+
+	// A non-recursive C# union case whose inner cases are written and read directly.
+	Nested,
 }
 
 internal sealed class JsonCSharpUnionFormat
@@ -26,6 +29,12 @@ internal sealed class JsonCSharpUnionFormat
 
 	internal JsonCSharpUnionFormat(IReadOnlyList<JsonCSharpUnionCaseRepresentation> representations, UnionTagging mode)
 	{
+		// Auto and Untagged already decided which cases are tagged. Tagged still wraps colliding kinds.
+		if (mode != UnionTagging.Tagged)
+		{
+			return;
+		}
+
 		bool hasTagged = false;
 		Dictionary<JsonCSharpUnionCaseRepresentation, int> counts = [];
 		foreach (JsonCSharpUnionCaseRepresentation representation in representations)
@@ -93,7 +102,22 @@ internal static class JsonCSharpUnionRules
 		return owner.DefaultUnionTagging;
 	}
 
+	internal static JsonCSharpUnionCaseRepresentation[] Plan(IUnionTypeShape unionShape, ConverterCache owner, UnionTagging mode)
+	{
+		HashSet<Type> stack = [];
+		return Plan(unionShape, owner, mode, stack, aliases: null);
+	}
+
+	internal static JsonCSharpUnionCaseRepresentation[] Plan(IUnionTypeShape unionShape, ConverterCache owner, UnionTagging mode, UnionCaseAliasesResolution aliases)
+	{
+		HashSet<Type> stack = [];
+		return Plan(unionShape, owner, mode, stack, aliases);
+	}
+
 	internal static JsonCSharpUnionCaseRepresentation GetRepresentation(ITypeShape shape, bool hasExplicitIdentifier, ConverterCache owner, UnionTagging mode)
+		=> GetRepresentation(shape, hasExplicitIdentifier, owner, mode, ancestors: null);
+
+	internal static JsonCSharpUnionCaseRepresentation GetRepresentation(ITypeShape shape, bool hasExplicitIdentifier, ConverterCache owner, UnionTagging mode, HashSet<Type>? ancestors)
 	{
 		if (hasExplicitIdentifier || owner.ShouldPreserveReferences(shape.Type) || (owner.TryGetCustomConverter(shape, out JsonConverter? customConverter) && customConverter is not null))
 		{
@@ -133,7 +157,265 @@ internal static class JsonCSharpUnionRules
 				: JsonCSharpUnionCaseRepresentation.Object;
 		}
 
+		if (shape is IUnionTypeShape union && union.UnionKind == UnionTypeShapeKind.CSharpUnion)
+		{
+			if (mode == UnionTagging.Tagged || (ancestors is not null && Reaches(shape, ancestors)))
+			{
+				return JsonCSharpUnionCaseRepresentation.Tagged;
+			}
+
+			return JsonCSharpUnionCaseRepresentation.Nested;
+		}
+
 		return JsonCSharpUnionCaseRepresentation.Tagged;
+	}
+
+	internal static JsonCSharpUnionCaseRepresentation[] Plan(IUnionTypeShape unionShape, ConverterCache owner, UnionTagging mode, HashSet<Type> stack)
+		=> Plan(unionShape, owner, mode, stack, aliases: null);
+
+	private static JsonCSharpUnionCaseRepresentation[] Plan(IUnionTypeShape unionShape, ConverterCache owner, UnionTagging mode, HashSet<Type> stack, UnionCaseAliasesResolution? aliases)
+	{
+		if (!stack.Add(unionShape.Type))
+		{
+			JsonCSharpUnionCaseRepresentation[] tagged = new JsonCSharpUnionCaseRepresentation[unionShape.UnionCases.Count];
+			for (int i = 0; i < tagged.Length; i++)
+			{
+				tagged[i] = JsonCSharpUnionCaseRepresentation.Tagged;
+			}
+
+			return tagged;
+		}
+
+		try
+		{
+			UnionCaseAliasesResolution resolved = aliases ?? UnionCaseAliases.ResolveDetailed(unionShape, owner.UnionTypeAliasProvider);
+			JsonCSharpUnionCaseRepresentation[] representations = new JsonCSharpUnionCaseRepresentation[unionShape.UnionCases.Count];
+			for (int i = 0; i < representations.Length; i++)
+			{
+				IUnionCaseShape unionCase = unionShape.UnionCases[i];
+				representations[i] = !unionShape.Type.IsValueType && unionCase.IsNullable
+					? JsonCSharpUnionCaseRepresentation.Tagged
+					: GetRepresentation(unionCase.UnionCaseType, resolved.ExplicitlySpecified[i], owner, mode, stack);
+			}
+
+			if (mode != UnionTagging.Tagged)
+			{
+				ApplyClassifiability(unionShape, representations, owner, mode, stack);
+			}
+
+			return representations;
+		}
+		finally
+		{
+			stack.Remove(unionShape.Type);
+		}
+	}
+
+	private static void ApplyClassifiability(IUnionTypeShape unionShape, JsonCSharpUnionCaseRepresentation[] representations, ConverterCache owner, UnionTagging mode, HashSet<Type> stack)
+	{
+		List<ObjectFact> facts = [];
+		for (int i = 0; i < representations.Length; i++)
+		{
+			if (representations[i] is JsonCSharpUnionCaseRepresentation.Object or JsonCSharpUnionCaseRepresentation.Nested)
+			{
+				CollectObjectFacts(i, unionShape.UnionCases[i].UnionCaseType, representations[i], owner, stack, facts);
+			}
+		}
+
+		if (facts.Count == 0)
+		{
+			return;
+		}
+
+		int catchAlls = 0;
+		for (int i = 0; i < facts.Count; i++)
+		{
+			if (facts[i].IsCatchAll)
+			{
+				catchAlls++;
+			}
+		}
+
+		bool[] unclassifiable = new bool[representations.Length];
+		for (int i = 0; i < facts.Count; i++)
+		{
+			if (!IsUniqueWinner(facts, i, catchAlls))
+			{
+				unclassifiable[facts[i].CaseIndex] = true;
+			}
+		}
+
+		for (int i = 0; i < representations.Length; i++)
+		{
+			if (!unclassifiable[i])
+			{
+				continue;
+			}
+
+			if (mode == UnionTagging.Untagged)
+			{
+				throw new NotSupportedException($"C# union '{unionShape.Type.FullName}' has object cases that cannot be distinguished without a $type wrapper. Untagged mode requires every object case to be recognizable.");
+			}
+
+			representations[i] = JsonCSharpUnionCaseRepresentation.Tagged;
+		}
+	}
+
+	private static void CollectObjectFacts(int caseIndex, ITypeShape shape, JsonCSharpUnionCaseRepresentation representation, ConverterCache owner, HashSet<Type> stack, List<ObjectFact> facts)
+	{
+		if (representation == JsonCSharpUnionCaseRepresentation.Nested && shape is IUnionTypeShape nested && nested.UnionKind == UnionTypeShapeKind.CSharpUnion)
+		{
+			UnionTagging innerMode = ResolveMode(nested, owner);
+			JsonCSharpUnionCaseRepresentation[] inner = Plan(nested, owner, innerMode, stack);
+			for (int i = 0; i < inner.Length; i++)
+			{
+				if (inner[i] is JsonCSharpUnionCaseRepresentation.Object or JsonCSharpUnionCaseRepresentation.Nested)
+				{
+					CollectObjectFacts(caseIndex, nested.UnionCases[i].UnionCaseType, inner[i], owner, stack, facts);
+				}
+			}
+
+			return;
+		}
+
+		if (representation != JsonCSharpUnionCaseRepresentation.Object || shape.Kind != TypeShapeKind.Object)
+		{
+			return;
+		}
+
+		UnionDiscriminatorBinding? discriminator = UnionDiscriminatorBinding.TryGet(shape, owner);
+		HashSet<string> required = RuntimeUnionHelpers.GetRequiredSerializedPropertyNames(shape, owner);
+		if (discriminator is not null)
+		{
+			required.Remove(discriminator.Name);
+		}
+
+		facts.Add(new ObjectFact(caseIndex, required, discriminator is not null));
+	}
+
+	private static bool IsUniqueWinner(List<ObjectFact> facts, int index, int catchAlls)
+	{
+		ObjectFact fact = facts[index];
+		if (fact.HasDiscriminator)
+		{
+			return true;
+		}
+
+		int matches = 0;
+		int winner = -1;
+		for (int i = 0; i < facts.Count; i++)
+		{
+			if (facts[i].IsCatchAll || !IsSubset(facts[i].Required, fact.Required))
+			{
+				continue;
+			}
+
+			matches++;
+			winner = i;
+		}
+
+		if (matches == 0)
+		{
+			return fact.IsCatchAll && catchAlls == 1;
+		}
+
+		if (matches == 1)
+		{
+			return winner == index;
+		}
+
+		for (int candidate = 0; candidate < facts.Count; candidate++)
+		{
+			if (facts[candidate].IsCatchAll || !IsSubset(facts[candidate].Required, fact.Required))
+			{
+				continue;
+			}
+
+			bool strictOverAll = true;
+			for (int other = 0; other < facts.Count; other++)
+			{
+				if (other == candidate || facts[other].IsCatchAll || !IsSubset(facts[other].Required, fact.Required))
+				{
+					continue;
+				}
+
+				if (!IsStrictSuperset(facts[candidate].Required, facts[other].Required))
+				{
+					strictOverAll = false;
+					break;
+				}
+			}
+
+			if (strictOverAll)
+			{
+				return candidate == index;
+			}
+		}
+
+		return false;
+	}
+
+	private static bool IsSubset(HashSet<string> required, HashSet<string> present)
+	{
+		foreach (string name in required)
+		{
+			if (!present.Contains(name))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private static bool IsStrictSuperset(HashSet<string> candidate, HashSet<string> other)
+	{
+		if (candidate.Count <= other.Count)
+		{
+			return false;
+		}
+
+		foreach (string name in other)
+		{
+			if (!candidate.Contains(name))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	private static bool Reaches(ITypeShape shape, HashSet<Type> targets)
+	{
+		HashSet<Type> seen = [];
+		return Reaches(shape, targets, seen);
+	}
+
+	private static bool Reaches(ITypeShape shape, HashSet<Type> targets, HashSet<Type> seen)
+	{
+		if (!seen.Add(shape.Type))
+		{
+			return false;
+		}
+
+		if (targets.Contains(shape.Type))
+		{
+			return true;
+		}
+
+		if (shape is IUnionTypeShape union)
+		{
+			foreach (IUnionCaseShape unionCase in union.UnionCases)
+			{
+				if (Reaches(unionCase.UnionCaseType, targets, seen))
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
 	}
 
 	private static bool IsNumber(Type type)
@@ -177,4 +459,23 @@ internal static class JsonCSharpUnionRules
 			|| type == typeof(System.Text.Rune)
 #endif
 			;
+
+	private readonly struct ObjectFact
+	{
+		internal ObjectFact(int caseIndex, HashSet<string> required, bool hasDiscriminator)
+		{
+			this.CaseIndex = caseIndex;
+			this.Required = required;
+			this.HasDiscriminator = hasDiscriminator;
+			this.IsCatchAll = !hasDiscriminator && required.Count == 0;
+		}
+
+		internal int CaseIndex { get; }
+
+		internal HashSet<string> Required { get; }
+
+		internal bool HasDiscriminator { get; }
+
+		internal bool IsCatchAll { get; }
+	}
 }

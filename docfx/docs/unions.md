@@ -8,7 +8,7 @@ This page covers every kind of union Nerdbank.Json supports and the options that
 | You have | Use | Default shape |
 |--|--|--|
 | A base type with derived types | [Derived type hierarchies](#derived-type-hierarchies) | `{"$type":"Cow", ...}` |
-| A C# 15 `union` | [C# unions](#c-unions) | Bare when its JSON kind is unique; otherwise `{"$type": ...}` |
+| A C# 15 `union` | [C# unions](#c-unions) | Bare when the case can be recognized; otherwise `{"$type": ...}` |
 | JSON with no discriminator | [Duck typing](#duck-typing) | The bare object |
 | Types you can't annotate, or cases known only at run time | [Runtime configuration](#runtime-configuration) | As configured |
 
@@ -77,18 +77,19 @@ They need no attributes beyond <xref:PolyType.GenerateShapeAttribute>.
 
 | Mode | Writes | Reads |
 |--|--|--|
-| `Auto` (default) | Bare when the JSON kind is unique, including a single object case. Otherwise `{"$type": ..., ...}` | That bare value, or `$type` when the case is wrapped |
-| `Untagged` | Never adds `$type`, except for a case with an alias. An ambiguous union is rejected | Bare values, and `$type` for an aliased case |
-| `Tagged` | Every object uses `$type`. Other values are bare only when no other case shares their JSON kind | `$type`, and a bare value when it is unambiguous |
+| `Auto` (default) | Bare when the case can be recognized: by its JSON kind, a discriminator, its properties, or the first-declared rule. Otherwise `{"$type": ..., ...}` | Bare values, discriminators, properties, and `$type` |
+| `Untagged` | Never adds `$type`, except for an alias, a custom converter, or a recursive union case. An object case that cannot be recognized is rejected | Same as `Auto` |
+| `Tagged` | Every object uses `$type`. Other values are bare only when no other case shares their JSON kind | `$type`, and a bare value when its kind is unambiguous. A bare value that needs duck typing throws |
 
 Keep `Auto` for most JSON APIs.
 Use `Tagged` when every object should carry its type.
-<xref:Nerdbank.Json.JsonSerializer.DefaultUnionTagging> set to `Tagged` writes those object cases with `$type`.
+<xref:Nerdbank.Json.JsonSerializer.DefaultUnionTagging> set to `Tagged` writes object cases with `$type` and does not duck-type.
 
-JSON cannot tell numeric widths, `float` from `double`, or two string, collection, or object cases apart.
-`Auto` and `Tagged` wrap those cases.
-`Untagged` rejects the union unless an alias identifies the case.
-Nested unions and custom converters are wrapped, because their JSON kind is not fixed.
+In `Auto` and `Untagged`, several number, string, or collection cases are written bare.
+The reader uses range, element types, and declaration order.
+`Tagged` still wraps those collisions.
+A union case that is itself a non-recursive C# union is written as its inner cases.
+A recursive union case stays wrapped, as does a custom converter.
 
 ### Options
 
@@ -135,21 +136,27 @@ For a callback, use <xref:Nerdbank.Json.DelegateUnionTypeAliasProvider>, or impl
 
 ## Duck typing
 
-Duck typing reads a bare JSON object by its required properties.
-Opt in per hierarchy with <xref:Nerdbank.Json.DerivedTypeDuckTyping>.
-It is experimental.
+Duck typing reads a bare JSON value by its shape.
+It applies to C# unions in `Auto` and `Untagged`, and to derived types listed with <xref:Nerdbank.Json.DerivedTypeDuckTyping>.
+Derived-type duck typing is experimental.
 
 ### How a case is chosen
 
-1. Each case other than the catch-all matches when all of its required properties are present.
-1. If several cases match, the one whose required names are a strict superset of each of the others wins.
-1. If none match, the catch-all is used: the one object case with no required properties.
-1. Otherwise the read throws <xref:Nerdbank.Json.JsonSerializationException>. There is no base-type fallback.
+For a C# union in `Auto` or `Untagged`:
 
-A union has at most one catch-all, and the catch-all does not break a tie.
+1. The JSON kind (number, string, true/false, array, object), when only one case accepts it.
+1. `$type`, or a <xref:Nerdbank.Json.UnionDiscriminatorAttribute>, as the first property. <xref:Nerdbank.Json.JsonSerializer.AllowOutOfOrderDiscriminator> also accepts either one later in the object.
+1. A <xref:Nerdbank.Json.UnionClassifierAttribute>, when the union has one. `Tagged` does not call it.
+1. Required properties, among the cases still possible. If several match, the one whose required names are a strict superset of the others wins. An object case with no required properties and no discriminator is the catch-all, and it is used only when nothing else matches.
+1. Otherwise the first declared case that can represent the value, for numbers and collections. `5` read as `union(int, long)` is an `int`; `5000000000` is a `long`. Objects that match more than one case throw.
+
+Derived-type duck typing uses required properties the same way: the strict superset wins, one catch-all is allowed, and there is no base-type fallback.
+
+A discriminator is optional on read. When it is present it selects the case, and a wrong value is an error. When it is absent, those cases still compete on their other required properties, so `{"uri":"..."}` matches both `CreateFile` and `DeleteFile` and throws.
+An unrecognized discriminator value matches none of those cases and excludes the catch-all.
 Required properties follow object deserialization: constructor parameters, C# `required`, and members flagged by <xref:PolyType.PropertyShapeAttribute>.
 Names honor <xref:PolyType.PropertyShapeAttribute.Name>, the naming policy, and case-insensitive matching.
-Cases that require the same names after that policy are rejected when the converter is created.
+Two object cases that still cannot be told apart are wrapped in `Auto` and rejected in `Untagged`.
 
 ### Discriminator members
 
@@ -162,7 +169,7 @@ On read it is optional. A value that is present must match, or deserialization t
 [!code-json[](../../samples/cs/Output/CSharpUnions.DocumentChange.json)]
 
 `kind` is part of `CreateFile` and `DeleteFile`. `TextDocumentEdit` has no discriminator.
-These object cases are still wrapped in `$type`.
+In `Auto` the cases are written bare. `kind` selects the first two, and `textDocument` plus `edits` selects the third.
 
 ### Duck typing derived types
 
@@ -216,7 +223,7 @@ See [Custom case identifiers](#custom-case-identifiers).
 
 ## Security
 
-`$type` must be the first property.
+`$type` or a discriminator must be the first property.
 <xref:Nerdbank.Json.JsonSerializer.AllowOutOfOrderDiscriminator> accepts it later, but then the whole union value is buffered and nested unions can take quadratic time.
 Enable it only for trusted input.
 See [Security](security.md).
